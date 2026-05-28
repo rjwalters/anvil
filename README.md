@@ -14,11 +14,9 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 |---|---|
 | `anvil:ip-uspto` | USPTO patent applications |
 | `anvil:memo` | Investment memos, internal documents |
-| `anvil:deck` | Pitch decks |
 | `anvil:pub` | Research papers (LaTeX) |
-| `anvil:slides` | Talk/conference slides |
+| `anvil:presentation` | Pitch decks and talk slides (Markdown+Marp; `--type talk\|pitch`) |
 | `anvil:report` | Technical reports |
-| `anvil:knowledge-base` | Knowledge base entries |
 
 ## Design principles
 
