@@ -15,7 +15,8 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 | `anvil:ip-uspto` | USPTO patent applications |
 | `anvil:memo` | Investment memos, internal documents |
 | `anvil:pub` | Research papers (LaTeX) |
-| `anvil:presentation` | Pitch decks and talk slides (Markdown+Marp; `--type talk\|pitch`) |
+| `anvil:deck` | Pitch decks (Markdown + Marp) |
+| `anvil:slides` | Talk / conference slides (Markdown + Marp) |
 | `anvil:report` | Technical reports |
 
 ## Design principles
@@ -28,6 +29,7 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 6. **N parallel critics, one reviser.** Multiple critic siblings (`.review/`, `.audit/`, `.critic/`, `.s101/`, ...) feed a single reviser pass — this is a first-class primitive, not a special case.
 7. **Forge-optional.** Anvil works on a single laptop with no GitHub account. A forge can be added for collaboration but is not required.
 8. **Opinionated defaults, override liberally.** Anvil-shipped skills are starting points. Consumers are expected to extend them with project-specific voice, rubrics, and asset generators via `.anvil/skills/<name>/` in the consumer repo.
+9. **Skill identity = artifact identity.** Anvil ships one skill per standardized artifact type (pitch deck, talk slides, investment memo, patent application, research paper, technical report), not parameterized meta-skills with `--type` flags. When two skills share infrastructure (renderer, asset pipeline, scoring logic), the sharing lives in `anvil/lib/`, not by collapsing the skills.
 
 ## Installation
 
