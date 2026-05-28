@@ -52,17 +52,17 @@ When implementing a skill: follow the documented lifecycle commands (draft/revie
 
 Tracked as open issues at https://github.com/rjwalters/anvil/issues. v0 punch list:
 
-- #1 — Decide install/namespacing layout (blocks #11)
-- #2 — Decide: collapse `slides` and `deck` into one skill? (blocks #6, #7)
+- ~~#1~~ — Resolved: install layout = `.anvil/skills/<name>/` + thin `.claude/skills/anvil/<name>/` registration
+- ~~#2~~ — Resolved: keep `anvil:slides` and `anvil:deck` as separate skills sharing `anvil/lib/`
 - #3 — Implement `anvil:memo` skill *(recommended first skill)*
 - #4 — Implement `anvil:ip-uspto` skill
 - #5 — Implement `anvil:pub` skill
-- #6 — Implement `anvil:deck` skill (blocked by #2)
-- #7 — Implement `anvil:slides` skill (blocked by #2)
+- #6 — Implement `anvil:deck` skill
+- #7 — Implement `anvil:slides` skill
 - #8 — Implement `anvil:report` skill
-- #9 — Implement `anvil:knowledge-base` skill
+- ~~#9~~ — Deferred from v0 (KB violates load-bearing primitives; revisit under a future "reference skill" category)
 - #10 — Implement `anvil/lib/` framework primitives (blocked by ≥2 skill implementations)
-- #11 — Implement `scripts/install-anvil.sh` (blocked by #1)
+- #11 — Implement `scripts/install-anvil.sh`
 
 <!-- BEGIN LOOM ORCHESTRATION -->
 This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration. See `.loom/CLAUDE.md` for the full guide (roles, labels, worktrees, configuration).

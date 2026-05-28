@@ -15,14 +15,12 @@ Operational scripts for anvil maintenance and installation.
 `install-anvil.sh <target-repo>` will:
 
 1. Copy `anvil/lib/` to `<target>/.anvil/lib/`
-2. Copy `anvil/skills/<selected>/` to `<target>/.claude/skills/anvil-<selected>/` (or similar — see open question below)
-3. Copy `anvil/roles/` to `<target>/.anvil/roles/`
-4. Append an Anvil section to `<target>/CLAUDE.md` (does not overwrite — coexists with any existing Loom section)
-5. Skip files the consumer has overridden (override path: `<target>/.anvil/skills/<name>/` shadows the anvil-shipped version)
+2. Copy `anvil/skills/<selected>/` to `<target>/.anvil/skills/<selected>/` (canonical location)
+3. Create thin Claude registration files at `<target>/.claude/skills/anvil/<selected>/SKILL.md` that point to the canonical location
+4. Copy `anvil/roles/` to `<target>/.anvil/roles/`
+5. Append an Anvil section to `<target>/CLAUDE.md` (does not overwrite — coexists with any existing Loom section)
+6. Skip files the consumer has overridden (override path: `<target>/.anvil/skills/<name>/` shadows the anvil-shipped version)
 
-Open question: skill namespacing on install. Options:
-- `.claude/skills/anvil-ip-uspto/` (flat, prefixed name)
-- `.claude/skills/anvil/ip-uspto/` (nested)
-- `.anvil/skills/ip-uspto/` + claude-side registration via a manifest
+### Install layout convention (resolved per issue #1)
 
-To be decided alongside the first install.
+Anvil-shipped skills land at `.anvil/skills/<name>/` (canonical bodies) with thin registration at `.claude/skills/anvil/<name>/SKILL.md`. This mirrors Loom's `.loom/` separation between framework code and Claude registration, and preserves the override semantics above. See issue #1 for the curator analysis.
