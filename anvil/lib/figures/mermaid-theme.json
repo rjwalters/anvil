@@ -1,0 +1,19 @@
+{
+  "_comment": "palette: keep in sync with anvil/lib/figures/palette.py and anvil/skills/deck/assets/anvil-deck.css :root. Passed to mmdc via `-c`. JSON has no comments, so this sync note lives in a _comment key; mermaid ignores unknown top-level keys. See anvil/skills/deck/assets/figure-conventions.md section 3.",
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#1f4e7a",
+    "primaryTextColor": "#ffffff",
+    "primaryBorderColor": "#1a1a1a",
+    "lineColor": "#6b6b6b",
+    "secondaryColor": "#f5f5f5",
+    "secondaryTextColor": "#1a1a1a",
+    "secondaryBorderColor": "#d6d6d6",
+    "tertiaryColor": "#ffffff",
+    "tertiaryTextColor": "#1a1a1a",
+    "tertiaryBorderColor": "#d6d6d6",
+    "textColor": "#1a1a1a",
+    "fontFamily": "Helvetica Neue, Helvetica, Arial, sans-serif",
+    "background": "#ffffff"
+  }
+}

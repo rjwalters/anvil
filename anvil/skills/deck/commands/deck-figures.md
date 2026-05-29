@@ -109,9 +109,19 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
      --output figures/<name>.png \
      --width 1600 \
      --height 900 \
-     --backgroundColor white
+     --backgroundColor white \
+     -c anvil/lib/figures/mermaid-theme.json
    ```
    (`mmdc` from `@mermaid-js/mermaid-cli`; install via `npm install -g @mermaid-js/mermaid-cli`.)
+
+   - `-c anvil/lib/figures/mermaid-theme.json` applies the shared Anvil
+     mermaid theme (`theme: base` + navy `themeVariables`) so diagrams render
+     on the deck brand palette (navy nodes, muted-grey edges, Helvetica) by
+     default instead of the stock lavender/pink theme. In an installed consumer
+     repo this resolves to `.anvil/lib/figures/mermaid-theme.json` (the
+     installer copies `anvil/lib/` wholesale, same as `marp/config.yml`). The
+     theme is lib-level so it serves both `anvil:deck` and `anvil:slides`. A
+     consumer who overrides the deck theme can pass their own `-c <file>`.
 
    On render failure: write a stub `figures/<name>.png-FAILED.md` describing
    the error, leave the prior PNG (if any) in place, continue with other
@@ -119,6 +129,15 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
    silently broken reference.
 5. **Render matplotlib charts**:
    - For each `figures/src/<name>.py`: run the script. Convention: the script accepts the working directory `figures/src/` and writes its output to `figures/<name>.png`.
+   - **Apply the shared Anvil figure style** so charts are on-brand by default:
+     each script calls `apply()` from `anvil/lib/figures/palette.py` (which
+     `plt.style.use`-es the shipped `anvil.mplstyle`) near the top. This makes
+     the first series navy `#1f4e7a` and the axes/text the restrained brand
+     greys with zero per-series effort — no hand-matching hex values to the CSS
+     theme. Authors writing explicit per-series colors import the named tokens
+     (`from anvil.lib.figures.palette import ANVIL_NAVY, ANVIL_MUTED, ...`). In
+     an installed consumer repo the import resolves under `.anvil/lib/figures/`
+     (the installer copies `anvil/lib/` wholesale, same as `marp/config.yml`).
    - Standard script shape:
      ```python
      #!/usr/bin/env python3
@@ -126,17 +145,20 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
      import pandas as pd
      from pathlib import Path
 
+     from anvil.lib.figures.palette import apply  # on-brand defaults
+     apply()                                       # navy-first prop_cycle, 200 DPI, transparent
+
      SRC = Path(__file__).parent
      OUT = SRC.parent / "<name>.png"
 
      df = pd.read_csv(SRC / "<name>.csv")
-     fig, ax = plt.subplots(figsize=(12, 7), dpi=120)
-     # ... chart-specific plotting ...
+     fig, ax = plt.subplots()                      # figsize/dpi come from the style
+     # ... chart-specific plotting (first series is navy by default) ...
      ax.set_title("Chart title")
      ax.set_xlabel("X label")
      ax.set_ylabel("Y label")
      fig.tight_layout()
-     fig.savefig(OUT, dpi=150, bbox_inches="tight")
+     fig.savefig(OUT)                              # 200 DPI + transparent from the style
      ```
    - Run with `python3 figures/src/<name>.py`. Capture stdout/stderr; on non-zero exit, write a stub `figures/<name>.png-FAILED.md` describing the error.
    - See `assets/figure-conventions.md` for matplotlib `$`-escaping, DPI, palette, transparency, and output-path conventions.

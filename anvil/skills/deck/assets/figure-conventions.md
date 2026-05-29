@@ -88,31 +88,49 @@ region; it also reduces the chance of label cropping (`deck-vision` v2).
 ## 3. Palette
 
 Figures should track the Marp theme so a chart does not look pasted-in next to
-the slide chrome. The deck theme palette is defined in
-`anvil/skills/deck/assets/anvil-deck.css` `:root` (lines 18–24). Cite the CSS
-custom-property **names**, not just the hexes, so a future builder greps the
-source rather than copies a possibly-stale snippet:
+the slide chrome. **Don't copy hex values by hand** — import the canonical
+palette from `anvil/lib/figures/palette.py`, which mirrors
+`anvil/skills/deck/assets/anvil-deck.css` `:root` (a drift-detection test keeps
+the two in sync, so the imported tokens are never stale).
 
-| Role | CSS custom property | Hex | matplotlib use |
-|---|---|---|---|
-| Accent | `--anvil-accent` | `#1f4e7a` | Primary series, emphasis bars, the one "hero" data series |
-| Ink / text | `--anvil-text` | `#1a1a1a` | Axis labels, tick labels, titles, annotations |
-| Muted | `--anvil-muted` | `#6b6b6b` | Secondary series, gridlines, de-emphasized labels |
-| Rule | `--anvil-rule` | `#d6d6d6` | Light gridlines, axis spines, baselines |
-| Section bg | `--anvil-bg-section` | `#f5f5f5` | Fill only if a chart must composite onto a `_class: section` / `_class: appendix` slide instead of staying transparent |
+**The zero-effort default — call `apply()`.** It `plt.style.use`-es the shipped
+`anvil.mplstyle`, which sets a navy-first series `prop_cycle`, the brand ink/rule
+axis colors, Helvetica font, 200 DPI, and transparent `savefig`. A chart that
+just calls `apply()` is on-brand with no per-series color bookkeeping:
 
 ```python
-ACCENT = "#1f4e7a"   # --anvil-accent
-INK    = "#1a1a1a"   # --anvil-text
-MUTED  = "#6b6b6b"   # --anvil-muted
-RULE   = "#d6d6d6"   # --anvil-rule
+from anvil.lib.figures.palette import apply
+apply()                       # navy-first prop_cycle, ink/rule axes, 200 DPI, transparent
 ```
 
-Default matplotlib colors (the `C0`/`C1` tab10 cycle, the default `#1f77b4`
-blue) are a `deck-vision` v4 `palette_adherence` finding — set colors explicitly
-from the table above.
+**Explicit per-series colors — import the named tokens** when a chart assigns
+colors deliberately (a "hero" series in navy, a secondary series in muted grey):
 
-**Consumer theme overrides:** these hexes are sourced from the shipped
+```python
+from anvil.lib.figures.palette import (
+    ANVIL_NAVY,    # --anvil-accent #1f4e7a — primary / hero series
+    ANVIL_INK,     # --anvil-text   #1a1a1a — labels, ticks, titles, annotations
+    ANVIL_MUTED,   # --anvil-muted  #6b6b6b — secondary series, de-emphasized
+    ANVIL_RULE,    # --anvil-rule   #d6d6d6 — spines, light gridlines, baselines
+    ANVIL_RAMP,    # navy-anchored multi-series ramp (navy first)
+)
+```
+
+For reference, the tokens map to the deck theme's CSS custom properties:
+
+| Role | Python token | CSS custom property | Hex | matplotlib use |
+|---|---|---|---|---|
+| Accent | `ANVIL_NAVY` | `--anvil-accent` | `#1f4e7a` | Primary series, emphasis bars, the one "hero" data series |
+| Ink / text | `ANVIL_INK` | `--anvil-text` | `#1a1a1a` | Axis labels, tick labels, titles, annotations |
+| Muted | `ANVIL_MUTED` | `--anvil-muted` | `#6b6b6b` | Secondary series, gridlines, de-emphasized labels |
+| Rule | `ANVIL_RULE` | `--anvil-rule` | `#d6d6d6` | Light gridlines, axis spines, baselines |
+| Section bg | `ANVIL_BG_SECTION` | `--anvil-bg-section` | `#f5f5f5` | Fill only if a chart must composite onto a `_class: section` / `_class: appendix` slide instead of staying transparent |
+
+Default matplotlib colors (the `C0`/`C1` tab10 cycle, the default `#1f77b4`
+blue) are a `deck-vision` v4 `palette_adherence` finding — calling `apply()` or
+setting colors from the tokens above prevents it.
+
+**Consumer theme overrides:** the canonical tokens are sourced from the shipped
 `anvil-deck.css`. A consumer who overrides the theme via
 `.anvil/skills/deck/templates/<their-theme>.css` should re-read their own
 `:root` block and use those values — do not hard-code the shipped palette into a
@@ -164,9 +182,10 @@ Extract real numbers from the brief into a CSV first; do not inline made-up data
 
 ## 6. Canonical script template
 
-A single minimal script demonstrating all of the above — `$`-escaping,
-`figsize=(12, 7)`, 200 DPI, explicit palette hexes, `transparent=True`, and the
-`OUT = SRC.parent / "<name>.png"` output path:
+A single minimal script demonstrating all of the above — the `apply()` shared
+style (which carries `figsize=(12, 7)`, 200 DPI, `transparent=True`, ink/rule
+axes, and the navy-first `prop_cycle`), imported palette tokens, `$`-escaping,
+and the `OUT = SRC.parent / "<name>.png"` output path:
 
 ```python
 #!/usr/bin/env python3
@@ -179,37 +198,30 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 
+# --- shared on-brand style (section 3): navy-first prop_cycle, ink/rule axes,
+#     Helvetica font, 200 DPI, transparent savefig, figsize 12x7. ---
+from anvil.lib.figures.palette import apply, ANVIL_NAVY, ANVIL_INK
+apply()
+
 # --- output-path discipline (section 5) ---
 SRC = Path(__file__).parent
 OUT = SRC.parent / "traction.png"
 df = pd.read_csv(SRC / "traction.csv")   # no data file -> let pandas raise, never fabricate
 
-# --- palette, from anvil-deck.css :root (section 3) ---
-ACCENT = "#1f4e7a"   # --anvil-accent
-INK    = "#1a1a1a"   # --anvil-text
-RULE   = "#d6d6d6"   # --anvil-rule
+fig, ax = plt.subplots()                 # figsize/dpi come from apply()
 
-# --- figsize + display dpi (section 2) ---
-fig, ax = plt.subplots(figsize=(12, 7), dpi=120)
-
-ax.bar(df["quarter"], df["arr_m"], color=ACCENT)
+ax.bar(df["quarter"], df["arr_m"], color=ANVIL_NAVY)   # explicit hero series
 
 # --- $-escaping: every literal $ is \$ (section 1) ---
-ax.set_title(r"ARR by quarter (\$M)", color=INK)
-ax.set_xlabel("Quarter", color=INK)
-ax.set_ylabel(r"ARR (\$M)", color=INK)
+ax.set_title(r"ARR by quarter (\$M)")
+ax.set_xlabel("Quarter")
+ax.set_ylabel(r"ARR (\$M)")
 for x, v in zip(df["quarter"], df["arr_m"]):
-    ax.annotate(rf"\${v:.1f}M", (x, v), ha="center", va="bottom", color=INK)
-
-ax.spines["top"].set_visible(False)
-ax.spines["right"].set_visible(False)
-ax.spines["left"].set_color(RULE)
-ax.spines["bottom"].set_color(RULE)
-ax.tick_params(colors=INK)
+    ax.annotate(rf"\${v:.1f}M", (x, v), ha="center", va="bottom", color=ANVIL_INK)
 
 fig.tight_layout()
-# --- 200 DPI + transparent (sections 2 and 4) ---
-fig.savefig(OUT, dpi=200, bbox_inches="tight", transparent=True)
+# --- savefig: 200 DPI + transparent come from apply()'s style ---
+fig.savefig(OUT)
 ```
 
 ## 7. What the `deck-vision` critic catches
@@ -245,5 +257,8 @@ and legibility specifics live in `deck-vision`.
   the deck PDF.
 - `commands/deck-vision.md` — the vision critic that scores the rendered output
   (the detection counterpart to this prevention doc).
-- `assets/anvil-deck.css` — `:root` is the source of truth for the palette hexes
-  in section 3.
+- `anvil/lib/figures/palette.py` — the canonical importable palette tokens
+  (`ANVIL_NAVY` etc.) and `apply()` shared style referenced in sections 3 and 6;
+  also the shared `anvil.mplstyle` and `mermaid-theme.json`.
+- `assets/anvil-deck.css` — `:root` is the cross-format source of truth for the
+  palette; `palette.py` mirrors it and a drift test keeps them in sync.
