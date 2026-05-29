@@ -18,6 +18,25 @@ Customer-facing reports fail differently from internal memos: a typo in a memo i
 | 8 | **Tone & audience calibration** | 3 | Written for the named recipient (from `_project.md`) — appropriate jargon level, no hedging-to-hide, no overselling. Lowest weight but non-zero: a technically correct report in the wrong tone still damages the engagement. |
 | | **Total** | **40** | Advance threshold: ≥35 |
 
+## Vision-owned dimensions (rendered-PDF critic)
+
+The eight dimensions above are scored from the **markdown source** by `report-review` and `report-audit`. Dimension 7 (Format / presentation quality) names the right concern — "tables render, figures legible, pagination clean" — but a source-side critic can only *guess* at it: a well-formed markdown table can still overflow the page text block after pandoc lays it out, and a figure that looks fine in source can be illegible at the recipient's print scale.
+
+The optional `report-vision` critic (`commands/report-vision.md`) closes that gap by scoring the **rendered `report.pdf`** with a vision-language model. It owns a separate four-dimension vision rubric (`anvil-report-vision-v1`), scored /5 each (/20 total), composed from the framework `VisionRubric` / `VisionDimension` primitives in `anvil/lib/vision.py`:
+
+| Vision dim | Weight | What it catches |
+|---|---|---|
+| `figure_legibility` | 5 | Chart axis labels, legends, and annotations readable at the recipient's page/print scale. |
+| `table_overflow` | 5 | Wide specification tables clipped at the right margin — the report's signature rendered defect; a dropped column the recipient never sees is load-bearing data loss. |
+| `layout_artifacts` | 5 | Page-break / flow quality: orphaned headings, widow lines, figures or tables split across a page boundary, inconsistent running headers/footers. |
+| `palette_adherence` | 5 | Embedded charts match the report theme palette (`assets/style.css`) rather than default matplotlib colors. |
+
+These four vision dims appear in the aggregated scorecard alongside the eight main-rubric dimensions; the existing aggregator (`anvil/lib/critics.py::aggregate`) merges them via the same mean-of-non-null path with no schema or aggregation changes. The vision critic puts `null` on the eight main dims (it does not own them); `report-review` and `report-audit` put `null` on the four vision dims. The two source-side critics and the vision critic also contribute disjoint findings — source-side critics flag prose/structure/citation issues, `report-vision` flags rendered-only layout defects.
+
+`report-vision` reuses the two framework critical-flag types (no new flag types): `rendered_overflow_unrecoverable` (a clipped table or split figure that loses a load-bearing value) and `mathtext_artifact_breaks_meaning` (a `$X` rendered as italic math where the dollar sign carries semantic weight). Either flag short-circuits the verdict to block, consistent with the critical-flag policy below.
+
+A report can reach `AUDITED` without a vision pass, but a customer-facing report delivered without one has not been validated against rendered-only defects. The recommendation is to run `report-vision` before `report-promote`; a missing vision pass surfaces as a gap in the reviser's `changelog.md`. See `commands/report-vision.md` and `anvil/lib/vision.py` for the rubric definition.
+
 ## Scoring guidance
 
 For each dimension, the reviewer assigns an integer between 0 and the dimension's weight. A short justification accompanies each score (1–3 sentences pointing to specific evidence in the report).
