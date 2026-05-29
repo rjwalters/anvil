@@ -52,16 +52,33 @@ Versioned dirs and critic siblings are **immutable once their `_progress.json` r
 
 ### Sibling-critic convention
 
-Every critic sibling under `<thread>.{N}.<tag>/` follows the uniform schema (matches issues #4, #5):
+Deck is the **reference implementation** for the layered scorecard pattern documented in `anvil/lib/snippets/scorecard_kind.md`:
+
+- **Specialist critics** (`deck-narrative`, `deck-market`, `deck-design`) emit the `machine-summary` shape: `_summary.md` + `findings.md` + `_meta.json` (with `scorecard_kind: machine-summary`). Each critic fills only the rubric dimensions it owns; other dimensions remain `null`.
+- **Aggregator critic** (`deck-review`) emits BOTH shapes layered: the `human-verdict` shape (`verdict.md` + `scoring.md` + `comments.md`) AND the `machine-summary` shape (`_summary.md` + `findings.md`). The primary scorecard kind is `human-verdict` (the aggregated narrative `verdict.md` is the deliverable); the machine-summary layer lets downstream cross-skill machinery aggregate alongside other machine-summary critics if needed.
+
+Every critic sibling under `<thread>.{N}.<tag>/` therefore declares its primary kind in `_meta.json` per `anvil/lib/snippets/scorecard_kind.md`. The specialist schema:
 
 ```
-<thread>.{N}.<tag>/
+<thread>.{N}.<tag>/                                    # for deck-narrative, deck-market, deck-design
   _summary.md         8-dim partial scorecard (critic fills only owned dimensions; others = null) + critical flag
   findings.md         Itemized findings: severity (blocker/major/minor/nit), slide ref, rationale, suggested fix
-  _meta.json          { "critic": "<tag>", "role": "deck-<tag>.md", "started": <ISO>, "finished": <ISO>, "model": "<id>" }
+  _meta.json          { "critic": "<tag>", "role": "deck-<tag>.md", "started": <ISO>, "finished": <ISO>, "model": "<id>", "scorecard_kind": "machine-summary" }
 ```
 
-Critics fill only the rubric dimensions they own; other dimensions remain `null`. The reviser aggregates per-dimension as the **mean of non-null critic scores**. The critical flag in the aggregated scorecard is the **logical OR** of all critic critical flags.
+The aggregator schema (both layers present):
+
+```
+<thread>.{N}.review/                                   # the deck-review aggregator
+  verdict.md          Aggregated decision + total /40 + critical flags (primary deliverable)
+  scoring.md          Per-dimension scorecard with justifications
+  comments.md         Slide-level comments
+  _summary.md         8-dim partial scorecard (review owns dims 2, 5, 6; specialists fill others when aggregated)
+  findings.md         Itemized findings owned by the general reviewer
+  _meta.json          { ..., "scorecard_kind": "human-verdict" }   # primary intent
+```
+
+Specialists fill only their owned rubric dimensions; the aggregator reads the specialists' `_summary.md` files and combines per-dimension scores as the **mean of non-null critic scores**. The critical flag in the aggregated scorecard is the **logical OR** of all critic critical flags. See `anvil/lib/snippets/critics.md` for the canonical discovery and aggregation rules.
 
 **Default critic set for deck**: `review + narrative + market + design`. An operator can subset (e.g., skip `design` while content is still in flux); the reviser handles missing siblings gracefully.
 
@@ -180,7 +197,7 @@ Each `<thread>.{N}/` (and each critic sibling) contains `_progress.json` recordi
 
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `deck.md` exist? does the referenced PNG exist?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
-Until `anvil/lib/progress.py` lands (see issue #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: the command updates one phase, preserves all others.
+The canonical `_progress.json` schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention. The merge is shallow: the command updates one phase, preserves all others.
 
 ## Rubric
 

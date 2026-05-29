@@ -22,7 +22,7 @@ This command catches mechanical formal-compliance issues (37 CFR 1.71–1.84 der
 <thread>.{N}.preflight/
   _summary.md        Pass/fail boolean + counts table + per-check status
   findings.md        Itemized findings for any failed check (severity, location, rationale, suggested fix)
-  _meta.json         { critic: "preflight", role: "ip-uspto-pre-flight.md", started, finished, model, schema_version }
+  _meta.json         { critic: "preflight", role: "ip-uspto-pre-flight.md", started, finished, model, schema_version, scorecard_kind: "machine-summary" }
   _progress.json     Phase state for the pre-flight check
 ```
 
@@ -134,3 +134,8 @@ The pre-flight result gates the loop edge `REVISED → REVIEWED`:
 - **Deterministic first.** Do not invoke the LLM for checks that have unambiguous deterministic implementations. Save the LLM budget for the genuinely ambiguous case (Check 4 fallback).
 - **Reference numeral check is partial.** Full reference-numeral correspondence (e.g., "is reference 42 actually depicting the same component everywhere it appears?") is the `review` critic's job. Pre-flight only checks existence/presence.
 - **The class file is the enforcement mechanism for geometry.** Pre-flight verifies the class is in use, not the geometry directly — if the class is loaded, geometry is correct by construction.
+
+
+## Scorecard kind
+
+This critic emits the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`. The `_meta.json` MUST include `"scorecard_kind": "machine-summary"` so the `ip-uspto-revise` aggregator can correctly discriminate this sibling from any `human-verdict` siblings (e.g., consumer-added narrative critics).

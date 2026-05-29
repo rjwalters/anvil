@@ -60,7 +60,7 @@ If `.anvil/skills/memo/voice.md` exists in the consumer repo, load it and apply 
 
 ## `_progress.json` snippet
 
-Minimum schema this command writes (matches `SKILL.md`):
+This command writes the version-dir shape documented in `anvil/lib/snippets/progress.md` (`.anvil/lib/snippets/progress.md` in an installed consumer repo). Specifically, after a successful draft:
 
 ```json
 {
@@ -76,4 +76,4 @@ Minimum schema this command writes (matches `SKILL.md`):
 }
 ```
 
-Merge rule: read existing `_progress.json` if present, update only `phases.draft` and `metadata`, preserve all other fields. Until `anvil/lib/progress.py` lands (see issue #10), each command embeds this minimal read-merge-write inline.
+Merge rule (shallow): read existing `_progress.json` if present, update only `phases.draft` and `metadata`, preserve all other fields. Use the read-merge-write recipe in `anvil/lib/snippets/progress.md`; use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.

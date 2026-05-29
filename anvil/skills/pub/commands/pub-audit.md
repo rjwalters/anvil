@@ -30,6 +30,7 @@ The reviewer's job is to score a paper against the rubric (rigor, evidence, clar
   numerical-audit.md   Numbers-in-text vs figures/tables consistency check
   flags.md             Critical flags (unresolved cites, claim-support failure, numerical inconsistency, build failure)
   compile-log.txt      Captured stdout/stderr from the pdflatex + bibtex compile cycle
+  _meta.json           { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json       Phase state (phase: audit)
 ```
 
@@ -37,7 +38,7 @@ The reviewer's job is to score a paper against the rubric (rigor, evidence, clar
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/main.tex`. If `<thread>.{N}.audit/_progress.json.audit.state == done`, exit early with a notice (idempotent).
 2. **Resume check**: if a crashed audit exists (`audit.state == in_progress` without `flags.md`), delete partial output and re-audit.
-3. **Initialize `_progress.json`**: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version = N`.
+3. **Initialize `_progress.json`**: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`); pub-audit ships task-specific files (`citation-audit.md`, `numerical-audit.md`, `compile-log.txt`, `flags.md`) alongside the scorecard-kind declaration.
 4. **Compile the paper** (build verification):
    - Run `pdflatex -interaction=nonstopmode main.tex` in `<thread>.{N}/`.
    - Run `bibtex main` (or `biber main` if biblatex is in use).

@@ -148,3 +148,6 @@ Merge rule: read existing `_progress.json` if present, update only `phases.draft
 - **Never copy claim language from cited prior art.** If `<thread>/prior-art/` contains a reference, distinguish from it — do not echo it. The `priorart` critic will catch this.
 - **The class macros do work for you** (`\anvilpara`, `\refnum`, claim environment). Use them — manual paragraph numbering is error-prone and will fail pre-flight.
 - **3 independents / 20 total claims is a soft cap.** Exceed it when the invention justifies, but note the additional USPTO fees in the operator's report.
+
+
+**Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.

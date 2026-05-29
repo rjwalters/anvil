@@ -31,6 +31,7 @@ This command is one of the two REQUIRED critic siblings for the report skill (th
   verdict.md       Pass/fail + critical flags + prior-report cross-check summary + top revision priorities
   findings.md      Per-claim audit log (every quantitative claim + citation + audit result)
   evidence.md      Citation traceability map (every cited source → which claims depend on it)
+  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the auditor (phase: audit)
 ```
 
@@ -38,7 +39,7 @@ This command is one of the two REQUIRED critic siblings for the report skill (th
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/report.md`. If `<thread>.{N}.audit/_progress.json.audit.state == done` and `verdict.md` exists, the audit is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed audit exists (`audit.state == in_progress` without `verdict.md`), delete the partial output and re-audit.
-3. **Initialize `_progress.json`** for the audit dir: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version = N`.
+3. **Initialize `_progress.json`** for the audit dir: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`); report-audit ships task-specific `findings.md` and `evidence.md` alongside the scorecard-kind declaration.
 4. **Read inputs**: load `<thread>.{N}/report.md`, enumerate `exhibits/`, load `_project.md`, enumerate `refs/`. For each entry in `prior_reports[]`, attempt to load `<thread>.{final_version}/report.md`; if the file is missing, note the gap in `verdict.md` (auditor does not fail solely on missing prior reports, but flags it for operator awareness).
 5. **Build the claim inventory**: walk `report.md` and enumerate every quantitative claim, numeric assertion, named-entity attribution, and citation. Record each in `findings.md` with columns:
 

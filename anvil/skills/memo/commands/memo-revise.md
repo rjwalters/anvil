@@ -79,6 +79,8 @@ After this command produces `<thread>.{N+1}/`, the orchestrator should run `memo
 
 ## `_progress.json` snippet (revised version dir)
 
+This command writes the version-dir shape documented in `anvil/lib/snippets/progress.md`. The reviser adds a `metadata.revised_from` field naming the parent version (a memo-specific extension to the schema; the shallow-merge rule preserves it on subsequent writes):
+
 ```json
 {
   "version": 1,
@@ -94,4 +96,4 @@ After this command produces `<thread>.{N+1}/`, the orchestrator should run `memo
 }
 ```
 
-Note `metadata.revised_from` — the version this revision was produced from. Helpful for the orchestrator's anomaly detection (catches gaps in the version chain).
+`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.

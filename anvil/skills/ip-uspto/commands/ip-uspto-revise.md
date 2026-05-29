@@ -174,3 +174,6 @@ The cycle continues until:
 ```
 
 Note `metadata.revised_from` — the version this revision was produced from. Used by the orchestrator's anomaly detection (catches gaps in the version chain).
+
+
+**Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.

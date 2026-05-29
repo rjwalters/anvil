@@ -104,4 +104,6 @@ The auditor (Dimension 1) additionally checks that data plots match their source
 }
 ```
 
+Merge rule (shallow): preserve fields not touched by this command. See `anvil/lib/snippets/progress.md` for the full read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC format. The figurer only touches `phases.figures`; all other phases and metadata are preserved.
+
 Merge rule: preserve all other phases. The figurer only touches `phases.figures`.

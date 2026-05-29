@@ -125,3 +125,6 @@ After the claim set stabilizes (during AUDITED → FINALIZED transition), re-run
 - **Never invent inventors.** Only the inventors named in `BRIEF.md` frontmatter may appear in the matrix.
 - **Conception ≠ reduction to practice.** This distinction is the source of most inventorship errors. The matrix attribution rules document it; the matrix itself enforces it by only listing the conceiving step.
 - **Re-validation is mandatory pre-finalize.** Claims often change during revision (a claim limitation gets added, removed, or shifted between independents and dependents). The matrix MUST track the final claims, not just the first-draft features.
+
+
+**Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.

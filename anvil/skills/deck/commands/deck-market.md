@@ -133,3 +133,6 @@ Standard.
 - **Generic competitor framing is a credit-reducer.** "We're faster than legacy players" tells the investor nothing. "We're 10x cheaper than UiPath and 3x faster than Workato because our orchestrator is event-driven not poll-based" is specific.
 - **Cross-check named competitors against the brief.** If the deck names a competitor not in the brief, that competitor may have been invented — surface as a finding.
 - **Don't critique narrative, problem, traction, team, ask, or design here.** Other critics own those.
+
+
+**Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "machine-summary"` per `anvil/lib/snippets/scorecard_kind.md`. This is a deck specialist critic — `machine-summary` shape (`_summary.md` + `findings.md`), partial scorecard with non-owned dimensions set to `null`. The deck-review aggregator reads this sibling's `_summary.md` and combines its scores into the composite verdict.

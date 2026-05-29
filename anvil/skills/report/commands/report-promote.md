@@ -126,6 +126,8 @@ Wait until ≥2 skills need the pattern before extracting it. For now, this comm
 }
 ```
 
+Merge rule (shallow): preserve fields not touched by this command. See `anvil/lib/snippets/progress.md` for the full read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC format. The promote sibling SHOULD also write a `_meta.json` declaring its `scorecard_kind` (typically `human-verdict` — the receipt is meant for a human approver to verify).
+
 The version dir's `_progress.json` is updated additively with the same `phases.promote` block plus a `receipt_path` pointer.
 
 ## Notes for the promoter agent

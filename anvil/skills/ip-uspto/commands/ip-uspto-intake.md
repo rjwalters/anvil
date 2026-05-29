@@ -103,3 +103,6 @@ Questions the intake could not answer from the supplied disclosure and that the 
 ## `_progress.json`
 
 This command does NOT write a `_progress.json` — intake operates on the thread root (`<thread>/`), not a version directory. The existence and well-formedness of `BRIEF.md` is the state signal the orchestrator uses to determine `INTAKE_DONE`.
+
+
+**Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.
