@@ -1,0 +1,434 @@
+#!/usr/bin/env bash
+# install-anvil.sh - Install Anvil into a consumer repository
+#
+# Usage:
+#   ./scripts/install-anvil.sh [OPTIONS] <target-repo>
+#
+# Options:
+#   --skills=<a,b,c>  Install only the listed skills (default: all)
+#   --force           Overwrite consumer-edited skill files (default: skip with warning)
+#   --dry-run         Print planned actions, write nothing
+#   -y, --yes         Non-interactive (skip confirmation prompts)
+#   -h, --help        Show this help and exit
+#
+# Examples:
+#   ./scripts/install-anvil.sh /tmp/test-repo
+#   ./scripts/install-anvil.sh --skills=memo /tmp/test-repo
+#   ./scripts/install-anvil.sh --dry-run --skills=memo /tmp/test-repo
+#   ./scripts/install-anvil.sh --force /tmp/test-repo
+#
+# Layout produced in <target-repo>:
+#   .anvil/lib/                        Framework code (always installed)
+#   .anvil/roles/                      Generic role definitions (always installed)
+#   .anvil/skills/<name>/              Canonical skill bodies (consumer override target)
+#   .anvil/CLAUDE.md                   Full Anvil guide
+#   .anvil/install-metadata.json       Manifest (version, skills, overrides)
+#   .claude/skills/anvil/<name>/SKILL.md  Thin Claude registration shim
+#   CLAUDE.md                          Updated with additive <!-- BEGIN ANVIL --> block
+#
+# Anvil is forge-optional: git is not required in the target.
+# Coexists with Loom: CLAUDE.md merges are additive and marker-bounded.
+#
+# v0 distribution model: installs from a local checkout (this script's parent dir).
+# A future "fetch from release" branch can be added when Anvil ships via package
+# managers; out of scope for the v0 implementation.
+
+set -euo pipefail
+
+# ----- ANSI colors -----------------------------------------------------------
+if [[ -t 1 ]]; then
+  RED=$'\033[0;31m'
+  GREEN=$'\033[0;32m'
+  BLUE=$'\033[0;34m'
+  YELLOW=$'\033[1;33m'
+  CYAN=$'\033[0;36m'
+  NC=$'\033[0m'
+else
+  RED=""; GREEN=""; BLUE=""; YELLOW=""; CYAN=""; NC=""
+fi
+
+error() { echo "${RED}error: $*${NC}" >&2; exit 1; }
+info()  { echo "${BLUE}> $*${NC}"; }
+ok()    { echo "${GREEN}  ok: $*${NC}"; }
+warn()  { echo "${YELLOW}  warn: $*${NC}"; }
+note()  { echo "${CYAN}  note: $*${NC}"; }
+
+usage() {
+  sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# ----- CLAUDE.md marker constants -------------------------------------------
+ANVIL_MARK_BEGIN='<!-- BEGIN ANVIL -->'
+ANVIL_MARK_END='<!-- END ANVIL -->'
+ANVIL_POINTER='This repository uses [Anvil](https://github.com/rjwalters/anvil) for AI-powered artifact creation. See `.anvil/CLAUDE.md` for the full guide (skills, rubric, state machine).'
+
+# ----- Argument parsing ------------------------------------------------------
+SKILLS_FILTER=""
+FORCE=false
+DRY_RUN=false
+NON_INTERACTIVE=false
+TARGET=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skills=*) SKILLS_FILTER="${1#--skills=}"; shift ;;
+    --skills)   shift; SKILLS_FILTER="${1:-}"; [[ -z "$SKILLS_FILTER" ]] && error "--skills requires a comma-separated list"; shift ;;
+    --force)    FORCE=true; shift ;;
+    --dry-run)  DRY_RUN=true; shift ;;
+    -y|--yes)   NON_INTERACTIVE=true; shift ;;
+    -h|--help)  usage ;;
+    --*)        error "unknown option: $1 (run with --help to see usage)" ;;
+    *)
+      if [[ -n "$TARGET" ]]; then
+        error "unexpected extra argument: $1 (target already set to: $TARGET)"
+      fi
+      TARGET="$1"
+      shift
+      ;;
+  esac
+done
+
+[[ -z "$TARGET" ]] && error "target repository path required (run with --help to see usage)"
+
+# ----- Stage 1: resolve ANVIL_ROOT ------------------------------------------
+info "Stage 1: resolve ANVIL_ROOT"
+ANVIL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+[[ -d "$ANVIL_ROOT/anvil" ]] || error "ANVIL_ROOT does not look like an anvil checkout (missing anvil/): $ANVIL_ROOT"
+[[ -f "$ANVIL_ROOT/CLAUDE.md" ]] || error "ANVIL_ROOT missing CLAUDE.md: $ANVIL_ROOT"
+ok "ANVIL_ROOT=$ANVIL_ROOT"
+
+# Extract version (single source of truth: CLAUDE.md, per scripts/version.sh)
+ANVIL_VERSION=$(grep -o 'Anvil Version\*\*: [0-9]*\.[0-9]*\.[0-9]*' "$ANVIL_ROOT/CLAUDE.md" \
+  | grep -o '[0-9]*\.[0-9]*\.[0-9]*' || true)
+[[ -n "$ANVIL_VERSION" ]] || error "could not extract Anvil version from $ANVIL_ROOT/CLAUDE.md"
+ok "ANVIL_VERSION=$ANVIL_VERSION"
+
+INSTALL_DATE="$(date +%Y-%m-%d)"
+
+# ----- Stage 2: resolve and validate TARGET ---------------------------------
+info "Stage 2: resolve and validate TARGET"
+# Expand tilde
+TARGET="${TARGET/#\~/$HOME}"
+[[ -d "$TARGET" ]] || error "target directory does not exist: $TARGET"
+TARGET="$(cd "$TARGET" && pwd)"
+ok "TARGET=$TARGET"
+
+if [[ "$TARGET" == "$ANVIL_ROOT" ]]; then
+  error "refusing to install anvil into its own source checkout ($ANVIL_ROOT)"
+fi
+
+if [[ ! -d "$TARGET/.git" ]]; then
+  note "target is not a git repository (anvil is forge-optional; proceeding)"
+fi
+
+# ----- Stage 3: active-install guard (lightweight) --------------------------
+info "Stage 3: active-install guard"
+if [[ -d "$TARGET/.anvil" ]]; then
+  note "existing .anvil/ detected -- treating as upgrade"
+  UPGRADE=true
+else
+  note "fresh install"
+  UPGRADE=false
+fi
+
+# ----- Stage 4: read source manifest, filter by --skills= -------------------
+info "Stage 4: enumerate source skills"
+ALL_SKILLS=()
+if [[ -d "$ANVIL_ROOT/anvil/skills" ]]; then
+  # Each subdir of anvil/skills/ that contains a SKILL.md is a skill.
+  while IFS= read -r -d '' skill_md; do
+    skill_dir="$(dirname "$skill_md")"
+    skill_name="$(basename "$skill_dir")"
+    ALL_SKILLS+=("$skill_name")
+  done < <(find "$ANVIL_ROOT/anvil/skills" -mindepth 2 -maxdepth 2 -name 'SKILL.md' -print0 | sort -z)
+fi
+[[ ${#ALL_SKILLS[@]} -gt 0 ]] || error "no skills found under $ANVIL_ROOT/anvil/skills/*/SKILL.md"
+note "available skills: ${ALL_SKILLS[*]}"
+
+SELECTED_SKILLS=()
+if [[ -n "$SKILLS_FILTER" ]]; then
+  # Reject lib/roles as skill names (they are framework prerequisites).
+  IFS=',' read -r -a REQUESTED <<< "$SKILLS_FILTER"
+  for s in "${REQUESTED[@]}"; do
+    s="$(echo "$s" | tr -d '[:space:]')"
+    [[ -z "$s" ]] && continue
+    case "$s" in
+      lib|roles)
+        error "lib and roles are always installed; use skill names like: ${ALL_SKILLS[*]}"
+        ;;
+    esac
+    # Validate against ALL_SKILLS
+    found=false
+    for avail in "${ALL_SKILLS[@]}"; do
+      [[ "$avail" == "$s" ]] && { found=true; break; }
+    done
+    $found || error "unknown skill: $s; available: ${ALL_SKILLS[*]}"
+    SELECTED_SKILLS+=("$s")
+  done
+  [[ ${#SELECTED_SKILLS[@]} -gt 0 ]] || error "--skills= was empty after filtering"
+else
+  SELECTED_SKILLS=("${ALL_SKILLS[@]}")
+  note "no --skills= flag; installing all (${#SELECTED_SKILLS[@]} skills). Use --skills= to install a subset."
+fi
+ok "selected: ${SELECTED_SKILLS[*]}"
+
+# ----- Confirmation prompt --------------------------------------------------
+if [[ "$NON_INTERACTIVE" != true ]] && [[ "$DRY_RUN" != true ]]; then
+  echo ""
+  echo "About to install Anvil v$ANVIL_VERSION into: $TARGET"
+  echo "Skills: ${SELECTED_SKILLS[*]}"
+  echo "Mode: $($UPGRADE && echo upgrade || echo fresh)"
+  echo ""
+  read -r -p "Proceed? [y/N] " -n 1 reply
+  echo ""
+  [[ "$reply" =~ ^[Yy]$ ]] || { info "cancelled"; exit 0; }
+fi
+
+# ----- Helpers --------------------------------------------------------------
+# Run a write action, or print it under --dry-run.
+do_action() {
+  local desc="$1"; shift
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "  [dry-run] $desc"
+  else
+    "$@"
+  fi
+}
+
+# Compare two directory trees byte-by-byte. Returns 0 if identical, 1 if any
+# file differs (or files exist on one side but not the other).
+dirs_identical() {
+  local a="$1" b="$2"
+  # diff -r exit codes: 0 = identical, 1 = differs, 2 = trouble
+  diff -r -q "$a" "$b" >/dev/null 2>&1
+}
+
+# Track override decisions for the manifest.
+SKIPPED_OVERRIDES=()
+INSTALLED_SKILLS=()
+
+# ----- Stage 5: copy framework code (lib) -----------------------------------
+info "Stage 5: copy framework code (anvil/lib -> .anvil/lib)"
+SRC_LIB="$ANVIL_ROOT/anvil/lib"
+DST_LIB="$TARGET/.anvil/lib"
+if [[ -d "$SRC_LIB" ]]; then
+  do_action "mkdir -p $DST_LIB && cp -R lib/*" sh -c "
+    mkdir -p '$DST_LIB'
+    # Copy contents (cp -R src/. dest preserves contents, not the wrapper dir)
+    cp -R '$SRC_LIB/.' '$DST_LIB/'
+  "
+  ok "framework lib installed"
+else
+  warn "source lib not found: $SRC_LIB (skipping)"
+fi
+
+# ----- Stage 6: copy roles --------------------------------------------------
+info "Stage 6: copy roles (anvil/roles -> .anvil/roles)"
+SRC_ROLES="$ANVIL_ROOT/anvil/roles"
+DST_ROLES="$TARGET/.anvil/roles"
+if [[ -d "$SRC_ROLES" ]]; then
+  do_action "mkdir -p $DST_ROLES && cp -R roles/*" sh -c "
+    mkdir -p '$DST_ROLES'
+    cp -R '$SRC_ROLES/.' '$DST_ROLES/'
+  "
+  ok "roles installed"
+else
+  warn "source roles not found: $SRC_ROLES (skipping)"
+fi
+
+# ----- Stage 7: copy each selected skill ------------------------------------
+info "Stage 7: copy selected skills"
+for skill in "${SELECTED_SKILLS[@]}"; do
+  src_skill="$ANVIL_ROOT/anvil/skills/$skill"
+  dst_skill="$TARGET/.anvil/skills/$skill"
+  shim_dir="$TARGET/.claude/skills/anvil/$skill"
+  shim_file="$shim_dir/SKILL.md"
+
+  # Override detection: if destination exists and differs from source by any
+  # byte, treat as consumer-modified. Skip unless --force.
+  if [[ -d "$dst_skill" ]]; then
+    if dirs_identical "$src_skill" "$dst_skill"; then
+      note "skill '$skill' already installed and unchanged (refreshing safely)"
+    else
+      if [[ "$FORCE" == true ]]; then
+        warn "overwriting consumer-modified file(s) in .anvil/skills/$skill (--force)"
+      else
+        warn "skipped: consumer-modified .anvil/skills/$skill (re-run with --force to overwrite)"
+        SKIPPED_OVERRIDES+=("$skill")
+        # Still ensure the Claude shim exists and points at the canonical path,
+        # since that file is a pointer and safe to regenerate.
+        do_action "regenerate Claude registration shim at .claude/skills/anvil/$skill/SKILL.md" \
+          sh -c "
+            mkdir -p '$shim_dir'
+            cat > '$shim_file' <<SHIMEOF
+---
+name: anvil-$skill
+description: Anvil skill registration for '$skill' (canonical body at .anvil/skills/$skill/SKILL.md)
+---
+
+See \\\`.anvil/skills/$skill/SKILL.md\\\` for the canonical skill body.
+
+This file is a thin Claude registration shim generated by install-anvil.sh.
+The canonical skill body and any consumer overrides live at .anvil/skills/$skill/.
+SHIMEOF
+          "
+        continue
+      fi
+    fi
+  fi
+
+  # Copy (or recopy): wipe destination and replace with source contents.
+  do_action "install .anvil/skills/$skill from source" sh -c "
+    rm -rf '$dst_skill'
+    mkdir -p '$dst_skill'
+    cp -R '$src_skill/.' '$dst_skill/'
+  "
+
+  # Always regenerate the thin Claude registration shim.
+  do_action "write Claude registration shim at .claude/skills/anvil/$skill/SKILL.md" \
+    sh -c "
+      mkdir -p '$shim_dir'
+      cat > '$shim_file' <<SHIMEOF
+---
+name: anvil-$skill
+description: Anvil skill registration for '$skill' (canonical body at .anvil/skills/$skill/SKILL.md)
+---
+
+See \\\`.anvil/skills/$skill/SKILL.md\\\` for the canonical skill body.
+
+This file is a thin Claude registration shim generated by install-anvil.sh.
+The canonical skill body and any consumer overrides live at .anvil/skills/$skill/.
+SHIMEOF
+    "
+
+  INSTALLED_SKILLS+=("$skill")
+  ok "skill '$skill' installed"
+done
+
+# ----- Stage 8: CLAUDE.md additive merge ------------------------------------
+info "Stage 8: CLAUDE.md additive merge"
+CLAUDE_MD="$TARGET/CLAUDE.md"
+NEW_BLOCK="$ANVIL_MARK_BEGIN
+$ANVIL_POINTER
+$ANVIL_MARK_END"
+
+merge_claude_md() {
+  if [[ ! -f "$CLAUDE_MD" ]]; then
+    # Case 1: no existing CLAUDE.md -- create it with just the marker block.
+    printf '%s\n' "$NEW_BLOCK" > "$CLAUDE_MD"
+    return
+  fi
+
+  if grep -qF "$ANVIL_MARK_BEGIN" "$CLAUDE_MD"; then
+    # Case 2: existing Anvil marker -- replace block in place.
+    # Pure-bash line-by-line replacement is more portable than awk -v block=<multiline>
+    # (BSD awk rejects newlines inside -v values). Preserves everything outside
+    # the markers, including any Loom block.
+    local tmp in_block=0
+    tmp="$(mktemp)"
+    local replaced=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$in_block" -eq 0 ]]; then
+        if [[ "$line" == *"$ANVIL_MARK_BEGIN"* ]]; then
+          printf '%s\n' "$NEW_BLOCK" >> "$tmp"
+          in_block=1
+          replaced=1
+        else
+          printf '%s\n' "$line" >> "$tmp"
+        fi
+      else
+        if [[ "$line" == *"$ANVIL_MARK_END"* ]]; then
+          in_block=0
+        fi
+        # discard lines inside the old block
+      fi
+    done < "$CLAUDE_MD"
+    if [[ "$replaced" -eq 0 ]]; then
+      rm -f "$tmp"
+      return 1
+    fi
+    mv "$tmp" "$CLAUDE_MD"
+    return
+  fi
+
+  # Case 3: existing CLAUDE.md, no Anvil markers -- append at end, separated by blank line.
+  # Trim trailing newlines from the existing file, then append "\n\n<block>\n".
+  local existing
+  existing="$(cat "$CLAUDE_MD")"
+  # Remove trailing whitespace/newlines, then add exactly one blank line before block.
+  printf '%s\n\n%s\n' "${existing%$'\n'}" "$NEW_BLOCK" > "$CLAUDE_MD"
+}
+
+if [[ "$DRY_RUN" == true ]]; then
+  if [[ ! -f "$CLAUDE_MD" ]]; then
+    echo "  [dry-run] create CLAUDE.md with Anvil marker block"
+  elif grep -qF "$ANVIL_MARK_BEGIN" "$CLAUDE_MD"; then
+    echo "  [dry-run] replace existing Anvil block in CLAUDE.md (in place)"
+  else
+    echo "  [dry-run] append Anvil marker block to CLAUDE.md (preserves all existing content)"
+  fi
+else
+  merge_claude_md
+  ok "CLAUDE.md updated"
+fi
+
+# Write the full Anvil guide to <target>/.anvil/CLAUDE.md (with version + date substituted).
+ANVIL_GUIDE_DST="$TARGET/.anvil/CLAUDE.md"
+do_action "write Anvil guide to .anvil/CLAUDE.md" sh -c "
+  mkdir -p '$TARGET/.anvil'
+  # Substitute template variables into the source CLAUDE.md.
+  # The source CLAUDE.md already carries the canonical version line; we just
+  # write it through and append install-date metadata at the top.
+  {
+    echo '<!-- Generated by install-anvil.sh -->'
+    echo '<!-- Anvil Version: $ANVIL_VERSION -->'
+    echo '<!-- Install Date: $INSTALL_DATE -->'
+    echo ''
+    cat '$ANVIL_ROOT/CLAUDE.md'
+  } > '$ANVIL_GUIDE_DST'
+"
+
+# ----- Stage 9: install manifest --------------------------------------------
+info "Stage 9: write install manifest"
+MANIFEST="$TARGET/.anvil/install-metadata.json"
+
+# Build JSON arrays for installed skills and skipped overrides.
+json_array_from_list() {
+  local first=true
+  printf '['
+  for item in "$@"; do
+    if $first; then first=false; else printf ', '; fi
+    printf '"%s"' "$item"
+  done
+  printf ']'
+}
+
+INSTALLED_JSON="$(json_array_from_list ${INSTALLED_SKILLS[@]+"${INSTALLED_SKILLS[@]}"})"
+SKIPPED_JSON="$(json_array_from_list ${SKIPPED_OVERRIDES[@]+"${SKIPPED_OVERRIDES[@]}"})"
+
+do_action "write $MANIFEST" sh -c "
+  mkdir -p '$TARGET/.anvil'
+  cat > '$MANIFEST' <<MANIFEST_EOF
+{
+  \"anvil_version\": \"$ANVIL_VERSION\",
+  \"anvil_source\": \"$ANVIL_ROOT\",
+  \"install_date\": \"$INSTALL_DATE\",
+  \"installed_skills\": $INSTALLED_JSON,
+  \"skipped_overrides\": $SKIPPED_JSON
+}
+MANIFEST_EOF
+"
+
+# ----- Stage 10: summary ----------------------------------------------------
+info "Stage 10: summary"
+echo ""
+echo "  installed skills:    ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
+echo "  skipped overrides:   ${SKIPPED_OVERRIDES[*]:-(none)}"
+echo "  target:              $TARGET/.anvil"
+echo ""
+if [[ "$DRY_RUN" == true ]]; then
+  warn "DRY-RUN: no files were written"
+else
+  ok "Anvil v$ANVIL_VERSION installed into $TARGET"
+fi
