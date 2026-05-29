@@ -98,6 +98,8 @@ The cycle continues until:
 
 ## `_progress.json` snippet (revised version dir)
 
+This command writes the version-dir shape documented in `anvil/lib/snippets/progress.md`. The reviser adds a `metadata.revised_from` field naming the parent version:
+
 ```json
 {
   "version": 1,
@@ -113,4 +115,4 @@ The cycle continues until:
 }
 ```
 
-Note `metadata.revised_from` — the version this revision was produced from. Helpful for the orchestrator's anomaly detection (catches gaps in the version chain).
+`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.

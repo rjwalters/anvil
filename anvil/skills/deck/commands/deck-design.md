@@ -128,3 +128,6 @@ Total ownership: 5/40. Other dimensions remain `null` in this critic's `_summary
 - **Chart legibility is the second most common finding.** Default matplotlib colors and tiny axis labels render unreadably at projection scale. If you can't read the axis labels in the PNG at 50% zoom, the investor can't read them on a conference-room screen either.
 - **Consistency is a multiplier.** A deck with three slides that look like a different deck reads as unfinished.
 - **Don't critique content here.** Other critics own arc, ask, market, problem, traction, team. Stay in the visual lane.
+
+
+**Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "machine-summary"` per `anvil/lib/snippets/scorecard_kind.md`. This is a deck specialist critic — `machine-summary` shape (`_summary.md` + `findings.md`), partial scorecard with non-owned dimensions set to `null`. The deck-review aggregator reads this sibling's `_summary.md` and combines its scores into the composite verdict.

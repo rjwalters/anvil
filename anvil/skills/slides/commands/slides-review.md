@@ -28,6 +28,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
   verdict.md       Top-level decision + total /40 + critical flags (own + propagated) + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Slide-level comments keyed to slide numbers and notes/<NN>-*.md filenames
+  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
 
@@ -35,7 +36,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
-3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version: <N>`.
+3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version: <N>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
 4. **Read inputs**: load `<thread>.{N}/deck.md`, enumerate `notes/*.md` and `figures/`, load `rubric.md` and any consumer override.
 5. **Read sibling critic outputs** (if present):
    - `<thread>.{N}.audit/verdict.md` — extract any `wrong` claims (these set the audit flag).

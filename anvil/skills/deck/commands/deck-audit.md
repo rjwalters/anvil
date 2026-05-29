@@ -152,3 +152,5 @@ Standard.
 - **Critical flags here block READY.** A `READY` verdict from the reviewer becomes `not READY` if audit raises a critical flag. The audit's critical-flag output trumps the aggregated review verdict.
 - **Don't critique style, design, narrative, ask, or market structure.** Audit is purely factual. Other critics own those dimensions.
 - **Do walk the chart data.** A chart that doesn't match its source CSV is the easiest fabrication to miss because it's "rendered". Diff the rendered chart against `python figures/src/<chart>.py` output.
+
+**Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "human-verdict"` per `anvil/lib/snippets/scorecard_kind.md`. deck-audit is an auditor critic — the audit findings are meant for human consumption (or for the reviser to address narratively), not for programmatic per-dimension aggregation.

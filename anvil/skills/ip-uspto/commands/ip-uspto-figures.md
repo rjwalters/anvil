@@ -131,3 +131,6 @@ The default v0 figurer writes stub descriptions that a human illustrator (or a f
 ```
 
 Merge rule: preserve all other phases. The figurer only touches `phases.figures`.
+
+
+**Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.

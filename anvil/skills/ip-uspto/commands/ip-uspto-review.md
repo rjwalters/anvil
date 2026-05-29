@@ -38,7 +38,7 @@ For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves
 <thread>.{N}.review/
   _summary.md       Critic tag, critical flag, per-dimension scorecard (owns 6, 7, 8), top revision priorities
   findings.md       Itemized findings (severity, location, rationale, suggested fix)
-  _meta.json        { critic, role, started, finished, model, schema_version }
+  _meta.json        { critic, role, started, finished, model, schema_version, scorecard_kind: "machine-summary" }
   _progress.json    Phase state for the reviewer
 ```
 
@@ -102,3 +102,8 @@ For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves
   }
 }
 ```
+
+
+## Scorecard kind
+
+This critic emits the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`. The `_meta.json` MUST include `"scorecard_kind": "machine-summary"` so the `ip-uspto-revise` aggregator can correctly discriminate this sibling from any `human-verdict` siblings (e.g., consumer-added narrative critics).

@@ -135,3 +135,6 @@ Merge rule: read existing `_progress.json`, update only `phases.draft` and `meta
 - **Slide order is the argument.** Don't shuffle for variety. Don't lead with traction unless traction is the strongest card. The standard order works for a reason; deviate with justification in `speaker-notes.md`.
 - **Density discipline.** Slides are seen, not read. Aim for one idea per slide, supported by one chart or image. Walls of text are a design-critic finding.
 - **Speaker notes are the safety net.** Detail that doesn't fit on the slide goes in the notes. The deck should still work without notes (PDF send-aheads, async review), but the live pitch is richer with them.
+
+
+**Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.
