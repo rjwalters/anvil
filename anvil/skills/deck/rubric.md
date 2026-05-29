@@ -31,9 +31,14 @@ Critics fill only the rubric dimensions they own. Other dimensions remain `null`
 | `deck-review` | 2, 5, 6 | General reviewer; can fill any dimension as a fallback if the specialist critic is skipped, but primary ownership is here. |
 | `deck-narrative` | 1, 7 | Arc + ask — read the deck end to end as a single argument. |
 | `deck-market` | 3, 4 | Market math + competitive differentiation — verify arithmetic, check framing. |
-| `deck-design` | 8 | Visual quality — critique against the rendered PDF, not the source. |
+| `deck-design` | 8 (markdown-source density / hierarchy / consistency) | Visual quality — critique against the rendered PDF, not the source. |
+| `deck-vision` | 8 (rendered-PDF density) + vision rubric v1–v6 | VLM critic over rendered PNGs; surfaces overflow, label cropping, axis legibility, palette adherence, mathtext artifacts, slide density. See `commands/deck-vision.md`. |
 
-If a critic sibling is missing at version `N` (e.g., operator skipped `design`), the reviser leaves that dimension's aggregate as `null` in `verdict.md` and notes the gap. A deck cannot reach `READY` with any dimension still `null` — at minimum, the general `deck-review` must fill any dimensions no specialist owns.
+**Joint ownership of dim 8 (design polish)**: both `deck-design` and `deck-vision` contribute scores to dim 8 — `deck-design` evaluates source-side density and consistency signals (bullet counts, word density, mixed-typography heuristics), and `deck-vision` evaluates rendered-PDF density at projection scale (the VLM sees what the markdown source cannot expose, e.g. text that fits in the markdown but spills past the 16:9 safe area after Marp lays it out). The aggregator (`anvil/lib/critics.py::aggregate`) handles this cleanly via mean-of-non-null: when both critics score dim 8, the aggregated dim-8 score is the arithmetic mean of their two integer scores (rounded with banker's rounding). When only one critic runs, that critic's score stands alone. The two critics also contribute disjoint findings — `deck-design` flags source-side issues; `deck-vision` flags rendered-only defects.
+
+In addition to dim 8, `deck-vision` owns six **vision-rubric dimensions** scored /5 each (vertical_overflow, label_cropping, axis_legibility, palette_adherence, mathtext_artifacts, slide_density). These six dims appear in the aggregated scorecard alongside the 8 main-rubric dimensions; the existing aggregator merges them via the same mean-of-non-null path with no schema or aggregation changes. See `anvil/lib/vision.py` and `commands/deck-vision.md` for the rubric definition.
+
+If a critic sibling is missing at version `N` (e.g., operator skipped `design`), the reviser leaves that dimension's aggregate as `null` in `verdict.md` and notes the gap. A deck cannot reach `READY` with any main-rubric dimension still `null` — at minimum, the general `deck-review` must fill any dimensions no specialist owns. Vision-rubric dimensions (v1–v6) are gated separately: a deck without a `deck-vision` pass is not yet validated against rendered-only defects, and the reviser surfaces this as a gap in `_revision-log.md`.
 
 ## Scoring guidance
 
