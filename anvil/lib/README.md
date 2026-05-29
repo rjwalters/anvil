@@ -21,6 +21,24 @@ The snippets are the source of truth for LLM-driven authoring; the
 Python types are the source of truth for programmatic validation and
 aggregation. They MUST agree. When they diverge, treat it as a bug.
 
+## Review vs audit
+
+Two sibling critic classes share the same `_review.json` payload but
+serve different roles. **Review critics** (`<thread>.{N}.review/`,
+plus judgment-class specialists like `deck-narrative`, `ip-uspto-s101`)
+score subjective rubric dimensions — clarity, structure, argument
+coherence — from the text alone. Their payloads carry `kind: judgment`.
+**Audit critics** (`<thread>.{N}.audit/`) verify dimensions that
+require external tool calls — citation resolution, numeric
+consistency, build cleanliness, regulatory checks. Their payloads
+carry `kind: tool_evidence` and every finding records the tool
+invocation that produced its evidence (see `Review._validate_kind_required_fields`).
+This is the CRITIC tool-augmented-critique split applied to the
+review/revise loop: audit runs post-`READY`, against a draft that has
+already converged on subjective quality, so the expensive tool-call
+budget is spent only where it matters. See `snippets/audit.md` for the
+full distinction, load-bearing field list, and per-skill mapping.
+
 ## Layout
 
 ```
@@ -35,6 +53,8 @@ anvil/lib/
     rubric.md                  8-dim /40 scoring shape + convergence logic.
     critics.md                 Sibling discovery + aggregation rules.
     scorecard_kind.md          human-verdict | machine-summary discriminator.
+    audit.md                   .review/ (judgment) vs .audit/ (tool-evidence)
+                                distinction; load-bearing tool_calls contract.
   marp/                        Marp renderer pin shared by deck + slides (#32).
     config.yml                 Canonical Marp config consumed via
                                 `marp --config-file <path>` by both skills.
@@ -212,7 +232,7 @@ separate per-skill PRs.
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `schema_version` | `"1"` literal | yes | Pinned. Bumps require a schema-version-rolling PR; additive fields do not. |
-| `kind` | `"judgment" \| "tool_evidence" \| "vision"` | yes (default `judgment`) | Reserves space for #29 (tool-evidence) and #30 (vision) without a schema bump. v1 actively uses only `judgment`. |
+| `kind` | `"judgment" \| "tool_evidence" \| "vision"` | yes (default `judgment`) | Distinguishes review-class critics from audit-class critics. `judgment` is the default for `.review/` siblings (subjective scoring from the text alone). `tool_evidence` is the audit-class value for `.audit/` siblings (every finding carries a `tool_calls[]` array). `vision` is reserved for #30 (rendered-artifact review). See `snippets/audit.md` and the `tool_evidence` row in the `kind` field table below. |
 | `version_dir` | string | yes | Name of the version dir under review, e.g. `"acme-seed.3"`. Lets the file travel out of its sibling dir and remain locatable. |
 | `critic_id` | string | yes | Stable identifier for this critic (`"memo-review"`, `"deck-market"`, `"ip-uspto-s112"`). |
 | `model` | string | no | Model identifier (`"claude-opus-4-7"`). Strongly recommended for reproducibility. |
@@ -272,12 +292,16 @@ regex — skills disagree on path prefixes.
 
 | Value | Meaning | Schema requires |
 |---|---|---|
-| `judgment` | Standard rubric-scored review (v1 default). | Nothing extra. |
-| `tool_evidence` | Review backed by tool calls (#29). | `tool_calls` array per finding. |
+| `judgment` | Standard rubric-scored review from text alone (review-class critics — `<skill>-review` and judgment specialists like `deck-narrative`, `ip-uspto-s101`). | Nothing extra. |
+| `tool_evidence` | Audit-class review backed by external tool calls (citation resolution, build verification, numeric audit). Each finding records the tool invocations that produced its evidence. | Non-empty `tool_calls` array on every entry in `findings[]`. Enforced by `Review._validate_kind_required_fields`. |
 | `vision` | Vision-model review of a rendered artifact (#30). | `rendered_artifact`. |
 
-v1 actively uses only `judgment`. The other values are accepted by the
-parser so #29 and #30 do not need a schema-version bump when they ship.
+The `judgment` / `tool_evidence` split codifies the `.review/` vs
+`.audit/` sibling-directory distinction documented in
+`snippets/audit.md`. New audit critics MUST set `kind: tool_evidence`;
+the five v0 audit commands (pub, report, deck, slides, ip-uspto) ship
+prose-only output today and migrate to the canonical contract via
+separate per-skill follow-up issues.
 
 ### `verdict` enum
 
@@ -577,6 +601,14 @@ follow-up issues:
   `AUDITED → CUSTOMER-READY` (report) and `AUDITED → FINALIZED`
   (ip-uspto) pattern is currently inline per-skill. Will be promoted
   to a first-class lib primitive when a third skill needs it.
+- **Per-skill audit-command migration to `kind: tool_evidence`** —
+  the five v0 audit commands (`pub-audit`, `report-audit`,
+  `deck-audit`, `slides-audit`, `ip-uspto-audit`) currently emit prose
+  output plus `scorecard_kind` metadata; migrating each to write
+  `_review.json` with `kind: tool_evidence` and `tool_calls[]` per
+  finding lands as five separate follow-up issues. The framework-level
+  contract is documented in `snippets/audit.md`; the legacy adapter in
+  `critics.py` bridges the gap until migrations land.
 
 ## See also
 

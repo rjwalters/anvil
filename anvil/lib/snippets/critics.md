@@ -47,6 +47,15 @@ For each discovered sibling at `<thread>.{N}.<tag>/`, the reviser:
    purposes (and warn the operator that a critic crashed).
 3. Loads the appropriate scorecard files per the discriminator (see
    `scorecard_kind.md` for the file map).
+4. If the sibling ships a canonical `_review.json`, the loader checks
+   the payload's `kind` field. When `kind == "tool_evidence"` (audit-
+   class critics; see `audit.md`), every entry in `findings[]` MUST
+   include a non-empty `tool_calls` array. The schema validator at
+   `anvil/lib/review_schema.py::Review._validate_kind_required_fields`
+   enforces this contract — a `tool_evidence` review with a
+   `tool_calls`-less finding is rejected at parse time. When
+   `kind == "judgment"` (review-class critics), no `tool_calls` are
+   required.
 
 ## Aggregation
 
@@ -116,7 +125,23 @@ To add a new critic to an existing skill:
    `scorecard_kind` per the discriminator.
 3. Append the new tag to the skill's default critic set (in the
    skill's SKILL.md, the `Default critic set` row of the table above).
-4. No reviser changes required — the glob discovery picks it up.
+4. **Pick the `kind` of the critic.** This sets the value of `kind`
+   on the sibling's `_review.json` payload:
+   - **`kind: judgment`** (default) — the critic scores from the text
+     alone. No external tool calls are required to back its findings.
+     Review-class critics (`<skill>-review` and most specialists like
+     `deck-narrative`, `deck-market`, `ip-uspto-s101`) are
+     `judgment`-kind.
+   - **`kind: tool_evidence`** — the critic backs its findings with
+     external tool calls (citation resolution, build verification,
+     numeric consistency). Every `Finding` MUST set a non-empty
+     `tool_calls` array recording each tool invocation as a
+     `ToolCall`. The schema validator at
+     `anvil/lib/review_schema.py::Review._validate_kind_required_fields`
+     enforces this. Audit-class critics (`<skill>-audit`,
+     `ip-uspto-priorart` once it's tool-augmented) are
+     `tool_evidence`-kind. See `audit.md` for the full contract.
+5. No reviser changes required — the glob discovery picks it up.
 
 ## Examples by skill
 
@@ -224,3 +249,5 @@ dimension names per the existing convention.
 - `state_machine.md` — when critics run in the lifecycle.
 - `progress.md` — `_progress.json` schema for the sibling directory.
 - `cite.md` — citation primitive on-disk convention.
+- `audit.md` — the `.review/` (judgment) vs `.audit/` (tool-evidence)
+  distinction and the per-finding `tool_calls` contract.
