@@ -106,6 +106,7 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
      fig.savefig(OUT, dpi=150, bbox_inches="tight")
      ```
    - Run with `python3 figures/src/<name>.py`. Capture stdout/stderr; on non-zero exit, write a stub `figures/<name>.png-FAILED.md` describing the error.
+   - See `assets/figure-conventions.md` for matplotlib `$`-escaping, DPI, palette, transparency, and output-path conventions.
 6. **Validate references**: walk `deck.md` and enumerate every `![...](figures/...)` and `![...](assets/...)` reference. For each:
    - **`figures/...` references**: file should now exist (either rendered or carried over). If absent, log a `[blocker]` warning — the design critic will fail to render this slide cleanly.
    - **`assets/...` references**: file should exist in `<thread>/assets/`. If absent, log a `[blocker]` warning — the drafter referenced a consumer-provided asset that isn't actually present. Operator must add the asset.
