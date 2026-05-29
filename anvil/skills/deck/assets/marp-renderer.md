@@ -51,8 +51,8 @@ In `deck.md`:
 ```
 
 `deck-figures` runs the script and produces the PNG. Matplotlib palette,
-DPI, and `$`-escaping conventions are owned by issue #23's
-`figure-conventions.md` (cross-reference; not yet landed).
+DPI, and `$`-escaping conventions are owned by
+`assets/figure-conventions.md` (cross-reference).
 
 ### Path 2 — Inline mermaid (diagrams) — **default**
 
@@ -111,8 +111,8 @@ will render without escape characters or workarounds.
 
 `math: mathjax` is pinned in the per-document frontmatter and at the CLI
 config level. The matplotlib-side `$`-escape convention (`\$` for literal
-dollar signs in axis labels) is owned by issue #23 and is independent of
-the slide-level math engine.
+dollar signs in axis labels) is owned by `assets/figure-conventions.md`
+and is independent of the slide-level math engine.
 
 ## Canonical CLI render line
 
@@ -153,6 +153,7 @@ right thing when the config file is missing or has been overridden.
 - `anvil/skills/deck/lib/marp_lint.py` — `slide-content-overflow` lint that
   runs on the resulting markdown source (catches the figure + bullets + footer
   pattern that mermaid auto-layout cannot save).
-- Issue #23 — matplotlib `$`-escape conventions, palette helpers, DPI
-  defaults. Lands at `anvil/skills/deck/assets/figure-conventions.md`
-  (cross-reference; out of scope for this skill's renderer cheat-sheet).
+- `anvil/skills/deck/assets/figure-conventions.md` — matplotlib `$`-escape
+  conventions, palette, DPI defaults, transparency, and output-path
+  discipline (the matplotlib side of the asset pipeline; this cheat-sheet is
+  the mermaid/MathJax side).
