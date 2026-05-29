@@ -207,6 +207,35 @@ section.ask li {
   font-size: 28px;
 }
 
+/* Tables on the ask slide — defeat the imported Marp default theme's cell
+ * backgrounds so the dark accent slide background (--anvil-bg-ask) shows
+ * through, then re-color text white. Without this, data cells render
+ * white-on-white (#50). Borders mirror the section.ask h2 treatment. */
+section.ask table th,
+section.ask table td {
+  background: transparent;
+  background-color: transparent;
+  color: #ffffff;
+}
+
+section.ask table th {
+  border-bottom-color: rgba(255, 255, 255, 0.4); /* matches section.ask h2 */
+}
+
+section.ask table td {
+  border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Defeat any zebra-striping the imported default theme applies via
+ * tbody tr:nth-child(...). Belt-and-suspenders across tr/tbody levels. */
+section.ask table tr,
+section.ask table tbody,
+section.ask table tbody tr:nth-child(odd),
+section.ask table tbody tr:nth-child(even) {
+  background: transparent;
+  background-color: transparent;
+}
+
 /* Appendix — visually distinct from main deck. Apply via `<!-- _class: appendix -->`. */
 section.appendix {
   background: var(--anvil-bg-section);
