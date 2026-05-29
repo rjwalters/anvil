@@ -46,10 +46,21 @@ The handout exporter produces the leave-behind variant from the same `deck.md` s
 5. **Resume check**: if `<thread>.{N}.handout/_progress.json.handout.state == done` and `handout.pdf` exists, exit early with a notice (idempotent).
 6. **Initialize `_progress.json`**: `phases.handout.state = in_progress`, `phases.handout.started = <ISO>`, `for_version: <N>`, `metadata.layout: <layout flag>`.
 7. **Render**:
-   - **For `--4-up` and `--2-up`** layouts: invoke `marp <thread>.{N}/deck.md --pdf --allow-local-files --pdf-notes` with an `--theme-set` pointing at `templates/anvil-slides-theme.css`, then post-process the output PDF with `pdfjam` (or equivalent) to N-up.
+   - **For `--4-up` and `--2-up`** layouts: invoke the canonical Marp render line below, then post-process the output PDF with `pdfjam` (or equivalent) to N-up.
+     ```bash
+     marp <thread>.{N}/deck.md \
+       --pdf \
+       --html \
+       --config-file anvil/lib/marp/config.yml \
+       --theme-set anvil/skills/slides/templates/anvil-slides-theme.css \
+       --allow-local-files \
+       --pdf-notes \
+       --output <thread>.{N}.handout/handout.pdf
+     ```
      - 4-up: `pdfjam --nup 2x2 --landscape --suffix 4up handout.pdf`
      - 2-up: `pdfjam --nup 1x2 --suffix 2up handout.pdf`
-   - **For `--notes-below`** layout: render with Marp's notes-included PDF mode (`--pdf-notes`) and skip the N-up pass. Marp produces one slide per page with notes printed beneath when `--pdf-notes` is set.
+   - **For `--notes-below`** layout: render with Marp's notes-included PDF mode (`--pdf-notes`) and skip the N-up pass. Marp produces one slide per page with notes printed beneath when `--pdf-notes` is set. Use the same invocation as above; the `pdfjam` post-process step is omitted.
+   - `--html` and `--config-file anvil/lib/marp/config.yml` are required so inline fenced ```mermaid blocks survive into the handout. Without them, mermaid diagrams render as empty boxes — see `anvil/skills/slides/assets/marp-renderer.md` for the full pipeline rationale.
 8. **Toolchain availability check**: if `marp` is not on PATH, exit with an instructive error: "Marp CLI required for handout export. Install via `npm install -g @marp-team/marp-cli` or run from a container with Marp pre-installed. The deck is otherwise complete; this step can be deferred."
 9. **Update `_progress.json`**: `phases.handout.state = done`, `phases.handout.completed = <ISO>`, `metadata.output_path = "handout.pdf"`.
 10. **Report**: print the path to the handout dir and a one-line status (e.g., `Generated 4-up handout for kdd-2026-keynote.3 → kdd-2026-keynote.3.handout/handout.pdf (22 slides → 6 pages)`).

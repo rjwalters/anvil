@@ -3,8 +3,19 @@ marp: true
 theme: anvil-slides-theme
 size: 16:9
 paginate: true
-math: katex
+math: mathjax
+html: true
 ---
+
+<!--
+  math: mathjax  — Marp v3 default; covers a wider LaTeX subset than KaTeX.
+  html: true     — required so inline fenced ```mermaid blocks render
+                   (Marp turns them into inline <script>, which only survives
+                   when html is enabled). The CLI-side equivalent lives at
+                   anvil/lib/marp/config.yml; pinning here keeps deck.md
+                   self-describing.
+-->
+
 
 <!-- _class: title -->
 

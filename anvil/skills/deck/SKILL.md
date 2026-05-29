@@ -193,9 +193,28 @@ Tradeoff rationale (Marp vs alternatives):
 **Default deliverables**:
 - Source: `<thread>.{N}/deck.md` (Marp markdown).
 - Speaker notes: `<thread>.{N}/speaker-notes.md` (parallel structure, one section per slide).
-- Render: `<thread>.{N}/deck.pdf` (via `marp deck.md --pdf --theme-set <theme>`).
-- Optional handoff export: `<thread>.{N}/deck.pptx` (via `marp deck.md --pptx`), opt-in.
+- Render: `<thread>.{N}/deck.pdf` (via `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --theme-set <theme>`).
+- Optional handoff export: `<thread>.{N}/deck.pptx` (via `marp deck.md --pptx --html --config-file anvil/lib/marp/config.yml`), opt-in.
 - Theme: `anvil/skills/deck/assets/anvil-deck.css` — clean, neutral, fundraising-appropriate (large headings, generous whitespace, restrained palette). Consumers override via `.anvil/skills/deck/templates/<their-theme>.css`.
+
+### Math and inline HTML
+
+The deck template pins `math: mathjax` and `html: true` in the per-document
+frontmatter (`templates/deck.md.j2`); the equivalent CLI-side pin lives at
+`anvil/lib/marp/config.yml` and is consumed via Marp's native
+`--config-file` flag. Belt-and-suspenders by design: a `deck.md` checked
+into a consumer repo renders correctly under plain `marp deck.md --pdf`
+even when the config file is missing, and the CLI config handles the
+theme search path + `allowLocalFiles` regardless of frontmatter.
+
+Math syntax is standard MathJax (Marp v3 default — covers a wider LaTeX
+subset than KaTeX): `$\sigma$` inline, `$$ ... $$` display.
+
+The `html: true` pin is load-bearing for inline mermaid: Marp renders
+fenced ```mermaid blocks by emitting an inline `<script>` block, which
+only survives into the rendered HTML/PDF when html is enabled. See
+`anvil/skills/deck/assets/marp-renderer.md` for the full figure-pipeline
+worked example (matplotlib + mermaid + MathJax).
 
 ## Progress tracking
 
