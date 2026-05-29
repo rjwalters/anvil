@@ -121,7 +121,7 @@ Iteration cap: default `max_iterations: 4` (terminal version is `<thread>.5/`). 
 | `deck` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state + recommends next command per thread) |
 | `deck-brief <thread>` | intake | `<thread>/refs/**` (transcripts, websites, founder input) | `<thread>/BRIEF.md` (and/or `<thread>.0/BRIEF.md`) |
 | `deck-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs/**`, `<thread>/assets/**`; for revisions, also latest `<thread>.{N}/` + all `<thread>.{N}.*/` siblings (revise path is preferred via `deck-revise`) | `<thread>.{N+1}/deck.md` + `speaker-notes.md` + `figures/` + `_progress.json` |
-| `deck-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (uniform critic schema) |
+| `deck-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (uniform critic schema; also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
 | `deck-narrative <thread>` | narrative critic | latest `<thread>.{N}/deck.md` (full read, in order) | `<thread>.{N}.narrative/` (owns dims 1, 7) |
 | `deck-market <thread>` | market critic | latest `<thread>.{N}/deck.md` + market exhibits + any `figures/src/*.csv` | `<thread>.{N}.market/` (owns dims 3, 4) |
 | `deck-design <thread>` | design critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.design/` (owns dim 8) |
@@ -144,6 +144,27 @@ The portfolio orchestrator is the user-facing entry point for status; the lifecy
 **Audit** (`deck-audit`) — Sharper than the generic auditor: (a) every cited statistic resolves to a source in the brief or refs, (b) every claimed customer/partner/investor logo is attested, (c) every traction number matches the brief, (d) team bios match the brief. Critical-flag eligible (any unattested claim triggers a fabrication flag).
 
 **Figures** (`deck-figures`) — See "Asset generation" below.
+
+### Pre-flight overflow lint
+
+`deck-review` runs a fast deterministic lint over `<thread>.{N}/deck.md` before scoring. The lint is a Python-stdlib port of marp-vscode's experimental `slide-content-overflow` diagnostic (see `anvil/skills/deck/lib/marp_lint.py` for the upstream SHA pin and per-rule notes). It models each slide's vertical capacity from the markdown source and emits a `slide-content-overflow` finding when the estimated content exceeds the safe area.
+
+**What it catches** (deterministic source-only heuristics):
+- The "figure + 4 bullets + footer line" idiom on 16:9 (issue #24).
+- The `_class: ask` H1 + H2 + bullets anti-pattern (issue #25).
+- Dense bullet lists, deep code blocks, large tables, headings stacked on a single slide.
+
+**What it does NOT catch**:
+- True rendered overflow caused by font fallback, image aspect ratio, or theme overrides — these are caught by the vision critic (issue #30).
+- Semantic overflow (slide is logically too crowded but fits within the safe area). The design critic handles this.
+- Off-by-one cases where a single word wraps unexpectedly at render time.
+
+**How it gates `deck-review`**:
+- `severity: error` findings hard-fail the review: `advance: false`, `Slide overflow (lint)` listed as a critical flag in `verdict.md`, and the per-slide errors emitted into `findings.md` § Lint findings.
+- `severity: warning` findings are recorded in `findings.md` § Lint findings but do not block advance.
+- The lint runs ONLY in `deck-review`. The drafter, auditor, figurer, and the specialist critics (`deck-narrative`, `deck-market`, `deck-design`) do not invoke it — the drafter is allowed to produce an overflowing slide so the reviser sees the failure mode.
+
+**Escape hatch — `<!-- anvil-lint-disable: slide-content-overflow -->`**: any slide that contains this HTML comment has its `slide-content-overflow` finding downgraded to `severity: info`. The finding is still recorded (the reviser sees that the slide is dense), but `advance` is not blocked. Use this for legitimately-dense slides that have been visually validated (e.g., a deliberately busy reference grid, or a comparison table that needs all rows). Document the rationale in `speaker-notes.md` so the auditor can spot-check.
 
 ## Asset generation — hybrid policy
 
