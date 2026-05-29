@@ -37,6 +37,35 @@ from marp_lint import lint_deck  # noqa: E402
 
 _FIXTURE = _HERE / "fixtures" / "marp-smoke" / "deck.md"
 
+# Raw mermaid grammar tokens. If any of these appear as text in the rendered
+# PDF, the diagram leaked as raw code instead of being rendered to an image
+# (the silent degradation issue #65 fixes). A correctly rendered diagram is a
+# raster image and contributes none of these tokens to ``pdftotext`` output.
+_MERMAID_GRAMMAR_TOKENS = ("sequenceDiagram", "flowchart", "-->", "->>")
+
+
+def _pdf_text(pdf: Path) -> str:
+    """Extract text from a PDF via ``pdftotext`` (poppler).
+
+    Returns the extracted text. Raises ``unittest.SkipTest`` if ``pdftotext``
+    is not on PATH so CI without poppler skips cleanly rather than failing.
+    """
+    if shutil.which("pdftotext") is None:
+        raise unittest.SkipTest(
+            "pdftotext (poppler) not on PATH; skipping PDF-text inspection"
+        )
+    proc = subprocess.run(
+        ["pdftotext", str(pdf), "-"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise AssertionError(
+            f"pdftotext failed (rc={proc.returncode}): {proc.stderr!r}"
+        )
+    return proc.stdout
+
 # Resolve ``anvil/lib/marp/config.yml`` by walking up from this file. The
 # fixture and tests live under ``anvil/skills/deck/tests/``; the lib lives
 # under ``anvil/lib/``. Four parents land at the repo root.
@@ -136,6 +165,22 @@ class TestFixturePassesLint(unittest.TestCase):
         )
 
 
+def _render_marp_pdf(source: Path, out_pdf: Path) -> subprocess.CompletedProcess[str]:
+    """Render a Marp source to PDF with the canonical CLI line."""
+    cmd = [
+        "marp",
+        str(source),
+        "--pdf",
+        "--html",
+        "--config-file",
+        str(_MARP_CONFIG),
+        "--allow-local-files",
+        "-o",
+        str(out_pdf),
+    ]
+    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+
 @unittest.skipUnless(
     shutil.which("marp") is not None,
     "marp CLI not on PATH; skipping render smoke test (matches skill-test discipline)",
@@ -152,23 +197,7 @@ class TestMarpRenders(unittest.TestCase):
     def test_renders_non_empty_pdf(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             out_pdf = Path(td) / "smoke.pdf"
-            cmd = [
-                "marp",
-                str(_FIXTURE),
-                "--pdf",
-                "--html",
-                "--config-file",
-                str(_MARP_CONFIG),
-                "--allow-local-files",
-                "-o",
-                str(out_pdf),
-            ]
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
+            proc = _render_marp_pdf(_FIXTURE, out_pdf)
             self.assertEqual(
                 proc.returncode,
                 0,
@@ -181,6 +210,106 @@ class TestMarpRenders(unittest.TestCase):
                 0,
                 "marp produced an empty PDF",
             )
+
+
+@unittest.skipUnless(
+    shutil.which("marp") is not None and shutil.which("mmdc") is not None,
+    "marp and/or mmdc not on PATH; skipping mermaid-render assertion "
+    "(does not require Chromium in CI when the tools are absent)",
+)
+class TestMermaidDiagramDoesNotLeakAsRawCode(unittest.TestCase):
+    """Issue #65 regression guard: a rendered diagram must NOT leak as raw code.
+
+    The original smoke test only asserted the PDF was non-empty — which is
+    why the silent degradation (inline ```mermaid emitting as raw monospace
+    code in the PDF) passed CI. This test renders a diagram through the
+    **working** ``mmdc → PNG`` path and asserts the raw mermaid grammar does
+    not appear in the rendered PDF text. It would have caught the regression:
+    if a diagram leaks its source grammar into the PDF, this fails.
+
+    Gated on both ``marp`` and ``mmdc`` being present so CI without Node
+    tooling (and without a real Chromium) skips cleanly. ``pdftotext``
+    absence is handled inside ``_pdf_text`` with a clean skip.
+    """
+
+    def test_mmdc_png_path_renders_diagram_not_raw_grammar(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            workdir = Path(td)
+            figures = workdir / "figures"
+            figures.mkdir()
+
+            # 1. Diagram source (the same grammar the inline fixture leaks).
+            mmd = figures / "flow.mmd"
+            mmd.write_text(
+                "flowchart LR\n    A --> B\n    B --> C\n",
+                encoding="utf-8",
+            )
+
+            # 2. Render the diagram to PNG via the working mmdc path.
+            png = figures / "flow.png"
+            mmdc_proc = subprocess.run(
+                [
+                    "mmdc",
+                    "--input",
+                    str(mmd),
+                    "--output",
+                    str(png),
+                    "--width",
+                    "1600",
+                    "--height",
+                    "900",
+                    "--backgroundColor",
+                    "white",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if mmdc_proc.returncode != 0:
+                # mmdc present but Chromium failed to launch (common in
+                # sandboxed CI without --no-sandbox). Skip rather than fail —
+                # this test asserts render correctness, not Chromium setup.
+                raise unittest.SkipTest(
+                    "mmdc could not render (likely Chromium launch failure); "
+                    f"stderr={mmdc_proc.stderr!r}"
+                )
+
+            # 3. A deck that references the rendered PNG (NOT an inline fence).
+            deck = workdir / "deck.md"
+            deck.write_text(
+                "---\n"
+                "marp: true\n"
+                "theme: anvil-deck\n"
+                "paginate: true\n"
+                "size: 16:9\n"
+                "math: mathjax\n"
+                "html: true\n"
+                "---\n\n"
+                "# Diagram via mmdc PNG\n\n"
+                "![Flow](figures/flow.png)\n",
+                encoding="utf-8",
+            )
+
+            # 4. Render the deck to PDF and inspect the text.
+            out_pdf = workdir / "deck.pdf"
+            proc = _render_marp_pdf(deck, out_pdf)
+            self.assertEqual(
+                proc.returncode,
+                0,
+                f"marp render failed (rc={proc.returncode}); "
+                f"stderr={proc.stderr!r}",
+            )
+            self.assertTrue(out_pdf.is_file(), "marp produced no output file")
+
+            text = _pdf_text(out_pdf)
+            for token in _MERMAID_GRAMMAR_TOKENS:
+                self.assertNotIn(
+                    token,
+                    text,
+                    f"raw mermaid grammar {token!r} leaked into the rendered "
+                    f"PDF — the diagram rendered as code, not an image "
+                    f"(issue #65). PDF text was:\n{text}",
+                )
 
 
 if __name__ == "__main__":  # pragma: no cover

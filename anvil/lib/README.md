@@ -121,26 +121,30 @@ as a bug — issue against this repo so the pin gets re-aligned.
 | Option | Pinned value | Why load-bearing |
 |---|---|---|
 | `math` | `mathjax` | Marp v3 default. Covers a wider LaTeX subset than KaTeX (the v2 default), which matters for talk-grade theorem statements and fundraising-deck unit-economics formulas. Pinned in frontmatter for self-describing source; `config.yml` omits it so the Marp default tracks any future version change without a config-file update. |
-| `html` | `true` | Enables inline `<script>` blocks. Marp renders fenced ```mermaid blocks as inline `<script>` — without `html: true`, the block silently drops from the output PDF. This is the load-bearing enabler for the inline-mermaid-default decision documented in `anvil/skills/{deck,slides}/commands/{deck,slides}-figures.md`. |
+| `html` | `true` | Lets raw HTML in the source pass through into the rendered output. NOTE (verified, issue #65): `html: true` does NOT make fenced ```mermaid blocks render as diagrams in the canonical `--pdf` output — an inline ```mermaid fence emits as raw monospace code in the PDF. `--html` only passes raw HTML through; it does not execute mermaid.js during Marp's PDF render. Diagrams must be pre-rendered to PNG via `mmdc` (see `anvil/skills/{deck,slides}/commands/{deck,slides}-figures.md`). `html: true` remains pinned for genuine raw-HTML slides. |
 | `allowLocalFiles` | `true` | Required for Marp to inline `![](figures/foo.png)` references. Without it, every embedded PNG renders as a broken-image icon. |
 | `themeSet` | both shipped themes | Lets the per-document `theme: anvil-deck` / `theme: anvil-slides-theme` references resolve without a `--theme-set` CLI flag. Consumer overrides (`.anvil/skills/{deck,slides}/templates/<their-theme>.css`) are still respected via the per-command `--theme-set` flag, which Marp merges with this set. |
 
-### Inline mermaid as the default for diagrams
+### `mmdc → PNG` as the default for diagrams
 
-The `html: true` pin enables a structural decision both skills' figure
-commands depend on: **fenced ```mermaid blocks in `deck.md` are the default
-routing for diagrams**. No out-of-band `mmdc → PNG` step, no `figures/*.png`
-file for diagrams that mermaid can express, no separate render pass.
+**Diagrams are rendered to PNG via `mmdc` and referenced from `deck.md` as
+`![alt](figures/<name>.png)`.** Inline fenced ```mermaid blocks do NOT render
+as diagrams in the canonical `--pdf` output (verified, issue #65) — they emit
+as raw monospace code, because `html: true` only passes raw HTML through and
+does not execute mermaid.js during Marp's PDF render. `mmdc` is therefore a
+**required** dependency for any deck containing a diagram, not a fallback.
 
-The `mmdc → PNG` path remains documented as an explicit fallback for the
-small number of cases mermaid's auto-layout cannot handle (custom geometry,
-transparent compositing, oversized diagrams that overflow the safe area, or
-an explicit `<!-- anvil-figure: png -->` marker from the drafter). See:
+The figure commands preflight `mmdc` before any render and, if it is absent,
+emit a `[blocker]` with remediation (`npm install -g @mermaid-js/mermaid-cli`,
+the ~300MB+ Chromium download note, and `--puppeteerConfigFile`
+`{"args":["--no-sandbox"]}` for CI/containers) plus a proactive
+`<name>.png-FAILED.md` stub — rather than producing a deck that references a
+nonexistent PNG. See:
 
-- `anvil/skills/deck/commands/deck-figures.md` step 4 — fallback procedure
-  for the deck skill.
+- `anvil/skills/deck/commands/deck-figures.md` step 4 — `mmdc → PNG` procedure
+  and required-`mmdc` preflight for the deck skill (primary, fully wired).
 - `anvil/skills/slides/commands/slides-figures.md` § "Mermaid (default for
-  diagrams)" — fallback procedure for the slides skill.
+  diagrams)" — matching diagram path for the slides skill.
 
 ### Cross-reference to issue #23
 
@@ -164,9 +168,9 @@ Per-skill author-facing reference at:
 - `anvil/skills/deck/assets/marp-renderer.md`
 - `anvil/skills/slides/assets/marp-renderer.md`
 
-Each documents the three figure paths (matplotlib PNG, inline mermaid,
-MathJax) with one minimal worked example per path, plus the canonical CLI
-render line.
+Each documents the three figure paths (matplotlib PNG, Mermaid PNG via
+`mmdc`, MathJax) with one minimal worked example per path, plus the canonical
+CLI render line.
 
 ### Smoke tests
 

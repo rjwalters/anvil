@@ -41,35 +41,68 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
    - For `deck.pdf`: check if exists AND is newer than `deck.md` AND newer than any figure it references. If so, skip render.
    - If all figures + PDF up to date AND `phases.figures.state == done` → exit early (no-op).
 3. **Initialize `_progress.json`**: `phases.figures.state = in_progress`, `phases.figures.started = <ISO>`.
-4. **Resolve Mermaid diagrams (inline-default)**:
+4. **Resolve Mermaid diagrams — `mmdc → PNG` is the working path**:
 
-   The framework Marp pin (`anvil/lib/marp/config.yml`) sets `html: true`,
-   which lets fenced ```mermaid blocks render natively inside `deck.md`. The
-   default routing for diagrams is therefore **inline fenced ```mermaid blocks
-   in `deck.md`** — no out-of-band rendering, no PNG file, no `mmdc`
-   invocation. The drafter is expected to produce mermaid this way; the
-   figurer's job for this default path is a no-op (the diagram lives in the
-   markdown source and Marp handles it at PDF-render time in step 7).
+   > **Correctness note (verified empirically, issue #65).** Inline fenced
+   > ```mermaid blocks **do NOT render as diagrams in the canonical `--pdf`
+   > output**. With marp-cli v4.4.0 / marp-core v4.3.0 and the framework
+   > `html: true` pin, a fenced ```mermaid block emits as **raw monospace
+   > source in a gray code-block** in the PDF — the grammar
+   > (`sequenceDiagram`, `flowchart LR`, `-->`, `->>`) leaks verbatim. MathJax
+   > on the same slide renders correctly, so the pipeline is healthy; the
+   > failure is mermaid-specific. `--html` only passes raw HTML *through* — it
+   > does NOT cause mermaid.js to execute during Marp's PDF render, and the
+   > framework config injects no mermaid plugin. **Therefore `mmdc → PNG` is
+   > the only working diagram path for the PDF, and `mmdc` is REQUIRED for any
+   > deck containing a diagram — not a fallback.** If a future marp-core
+   > version renders inline mermaid in PDF, this default narrows back to
+   > inline; until then, render diagrams to PNG.
 
-   **Fallback: `mmdc → PNG` out-of-band rendering.** A `.mmd` source under
-   `figures/src/` is the explicit opt-in signal that the diagram has been
-   pulled out of `deck.md` and should be rendered as a PNG. This path exists
-   for the small number of cases mermaid's inline auto-layout cannot handle:
+   **Diagram routing (default): `mmdc → PNG` out-of-band rendering.** Every
+   deck diagram is rendered to a PNG via `mmdc` and referenced from `deck.md`
+   as `![alt](figures/<name>.png)`. The drafter is expected to produce
+   `figures/src/<name>.mmd` sources; the figurer renders each to a PNG.
 
-   - **Custom geometry** — the diagram needs an explicit width/height or
-     aspect ratio Marp's default cannot accommodate.
-   - **Transparent compositing** — the diagram must be overlaid on a
-     theme-colored background and needs `--backgroundColor transparent`.
-   - **Auto-layout breakdown** — the diagram is larger than the slide's safe
-     area (caught by `slide-content-overflow` lint) and only fits when
-     rendered at a forced viewport.
-   - **Explicit marker on a fence** — the drafter left a
-     `<!-- anvil-figure: png -->` HTML comment on the line directly above a
-     ```mermaid fence in `deck.md`. Treat this as a "render this fence
-     out-of-band" directive: extract the mermaid body to
-     `figures/src/<derived-name>.mmd` and proceed with the PNG path below.
+   - **Extract inline fences.** If the drafter left a fenced ```mermaid block
+     directly in `deck.md` (with or without a `<!-- anvil-figure: png -->`
+     marker above it), extract the mermaid body to
+     `figures/src/<derived-name>.mmd`, replace the fence in `deck.md` with a
+     `![alt](figures/<derived-name>.png)` reference, and render the `.mmd`
+     below. Do NOT leave the inline fence in place — it would degrade to raw
+     code in the PDF.
+   - **Geometry / compositing knobs.** When a diagram needs a non-default
+     width/height/aspect ratio, or must be overlaid on a theme-colored
+     background (`--backgroundColor transparent`), or is larger than the
+     slide's safe area (caught by `slide-content-overflow` lint), pass the
+     corresponding `mmdc` flags.
 
-   When triggered, render with:
+   **Preflight (REQUIRED before any `mmdc` render).** Before rendering any
+   `.mmd` source, check that `mmdc` is on PATH (mirrors the
+   `shutil.which("marp")` guard in `anvil/lib/render.py::render_marp_to_pdf`;
+   a shared helper `anvil/lib/render.py::check_mmdc_available()` performs this
+   check and is unit-tested). If `mmdc` is NOT on PATH:
+
+   - Emit a `[blocker]` with the full remediation:
+     - Install: `npm install -g @mermaid-js/mermaid-cli` (provides `mmdc`).
+     - Note the **~300MB+ headless Chromium download** Puppeteer pulls on
+       first install — the single largest and most failure-prone dependency
+       in this skill (network / disk / sandbox issues are all common).
+     - In CI / containers, Chromium typically needs `--no-sandbox`. Pass a
+       Puppeteer config file via `mmdc --puppeteerConfigFile <file>` whose
+       contents are `{"args":["--no-sandbox"]}`, or Chromium fails to launch
+       with an opaque error.
+   - **Write a proactive `figures/<name>.png-FAILED.md` stub** for each
+     diagram that would have been rendered, describing the missing-`mmdc`
+     dependency and the remediation above — BEFORE producing a `deck.md` /
+     `deck.pdf` that references a nonexistent PNG.
+   - Skip the `mmdc` render path for this run (the matplotlib + reference
+     validation steps still run, so the failure is legible and the deck is
+     not silently broken).
+   - A deck with zero diagrams (no `.mmd` sources and no inline ```mermaid
+     fences) does NOT trigger this preflight — `mmdc` is only required when a
+     diagram is present.
+
+   When `mmdc` is present, render each diagram with:
    ```bash
    mmdc \
      --input figures/src/<name>.mmd \
@@ -82,8 +115,8 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
 
    On render failure: write a stub `figures/<name>.png-FAILED.md` describing
    the error, leave the prior PNG (if any) in place, continue with other
-   figures. A failed fallback render does NOT silently re-inline the diagram
-   — the drafter chose the PNG path on purpose, so the failure is visible.
+   figures. A failed render is a visible, debuggable artifact — never a
+   silently broken reference.
 5. **Render matplotlib charts**:
    - For each `figures/src/<name>.py`: run the script. Convention: the script accepts the working directory `figures/src/` and writes its output to `figures/<name>.png`.
    - Standard script shape:
@@ -120,7 +153,7 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
      --allow-local-files \
      --output <thread>.{N}/deck.pdf
    ```
-   - `--html` is required so inline `<script>`-style mermaid blocks survive into the rendered PDF (per `anvil/lib/marp/config.yml` and the inline-mermaid default in step 4 above).
+   - `--html` lets raw HTML in the source survive into the rendered output. Note: it does **not** make inline ```mermaid fences render as diagrams in the PDF (verified false — see the correctness note in step 4); diagrams must go through the `mmdc → PNG` path. `--html` is still kept for raw-HTML slides and for parity with the framework config (`anvil/lib/marp/config.yml`).
    - `--config-file anvil/lib/marp/config.yml` pins the framework-shared Marp options (`html`, `allowLocalFiles`, theme search path). In an installed consumer repo this resolves to `.anvil/lib/marp/config.yml`. The explicit `--html`, `--theme-set`, and `--allow-local-files` flags are kept as belt-and-suspenders so the CLI still does the right thing when the config file is missing or has been overridden.
    - `--allow-local-files` is required for Marp to inline local image references.
    - If `marp` is missing: write a stub `<thread>.{N}/deck.pdf-FAILED.md` describing the missing dependency. Exit `phases.figures.state = failed` (the orchestrator surfaces this).
@@ -155,12 +188,16 @@ This matches the SKILL.md hybrid asset policy.
 
 ## Render dependencies
 
-- **Marp** (Node): `npm install -g @marp-team/marp-cli` or `npx @marp-team/marp-cli`. The render call assumes `marp` on PATH.
-- **Mermaid CLI** (Node): `npm install -g @mermaid-js/mermaid-cli` (provides `mmdc`).
-- **Python + matplotlib + pandas**: `python3 -m pip install matplotlib pandas`.
+- **Marp** (Node) — **required**: `npm install -g @marp-team/marp-cli` or `npx @marp-team/marp-cli`. The render call assumes `marp` on PATH.
+- **Mermaid CLI / `mmdc`** (Node) — **required for any deck containing a diagram** (NOT optional, NOT a fallback): `npm install -g @mermaid-js/mermaid-cli` (provides `mmdc`). Inline ```mermaid fences do **not** render in the canonical `--pdf` output (verified — see step 4); `mmdc → PNG` is the only working diagram path, so `mmdc` is a hard dependency whenever the deck has a diagram.
+  - **Heaviest dependency in the skill.** `mmdc` pulls **Puppeteer + a ~300MB+ headless Chromium** on first install (network / disk / sandbox failures are all common). It is the single most failure-prone dependency here, which is exactly why the figurer preflights it (step 4) instead of failing opaquely at render time.
+  - **CI / container note.** Chromium typically cannot launch without `--no-sandbox` in headless/sandboxed environments. Pass a Puppeteer config via `mmdc --puppeteerConfigFile <file>` whose contents are `{"args":["--no-sandbox"]}`.
+- **Python + matplotlib + pandas** — required for data charts: `python3 -m pip install matplotlib pandas`.
 - **(Optional, for design critic)** **pdftoppm** (poppler): `brew install poppler` / `apt-get install poppler-utils`. Used by `deck-design`, not by this figurer.
 
-If any dependency is missing, the figurer writes a `<name>-FAILED.md` stub describing what was attempted and which dependency to install — rather than silently leaving a broken reference.
+If any dependency is missing, the figurer writes a `<name>-FAILED.md` stub describing what was attempted and which dependency to install — rather than silently leaving a broken reference. For the missing-`mmdc` case specifically, the stub is written **proactively from the step-4 preflight**, before any `deck.md`/`deck.pdf` is produced that references a nonexistent PNG.
+
+The install script (`scripts/install-anvil.sh`) reports which of `marp` / `pdftoppm` / `mmdc` are absent at install time (or via `--check-deps`) so a missing core renderer surfaces before the first render attempt rather than at render time.
 
 ## Idempotence and resumability
 
@@ -179,7 +216,7 @@ The figurer's job is to make these checks pass. Validation is by file existence 
 ## Notes for the figurer agent
 
 - **Never invent data.** If a matplotlib script references a CSV that doesn't exist, refuse and surface the gap — do not generate placeholder data. A fabricated chart in a fundraising deck is the easiest critical flag to trigger (the audit will catch the data mismatch).
-- **Mermaid for diagrams; matplotlib for charts.** Don't render a flowchart with matplotlib or a data chart with Mermaid — both work poorly. Stay in the canonical lane.
+- **Mermaid (`mmdc → PNG`) for diagrams; matplotlib for charts.** Don't render a flowchart with matplotlib or a data chart with Mermaid — both work poorly. Stay in the canonical lane. Diagrams always go through `mmdc → PNG`; inline ```mermaid fences degrade to raw code in the PDF (see step 4).
 - **Render to 150+ DPI.** Slides project; pixelated charts are findings.
 - **Failed renders produce stub markdown, not silent omissions.** A `figures/<name>.png-FAILED.md` is a visible, debuggable artifact; a missing PNG is a mystery.
 - **Always re-render the PDF last.** Figure renders → reference validation → PDF render. A stale PDF cached from before figure updates is the most common gotcha.

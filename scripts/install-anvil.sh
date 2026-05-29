@@ -8,6 +8,7 @@
 #   --skills=<a,b,c>  Install only the listed skills (default: all)
 #   --force           Overwrite consumer-edited skill files (default: skip with warning)
 #   --dry-run         Print planned actions, write nothing
+#   --check-deps      Check renderer dependencies (marp/pdftoppm/mmdc) and exit
 #   -y, --yes         Non-interactive (skip confirmation prompts)
 #   -h, --help        Show this help and exit
 #
@@ -54,7 +55,7 @@ warn()  { echo "${YELLOW}  warn: $*${NC}"; }
 note()  { echo "${CYAN}  note: $*${NC}"; }
 
 usage() {
-  sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -67,6 +68,7 @@ ANVIL_POINTER='This repository uses [Anvil](https://github.com/rjwalters/anvil) 
 SKILLS_FILTER=""
 FORCE=false
 DRY_RUN=false
+CHECK_DEPS_ONLY=false
 NON_INTERACTIVE=false
 TARGET=""
 
@@ -76,6 +78,7 @@ while [[ $# -gt 0 ]]; do
     --skills)   shift; SKILLS_FILTER="${1:-}"; [[ -z "$SKILLS_FILTER" ]] && error "--skills requires a comma-separated list"; shift ;;
     --force)    FORCE=true; shift ;;
     --dry-run)  DRY_RUN=true; shift ;;
+    --check-deps) CHECK_DEPS_ONLY=true; shift ;;
     -y|--yes)   NON_INTERACTIVE=true; shift ;;
     -h|--help)  usage ;;
     --*)        error "unknown option: $1 (run with --help to see usage)" ;;
@@ -88,6 +91,56 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# ----- Renderer dependency check --------------------------------------------
+# Renderer binaries the presentation skills (deck/slides) shell out to. The
+# install itself only copies files, so a fresh install can report success while
+# a core renderer is absent — this check surfaces that up front. `mmdc` is
+# REQUIRED for any deck with a diagram (inline ```mermaid does NOT render in the
+# canonical `marp --pdf` output; verified, issue #65), so a missing `mmdc` is a
+# warning, not a silent omission.
+#
+# Returns the number of missing dependencies (0 = all present).
+check_renderer_deps() {
+  local missing=0
+  info "Renderer dependency check (presentation skills: deck/slides)"
+
+  if command -v marp >/dev/null 2>&1; then
+    ok "marp present ($(command -v marp))"
+  else
+    warn "marp MISSING (required for deck/slides PDF render). Install: npm install -g @marp-team/marp-cli"
+    missing=$((missing + 1))
+  fi
+
+  if command -v pdftoppm >/dev/null 2>&1; then
+    ok "pdftoppm present ($(command -v pdftoppm))"
+  else
+    warn "pdftoppm MISSING (poppler; used by the deck-design vision critic). Install: brew install poppler / apt-get install poppler-utils"
+    missing=$((missing + 1))
+  fi
+
+  if command -v mmdc >/dev/null 2>&1; then
+    ok "mmdc present ($(command -v mmdc))"
+  else
+    warn "mmdc MISSING (REQUIRED for any deck with a diagram — inline mermaid does NOT render in the PDF). Install: npm install -g @mermaid-js/mermaid-cli"
+    note "mmdc pulls Puppeteer + a ~300MB+ headless Chromium; in CI/containers pass --puppeteerConfigFile with {\"args\":[\"--no-sandbox\"]}."
+    missing=$((missing + 1))
+  fi
+
+  if [[ "$missing" -eq 0 ]]; then
+    ok "all renderer dependencies present"
+  else
+    warn "$missing renderer dependenc$([[ "$missing" -eq 1 ]] && echo y || echo ies) missing (see above)"
+  fi
+  return "$missing"
+}
+
+# --check-deps: report renderer dependencies and exit (no install, no target
+# required). Independent of #21's install-script surface.
+if [[ "$CHECK_DEPS_ONLY" == true ]]; then
+  check_renderer_deps || true
+  exit 0
+fi
 
 [[ -z "$TARGET" ]] && error "target repository path required (run with --help to see usage)"
 
@@ -420,15 +473,28 @@ do_action "write $MANIFEST" sh -c "
 MANIFEST_EOF
 "
 
-# ----- Stage 10: summary ----------------------------------------------------
-info "Stage 10: summary"
+# ----- Stage 10: renderer dependency check ----------------------------------
+# Report which renderer binaries are present so a fresh install does not claim
+# unqualified success while a core renderer (esp. mmdc) is absent. Scope: this
+# is the dependency-CHECK addition owned by #65; the path-injection/dry-run
+# items are #21's surface and are untouched here.
+info "Stage 10: renderer dependency check"
+DEPS_MISSING=0
+check_renderer_deps || DEPS_MISSING=$?
+
+# ----- Stage 11: summary ----------------------------------------------------
+info "Stage 11: summary"
 echo ""
 echo "  installed skills:    ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
 echo "  skipped overrides:   ${SKIPPED_OVERRIDES[*]:-(none)}"
 echo "  target:              $TARGET/.anvil"
+echo "  renderer deps:       $([[ "$DEPS_MISSING" -eq 0 ]] && echo "all present" || echo "$DEPS_MISSING missing -- re-run with --check-deps for detail")"
 echo ""
 if [[ "$DRY_RUN" == true ]]; then
   warn "DRY-RUN: no files were written"
 else
   ok "Anvil v$ANVIL_VERSION installed into $TARGET"
+  if [[ "$DEPS_MISSING" -gt 0 ]]; then
+    warn "install complete, but $DEPS_MISSING renderer dependenc$([[ "$DEPS_MISSING" -eq 1 ]] && echo y || echo ies) missing (see above) -- deck/slides rendering will be impaired until installed"
+  fi
 fi

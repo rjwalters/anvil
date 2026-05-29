@@ -33,15 +33,20 @@ description: Figurer command for the slides skill. Generates diagrams and data p
 
 The figurer picks a rendering path per figure based on the spec (or the drafter's intent inferred from `deck.md` context).
 
-### 1. Mermaid (default for diagrams) — inline fenced blocks
+### 1. Mermaid (default for diagrams) — `mmdc → PNG`
 
-Mermaid is first-class in Marp — fenced ```mermaid blocks render natively when
-the framework-pinned `html: true` flag is set (see
-`anvil/lib/marp/config.yml`). The **default routing for diagrams is inline
-fenced ```mermaid blocks in `deck.md` itself** — no `figures/fig-arch.png`
-reference, no `mmdc` invocation, no out-of-band step. The drafter writes:
+> **Correctness note (verified, issue #65).** Inline fenced ```mermaid blocks
+> do **NOT** render as diagrams in the canonical `--pdf` output — they emit as
+> raw monospace code (the grammar leaks verbatim). `html: true` only passes
+> raw HTML through; it does not execute mermaid.js during Marp's PDF render.
+> So diagrams must be pre-rendered to PNG via `mmdc`, which is therefore a
+> **required** dependency for any deck with a diagram (not a fallback). The
+> deck skill (`deck-figures`) is the primary, fully-wired implementation;
+> this slides note is the matching doc correction. Wiring a slides-side
+> `mmdc` preflight is tracked as a follow-up.
 
-```markdown
+The drafter writes the Mermaid source to `figures/<name>.mmd`:
+
 ```mermaid
 sequenceDiagram
     Client ->> Server: request
@@ -49,36 +54,35 @@ sequenceDiagram
     Cache -->> Server: hit
     Server -->> Client: response
 ```
-```
 
-…and Marp turns this into a rendered diagram at PDF-export time. The figurer's
-job for this default path is a no-op — the diagram lives in the markdown
-source.
+…and references the rendered PNG from `deck.md` as
+`![alt](figures/<name>.png)`. `slides-figures` renders the `.mmd` to a PNG
+via `mmdc` (mermaid-cli). If a drafter leaves an inline ```mermaid fence in
+`deck.md` (with or without a `<!-- anvil-figure: png -->` marker), extract it
+to `figures/<name>.mmd` and render it through this path rather than leaving it
+inline (it would degrade to raw code in the PDF).
 
 Use Mermaid for: architecture diagrams, flowcharts, sequence diagrams, state
 machines, simple block diagrams.
 
-**Fallback: `mmdc → PNG` (only when inline cannot express the diagram).** A
-small minority of diagrams need out-of-band rendering. Triggers:
+**Geometry / compositing knobs.** Pass `mmdc` flags as needed:
 
-- **Custom geometry** — the diagram needs an explicit width/height Marp's
-  default container cannot match.
-- **Transparent compositing** — the diagram must be overlaid on a
-  theme-colored background (`--backgroundColor transparent`).
-- **Auto-layout breakdown** — the diagram is larger than the slide's safe
-  area (caught by `slide-content-overflow` lint) and only fits at a forced
-  viewport.
-- **Explicit marker** — the drafter left a `<!-- anvil-figure: png -->` HTML
-  comment on the line above a ```mermaid fence in `deck.md`. Treat this as
-  an opt-in to out-of-band rendering: extract the body to
-  `figures/<name>.mmd` and run the PNG path.
+- **Custom geometry** — explicit `--width`/`--height` when the diagram needs
+  a non-default container.
+- **Transparent compositing** — `--backgroundColor transparent` to overlay
+  on a slide-background image.
+- **Auto-layout breakdown** — render at a forced viewport when the diagram is
+  larger than the slide's safe area (caught by `slide-content-overflow`).
 
-When triggered:
+When rendering:
 
 - Write the Mermaid source to `figures/<name>.mmd`.
-- Render to SVG (or PNG) via `mmdc` (mermaid-cli) if available.
-- If `mmdc` is unavailable, fall back to writing the `.mmd` source and a stub
-  `.md` placeholder noting that the consumer must render before slide export.
+- Render to PNG (or SVG) via `mmdc` (mermaid-cli) if available.
+- If `mmdc` is unavailable, write the `.mmd` source and a stub `.md`
+  placeholder noting that `mmdc` (`npm install -g @mermaid-js/mermaid-cli`,
+  ~300MB+ Chromium; `--puppeteerConfigFile {"args":["--no-sandbox"]}` in
+  CI/containers) must be installed before slide export — rather than leaving
+  a broken image reference.
 
 ### 2. matplotlib (default for data plots)
 
@@ -105,7 +109,7 @@ Use external assets for: product screenshots, photos, third-party logos, pre-exi
 2. **Resume check**: enumerate figure references in `deck.md`. For each referenced figure, check if the file exists in `figures/`. If all referenced figures exist AND `phases.figures.state == done`, exit early — no work needed.
 3. **Initialize `_progress.json`**: write `phases.figures.state = in_progress`, `phases.figures.started = <ISO>`.
 4. **For each missing or stale figure**:
-   - **Mermaid diagrams (inline-default)** — most mermaid diagrams live as fenced ```mermaid blocks directly in `deck.md` and require no figurer work; Marp renders them at PDF-export time via the framework `html: true` pin (`anvil/lib/marp/config.yml`). The figurer only handles the **fallback PNG path** described under "Mermaid (default for diagrams)" above: when a `figures/<name>.mmd` source exists OR the drafter left a `<!-- anvil-figure: png -->` marker on a fence, write the `.mmd` and attempt to render to SVG/PNG via `mmdc`. If `mmdc` fails (missing dependency, syntax error), produce a stub `.md` noting the attempted source.
+   - **Mermaid diagrams (`mmdc → PNG`)** — diagrams are rendered to PNG via `mmdc`; inline ```mermaid fences do NOT render in the PDF (see "Mermaid (default for diagrams)" above). For each `figures/<name>.mmd` source — or each inline ```mermaid fence in `deck.md`, which is extracted to `figures/<name>.mmd` — render to PNG via `mmdc`. If `mmdc` is missing or the render fails (syntax error), produce a stub `.md` noting the attempted source and the `mmdc` install remediation.
    - **Data plots** — require a source `.csv` (or equivalent). If no source data exists AND the brief / refs don't provide it, refuse and surface the gap in `figures/_unresolved.md`. The figurer does not invent data.
    - **External assets** — copy from `refs/` or `assets/` into `figures/` with a clear name.
 5. **Tooling preference**: self-contained tools (Mermaid CLI, matplotlib, ImageMagick for conversion) over network-dependent services. Failing renders produce a stub `.md` placeholder noting what was attempted and why it failed, rather than silently leaving a broken image reference.
@@ -127,7 +131,7 @@ The auditor (Dimension 1) additionally checks that data plots match their source
 ## Notes for the figurer agent
 
 - **Never invent data.** If a chart is requested without source data, refuse and surface the gap in `figures/_unresolved.md`. A figurer that fabricates data poisons the audit (Dimension 1) and undermines the talk's credibility.
-- **Inline mermaid is the default for diagrams.** Fenced ```mermaid blocks in `deck.md` render natively under Marp's `html: true` (pinned at the framework level via `anvil/lib/marp/config.yml`); the figurer does not need to produce a PNG. The `mmdc → PNG` path is explicit fallback only — see the "Mermaid (default for diagrams)" section for the trigger conditions. Reach for matplotlib only when the figure is data-driven; reach for external assets only when the source is genuinely external (a photograph, a third-party screenshot).
+- **Mermaid (`mmdc → PNG`) is the default for diagrams.** Inline ```mermaid fences do NOT render in the canonical `--pdf` output (verified, issue #65) — they degrade to raw code. Render every diagram to a PNG via `mmdc` and reference it as `![alt](figures/<name>.png)`; `mmdc` is a required dependency for any deck with a diagram. See the "Mermaid (default for diagrams)" section. Reach for matplotlib only when the figure is data-driven; reach for external assets only when the source is genuinely external (a photograph, a third-party screenshot).
 - **Keep `.csv` and `.py` alongside rendered output.** Reproducibility matters when the reviser updates numbers and the figure needs to regenerate.
 - **No TikZ.** TikZ requires a LaTeX toolchain, which Marp does not invoke. Consumers needing TikZ are also overriding to Beamer; they handle their own figure pipeline.
 - **Accessibility: alt text and contrast.** Every figure reference in `deck.md` should have a meaningful `![alt text](...)`. The drafter sets alt text; the figurer should not silently strip it. Use color-blind-safe palettes (Okabe-Ito or viridis) for matplotlib plots; document the palette choice in the `.py` script.
