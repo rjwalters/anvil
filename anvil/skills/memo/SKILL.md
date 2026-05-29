@@ -1,0 +1,112 @@
+---
+name: memo
+description: Draft, review, and revise investment memos and internal analytical documents using the standard anvil lifecycle.
+domain: memo
+type: skill
+user-invocable: false
+---
+
+# anvil:memo — Investment memos and internal documents
+
+The `memo` skill produces defensible investment memos (and structurally similar internal analytical documents) through the canonical anvil lifecycle: `draft → review → revise → figures`, with `revise` looping to `review` until the rubric threshold is met or the iteration cap is reached.
+
+## Artifact contract
+
+A **memo thread** is a single decision artifact (typically: invest / pass / conditional on terms) authored across one or more revisions. A thread is identified by a slug (e.g., `acme-seed`, `q3-thesis-update`). Each thread occupies a portfolio directory that contains:
+
+```
+<portfolio>/
+  <thread>/                Optional thread root with brief and reference material
+    BRIEF.md               Optional structured or freeform brief (frontmatter + prose)
+    refs/                  Optional reference material (decks, transcripts, data)
+  <thread>.1/              First drafted version (immutable once written)
+    memo.md                Memo body
+    exhibits/              Inline exhibits referenced from body
+    _progress.json         Phase state for this version
+    changelog.md           (revisions only) Maps prior critic notes to changes
+  <thread>.1.review/       Reviewer output for version 1 (read-only)
+    verdict.md             Top-level decision (advance / block) + total /40
+    scoring.md             Per-dimension scores against the memo rubric
+    comments.md            Line-level comments keyed to memo.md
+  <thread>.1.audit/        Optional auditor critic sibling (fact-check)
+  <thread>.1.critic/       Optional substantive critic sibling
+  <thread>.2/              Revised version (after revise consumes v1 + all critic siblings)
+  <thread>.2.review/
+  ...
+  <thread>.{N}/            Terminal version, marked READY in its _progress.json
+```
+
+Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
+
+## State machine
+
+Per-thread state, derived from on-disk evidence (not flags):
+
+```
+EMPTY → DRAFTED → REVIEWED → REVISED → … → READY
+                                          ↘ AUDITED  (optional, via auditor critic sibling)
+```
+
+| State | Evidence |
+|---|---|
+| `EMPTY` | No `<thread>.{N}/` directories exist |
+| `DRAFTED` | Latest `<thread>.{N}/` exists with `memo.md` and `_progress.json.draft == done`; no sibling review at the same `N` |
+| `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` |
+| `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` |
+| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag |
+| `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version |
+
+Thresholds: ≥32/40 advances. <32/40 requires revision. Any critical flag short-circuits regardless of total — block until addressed.
+
+Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+
+## Command dispatch
+
+| Command | Role | Reads | Writes |
+|---|---|---|---|
+| `memo` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
+| `memo-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `memo-revise`) |
+| `memo-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
+| `memo-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
+| `memo-figures <thread>` | figurer | latest `<thread>.{N}/memo.md` | figures/tables under `<thread>.{N}/exhibits/` |
+
+The portfolio orchestrator is the user-facing entry point for status; the four lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
+
+## Progress tracking
+
+Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. Schema:
+
+```json
+{
+  "version": 1,
+  "thread": "<thread>",
+  "phases": {
+    "draft":   { "state": "done",        "started": "2026-05-28T14:00:00Z", "completed": "2026-05-28T14:12:00Z" },
+    "figures": { "state": "in_progress", "started": "2026-05-28T14:15:00Z" }
+  },
+  "metadata": {
+    "iteration": 1,
+    "max_iterations": 4
+  }
+}
+```
+
+Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `memo.md` exist? does the exhibit referenced as `exhibits/fig-1.png` exist?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
+
+Until `anvil/lib/progress.py` lands (see issue #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: command updates one phase, preserves all others.
+
+## Rubric
+
+See `rubric.md` for the 8-dimension /40 scoring schema, the ≥32 advance threshold, and the critical-flag short-circuit policy.
+
+## Skill-specific phases
+
+**None.** Memo lifecycle is exactly `draft → review → revise → figures`. No pre-draft research phase, no separate audit phase in v0 (fact-check is rolled into the reviewer's "Evidence quality" dimension; an `auditor` sibling critic can be added later by an installing repo without changing this skill's contract).
+
+## Defaults and overrides
+
+This skill ships with opinionated defaults. Consumers are expected to override liberally via `.anvil/skills/memo/` in their own repo:
+
+- `voice.md` (optional) — Author or fund voice/style guidance the drafter reads in addition to its base prompt.
+- `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any-deal-breaker" instruction.
+- `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted.
