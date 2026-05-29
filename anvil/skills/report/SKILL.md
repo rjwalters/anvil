@@ -148,11 +148,12 @@ auditor should keep in mind.)
 | `report-draft <project>/<thread>` | drafter | `_project.md`, `<thread>/BRIEF.md`, `<thread>/refs/`; for revisions, also `<thread>.{N}/` + all critic siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path) |
 | `report-review <project>/<thread>` | reviewer | `_project.md`, latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `report-audit <project>/<thread>` | auditor | `_project.md` (incl. `prior_reports[]`), latest `<thread>.{N}/`, prior delivered reports | `<thread>.{N}.audit/` |
-| `report-revise <project>/<thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.*/` critic siblings (both `.review/` and `.audit/` required) | `<thread>.{N+1}/` with `changelog.md` |
+| `report-vision <project>/<thread>` | vision critic | latest `<thread>.{N}/report.pdf` (renders via pandoc if missing) → per-page PNGs | `<thread>.{N}.vision/` (owns four report vision dims — figure legibility, table overflow, layout/page-break artifacts, palette adherence); produces canonical `_review.json` per #26 with `kind=vision`. See `commands/report-vision.md` and `anvil/lib/vision.py`. |
+| `report-revise <project>/<thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.*/` critic siblings (both `.review/` and `.audit/` required; `.vision/` consumed if present) | `<thread>.{N+1}/` with `changelog.md` |
 | `report-figures <project>/<thread>` | figurer | latest `<thread>.{N}/report.md` | figures/tables/PDF under `<thread>.{N}/exhibits/` and `<thread>.{N}/report.pdf` |
 | `report-promote <project>/<thread>` | promoter | `<thread>.{N}/` in state `AUDITED`, `_project.md` | `<thread>.{N}.promote/receipt.md` |
 
-The portfolio orchestrator (`report`) is the user-facing entry point for status; the six lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
+The portfolio orchestrator (`report`) is the user-facing entry point for status; the lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent). `report-vision` is an optional rendered-PDF critic sibling (alongside `report-review` and `report-audit`) — recommended before `report-promote` for customer-facing material; see `commands/report-vision.md` and `rubric.md` § "Vision-owned dimensions".
 
 ## Progress tracking
 
