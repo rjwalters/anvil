@@ -53,8 +53,7 @@ not touch.
 |---|---|
 | `pending` | Phase has not started (or was reset after a crash). |
 | `in_progress` | Phase is currently running. |
-| `done` | Phase completed successfully. |
-| `completed` field is set. |
+| `done` | Phase completed successfully. The `completed` field is set. |
 | `failed` | Phase ran but did not produce valid output. Caller decides whether to retry from `pending` or escalate. |
 
 ## Convergence fields (added by #27)
