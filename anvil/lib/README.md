@@ -78,10 +78,18 @@ anvil/lib/
                                 decisions: `check_stable` and
                                 `decide_termination`. Produces `Verdict.STALLED`
                                 for plateaued threads. (#27)
+  render.py                    Rendering helpers (Marp → PDF, PDF → PNGs,
+                                pandoc → PDF, matplotlib figure walker)
+                                consumed by per-skill vision critics. (#30)
+  vision.py                    `VisionCritic` + `VisionRubric` — the
+                                VLM-critique framework primitive that
+                                produces `Review` objects with
+                                `kind=Kind.VISION`. (#30)
   export_schema.py             One-shot exporter for review_schema.json AND
                                 rubric_schema.json.
   examples/
     review-example.json        Fully-populated worked example fixture.
+    vision-review-example.json Fully-populated `kind: vision` example. (#30)
 ```
 
 ## Marp renderer pin
@@ -301,14 +309,16 @@ regex — skills disagree on path prefixes.
 |---|---|---|
 | `judgment` | Standard rubric-scored review from text alone (review-class critics — `<skill>-review` and judgment specialists like `deck-narrative`, `ip-uspto-s101`). | Nothing extra. |
 | `tool_evidence` | Audit-class review backed by external tool calls (citation resolution, build verification, numeric audit). Each finding records the tool invocations that produced its evidence. | Non-empty `tool_calls` array on every entry in `findings[]`. Enforced by `Review._validate_kind_required_fields`. |
-| `vision` | Vision-model review of a rendered artifact (#30). | `rendered_artifact`. |
+| `vision` | Vision-model review of a rendered artifact (#30). Actively used by `anvil/lib/vision.py` and `anvil/skills/deck/commands/deck-vision.md`; reserved for slides/pub/report/ip-uspto vision critics tracked as per-skill follow-ups to #30. | `rendered_artifact`. |
 
 The `judgment` / `tool_evidence` split codifies the `.review/` vs
 `.audit/` sibling-directory distinction documented in
 `snippets/audit.md`. New audit critics MUST set `kind: tool_evidence`;
 the five v0 audit commands (pub, report, deck, slides, ip-uspto) ship
 prose-only output today and migrate to the canonical contract via
-separate per-skill follow-up issues.
+separate per-skill follow-up issues. The `vision` value is now actively
+used by `VisionCritic` (see `anvil/lib/vision.py` and the
+"Rendered-artifact review" subsection below).
 
 ### `verdict` enum
 
@@ -407,6 +417,142 @@ regardless of total.
 If dim 3's critical flag is dropped, the verdict becomes ADVANCE. If the
 threshold were `32` instead of `28`, total `30 < 32` so the verdict would
 be REVISE.
+
+## Rendered-artifact review (`kind: vision`)
+
+`anvil/lib/vision.py` ships the framework primitive for VLM critique of
+rendered artifacts (decks, slides, figures). It is the architectural
+answer to #23 / #24 / #25 — vision-only defects that markdown-source
+critics cannot catch (mathtext italicization, vertical overflow, label
+cropping, palette drift).
+
+The vision critic is **a critic, not a new sibling family**. It writes
+to `<thread>.{N}.vision/` (sibling tag = `vision`), participates in the
+existing glob discovery (`discover_critics`), and contributes its
+scorecard to the existing aggregator (`aggregate`) with no schema or
+discovery changes. The `Kind.VISION` enum value and the
+`rendered_artifact` field were reserved in #26 / PR #39 for exactly this
+critic.
+
+### Library shape
+
+```python
+from pathlib import Path
+from anvil.lib.render import render_marp_to_pdf, render_pdf_to_pngs
+from anvil.lib.vision import VisionCritic, default_vision_rubric
+
+# 1. Render the deck source to PDF, then PDF to per-page PNGs.
+pdf = render_marp_to_pdf(Path("acme-seed.1/deck.md"),
+                         Path("acme-seed.1/deck.pdf"))
+pngs = render_pdf_to_pngs(pdf, Path("acme-seed.1.vision/slides/"))
+
+# 2. Critique. Default constructor uses the Anthropic SDK; CI/offline
+#    consumers inject callback= to bypass.
+critic = VisionCritic(critic_id="deck-vision")
+review = critic.critique(
+    images=pngs,
+    rubric=default_vision_rubric(),
+    version_dir="acme-seed.1",
+    rendered_artifact="deck.pdf",
+    context="This is a 12-slide pitch deck for a seed-stage startup.",
+)
+
+# 3. Persist. The returned Review is already validated.
+(Path("acme-seed.1.vision/_review.json")
+   .write_text(review.model_dump_json(indent=2)))
+```
+
+The result file is discovered and aggregated by the existing critics
+primitives with zero changes — `discover_critics(Path("acme-seed.1"))`
+returns `acme-seed.1.vision/` among its peers, `load_review` parses the
+canonical JSON, and `aggregate` merges the vision dimensions into the
+composite scorecard.
+
+### Default rubric
+
+The shipped rubric is six dimensions, each scored 0..5 (max_total = 30):
+
+| Dim | What it catches |
+|---|---|
+| `vertical_overflow` | Content cut off below the slide bottom. The deeper companion to `marp_lint`'s slide-content-overflow rule. |
+| `label_cropping` | Chart axis labels, legends, annotations truncated by the border. |
+| `axis_legibility` | Font size of chart labels and tick marks vs projection scale. |
+| `palette_adherence` | Figures match the theme palette (not the default matplotlib palette). |
+| `mathtext_artifacts` | Italic letters adjacent to dollar signs (#23 catch); LaTeX rendered literally. |
+| `slide_density` | Walls of text exceeding ~30 words / ~6 bullets per slide. |
+
+Skills may compose their own rubric by constructing a `VisionRubric`
+with a custom dimension list. The six defaults are appropriate for any
+presentation-class artifact (deck, slides); pub/report/ip-uspto vision
+critics may extend or replace the list.
+
+### Critical flags
+
+Two initial verdict-blocking flag types short-circuit the aggregated
+verdict to `BLOCK`:
+
+- `rendered_overflow_unrecoverable` — visual overflow that drops
+  load-bearing information (numbers, citations, names).
+- `mathtext_artifact_breaks_meaning` — `$X` rendered as italic `X`
+  where the dollar sign carries semantic weight. Direct catch for #23.
+
+These flags are vision-critic-only; other rendered defects surface as
+`Finding` items with severity major/minor/nit.
+
+### Callback injection (CI / offline / tests)
+
+The default `VisionCritic(...)` constructor uses the Anthropic Python
+SDK. Consumers without an API key (CI environments, offline development,
+deterministic test suites) inject a callback:
+
+```python
+def stub_callback(images, prompt):
+    return {
+        "scores": [
+            {"dimension": "vertical_overflow", "score": 5, "critical": False},
+            {"dimension": "label_cropping",    "score": 4, "critical": False},
+            {"dimension": "axis_legibility",   "score": 5, "critical": False},
+            {"dimension": "palette_adherence", "score": 4, "critical": False},
+            {"dimension": "mathtext_artifacts","score": 5, "critical": False},
+            {"dimension": "slide_density",     "score": 4, "critical": False},
+        ],
+        "findings": [],
+        "critical_flags": [],
+    }
+
+critic = VisionCritic(critic_id="deck-vision", callback=stub_callback)
+review = critic.critique(images=[...], rubric=default_vision_rubric(),
+                         version_dir="thread.1", rendered_artifact="deck.pdf")
+```
+
+The test suite in `tests/lib/test_vision.py` exercises this path
+exclusively; the real Anthropic call is gated behind
+`ANVIL_ENABLE_VLM_TESTS=1` for opt-in smoke testing.
+
+### Rendering pipeline (`anvil/lib/render.py`)
+
+The vision critic depends on `anvil/lib/render.py`, which wraps four
+subprocess shell-outs:
+
+- `render_marp_to_pdf(deck_md, out_pdf, config=None)` — Marp Markdown to
+  PDF. Invokes `marp --pdf --html --config-file <config>
+  --allow-local-files` so the rendered output matches what the user
+  actually sees in production. The default config is
+  `anvil/lib/marp/config.yml` per #32.
+- `render_pdf_to_pngs(pdf, out_dir, dpi=150)` — PDF to per-page PNGs.
+  Default path: `pdftoppm -r <dpi> -png ...` (poppler-utils). Fallback:
+  the `pdf2image` Python wrapper, attempted only when `pdftoppm` is not
+  on PATH.
+- `render_pandoc_to_pdf(source_md, out_pdf, defaults=None)` — prose
+  Markdown to PDF via pandoc. Reserved for future pub-vision and
+  report-vision critics.
+- `render_matplotlib_figures(figures_dir)` — enumerates already-rendered
+  `figures/*.png`. No re-execution; the skill's `figures` command owns
+  generation.
+
+All renderers raise `RenderError` on subprocess failure or missing
+binary. Tests stub via fixture PNGs and pre-built PDFs; no system
+binaries are required for `pytest`.
 
 ## Legacy adapter and migration path
 
