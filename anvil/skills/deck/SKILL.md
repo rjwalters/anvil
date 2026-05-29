@@ -211,11 +211,14 @@ theme search path + `allowLocalFiles` regardless of frontmatter.
 Math syntax is standard MathJax (Marp v3 default — covers a wider LaTeX
 subset than KaTeX): `$\sigma$` inline, `$$ ... $$` display.
 
-The `html: true` pin is load-bearing for inline mermaid: Marp renders
-fenced ```mermaid blocks by emitting an inline `<script>` block, which
-only survives into the rendered HTML/PDF when html is enabled. See
-`anvil/skills/deck/assets/marp-renderer.md` for the full figure-pipeline
-worked example (matplotlib + mermaid + MathJax).
+The `html: true` pin lets raw HTML in the source pass through into the
+rendered output. NOTE (verified, issue #65): it does NOT make inline
+fenced ```mermaid blocks render as diagrams in the canonical `--pdf`
+output — an inline ```mermaid fence emits as raw monospace code in the PDF.
+Diagrams are pre-rendered to PNG via `mmdc` (`figures/src/*.mmd` →
+`figures/<name>.png`), which is therefore required for any deck with a
+diagram. See `anvil/skills/deck/assets/marp-renderer.md` for the full
+figure-pipeline worked example (matplotlib + mermaid PNG + MathJax).
 
 ## Progress tracking
 
