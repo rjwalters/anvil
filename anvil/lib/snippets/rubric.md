@@ -55,6 +55,56 @@ The composite total is computed by the reviser per the aggregation
 rules in `critics.md` (per-dimension mean of non-null contributions
 across all critic siblings, summed).
 
+### Termination resolution order
+
+The full termination decision considers **four** terminators, evaluated
+in the following order — the first match wins:
+
+| # | Condition | Verdict | `termination_reason` |
+|---|---|---|---|
+| 1 | Any critical flag set | `BLOCK` | `CRITICAL_FLAG` |
+| 2 | `composite_total >= threshold` | `ADVANCE` | `THRESHOLD_MET` |
+| 3 | `iteration >= max_iterations` | `REVISE` | `MAX_ITERATIONS` |
+| 4 | Stable: last `lookback` totals within `± window` | `STALLED` | `STALLED` |
+
+If none of the above match, the loop continues and the next revise pass
+runs.
+
+### Secondary stop condition: stable-score termination (#27)
+
+Near the threshold the loop can oscillate (e.g., scores 31 → 32 → 31)
+without converging, burning the iteration budget on a plateaued thread.
+The **secondary** stop condition halts the loop when the score has
+stopped changing meaningfully:
+
+- Compare the last `lookback` aggregated totals (default `lookback=2`,
+  i.e., the two most recent iterations).
+- If all of them are within `± window` of each other (default
+  `window=1`), AND the latest total is below threshold, AND no critical
+  flag is set, halt with `verdict: STALLED` and
+  `termination_reason: "STALLED"`.
+
+The orchestrator (or human) then decides whether to escalate, swap
+critics, or accept the below-threshold result.
+
+The `STALLED` verdict is **distinct from** `MAX_ITERATIONS`:
+
+- `STALLED` means "the loop demonstrably plateaued" — the score is no
+  longer moving.
+- `MAX_ITERATIONS` means "the loop ran out of budget" — the score might
+  still have been climbing, but we hit the cap. The verdict stays
+  `REVISE` (work did not converge); the `termination_reason` field is
+  the signal that distinguishes the two.
+
+The input to the stable check is `metadata.score_history` from
+`_progress.json` (see `progress.md`). Defaults for `window` and
+`lookback` match the rationale in #27. Skills may override per-thread in
+`<thread>/.anvil.json`, alongside `max_iterations`.
+
+The Python implementation is `anvil.lib.convergence.decide_termination`,
+which is the source of truth for programmatic use. This snippet is the
+source of truth for LLM-side authoring. The two MUST agree.
+
 ## Critical-flag semantics
 
 Critical flags are NOT a sub-score deduction. They are a binary

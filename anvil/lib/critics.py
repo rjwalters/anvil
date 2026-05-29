@@ -696,14 +696,36 @@ def _dedupe_critical_flags(
 # ---------------------------------------------------------------------------
 
 
-def compute_verdict(agg: AggregatedReview, threshold: Optional[int] = None) -> Verdict:
-    """Pure function: decide ADVANCE / REVISE / BLOCK from an AggregatedReview.
+def compute_verdict(
+    agg: AggregatedReview,
+    threshold: Optional[int] = None,
+    *,
+    history: Optional[List[Optional[int]]] = None,
+    iteration: Optional[int] = None,
+    max_iterations: Optional[int] = None,
+    window: int = 1,
+    lookback: int = 2,
+) -> Verdict:
+    """Pure function: decide ADVANCE / REVISE / BLOCK / STALLED.
+
+    Single-iteration semantics (when ``history`` is ``None``):
 
     - BLOCK if any critical flag (either top-level or per-dimension critical).
     - Else ADVANCE if total >= threshold.
     - Else REVISE.
 
-    STALLED is reserved for #27 — this function does not produce it.
+    Multi-iteration semantics (when ``history`` is provided): delegates to
+    ``anvil.lib.convergence.decide_termination``. In addition to the three
+    verdicts above, this can return STALLED when the last ``lookback``
+    aggregated totals (most recent first appended last in ``history``) are
+    all within ``± window`` and below threshold. Hitting ``max_iterations``
+    keeps the verdict at REVISE (with termination_reason MAX_ITERATIONS at
+    the convergence layer); STALLED is reserved for a demonstrated plateau.
+
+    Backward compatibility: when ``history`` is ``None`` (default), behavior
+    is identical to the pre-#27 implementation. All call sites that do not
+    opt in to convergence-aware verdicts continue to receive
+    ADVANCE / REVISE / BLOCK only.
 
     Parameters
     ----------
@@ -711,12 +733,52 @@ def compute_verdict(agg: AggregatedReview, threshold: Optional[int] = None) -> V
         The aggregated review.
     threshold:
         Optional override. Defaults to ``agg.threshold``.
+    history:
+        Optional per-iteration aggregated totals in iteration order. When
+        provided, the function delegates to
+        ``convergence.decide_termination`` and can return ``STALLED``. When
+        ``None`` (default), the function uses single-iteration semantics
+        and never returns ``STALLED``.
+    iteration:
+        Current iteration number (1-indexed). Required when ``history`` is
+        provided.
+    max_iterations:
+        Iteration cap. Required when ``history`` is provided.
+    window:
+        Stability window (default ``1``). Only used when ``history`` is
+        provided.
+    lookback:
+        Stability lookback (default ``2``). Only used when ``history`` is
+        provided.
     """
     eff_threshold = threshold if threshold is not None else agg.threshold
     any_critical = bool(agg.critical_flags) or any(
         s.critical for s in agg.scores
     )
-    return _compute_verdict_impl(agg.total, eff_threshold, any_critical)
+
+    if history is None:
+        return _compute_verdict_impl(agg.total, eff_threshold, any_critical)
+
+    if iteration is None or max_iterations is None:
+        raise ValueError(
+            "compute_verdict: when 'history' is provided, both 'iteration' "
+            "and 'max_iterations' must also be provided."
+        )
+
+    # Imported lazily to avoid a hard module-load dependency cycle when only
+    # the single-iteration path is used.
+    from anvil.lib.convergence import decide_termination
+
+    verdict, _reason = decide_termination(
+        history=history,
+        threshold=eff_threshold,
+        any_critical=any_critical,
+        iteration=iteration,
+        max_iterations=max_iterations,
+        window=window,
+        lookback=lookback,
+    )
+    return verdict
 
 
 def _compute_verdict_impl(

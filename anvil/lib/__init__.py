@@ -9,6 +9,10 @@ Public modules:
 - ``cite``: identifier parsing (DOI/arXiv), Crossref / arXiv resolution,
   deterministic BibTeX key generation, and idempotent ``refs.bib``
   writing. See ``anvil/lib/snippets/cite.md`` for the on-disk convention.
+- ``convergence``: ``check_stable`` and ``decide_termination`` — pure
+  functions for the multi-iteration termination decision (threshold met /
+  critical flag / max-iterations / stalled). Produces ``Verdict.STALLED``
+  when successive revisions have plateaued.
 """
 
 from anvil.lib.cite import (
@@ -22,6 +26,14 @@ from anvil.lib.cite import (
     parse_identifier,
     resolve,
 )
+from anvil.lib.convergence import (
+    TERMINATION_CRITICAL_FLAG,
+    TERMINATION_MAX_ITERATIONS,
+    TERMINATION_STALLED,
+    TERMINATION_THRESHOLD_MET,
+    check_stable,
+    decide_termination,
+)
 
 
 __all__ = [
@@ -29,9 +41,15 @@ __all__ = [
     "CiteResolutionError",
     "Identifier",
     "IdentifierKind",
+    "TERMINATION_CRITICAL_FLAG",
+    "TERMINATION_MAX_ITERATIONS",
+    "TERMINATION_STALLED",
+    "TERMINATION_THRESHOLD_MET",
     "UnsupportedIdentifierError",
     "bib_key",
+    "check_stable",
     "cite",
+    "decide_termination",
     "parse_identifier",
     "resolve",
 ]

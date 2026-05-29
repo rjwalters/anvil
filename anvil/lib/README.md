@@ -48,6 +48,10 @@ anvil/lib/
                                 computation, and a legacy adapter that reads
                                 the memo prose triple and the ip-uspto
                                 _summary/findings/_meta triple. (#26)
+  convergence.py               Pure functions for multi-iteration termination
+                                decisions: `check_stable` and
+                                `decide_termination`. Produces `Verdict.STALLED`
+                                for plateaued threads. (#27)
   export_schema.py             One-shot exporter for review_schema.json.
   examples/
     review-example.json        Fully-populated worked example fixture.
@@ -282,13 +286,18 @@ parser so #29 and #30 do not need a schema-version bump when they ship.
 | `ADVANCE` | `total >= threshold` AND no critical flag. |
 | `REVISE` | `total < threshold` AND no critical flag. |
 | `BLOCK` | Any critical flag is set (regardless of total). |
-| `STALLED` | Reserved for #27 — stable-score termination when successive revisions stop improving. v1 does not produce this value. |
+| `STALLED` | Stable-score termination: successive aggregated totals are within `± window` (default `1`) across the last `lookback` iterations (default `2`) AND below threshold. Produced by `anvil.lib.convergence.decide_termination` and surfaced via `compute_verdict` when `history` is provided. |
 
-The decision rule is implemented in `critics.py::compute_verdict` and is
-a pure function over the aggregated scorecard. Per-critic `verdict`
-values are ignored by the aggregator — only the merged total + flags
-decide. This matches the canonical decision rule documented in
-`snippets/rubric.md`.
+The single-iteration decision rule (ADVANCE / REVISE / BLOCK) is
+implemented in `critics.py::compute_verdict` and is a pure function over
+the aggregated scorecard. The multi-iteration decision (which can also
+return `STALLED` or surface `termination_reason: "MAX_ITERATIONS"`) is
+implemented in `convergence.py::decide_termination`; `compute_verdict`
+delegates to it when called with the optional `history`, `iteration`, and
+`max_iterations` arguments. Per-critic `verdict` values are ignored by
+the aggregator — only the merged total + flags + history decide. This
+matches the canonical decision rule documented in `snippets/rubric.md`
+and the resolution order documented in `snippets/state_machine.md`.
 
 ## The discovery and aggregation API
 
