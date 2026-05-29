@@ -28,6 +28,8 @@ The review sibling directory is **read-only once written**. Revisions consume it
   verdict.md       Top-level decision + total /40 + critical flags (own + propagated) + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Slide-level comments keyed to slide numbers and notes/<NN>-*.md filenames
+  _summary.md      8-dim scorecard + lint block (pre-flight overflow lint output)
+  findings.md      Itemized findings (severity, slide ref, rationale, suggested fix) + "Lint findings" section
   _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
@@ -38,6 +40,11 @@ The review sibling directory is **read-only once written**. Revisions consume it
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
 3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version: <N>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
 4. **Read inputs**: load `<thread>.{N}/deck.md`, enumerate `notes/*.md` and `figures/`, load `rubric.md` and any consumer override.
+4b. **Run pre-flight overflow lint**:
+   - Invoke `anvil/skills/slides/lib/marp_lint.py`'s `lint_deck(<thread>.{N}/deck.md)`. This is a Python-stdlib heuristic port of marp-vscode's `slide-content-overflow` diagnostic; the slides-side module is a re-export of the deck-side single source of truth (see the module docstring for the upstream SHA pin and the per-slide `<!-- anvil-lint-disable: slide-content-overflow -->` escape hatch).
+   - The call returns a `LintResult` with `errors: list[Finding]`, `warnings: list[Finding]`, and `infos: list[Finding]`. Each `Finding` has `slide` (1-based slide number), `line` (1-based source line), `rule`, `severity`, and `message`.
+   - The lint is **review-phase only** — `slides-draft`, `slides-audit`, `slides-figures`, and `slides-rehearse` do not invoke it. The drafter is intentionally allowed to produce an overflowing slide so the reviser sees the failure mode (issue #31, AC6).
+   - Cache the `LintResult` for the `_summary.md` and `findings.md` writes below; cache `lint.errors > 0` as `lint_critical_flag` for the verdict logic.
 5. **Read sibling critic outputs** (if present):
    - `<thread>.{N}.audit/verdict.md` — extract any `wrong` claims (these set the audit flag).
    - `<thread>.{N}.rehearse/density.md` — extract any slides exceeding 50 words or 7 bullets (these set the density flag).
@@ -49,12 +56,49 @@ The review sibling directory is **read-only once written**. Revisions consume it
    - Record per-dimension result in `scoring.md` as a markdown table with columns `# | Dimension | Weight | Score | Justification`.
 8. **Identify own critical flags**: review the deck against the ad-hoc flag examples in `rubric.md` (pedagogical regression, live-demo dependency, unattributed quotation, PII) AND the open-ended "any deal-breaker a sophisticated audience member would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 9. **Pull in sibling flags**: propagate any audit / density / time flags from sibling critic dirs into the verdict, clearly labeled with their source (e.g., `audit flag — slides-audit verdicted 2 claims wrong`). Do not re-litigate these flags; the auditor and rehearser are authoritative on their respective dimensions.
-10. **Compute total**: sum all dimension scores. `advance = (total >= 32) AND (no critical flags from any source)`.
+10. **Compute total**: sum all dimension scores. `advance = (total >= 32) AND (no critical flags from any source)`. The pre-flight lint counts as a critical-flag source: when `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags — the rubric total is reported honestly but does not save the verdict.
 11. **Write slide-level comments**: in `comments.md`, list specific feedback keyed to slide numbers (e.g., `### Slide 7: Architecture overview`) — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`). Reference notes files where note quality is the issue (e.g., `notes/14-results.md is empty`).
+11b. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 4b:
+    ```markdown
+    # Review summary
+
+    ```json
+    {
+      "critic": "review",
+      "for_version": <N>,
+      "dimensions": { /* 8-dim scorecard per rubric.md */ },
+      "lint": {
+        "ran": true,
+        "errors": 1,
+        "warnings": 0,
+        "errors_by_slide": [
+          { "slide": 7, "line": 51, "rule": "slide-content-overflow", "severity": "error", "message": "Slide exceeds estimated vertical capacity..." }
+        ],
+        "warnings_by_slide": []
+      },
+      "critical_flag": true,
+      "critical_flag_notes": [
+        { "type": "slide_overflow_lint", "slide_refs": ["Slide 7"], "justification": "Pre-flight overflow lint flagged 1 slide as exceeding estimated vertical capacity." }
+      ]
+    }
+    ```
+    ```
+    When `lint.errors > 0`, set `critical_flag: true` and append a `{ "type": "slide_overflow_lint", ... }` entry to `critical_flag_notes` — the lint is treated as a critical-flag source on par with the audit / density / time flags.
+11c. **Write `findings.md`** with both review findings and a "Lint findings" subsection. The "Lint findings" section is present even if empty (write `_No lint findings._`):
+    ```
+    ## Findings
+
+    1. **[major]** Slide 7: Architecture diagram unlabeled. Suggested fix: add boxed labels for each block before submission.
+    ...
+
+    ## Lint findings
+
+    1. **[error]** Slide 7 (line 51): Slide exceeds estimated vertical capacity by ~2.0 line-units. Top costs: image=7.0u, h2=2.0u. Suggested fix: replace the trailing 4 bullets with a single italic supporting line under the figure.
+    ```
 12. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Total: `XX / 40`
     - Decision: `advance: true` or `advance: false`
-    - Critical flags (if any), labeled by source
+    - Critical flags (if any), labeled by source. When `lint.errors > 0`, include `Slide overflow (lint)` as one of the labeled flag entries.
     - Dimension summary table (per-dim scores; full justifications in `scoring.md`)
     - Top 3 revision priorities (if `advance: false`)
 13. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
