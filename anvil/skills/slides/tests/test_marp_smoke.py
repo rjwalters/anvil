@@ -87,6 +87,7 @@ TestFixtureFrontmatter = _deck_module.TestFixtureFrontmatter
 TestMarpConfigFile = _deck_module.TestMarpConfigFile
 TestFixturePassesLint = _deck_module.TestFixturePassesLint
 TestMarpRenders = _deck_module.TestMarpRenders
+TestMermaidDiagramDoesNotLeakAsRawCode = _deck_module.TestMermaidDiagramDoesNotLeakAsRawCode
 
 
 class TestSlidesFixtureMatchesPin(unittest.TestCase):
