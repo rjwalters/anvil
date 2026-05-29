@@ -124,7 +124,8 @@ Iteration cap: default `max_iterations: 4` (terminal version is `<thread>.5/`). 
 | `deck-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (uniform critic schema; also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
 | `deck-narrative <thread>` | narrative critic | latest `<thread>.{N}/deck.md` (full read, in order) | `<thread>.{N}.narrative/` (owns dims 1, 7) |
 | `deck-market <thread>` | market critic | latest `<thread>.{N}/deck.md` + market exhibits + any `figures/src/*.csv` | `<thread>.{N}.market/` (owns dims 3, 4) |
-| `deck-design <thread>` | design critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.design/` (owns dim 8) |
+| `deck-design <thread>` | design critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.design/` (owns dim 8, source-side density) |
+| `deck-vision <thread>` | vision critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.vision/` (owns dim 8 rendered-side density + vision rubric v1–v6); produces canonical `_review.json` per #26 with `kind=vision`. See `commands/deck-vision.md` and `anvil/lib/vision.py`. |
 | `deck-revise <thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `_revision-log.md` |
 | `deck-audit <thread>` | auditor | latest `<thread>.{N}/`, `<thread>/BRIEF.md`, `<thread>/refs/**` | `<thread>.{N}.audit/` |
 | `deck-figures <thread>` | figurer | latest `<thread>.{N}/deck.md` + `figures/src/` | `<thread>.{N}/figures/` + `<thread>.{N}/deck.pdf` (PDF render) |

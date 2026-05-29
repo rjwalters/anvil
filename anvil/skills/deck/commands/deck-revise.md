@@ -162,6 +162,7 @@ The cycle continues until:
 - **Declined findings are a feature.** Sometimes critics are wrong (or the resolution would violate the no-fabrication contract). Document the disagreement in `_revision-log.md` so the next critic pass can re-evaluate with full context.
 - **Conflict resolution must be explicit.** When critics disagree, pick one and document why. A silent synthesis is harder to audit than an explicit one.
 - **The reviser may not invent.** If a finding asks for a number / name / asset not in the brief, the reviser declines with `Resolution: declined — not in brief; founder follow-up needed`. The reviser is never the source of factual content.
+- **Vision findings often require fixes in `figures/src/*.py` or mermaid blocks, not in `deck.md` itself.** Findings from the `deck-vision` critic (per `deck-vision.md`) flag rendered-only defects: italic-mathtext artifacts (#23 family) and palette-adherence issues are matplotlib-script fixes under `figures/src/`; axis-legibility and label-cropping findings may require DPI/figsize/font-size changes in the same scripts; mermaid diagram findings (illegible labels, layout overflow) require edits to the inline ```mermaid block in `deck.md`. Vertical-overflow findings on text-heavy slides remain `deck.md` fixes. The default assumption "the reviser edits `deck.md`" silently underserves vision findings — surface the figure-source path explicitly in the `_revision-log.md` resolution column.
 
 ## `_progress.json` snippet (revised version dir)
 

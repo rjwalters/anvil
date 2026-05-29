@@ -1,0 +1,148 @@
+---
+name: deck-vision
+description: Vision-model critic for the deck skill. Renders the deck to PDF and per-slide PNGs, then uses a vision-language model to score rendered-only defects (vertical overflow, label cropping, axis legibility, palette adherence, mathtext artifacts, slide density).
+---
+
+# deck-vision — Vision-language-model critic
+
+**Role**: rendered-artifact critic.
+**Reads**: `<thread>.{N}/deck.md` (renders to `deck.pdf` + per-page PNGs on demand).
+**Writes**: `<thread>.{N}.vision/` with `_review.json` (canonical schema, `kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/`.
+
+This critic exists because Anvil's markdown-source critics never *look at* the rendered output. Three open deck bugs — #23 (mathtext italicizing `$11B` as `11B`), #24 (vertical overflow on figure+bullets slides), #25 (`_class: ask` H1+H2 overflow) — are all symptoms of the same gap: text-only critics can't see what the slide actually shows. The static lint in `anvil/skills/deck/lib/marp_lint.py` catches the obvious cases; this critic catches the rest (label cropping, palette adherence, mathtext artifacts, slide-density at projection scale).
+
+## Owned vision dimensions (six, scored /5 each, /30 total)
+
+This critic owns a separate **vision rubric subset** alongside the deck's main 8-dimension /40 rubric. The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+
+| Dim | Name | What it catches |
+|---|---|---|
+| v1 | `vertical_overflow` | Content cut off below the slide bottom; rendered-bbox-based, not source-based. The deeper companion to `marp_lint`'s slide-content-overflow rule. |
+| v2 | `label_cropping` | Chart axis labels, legends, annotations truncated by the slide/figure border. |
+| v3 | `axis_legibility` | Font size of chart axis labels and tick marks vs projection scale. If illegible at 50% zoom on the PNG, the investor can't read it on the conference-room screen. |
+| v4 | `palette_adherence` | Figures match the Marp theme palette (deck: `#1f4e7a / #1a1a1a / #6b6b6b / #d6d6d6 / #f5f5f5` per #23). Default matplotlib colors are a finding. |
+| v5 | `mathtext_artifacts` | Italic letters adjacent to dollar signs (direct catch for #23). LaTeX source rendered literally. |
+| v6 | `slide_density` | Walls of text exceeding ~30 words per slide / ~6 bullets (IC-grade decks). |
+
+The six vision dims are scored 0–5 each. The vision critic puts `null` on the deck's 8 main-rubric dimensions (it does not own them); other critics put `null` on v1–v6. The aggregator merges the two scorecards cleanly per the existing rules.
+
+**Default rubric**: the six dims above. Skills may pass a subset via `VisionRubric(dimensions=[...])` to `VisionCritic.critique()`.
+
+## Critical flags (two initial categories)
+
+Two critical-flag types short-circuit the aggregated verdict to `BLOCK`:
+
+- **`rendered_overflow_unrecoverable`** — content cut off in a way that loses load-bearing information (a number, a citation, a name). Raised when the VLM identifies cropped specific named entities within the lost region.
+- **`mathtext_artifact_breaks_meaning`** — a `$X` rendered as italic `X` in a context where the dollar sign carries semantic weight (financial slides). Direct catch for #23.
+
+Other vision findings surface as `Finding` items with severity `major` / `minor` / `nit`.
+
+## Inputs
+
+- **Thread slug** (positional argument).
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Rendered PDF**: `<thread>.{N}/deck.pdf` — produced by `deck-figures` or by this critic on demand via `anvil.lib.render.render_marp_to_pdf`.
+- **Per-page PNGs**: produced by `anvil.lib.render.render_pdf_to_pngs` from the PDF.
+- **VLM**: Anthropic SDK by default; consumers without an API key inject a callback per `anvil/lib/vision.py`.
+
+## Outputs
+
+```
+<thread>.{N}.vision/
+  slides/
+    page-1.png, page-2.png, ...    Per-page PNGs at 150 DPI (configurable)
+  _review.json                     Canonical schema, kind=vision, rendered_artifact=deck.pdf
+  _meta.json                       { critic, role, started, finished, model, scorecard_kind }
+  _progress.json                   { version, thread, phases.vision.{state,started,completed} }
+```
+
+## Procedure
+
+1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`).
+2. **Initialize `_progress.json`**:
+   ```json
+   {
+     "version": 1,
+     "thread": "<slug>",
+     "for_version": <N>,
+     "phases": { "vision": { "state": "in_progress", "started": "<ISO>" } }
+   }
+   ```
+   and **`_meta.json`**:
+   ```json
+   {
+     "critic": "vision",
+     "role": "deck-vision.md",
+     "started": "<ISO>",
+     "finished": null,
+     "model": "claude-opus-4-7-20251022",
+     "schema_version": 1,
+     "scorecard_kind": "machine-summary"
+   }
+   ```
+   See `anvil/lib/snippets/progress.md` and `anvil/lib/snippets/scorecard_kind.md` for the canonical shapes.
+
+3. **Ensure `deck.pdf` exists**:
+   - If `<thread>.{N}/deck.pdf` exists and is newer than `deck.md`, use it.
+   - Otherwise, call `anvil.lib.render.render_marp_to_pdf(deck_md, out_pdf)`. The library helper invokes Marp with `--config-file anvil/lib/marp/config.yml` per #32.
+
+4. **Render per-page PNGs**:
+   - Call `anvil.lib.render.render_pdf_to_pngs(pdf, out_dir=<thread>.{N}.vision/slides/, dpi=150)`.
+   - Returns a sorted list of PNG paths (`page-1.png`, `page-2.png`, ...).
+
+5. **Run the vision critic**:
+   ```python
+   from anvil.lib.vision import VisionCritic, default_vision_rubric
+   critic = VisionCritic(critic_id="deck-vision")
+   review = critic.critique(
+       images=slide_pngs,
+       rubric=default_vision_rubric(),
+       version_dir="<thread>.<N>",
+       rendered_artifact="deck.pdf",
+       context="This is a {N}-slide pitch deck.",
+   )
+   ```
+   Consumers without an Anthropic API key (CI, offline development) construct the critic with a `callback=` instead.
+
+6. **Write `_review.json`**:
+   - Validate via `Review.model_validate` (the constructor in step 5 already validated).
+   - Serialize with `review.model_dump_json(indent=2)` to `<thread>.{N}.vision/_review.json`.
+
+7. **Update `_progress.json`** and `_meta.json` to `state: done` / `finished: <ISO>`.
+
+8. **Report**: one-line status, e.g. `Vision critic on acme-seed.1 → acme-seed.1.vision/ (vision total 22/30; 4 findings; 1 critical flag: mathtext_artifact_breaks_meaning)`.
+
+## Idempotence and resumability
+
+- Standard: completed = no-op; crashed = re-runnable after deleting partial output.
+- **Stale render**: if `<thread>.{N}/deck.pdf` is older than `<thread>.{N}/deck.md` (deck source updated since render), re-render and re-evaluate. The PDF is the source of truth for this critic.
+- **Stale PNGs**: if PNGs in `slides/` are older than the PDF, re-render.
+
+## Renderer dependencies
+
+- **Marp** (Node binary): `npm install -g @marp-team/marp-cli`. The shipped helper assumes `marp` is on PATH.
+- **pdftoppm** (poppler): `brew install poppler` (macOS) / `apt-get install poppler-utils` (Debian). The `anvil.lib.render` helper falls back to `pdf2image` if installed.
+
+## VLM dependencies
+
+- **Anthropic SDK** (default path): `pip install anthropic`. The default model is `claude-opus-4-7-20251022`; pass a different `model=` to override.
+- **No SDK required** (callback path): consumers without an API key inject a `callback=` per `anvil/lib/vision.py`. This is the path the deck-vision unit tests use.
+
+## Aggregation behavior
+
+This critic's `_review.json` is discovered by `anvil.lib.critics.discover_critics` exactly like the other deck specialists. The aggregator merges its scorecard into the composite verdict per the existing rules:
+
+- The vision dims (v1–v6) appear in the aggregated scorecard alongside the deck's 8 main-rubric dims.
+- Per-dim `critical=True` ORs across critics; non-empty `critical_flags` forces `Verdict.BLOCK`.
+- The deck-revise command (with no code changes) consumes the vision findings via the same discover-glob → aggregate pattern.
+
+See `anvil/lib/README.md` § "Rendered-artifact review (`kind: vision`)" for the worked example.
+
+## Notes for the deck-vision agent
+
+- **Always evaluate the rendered PNGs, not the markdown source.** The whole point of this critic is that visual hierarchy is invisible in markdown.
+- **Vision findings often require fixing `figures/src/*.py`, not `deck.md`.** A vision finding flagging mathtext on a chart label is a matplotlib-script fix; a vision finding flagging overflow on slide 4 may be a `deck.md` fix. The `deck-revise` command surfaces this guidance to the reviser explicitly.
+- **Critical flags are sparingly used.** The two shipped types catch information loss (overflow that drops a number) and semantic loss (mathtext that drops a `$`). Other defects surface as findings, not flags.
+- **Be specific.** A finding that says "slide 4 chart axis label is cropped" is actionable; "the deck has chart issues" is not.
+
+**Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "machine-summary"` per `anvil/lib/snippets/scorecard_kind.md`. The canonical payload is `_review.json` per #26 (the prose siblings are not produced — the vision critic ships `_review.json` directly).
