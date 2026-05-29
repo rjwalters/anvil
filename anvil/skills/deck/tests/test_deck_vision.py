@@ -1,11 +1,12 @@
 """Tests for the deck-vision critic wiring.
 
-This exercises the deck skill's vision integration against three fixture
+This exercises the deck skill's vision integration against four fixture
 decks that reproduce open bugs:
 
 - #23 (mathtext italicization of `$11B` → italic `11B`).
 - #24 (vertical overflow on figure + bullets slides).
 - #25 (`_class: ask` H1 + H2 + bullets overflow).
+- #50 (white-on-white ask-table low-contrast rendering; fixed by PR #55).
 
 The VLM call is stubbed with a callback that simulates the expected
 detection. Real Anthropic calls are out of scope for this test (see
@@ -75,10 +76,11 @@ def _baseline_payload() -> Dict:
 
 
 def test_fixture_decks_present():
-    """The three #23/#24/#25 repro decks exist under the fixtures dir."""
+    """The #23/#24/#25/#50 repro decks exist under the fixtures dir."""
     assert (FIXTURES / "repro_23_mathtext.md").exists()
     assert (FIXTURES / "repro_24_figure_plus_bullets.md").exists()
     assert (FIXTURES / "repro_25_ask_h1_h2.md").exists()
+    assert (FIXTURES / "repro_50_ask_table_low_contrast.md").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +312,112 @@ def test_vision_detects_25_ask_overflow(tmp_path):
     severities = {f.severity for f in review.findings}
     assert "major" in severities
     assert "minor" in severities
+
+
+# ---------------------------------------------------------------------------
+# #50 — white-on-white ask-table low-contrast (regression armor for PR #55)
+# ---------------------------------------------------------------------------
+
+
+def _make_stub_for_50_low_contrast(images, prompt):
+    """Stub returning the expected detection for the #50 low-contrast repro.
+
+    Models a future regression in which the ``section.ask table`` CSS
+    overrides shipped in PR #55 have been deleted: the use-of-funds table
+    on the ``_class: ask`` slide renders white-on-white. Load-bearing dim
+    is ``palette_adherence`` (v4) — white-on-white cells violate the
+    theme palette tokens.
+
+    No new critical-flag type is introduced (finding-level armor only;
+    a future maintainer wanting BLOCK-verdict escalation can add
+    ``rendered_low_contrast_unreadable`` as a separate change to
+    ``anvil/skills/deck/commands/deck-vision.md``).
+    """
+    payload = _baseline_payload()
+    # palette_adherence is the load-bearing dim for #50.
+    for s in payload["scores"]:
+        if s["dimension"] == "palette_adherence":
+            s["score"] = 1
+            s["critical"] = False
+            s["justification"] = (
+                "Slide 1 (_class: ask): use-of-funds table data cells "
+                "render white-on-white. Header row and data rows are "
+                "invisible against the navy ask background; only borders "
+                "are faintly visible."
+            )
+            s["fix"] = (
+                "Restore the section.ask table th/td override in "
+                "anvil-deck.css that sets background:transparent and "
+                "color:#ffffff (regression of #50/PR #55)."
+            )
+    # No critical_flags appended — finding-level armor only.
+    payload["findings"].append(
+        {
+            "severity": "major",
+            "dimension": "palette_adherence",
+            "rationale": (
+                "Ask slide use-of-funds table: 5 data rows and header "
+                "row render with white text on white-painted cells, "
+                "making the funding breakdown unreadable."
+            ),
+            "suggested_fix": (
+                "Re-add `section.ask table th, section.ask table td "
+                "{ background: transparent; color: #ffffff; }` to "
+                "anvil-deck.css."
+            ),
+            "evidence_span": "deck.pdf:slide=1",
+        }
+    )
+    return payload
+
+
+def test_vision_detects_50_low_contrast_ask_table(tmp_path):
+    """Regression armor for #50 / PR #55.
+
+    PR #55 fixed the white-on-white rendering of markdown tables on
+    ``_class: ask`` slides by adding ``section.ask table`` overrides in
+    ``anvil-deck.css``. ``test_ask_table_css.py`` guards the CSS source
+    side. This test guards the rendered side: if a future theme change
+    silently deletes those overrides, the deck-vision critic must
+    surface a low-contrast finding on the ``palette_adherence`` dim.
+
+    The finding-level surfacing is deliberate (per #57 curator notes):
+    no new ``rendered_low_contrast_unreadable`` critical flag is
+    introduced; ``critical_flags`` stays empty. The empty assertion is
+    intentional documentation of that scope decision.
+    """
+    fixture_image = tmp_path / "page-1.png"
+    fixture_image.write_bytes(b"\x89PNG fake")
+
+    critic = VisionCritic(
+        critic_id="deck-vision",
+        callback=_make_stub_for_50_low_contrast,
+    )
+    review = critic.critique(
+        images=[fixture_image],
+        rubric=default_vision_rubric(),
+        version_dir="acme.1",
+        rendered_artifact="deck.pdf",
+    )
+
+    # palette_adherence dim was scored 1 (not critical).
+    palette = next(
+        s for s in review.scores if s.dimension == "palette_adherence"
+    )
+    assert palette.score == 1
+    assert palette.critical is False
+
+    # Exactly one finding surfaces, major severity, palette_adherence dim.
+    assert len(review.findings) == 1
+    finding = review.findings[0]
+    assert finding.severity == "major"
+    assert finding.dimension == "palette_adherence"
+
+    # Positively assert critical_flags is empty — documents the design
+    # choice that #57 is finding-level armor only (no new critical-flag
+    # type was introduced; deck-vision.md was intentionally left
+    # untouched).
+    assert review.critical_flags == []
 
 
 # ---------------------------------------------------------------------------
