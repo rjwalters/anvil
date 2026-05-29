@@ -41,6 +41,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - `<thread>.{N}.review/_review.json` (canonical generic /40 scorecard) via `anvil.lib.critics.load_review`.
    - `<thread>.{N}.review/_review.venue.json` IF present — the venue advisory overlay scorecard. Load via the same `load_review` (both files use the existing `Review` schema in `anvil/lib/review_schema.py`; no new shape). The venue file's findings and critical_flags ARE actionable for the reviser, but a venue critical flag does NOT independently force another revise iteration (the convergence gate is computed from the generic file's verdict only).
    - `<thread>.{N}.audit/` if present: `citation-audit.md`, `numerical-audit.md`, `flags.md`.
+   - `<thread>.{N}.vision/` if present: `_review.json` (`kind=vision`) via `anvil.lib.critics.load_review`. Vision findings target rendered-only figure/table/equation defects and are resolved at the figure source or LaTeX structure, not the prose (see the D6 note under "Notes for the reviser agent").
    - `<thread>.{N}.litsearch/` if present: `notes.md` + `candidates.bib` (the reviser may merge new entries into the revised `refs.bib`).
    - Every other `<thread>.{N}.<critic>/` sibling discovered on disk.
 7. **Build a revision plan**:
@@ -100,6 +101,13 @@ The cycle continues until:
 - **Do not regress.** If a section scored 5/6 in the prior review, the next version should keep it at ≥5/6. The `changelog.md` is the audit trail proving you did not lose ground while addressing other dimensions.
 - **Critical flags trump everything.** Audit and review critical flags MUST be addressed. Failing to do so is a worse outcome than declining a stylistic suggestion. A revision that does not address a flagged citation error will be re-flagged and the iteration cap will burn through quickly.
 - **Declined notes are a feature, not a bug.** Sometimes the reviewer is wrong. Document the disagreement in `changelog.md` so the next reviewer can re-evaluate with full context. Generic-rubric critical flags, however, are not appropriate to decline — challenge them in changelog if you must, but address them in the prose. **Venue critical flags** (from `_review.venue.json`) are advisory: addressing them is good practice for the target venue, but declining a venue critical flag is acceptable when the trade-off is justified (document the reasoning in the changelog).
+- **Vision findings (D6) require edits to figure source or LaTeX structure, NOT the prose.** Findings from the `pub-vision` critic (per `commands/pub-vision.md`, sibling `<thread>.{N}.vision/_review.json` with `kind=vision`) flag rendered-only defects in the compiled PDF that no prose edit can fix:
+  - **`palette_adherence` / `mathtext_artifacts` on a plot** → a matplotlib-script fix under `figures/src/*.py` (color cycle; escaping `$` or using `usetex`/raw strings on labels), then re-run `pub-figures`.
+  - **`axis_legibility` / `label_cropping` on a figure** → a `figsize` / `fontsize` / DPI / `bbox_inches="tight"` change in the same `figures/src/*.py` script.
+  - **Table overflow** (a wide `tabular`/`longtable` clipped at the right margin, surfaced under `label_cropping` and often paired with the `rendered_overflow_unrecoverable` flag) → a `tabular` column-spec / `\resizebox` / `\small` / `longtable` fix in `main.tex` — not a wording change.
+  - **`mathtext_artifacts` on a display equation** (overflow past the right margin, broken span) → a line-break (`\\`, `align`, `split`) or macro fix in `main.tex`.
+
+  The default assumption "the reviser edits the prose in `main.tex`" silently underserves vision findings — surface the figure-source path or the specific LaTeX structure (table/equation) explicitly in the `changelog.md` resolution column. The `mathtext_artifact_breaks_meaning` critical flag is the highest-stakes vision finding for a paper: because LaTeX is the source-of-truth, a rendered equation that diverges from intent is a correctness defect and MUST be resolved at the source.
 - **Preserve `figures/src/`.** The figurer relies on source scripts for re-render. Carry them over verbatim unless the revision deletes the corresponding figure.
 
 ## `_progress.json` snippet (revised version dir)

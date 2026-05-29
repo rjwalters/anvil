@@ -1,0 +1,182 @@
+---
+name: pub-vision
+description: Vision-model critic for the pub skill. Renders the paper source to PDF and per-page PNGs, then uses a vision-language model to score rendered-only defects (figure legibility, table overflow, palette adherence, mathtext artifacts) that the prose/citation critics never see.
+---
+
+# pub-vision — Vision-language-model critic
+
+**Role**: rendered-artifact critic.
+**Reads**: `<thread>.{N}/main.tex` (LaTeX, default) or `<thread>.{N}/main.md` (Markdown source); renders to `paper.pdf` + per-page PNGs on demand.
+**Writes**: `<thread>.{N}.vision/` with `_review.json` (canonical schema, `kind=vision`), `_meta.json`, `_progress.json`, and per-page PNGs in `pages/`.
+
+This critic exists because Anvil's source-side critics never *look at* the compiled paper. The `pub-review` reviewer scores the rubric off `main.tex`; the `pub-audit` auditor verifies citations and numerical consistency against the source. Neither sees the rendered PDF: whether the scaling-law plot's axis labels are legible at print size, whether the wide results table runs off the right margin, whether a `$11B` token got eaten by a MathJax/mathtext span. For a paper this gap is sharper than for a deck — **LaTeX is the source-of-truth, so a rendered equation that does not match the author's intent is a correctness defect, not a polish one.** This critic closes that gap by scoring the rendered pages directly.
+
+This critic is a sibling of `pub-review` and `pub-audit` in the "N parallel critics, one reviser" pattern. It does not gate the state machine on its own; its `_review.json` is aggregated by `pub-revise` alongside the other critic siblings via `anvil/lib/critics.py`.
+
+## Owned vision dimensions (subset of the shipped six, /20 total)
+
+This critic owns a **vision rubric subset** alongside the paper's main 8-dimension /40 rubric (`rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+
+The pub vision rubric is a **four-dimension subset** of the framework's shipped `DEFAULT_VISION_DIMENSIONS` (the six in `anvil/lib/vision.py`), composed by passing the relevant dims to `VisionRubric(dimensions=[...])`. The dropped two (`vertical_overflow`, `slide_density`) are slide-centric and do not apply to a paginated, reflowing paper. The four pub-owned dims, scored 0–5 each (/20 total):
+
+| Dim | Name | What it catches (paper-tuned) |
+|---|---|---|
+| v1 | `label_cropping` | **Figure legibility**: chart axis labels, legends, annotations, and **caption text** truncated by the figure box or page margin. A `\caption{}` that runs under the figure and gets clipped, or a legend cut off at the figure's right edge, is the load-bearing case for a paper. |
+| v2 | `axis_legibility` | **Figure legibility (font scale)**: axis labels and tick marks too small to read at print size. A scaling-law plot whose x-axis is illegible at 100% on the rendered PDF fails the figure-quality bar (rubric dim 6). |
+| v3 | `palette_adherence` | **Palette adherence for plots**: data plots use a consistent, print-safe palette rather than raw matplotlib defaults. For papers this also catches color-only encodings that fail in grayscale print (a reproducibility / accessibility concern). |
+| v4 | `mathtext_artifacts` | **Mathtext artifacts (most critical for pub)**: rendered equations that do not match the LaTeX source intent — `$X` rendered as italic math where literal text was meant, a broken `\(\)`/`$$` span, an overfull display equation running off the right margin, garbled subscripts/superscripts. Because LaTeX is the source-of-truth, a rendered-equation mismatch is a *correctness* defect. |
+
+**Table overflow** — wide tables (`tabular`/`longtable`) whose right-most columns cross the page's right margin or are clipped — is caught under `label_cropping` (the table's clipped content is "cropping" at the page boundary). A table-overflow finding cites the table by its `\label{}` or caption and is paired with the `rendered_overflow_unrecoverable` critical flag when the clipped cells carry load-bearing numbers (e.g. the best-result column dropping off the page).
+
+The four vision dims are scored 0–5 each. The vision critic puts `null` on the paper's 8 main-rubric dimensions (it does not own them); other critics put `null` on v1–v4. The aggregator merges the two scorecards cleanly per the existing rules.
+
+**Default rubric for this critic**: the four dims above, passed explicitly to `VisionRubric(dimensions=[...], rubric_id="anvil-pub-vision-v1")`. The framework default `default_vision_rubric()` ships all six; the pub critic narrows it.
+
+## Critical flags (two shipped categories)
+
+The two framework critical-flag types (from `anvil/lib/vision.py`) short-circuit the aggregated verdict to `BLOCK`:
+
+- **`rendered_overflow_unrecoverable`** — content cut off in a way that loses load-bearing information. For a paper this is most commonly a **wide table whose right columns are clipped at the page margin** (e.g. the best-method column or a confidence-interval column dropping off the page), or a figure caption truncated such that the figure's takeaway is lost. Raised when the VLM identifies that specific named/numeric content was lost in the clipped region.
+- **`mathtext_artifact_breaks_meaning`** — a rendered equation that diverges from the LaTeX source intent in a way that changes meaning: a `$X` rendered as italic `X` where the dollar sign or literal text carried semantic weight, a broken math span, or a display equation whose right-hand side is clipped by an overfull `hbox`. **For a paper this is the highest-stakes vision flag** — the whole premise of a LaTeX paper is that the rendered math is the claim.
+
+Other vision findings surface as `Finding` items with severity `major` / `minor` / `nit`.
+
+## Inputs
+
+- **Thread slug** (positional argument).
+- **Latest version directory**: highest `N` with `<thread>.{N}/main.tex` (or `main.md`).
+- **Rendered PDF**: `<thread>.{N}/paper.pdf`.
+  - If `main.tex` is the source, the PDF is produced by the standard `pdflatex` + `bibtex` cycle that `pub-audit` already runs (see `pub-audit.md`); the vision critic reuses that `paper.pdf` when present and current.
+  - If the source is Markdown (`main.md`), or no `pdflatex`-built PDF exists, the critic renders via `anvil.lib.render.render_pandoc_to_pdf(source_md, out_pdf)`.
+- **Per-page PNGs**: produced by `anvil.lib.render.render_pdf_to_pngs(pdf, out_dir, dpi=200)` from the PDF. Pub uses **200 DPI** by default (vs the deck's 150) — fine-grained axis-label and small-caption legibility evaluation needs the extra resolution at print scale.
+- **VLM**: Anthropic SDK by default; consumers without an API key inject a callback per `anvil/lib/vision.py`.
+
+## Outputs
+
+```
+<thread>.{N}.vision/
+  pages/
+    page-1.png, page-2.png, ...    Per-page PNGs at 200 DPI (configurable)
+  _review.json                     Canonical schema, kind=vision, rendered_artifact=paper.pdf
+  _meta.json                       { critic, role, started, finished, model, scorecard_kind }
+  _progress.json                   { version, thread, phases.vision.{state,started,completed} }
+```
+
+## Procedure
+
+1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`).
+2. **Initialize `_progress.json`**:
+   ```json
+   {
+     "version": 1,
+     "thread": "<slug>",
+     "for_version": <N>,
+     "phases": { "vision": { "state": "in_progress", "started": "<ISO>" } }
+   }
+   ```
+   and **`_meta.json`**:
+   ```json
+   {
+     "critic": "vision",
+     "role": "pub-vision.md",
+     "started": "<ISO>",
+     "finished": null,
+     "model": "claude-opus-4-7-20251022",
+     "schema_version": 1,
+     "scorecard_kind": "machine-summary"
+   }
+   ```
+   See `anvil/lib/snippets/progress.md` and `anvil/lib/snippets/scorecard_kind.md` for the canonical shapes.
+
+3. **Ensure `paper.pdf` exists**:
+   - If `<thread>.{N}/paper.pdf` exists and is newer than the source (`main.tex` and any `figures/` it includes), use it.
+   - Otherwise render it:
+     - **LaTeX source**: run the `pdflatex main && bibtex main && pdflatex main && pdflatex main` cycle (the same one `pub-audit` runs) and copy/rename the result to `paper.pdf`. A non-zero exit is surfaced as a finding (the prose/audit critics will also catch the build failure).
+     - **Markdown source**: call `anvil.lib.render.render_pandoc_to_pdf(main_md, out_pdf)`.
+
+4. **Render per-page PNGs**:
+   - Call `anvil.lib.render.render_pdf_to_pngs(pdf, out_dir=<thread>.{N}.vision/pages/, dpi=200)`.
+   - Returns a sorted list of PNG paths (`page-1.png`, `page-2.png`, ...).
+
+5. **Run the vision critic** with the pub-specific four-dim rubric:
+   ```python
+   from anvil.lib.vision import (
+       VisionCritic,
+       VisionRubric,
+       DEFAULT_VISION_DIMENSIONS,
+   )
+
+   # Narrow the shipped six to the four that apply to a paginated paper.
+   _PUB_DIM_NAMES = {
+       "label_cropping",
+       "axis_legibility",
+       "palette_adherence",
+       "mathtext_artifacts",
+   }
+   pub_rubric = VisionRubric(
+       dimensions=[d for d in DEFAULT_VISION_DIMENSIONS if d.name in _PUB_DIM_NAMES],
+       rubric_id="anvil-pub-vision-v1",
+   )
+
+   critic = VisionCritic(critic_id="pub-vision")
+   review = critic.critique(
+       images=page_pngs,
+       rubric=pub_rubric,
+       version_dir="<thread>.<N>",
+       rendered_artifact="paper.pdf",
+       context=(
+           "This is a rendered research paper. LaTeX/Markdown is the "
+           "source-of-truth: rendered equations MUST match author intent. "
+           "Watch for wide tables clipped at the right margin and figure "
+           "captions / axis labels that are illegible or cropped at print "
+           "size."
+       ),
+   )
+   ```
+   Consumers without an Anthropic API key (CI, offline development) construct the critic with a `callback=` instead — this is the path the `pub-vision` unit tests use.
+
+6. **Write `_review.json`**:
+   - The constructor in step 5 already validated the `Review`.
+   - Serialize with `review.model_dump_json(indent=2)` to `<thread>.{N}.vision/_review.json`.
+
+7. **Update `_progress.json`** and `_meta.json` to `state: done` / `finished: <ISO>`.
+
+8. **Report**: one-line status, e.g. `Vision critic on q3-method.1 → q3-method.1.vision/ (vision total 14/20; 3 findings; 1 critical flag: rendered_overflow_unrecoverable on Table 2)`.
+
+## Idempotence and resumability
+
+- Standard: completed = no-op; crashed = re-runnable after deleting partial output.
+- **Stale render**: if `<thread>.{N}/paper.pdf` is older than `<thread>.{N}/main.tex` (source updated since render), re-render and re-evaluate. The PDF is the source of truth for this critic.
+- **Stale PNGs**: if PNGs in `pages/` are older than the PDF, re-render.
+
+## Renderer dependencies
+
+- **LaTeX toolchain** (LaTeX source path): a TeX distribution providing `pdflatex` + `bibtex` (TeX Live / MacTeX). This is already a `pub-audit` dependency.
+- **pandoc** (Markdown source path): `brew install pandoc` (macOS) / `apt-get install pandoc` (Debian). Used by `anvil.lib.render.render_pandoc_to_pdf`.
+- **pdftoppm** (poppler): `brew install poppler` (macOS) / `apt-get install poppler-utils` (Debian). The `anvil.lib.render` helper falls back to `pdf2image` if installed.
+
+## VLM dependencies
+
+- **Anthropic SDK** (default path): `pip install anthropic`. The default model is `claude-opus-4-7-20251022`; pass a different `model=` to override.
+- **No SDK required** (callback path): consumers without an API key inject a `callback=` per `anvil/lib/vision.py`. This is the path the pub-vision unit tests use.
+
+## Aggregation behavior
+
+This critic's `_review.json` is discovered by `anvil.lib.critics.discover_critics` exactly like `pub-review` and `pub-audit`. The aggregator merges its scorecard into the composite verdict per the existing rules:
+
+- The vision dims (v1–v4) appear in the aggregated scorecard alongside the paper's 8 main-rubric dims.
+- Per-dim `critical=True` ORs across critics; non-empty `critical_flags` forces `Verdict.BLOCK`.
+- The `pub-revise` command (with no code changes) consumes the vision findings via the same discover-glob → aggregate pattern documented in `pub-revise.md`.
+
+The vision overlay is **additive evidence**, not a change to the /40 convergence gate: like the venue overlay, it contributes findings the reviser acts on. The generic 8-dimension `_review.json` from `pub-review` remains the sole driver of the `advance` decision; vision critical flags participate in the same critical-flag short-circuit the rubric already defines.
+
+See `anvil/lib/README.md` § "Rendered-artifact review (`kind: vision`)" for the worked example.
+
+## Notes for the pub-vision agent
+
+- **Always evaluate the rendered PNGs, not the source.** The entire point of this critic is that figure legibility, table overflow, and equation rendering are invisible in `main.tex`.
+- **Vision findings almost always require fixing `figures/src/*.py` (or the `tabular`/equation in `main.tex`), not the prose.** A mathtext or palette finding on a plot is a matplotlib-script fix; an axis-legibility or label-cropping finding is a `figsize`/`fontsize`/DPI change in the same script; a table-overflow finding is a `tabular` column-spec or `\resizebox`/`\small` fix in `main.tex`; a display-equation overflow is a line-break (`\\` / `align`) fix in `main.tex`. The `pub-revise` command surfaces this guidance to the reviser explicitly.
+- **Mathtext is the highest-stakes dim for a paper.** LaTeX is the source-of-truth; a rendered equation that diverges from intent is a correctness defect. Be willing to raise `mathtext_artifact_breaks_meaning` when the rendered math changes the claim.
+- **Be specific.** A finding that says "Table 2's right two columns are clipped at the page margin; the best-F1 column is unreadable" is actionable; "the paper has table issues" is not. Cite figures/tables by their `\label{}` or caption and pages by `paper.pdf:page=<N>`.
+
+**Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "machine-summary"` per `anvil/lib/snippets/scorecard_kind.md`. The canonical payload is `_review.json` per #26 (the prose siblings are not produced — the vision critic ships `_review.json` directly).

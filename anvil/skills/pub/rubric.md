@@ -100,3 +100,21 @@ Shipped venues:
 Each YAML cites its public source in a header comment so it can be updated as venue guidelines change. The schema for these YAMLs is `anvil/lib/rubric.py::Rubric` with `advisory: true`; the loader skips the sum-to-/40 invariant for advisory rubrics. The venue discovery search order (per-thread → consumer-installed → skill-shipped) and the consumer override pattern are documented in `SKILL.md`.
 
 When `venue` is set but no matching YAML is found, the reviewer emits a stdout warning and proceeds with the generic rubric only. The thread's review is not blocked by the missing venue — the generic gate continues to apply.
+
+## Vision-owned dimensions (rendered-artifact overlay)
+
+The optional `pub-vision` critic (see `commands/pub-vision.md`) scores the **compiled PDF** — not `main.tex`. It owns a four-dimension subset of the framework-wide vision rubric (`anvil/lib/vision.py::DEFAULT_VISION_DIMENSIONS`), composed via `VisionRubric(dimensions=[...], rubric_id="anvil-pub-vision-v1")`. These dims catch defects that are invisible in the LaTeX/Markdown source and that neither `pub-review` (prose/structure) nor `pub-audit` (citations/numerics) can see:
+
+| Vision dim | Scored | What it catches for a paper |
+|---|---|---|
+| `label_cropping` | /5 | **Figure legibility + table overflow**: axis labels, legends, and caption text truncated by the figure box; wide `tabular`/`longtable` columns clipped at the page's right margin. |
+| `axis_legibility` | /5 | **Figure legibility (font scale)**: axis labels and tick marks too small to read at print size on the rendered page. |
+| `palette_adherence` | /5 | **Palette adherence for plots**: consistent print-safe palette (not raw matplotlib defaults); color-only encodings that fail in grayscale print. |
+| `mathtext_artifacts` | /5 | **Mathtext artifacts** (highest stakes for a paper): rendered equations that diverge from LaTeX source intent — `$X` rendered as italic math, broken math spans, display equations overflowing the right margin. LaTeX is the source-of-truth, so a rendered-equation mismatch is a *correctness* defect, not a polish one. |
+| | **/20** | Default `pub-vision` total. |
+
+The dropped two framework dims (`vertical_overflow`, `slide_density`) are slide-centric and do not apply to a paginated, reflowing paper.
+
+**These dims do NOT contribute to the /40 convergence gate.** Like the venue overlay, the vision scorecard is an **additive overlay** the reviser (`pub-revise`) consumes for actionable signal. The generic 8-dimension /40 rubric above remains the sole driver of the `advance` decision, preserving the framework-wide "/40 means the same thing across skills" invariant. The vision critic's `_review.json` (`kind=vision`) is discovered and aggregated by `anvil/lib/critics.py` alongside `.review/` and `.audit/`.
+
+**Vision critical flags participate in the short-circuit.** The two framework vision flags — `rendered_overflow_unrecoverable` (a clipped table column or caption that loses load-bearing content) and `mathtext_artifact_breaks_meaning` (a rendered equation that changes the claim) — are real critical flags and block advancement exactly like the `.review`/`.audit` flags above until addressed. They map to rubric dim 6 (Figure & table quality) and dim 1/2 (rigor — a mis-rendered equation undermines the argument) when a reviewer later re-scores the source fix.

@@ -137,11 +137,12 @@ The "Area Chair ensemble" pattern published in AI-Scientist (Sakana, 2024) — m
 | `pub-litsearch <thread>` | literature-search critic | `<thread>/BRIEF.md` (+ `<thread>/refs/`); for re-run, the latest `<thread>.{N}/main.tex` and any `.review/` notes about missing prior work | `<thread>.0.litsearch/` (initial) or `<thread>.{N}.litsearch/` (re-run) |
 | `pub-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs.bib` (if present), `<thread>/refs/`, AND any `<thread>.0.litsearch/` sibling | `<thread>.1/` with `main.tex` + `refs.bib` + `figures/` |
 | `pub-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
+| `pub-vision <thread>` | vision critic (rendered-artifact) | latest `<thread>.{N}/main.tex` rendered to `paper.pdf` + per-page PNGs | `<thread>.{N}.vision/` with `_review.json` (`kind=vision`) |
 | `pub-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
 | `pub-audit <thread>` | fact / citation auditor | latest `<thread>.{N}/` (after reaching `READY`) | `<thread>.{N}.audit/` |
 | `pub-figures <thread>` | figurer | latest `<thread>.{N}/main.tex` and `figures/src/` | figures into `<thread>.{N}/figures/` |
 
-The portfolio orchestrator (`pub`) is the user-facing entry point for status; the six lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
+The portfolio orchestrator (`pub`) is the user-facing entry point for status; the lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent). `pub-vision` is an optional rendered-artifact critic sibling (like `pub-review`/`pub-audit`): it scores figure/table/equation defects visible only in the compiled PDF and feeds the same `pub-revise` aggregation. It does not gate the state machine on its own. See `commands/pub-vision.md`.
 
 ## Progress tracking
 
@@ -168,7 +169,7 @@ The canonical `_progress.json` schema, read-merge-write recipe, and crash recove
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 scoring schema (paper-tuned weights, rigor + evidence + citation hygiene = 17/40 ≈ 43%), the ≥32 advance threshold, and the critical-flag short-circuit policy.
+See `rubric.md` for the 8-dimension /40 scoring schema (paper-tuned weights, rigor + evidence + citation hygiene = 17/40 ≈ 43%), the ≥32 advance threshold, and the critical-flag short-circuit policy. `rubric.md` also documents the **vision-owned dimensions** (`label_cropping`, `axis_legibility`, `palette_adherence`, `mathtext_artifacts`) scored by the optional `pub-vision` critic against the *rendered* PDF — these are an additive overlay (like the venue overlay), not part of the /40 gate.
 
 ## Skill-specific phases
 
