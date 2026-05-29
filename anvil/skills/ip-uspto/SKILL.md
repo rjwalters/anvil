@@ -97,6 +97,7 @@ Iteration cap: default `max_iterations: 5`. Configurable per-thread by writing `
 | `ip-uspto-112 <thread>` | §112 critic | latest `<thread>.{N}/` | `<thread>.{N}.s112/` |
 | `ip-uspto-claims <thread>` | claims critic | latest `<thread>.{N}/claims.tex` + `<thread>.{N}/spec.tex` | `<thread>.{N}.claims/` |
 | `ip-uspto-prior-art <thread>` | prior-art critic | latest `<thread>.{N}/` + `<thread>/prior-art/**` | `<thread>.{N}.priorart/` |
+| `ip-uspto-vision <thread>` | drawing vision critic (optional) | rendered drawings under latest `<thread>.{N}/drawings/` (SVG/PNG; **drawings only — never the spec PDF**) | `<thread>.{N}.vision/` with `_review.json` (kind=vision) |
 | `ip-uspto-revise <thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.<tag>/` critic siblings | `<thread>.{N+1}/` with `_revision-log.md` |
 | `ip-uspto-audit <thread>` | auditor | READY `<thread>.{N}/` | `<thread>.{N}.audit/` |
 | `ip-uspto-figures <thread>` | figurer | latest `<thread>.{N}/spec.tex` + reference numerals | `<thread>.{N}/drawings/**` |
@@ -115,6 +116,7 @@ Given an artifact at `<thread>.{N}/`, critic outputs land in sibling directories
 <thread>.{N}.s112/              ← §112 critic
 <thread>.{N}.claims/            ← claims critic
 <thread>.{N}.priorart/          ← prior-art critic
+<thread>.{N}.vision/            ← drawing vision critic (optional; kind=vision, scores rendered drawings only)
 <thread>.{N}.preflight/         ← pre-flight (mechanical compliance) — produced after revise, pre-review
 <thread>.{N}.audit/             ← final fact-check (audit phase, post-convergence only)
 <thread>.{N+1}/                 ← reviser output (consumes ALL siblings above)
@@ -314,7 +316,7 @@ The schema is documented inline here for v0. There is no separate `schemas/` dir
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 USPTO scoring schema, the ≥35 advance threshold, and the §101/§112 critical-flag short-circuit policy.
+See `rubric.md` for the 8-dimension /40 USPTO scoring schema, the ≥35 advance threshold, and the §101/§112 critical-flag short-circuit policy. The optional `ip-uspto-vision` critic owns a **separate drawing-vision rubric subset** (dv1–dv5, /25) documented in the same file — it critiques the rendered drawings only (legibility, line weight/contrast, label placement, figure-number visibility, cross-reference accuracy) and ships its scorecard directly as `_review.json` (canonical `kind=vision` schema) rather than the `_summary.md`/`findings.md` machine-summary shape the source-side critics use; both are discovered and aggregated uniformly by `anvil/lib/critics.py`.
 
 ## USPTO-specific phases
 
