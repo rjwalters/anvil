@@ -105,7 +105,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 
 **Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Configurable per-thread via `<thread>/.anvil.json` with `{ "max_iterations": <N> }`. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
-**Re-running siblings on revision**: `audit` and `rehearse` are critic-shaped and are re-discovered on each loop. After a revision lands a new `<thread>.{N+1}/`, the orchestrator re-runs `slides-review`, `slides-audit`, and `slides-rehearse` against the new version. `handout` is terminal-only and runs once on the final READY+AUDITED+REHEARSED version.
+**Re-running siblings on revision**: `audit`, `rehearse`, and `vision` are critic-shaped and are re-discovered on each loop. After a revision lands a new `<thread>.{N+1}/`, the orchestrator re-runs `slides-review`, `slides-audit`, `slides-rehearse`, and `slides-vision` against the new version. `handout` is terminal-only and runs once on the final READY+AUDITED+REHEARSED version.
 
 ## Command dispatch
 
@@ -116,6 +116,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 | `slides-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ refs); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings; AND `<thread>.0.outline/` if present | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `slides-revise`) |
 | `slides-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
 | `slides-audit <thread>` | auditor | latest `<thread>.{N}/` (deck.md AND notes/) | `<thread>.{N}.audit/` |
+| `slides-vision <thread>` | vision critic | latest `<thread>.{N}/deck.md` (renders to `deck.pdf` + per-slide PNGs on demand) | `<thread>.{N}.vision/` with `_review.json` (`kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/` |
 | `slides-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
 | `slides-figures <thread>` | figurer | latest `<thread>.{N}/deck.md` | figures under `<thread>.{N}/figures/` |
 | `slides-rehearse <thread>` | rehearser | latest `<thread>.{N}/` | `<thread>.{N}.rehearse/` |
@@ -218,7 +219,7 @@ The skill prompt instructs the figurer to **never invent data** — only render 
 - Dense bullet lists, deep code blocks, large tables, headings stacked on a single slide.
 
 **What it does NOT catch**:
-- True rendered overflow caused by font fallback, image aspect ratio, theme overrides, or KaTeX block size — these are caught by the vision critic (issue #30).
+- True rendered overflow caused by font fallback, image aspect ratio, theme overrides, or MathJax block size — these are caught by the `slides-vision` VLM critic (`commands/slides-vision.md`), which renders the deck to per-slide PNGs and scores rendered-only defects.
 - Semantic overflow (slide is logically too crowded but fits in the safe area). The reviewer's qualitative comments cover this.
 - Per-slide spoken-time / density (that is the `slides-rehearse` critic's job).
 

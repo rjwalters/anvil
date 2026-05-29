@@ -6,7 +6,7 @@ description: Reviser command for the slides skill. Reads the latest version + al
 # slides-revise — Reviser
 
 **Role**: reviser.
-**Reads**: latest `<thread>.{N}/` (deck.md + notes/* + figures/) AND ALL `<thread>.{N}.*/` critic siblings (`.review/`, `.audit/`, `.rehearse/`, and any others).
+**Reads**: latest `<thread>.{N}/` (deck.md + notes/* + figures/) AND ALL `<thread>.{N}.*/` critic siblings (`.review/`, `.audit/`, `.rehearse/`, `.vision/`, and any others).
 **Writes**: `<thread>.{N+1}/` containing the revised deck, notes, figures, `_progress.json`, and a `changelog.md` mapping critic notes to the changes made.
 
 This command is the "N parallel critics, one reviser" pattern from anvil's design principles. It consumes any number of critic siblings at the current version and produces a single revised version that addresses them.
@@ -15,7 +15,7 @@ This command is the "N parallel critics, one reviser" pattern from anvil's desig
 
 - **Thread slug** (positional argument).
 - **Latest version**: highest `N` with `<thread>.{N}/deck.md`.
-- **Critic siblings**: ALL `<thread>.{N}.<critic>/` directories at that `N`. At minimum the `.review/` sibling is required (the reviewer's verdict drives the dimension-by-dimension revision plan). The `.audit/` and `.rehearse/` siblings, when present, contribute additional findings — and `wrong` audit verdicts or set density/time flags MUST be addressed (they short-circuit advancement).
+- **Critic siblings**: ALL `<thread>.{N}.<critic>/` directories at that `N`. At minimum the `.review/` sibling is required (the reviewer's verdict drives the dimension-by-dimension revision plan). The `.audit/` and `.rehearse/` siblings, when present, contribute additional findings — and `wrong` audit verdicts or set density/time flags MUST be addressed (they short-circuit advancement). The `.vision/` sibling (per `slides-vision.md`), when present, contributes the rendered-artifact scorecard (`kind=vision`, discovered via `anvil.lib.critics.discover_critics`): its `vertical_overflow`/`label_cropping`/`axis_legibility`/`palette_adherence`/`mathtext_artifacts`/`slide_density` dims and its `rendered_overflow_unrecoverable` / `mathtext_artifact_breaks_meaning` critical flags MUST be addressed if set.
 
 ## Outputs
 
@@ -40,6 +40,7 @@ This command is the "N parallel critics, one reviser" pattern from anvil's desig
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
    - `<thread>.{N}.audit/verdict.md` + `claims.md` (if present).
    - `<thread>.{N}.rehearse/timing.md` + `density.md` (if present).
+   - `<thread>.{N}.vision/_review.json` (if present) — the rendered-artifact scorecard from `slides-vision`.
    - Any other `<thread>.{N}.<critic>/` sibling discovered on disk.
 7. **Build a revision plan**:
    - **Critical flags first.** Every `wrong` audit verdict, every density violation, and the time flag (if set) MUST be addressed. These are non-negotiable.
@@ -99,6 +100,7 @@ After this command produces `<thread>.{N+1}/`, the orchestrator runs all three c
 - **Density splits affect time.** Splitting an over-dense slide adds to the slide count, which adds to the projected duration. After a density split, double-check that you haven't created a new time-flag violation. The next `slides-rehearse` pass will catch it, but a conscientious reviser anticipates.
 - **Notes are not optional.** If you add a slide, write its notes. If you split a slide, split its notes too. A revised deck with empty notes files for new slides is a Dimension 7 failure.
 - **Declined notes are a feature, not a bug.** Sometimes the reviewer is wrong. Document the disagreement in `changelog.md` so the next reviewer can re-evaluate with full context. But NEVER decline a critical flag.
+- **Vision findings often require fixes in `figures/src/*.py` or inline mermaid blocks, not in `deck.md` itself.** Findings from the `slides-vision` critic (per `slides-vision.md`) flag rendered-only defects: italic-mathtext artifacts (the MathJax `$`-as-math failure mode) and palette-adherence issues are matplotlib-script fixes under `figures/src/`; axis-legibility and label-cropping findings may require DPI/figsize/font-size changes in the same scripts; mermaid-diagram findings (illegible labels, layout overflow) require edits to the inline ```mermaid block in `deck.md`. Vertical-overflow findings on text-heavy slides remain `deck.md` fixes (often a slide split, which also resolves the companion `slide_density` finding). The default assumption "the reviser edits `deck.md`" silently underserves vision findings — surface the figure-source path explicitly in the `changelog.md` resolution column. Note that `slides-vision` findings on the `vertical_overflow` and `slide_density` dims overlap with the rehearser's density flag and the reviewer's `slide-content-overflow` lint: resolve them together (one slide split usually clears all three), and do not double-count the same defect as separate changes.
 
 ## `_progress.json` snippet (revised version dir)
 

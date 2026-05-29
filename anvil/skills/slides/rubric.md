@@ -13,7 +13,7 @@ This weighting differs from `anvil:memo` (where thesis + evidence + risk dominat
 | 1 | **Technical accuracy** | 7 | Every claim — equation, statistic, attribution, mechanism — is correct and citable. Listeners cannot pause-and-verify. A single wrong equation in a recorded talk is a reputational tax that compounds. Highest weight by design; ties to the mandatory audit phase. |
 | 2 | **Pedagogical clarity** | 6 | One idea per slide. Concept → example → implication scaffold where applicable. Jargon defined on first use. Talks teach; decks pitch. A listener who has not seen the material before should be able to follow the through-line. |
 | 3 | **Narrative arc** | 6 | Hook → context → 2–4 substantive beats → takeaway → Q&A. A talk without a spine loses the audience by slide 8. Beat transitions are explicit (section dividers, recap slides). The final slide states the takeaway in plain language. |
-| 4 | **Slide density / cognitive load** | 6 | Bullet-count caps respected. No "wall of text." 6×6 rule applied judiciously. Penalize density spikes (one outlier slide can break audience attention for the next three). Highest mechanical-reject reason. |
+| 4 | **Slide density / cognitive load** | 6 | Bullet-count caps respected. No "wall of text." 6×6 rule applied judiciously. Penalize density spikes (one outlier slide can break audience attention for the next three). Highest mechanical-reject reason. **Jointly owned** — see "Dimension 4 ownership" below. |
 | 5 | **Visual quality** | 4 | Diagram clarity, consistent style, no chartjunk, sensible color choices. Lower weight than for `deck` (where polish is investability signal); a great talk on plain slides beats a polished talk on bad slides. |
 | 6 | **Accessibility / readability at distance** | 4 | Minimum font size (24pt body / 18pt code), color-blind-safe palette, sufficient contrast, no critical info conveyed by color alone. Hard requirement for projected venues — a slide unreadable from row 20 is a slide nobody read. |
 | 7 | **Presenter-notes completeness** | 4 | Every slide has speaker notes covering: what to say, transitions, anticipated questions, time-allocation. Critical for rehearsal AND for handoff (someone else may deliver the talk). |
@@ -21,6 +21,19 @@ This weighting differs from `anvil:memo` (where thesis + evidence + risk dominat
 | | **Total** | **40** | Advance threshold: ≥32 |
 
 The four anchor dimensions (1–4) sum to **25/40 = 62.5%**, reflecting that the four pillars of a good talk are *true, clear, well-shaped, and digestible*. The presentation-craft dimensions (5–8) sum to 15/40 — necessary but never sufficient.
+
+## Dimension 4 ownership (density / cognitive load)
+
+Dimension 4 is **jointly owned** by a source-side path and a rendered-side path, because slide density manifests in two places that no single critic can see at once:
+
+- **Source-side owners** — `slides-rehearse` (deterministic word/bullet counts feeding the density flag) and `slides-review` (the pre-flight `slide-content-overflow` lint plus the reviewer's qualitative density judgment). These catch density that is visible in the `deck.md` source: bullet-count caps, wall-of-text slides, and the figure-plus-bullets / `_class: ask` overflow patterns the lint was written for.
+- **Rendered-side owner** — `slides-vision` (per `commands/slides-vision.md`). Its `slide_density` and `vertical_overflow` vision dims catch density that only appears *after rendering*: true overflow from font fallback, theme overrides, or image aspect ratio, and slides that the source-side word/bullet heuristics under-counted because the visual weight (a large equation, a wide table, a tall figure) does not map to word count.
+
+(The slides skill ships no `slides-design` critic — unlike `anvil:deck`, which splits a `deck-design` specialist out. On `anvil:slides` the source-side density judgment lives in `slides-review` and `slides-rehearse`; the rendered-side judgment lives in `slides-vision`. If a consumer adds a `slides-design` override critic, it joins the source-side owners of this dimension.)
+
+When the source-side and rendered-side owners disagree (e.g. the lint passes a slide but the vision critic flags rendered overflow), the **rendered-side finding wins** — the audience sees the rendered slide, not the source. The reviser resolves both at once: a single slide split usually clears the rehearser's density flag, the vision `vertical_overflow`/`slide_density` findings, and the reviewer's lint warning together. See `commands/slides-revise.md`'s vision reviser-guidance note for how the reviser avoids double-counting the same defect.
+
+The aggregator (`anvil/lib/critics.py::aggregate`) merges the two paths cleanly: `slides-vision` scores its vision dims (v1–v6, including `slide_density`) and puts `null` on the 8 main-rubric dims; the source-side critics score Dimension 4 directly and put `null` on the vision dims. A per-dim `critical=True` or a `rendered_overflow_unrecoverable` critical flag from any owner short-circuits the verdict to block.
 
 ## Scoring guidance
 
