@@ -35,54 +35,93 @@ The figurer picks a rendering path per figure based on the spec (or the drafter'
 
 ### 1. Mermaid (default for diagrams) — `mmdc → PNG`
 
-> **Correctness note (verified, issue #65).** Inline fenced ```mermaid blocks
-> do **NOT** render as diagrams in the canonical `--pdf` output — they emit as
-> raw monospace code (the grammar leaks verbatim). `html: true` only passes
-> raw HTML through; it does not execute mermaid.js during Marp's PDF render.
-> So diagrams must be pre-rendered to PNG via `mmdc`, which is therefore a
-> **required** dependency for any deck with a diagram (not a fallback). The
-> deck skill (`deck-figures`) is the primary, fully-wired implementation;
-> this slides note is the matching doc correction. Wiring a slides-side
-> `mmdc` preflight is tracked as a follow-up.
+> **Correctness note (verified empirically, issue #65).** Inline fenced
+> ```mermaid blocks **do NOT render as diagrams in the canonical `--pdf`
+> output**. With marp-cli v4.4.0 / marp-core v4.3.0 and the framework
+> `html: true` pin, a fenced ```mermaid block emits as **raw monospace
+> source in a gray code-block** in the PDF — the grammar
+> (`sequenceDiagram`, `flowchart LR`, `-->`, `->>`) leaks verbatim. MathJax
+> on the same slide renders correctly, so the pipeline is healthy; the
+> failure is mermaid-specific. `--html` only passes raw HTML *through* — it
+> does NOT cause mermaid.js to execute during Marp's PDF render, and the
+> framework config injects no mermaid plugin. **Therefore `mmdc → PNG` is
+> the only working diagram path for the PDF, and `mmdc` is REQUIRED for any
+> slide deck containing a diagram — not a fallback.** If a future marp-core
+> version renders inline mermaid in PDF, this default narrows back to
+> inline; until then, render diagrams to PNG.
 
-The drafter writes the Mermaid source to `figures/<name>.mmd`:
+**Diagram routing (default): `mmdc → PNG` out-of-band rendering.** Every
+slide diagram is rendered to a PNG via `mmdc` and referenced from `deck.md`
+as `![alt](figures/<name>.png)`. The drafter is expected to produce
+`figures/src/<name>.mmd` sources; the figurer renders each to a PNG.
 
-```mermaid
-sequenceDiagram
-    Client ->> Server: request
-    Server ->> Cache: lookup
-    Cache -->> Server: hit
-    Server -->> Client: response
-```
-
-…and references the rendered PNG from `deck.md` as
-`![alt](figures/<name>.png)`. `slides-figures` renders the `.mmd` to a PNG
-via `mmdc` (mermaid-cli). If a drafter leaves an inline ```mermaid fence in
-`deck.md` (with or without a `<!-- anvil-figure: png -->` marker), extract it
-to `figures/<name>.mmd` and render it through this path rather than leaving it
-inline (it would degrade to raw code in the PDF).
+- **Extract inline fences.** If the drafter left a fenced ```mermaid block
+  directly in `deck.md` (with or without a `<!-- anvil-figure: png -->`
+  marker above it), extract the mermaid body to
+  `figures/src/<derived-name>.mmd`, replace the fence in `deck.md` with a
+  `![alt](figures/<derived-name>.png)` reference, and render the `.mmd`
+  below. Do NOT leave the inline fence in place — it would degrade to raw
+  code in the PDF.
+- **Geometry / compositing knobs.** When a diagram needs a non-default
+  width/height/aspect ratio, or must be overlaid on a theme-colored
+  background (`--backgroundColor transparent`), or is larger than the
+  slide's safe area (caught by `slide-content-overflow` lint), pass the
+  corresponding `mmdc` flags.
 
 Use Mermaid for: architecture diagrams, flowcharts, sequence diagrams, state
 machines, simple block diagrams.
 
-**Geometry / compositing knobs.** Pass `mmdc` flags as needed:
+**Preflight (REQUIRED before any `mmdc` render).** Before rendering any
+`.mmd` source, check that `mmdc` is on PATH (mirrors the
+`shutil.which("marp")` guard in `anvil/lib/render.py::render_marp_to_pdf`;
+a shared helper `anvil/lib/render.py::check_mmdc_available()` performs this
+check and is unit-tested). If `mmdc` is NOT on PATH:
 
-- **Custom geometry** — explicit `--width`/`--height` when the diagram needs
-  a non-default container.
-- **Transparent compositing** — `--backgroundColor transparent` to overlay
-  on a slide-background image.
-- **Auto-layout breakdown** — render at a forced viewport when the diagram is
-  larger than the slide's safe area (caught by `slide-content-overflow`).
+- Emit a `[blocker]` with the full remediation:
+  - Install: `npm install -g @mermaid-js/mermaid-cli` (provides `mmdc`).
+  - Note the **~300MB+ headless Chromium download** Puppeteer pulls on
+    first install — the single largest and most failure-prone dependency
+    in this skill (network / disk / sandbox issues are all common).
+  - In CI / containers, Chromium typically needs `--no-sandbox`. Pass a
+    Puppeteer config file via `mmdc --puppeteerConfigFile <file>` whose
+    contents are `{"args":["--no-sandbox"]}`, or Chromium fails to launch
+    with an opaque error.
+- **Write a proactive `figures/<name>.png-FAILED.md` stub** for each
+  diagram that would have been rendered, describing the missing-`mmdc`
+  dependency and the remediation above — BEFORE producing a `deck.md`
+  that references a nonexistent PNG.
+- Skip the `mmdc` render path for this run (the matplotlib + external-asset
+  steps still run, so the failure is legible and the deck is not silently
+  broken).
+- A slide deck with zero diagrams (no `.mmd` sources and no inline ```mermaid
+  fences) does NOT trigger this preflight — `mmdc` is only required when a
+  diagram is present.
 
-When rendering:
+When `mmdc` is present, render each diagram with:
+```bash
+mmdc \
+  --input figures/src/<name>.mmd \
+  --output figures/<name>.png \
+  --width 1600 \
+  --height 900 \
+  --backgroundColor white \
+  -c anvil/lib/figures/mermaid-theme.json
+```
+(`mmdc` from `@mermaid-js/mermaid-cli`; install via `npm install -g @mermaid-js/mermaid-cli`.)
 
-- Write the Mermaid source to `figures/<name>.mmd`.
-- Render to PNG (or SVG) via `mmdc` (mermaid-cli) if available.
-- If `mmdc` is unavailable, write the `.mmd` source and a stub `.md`
-  placeholder noting that `mmdc` (`npm install -g @mermaid-js/mermaid-cli`,
-  ~300MB+ Chromium; `--puppeteerConfigFile {"args":["--no-sandbox"]}` in
-  CI/containers) must be installed before slide export — rather than leaving
-  a broken image reference.
+- `-c anvil/lib/figures/mermaid-theme.json` applies the shared Anvil
+  mermaid theme (`theme: base` + navy `themeVariables`) so diagrams render
+  on the slides brand palette (navy nodes, muted-grey edges, Helvetica) by
+  default instead of the stock lavender/pink theme. In an installed consumer
+  repo this resolves to `.anvil/lib/figures/mermaid-theme.json` (the
+  installer copies `anvil/lib/` wholesale, same as `marp/config.yml`). The
+  theme is lib-level so it serves both `anvil:slides` and `anvil:deck`. A
+  consumer who overrides the slides theme can pass their own `-c <file>`.
+
+On render failure: write a stub `figures/<name>.png-FAILED.md` describing
+the error, leave the prior PNG (if any) in place, continue with other
+figures. A failed render is a visible, debuggable artifact — never a
+silently broken reference.
 
 ### 2. matplotlib (default for data plots)
 
@@ -109,9 +148,9 @@ Use external assets for: product screenshots, photos, third-party logos, pre-exi
 2. **Resume check**: enumerate figure references in `deck.md`. For each referenced figure, check if the file exists in `figures/`. If all referenced figures exist AND `phases.figures.state == done`, exit early — no work needed.
 3. **Initialize `_progress.json`**: write `phases.figures.state = in_progress`, `phases.figures.started = <ISO>`.
 4. **For each missing or stale figure**:
-   - **Mermaid diagrams (`mmdc → PNG`)** — diagrams are rendered to PNG via `mmdc`; inline ```mermaid fences do NOT render in the PDF (see "Mermaid (default for diagrams)" above). For each `figures/<name>.mmd` source — or each inline ```mermaid fence in `deck.md`, which is extracted to `figures/<name>.mmd` — render to PNG via `mmdc`. If `mmdc` is missing or the render fails (syntax error), produce a stub `.md` noting the attempted source and the `mmdc` install remediation.
-   - **Data plots** — require a source `.csv` (or equivalent). If no source data exists AND the brief / refs don't provide it, refuse and surface the gap in `figures/_unresolved.md`. The figurer does not invent data.
-   - **External assets** — copy from `refs/` or `assets/` into `figures/` with a clear name.
+   - **Mermaid diagrams (`mmdc → PNG`)** — diagrams are rendered to PNG via `mmdc`; inline ```mermaid fences do NOT render in the PDF (see "Mermaid (default for diagrams)" above for the full preflight + render block). Run the preflight first: call `anvil.lib.render.check_mmdc_available()`; if it returns False, emit a `[blocker]` with the full remediation (`npm install -g @mermaid-js/mermaid-cli`, ~300MB+ Chromium, `--puppeteerConfigFile {"args":["--no-sandbox"]}` in CI), write a proactive `figures/<name>.png-FAILED.md` stub per diagram BEFORE producing a `deck.md` that references nonexistent PNGs, and skip the `mmdc` render path for this run. If `mmdc` is present, render each `figures/src/<name>.mmd` source — or each inline ```mermaid fence in `deck.md` (extract to `figures/src/<name>.mmd` first) — to PNG with `-c anvil/lib/figures/mermaid-theme.json`. On a per-diagram render failure (e.g., syntax error), produce a `figures/<name>.png-FAILED.md` stub noting the attempted source and the error.
+   - **Data plots** — require a source `.csv` (or equivalent). If no source data exists AND the brief / refs don't provide it, refuse and surface the gap in `figures/_unresolved.md`. The figurer does not invent data. The matplotlib step runs independently of the `mmdc` preflight outcome — a missing `mmdc` does not block matplotlib renders.
+   - **External assets** — copy from `refs/` or `assets/` into `figures/` with a clear name. Runs independently of the `mmdc` preflight outcome.
 5. **Tooling preference**: self-contained tools (Mermaid CLI, matplotlib, ImageMagick for conversion) over network-dependent services. Failing renders produce a stub `.md` placeholder noting what was attempted and why it failed, rather than silently leaving a broken image reference.
 6. **Update `_progress.json`**: `phases.figures.state = done`, `phases.figures.completed = <ISO>`.
 7. **Report**: print a one-line status (e.g., `Rendered 5 figures for kdd-2026-keynote.2/ (3 Mermaid, 2 matplotlib; 1 unresolved — see figures/_unresolved.md)`).
