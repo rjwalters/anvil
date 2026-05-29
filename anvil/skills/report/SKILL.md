@@ -1,0 +1,233 @@
+---
+name: report
+description: Draft, review, audit, revise, and promote customer-facing technical reports through the anvil lifecycle, with a two-stage AUDITED → CUSTOMER-READY promotion gate.
+domain: report
+type: skill
+user-invocable: false
+---
+
+# anvil:report — Customer-facing technical reports
+
+The `report` skill produces customer-facing technical reports (engagement findings, deliverable assessments, audit summaries, external advisories) through an extended anvil lifecycle:
+
+```
+draft → review + audit (parallel, both default) → revise → … → AUDITED → promote → CUSTOMER-READY
+```
+
+Reports differ from internal memos in two structural ways:
+
+1. **Both `.review/` and `.audit/` critic siblings run by default** — stylistic review and factual audit hit orthogonal failure modes and are not interchangeable for customer-facing material.
+2. **A two-stage final promotion** extends the standard state machine: `AUDITED` (correctness verified) and `CUSTOMER-READY` (human-acknowledged release approval) are distinct events. Conflating them removes a useful kill-switch.
+
+Reports also introduce a **per-project scoping layer** so multiple reports under one engagement share a `_project.md` recipient context.
+
+## Artifact contract
+
+A **report thread** is a single deliverable for a named recipient, authored across one or more revisions. Reports live under a **project directory** that captures shared engagement context:
+
+```
+reports/
+  <project-slug>/                  Engagement scope (e.g., acme-q2/, beta-audit/)
+    _project.md                    Recipient context, engagement brief, prior reports (see "Project schema")
+    <thread>/                      Optional thread root with brief and reference material
+      BRIEF.md                     Optional structured or freeform brief
+      refs/                        Optional reference material
+    <thread>.1/                    First drafted version (immutable once written)
+      report.md                    Report body
+      exhibits/                    Inline exhibits referenced from body
+      report.pdf                   Rendered deliverable (added by figures or promote)
+      _progress.json               Phase state for this version
+      changelog.md                 (revisions only) Maps prior critic notes to changes
+    <thread>.1.review/             Reviewer output for version 1 (read-only)
+      verdict.md                   Decision (advance / block) + total /40
+      scoring.md                   Per-dimension scores
+      comments.md                  Line-level comments
+    <thread>.1.audit/              Auditor output for version 1 (read-only, REQUIRED by default)
+      verdict.md                   Audit decision (pass / fail) + flag list
+      findings.md                  Per-claim audit findings
+      evidence.md                  Citation traceability map
+    <thread>.2/                    Revised version (consumes both siblings)
+    ...
+    <thread>.{N}/                  Terminal AUDITED version
+    <thread>.{N}.promote/          Promotion record (CUSTOMER-READY state)
+      receipt.md                   Human acknowledgment record + deliverable hash
+```
+
+Versioned dirs (`<thread>.{N}/`) and critic sibling dirs are **immutable once their `_progress.json` records the phase as `done`**. The `.promote/` sibling is similarly immutable once written.
+
+## State machine
+
+Per-thread state, derived from on-disk evidence:
+
+```
+EMPTY → DRAFTED → REVIEWED+AUDITED → REVISED → … → READY → AUDITED → CUSTOMER-READY
+                       ↘ (either alone is insufficient — both required to leave DRAFTED) ↗
+```
+
+| State | Evidence |
+|---|---|
+| `EMPTY` | No `<thread>.{N}/` directories exist |
+| `DRAFTED` | Latest `<thread>.{N}/` exists with `report.md` and `_progress.json.draft == done`; no sibling review/audit at the same `N` |
+| `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` (without `.audit/`) — transient; not advance-eligible |
+| `AUDITED-PARTIAL` | `<thread>.{N}.audit/verdict.md` exists for the latest `N` (without `.review/`) — transient; not advance-eligible |
+| `REVIEWED+AUDITED` | BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` exist for the latest `N` |
+| `REVISED` | A `<thread>.{N+1}/` exists after a prior `REVIEWED+AUDITED` state at `N` |
+| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` (score ≥35) AND latest `<thread>.{N}.audit/verdict.md` records `pass: true` AND no unresolved critical flag in either sibling |
+| `AUDITED` | Same as `READY` for this skill — the term `AUDITED` is the standard anvil terminal state; report reaches it once both critic siblings clear |
+| `CUSTOMER-READY` | `<thread>.{N}.promote/receipt.md` exists for an `AUDITED` version |
+
+**Why "REVIEWED+AUDITED" rather than running them serially?** Both siblings consume the same `<thread>.{N}/` and write to disjoint paths — they are pure parallel critics in the "N parallel critics, one reviser" sense. Sequential execution would let the auditor read reviewer notes (a sometimes-useful signal: "reviewer praised a finding that is factually wrong"), but it sacrifices parallelism without a clear win. v0 runs them in parallel; revisit after first real use (see Open questions in #8).
+
+**Threshold**: ≥35/40 (the customer-facing tier; higher than the ≥32/40 used by `anvil:memo`). Any critical flag in EITHER `.review/` or `.audit/` short-circuits regardless of total — block until addressed.
+
+**Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root.
+
+## Two-stage promotion: `AUDITED → CUSTOMER-READY`
+
+The standard anvil state machine terminates at `AUDITED`. For customer-facing material, "audit passed" and "approved for external delivery" are genuinely different events:
+
+- **`AUDITED`** = the artifact is correct and well-formed. The rubric cleared. No unsupported claims, no internal contradictions, no audit findings outstanding. This is a machine-checkable state.
+- **`CUSTOMER-READY`** = a human (or explicitly-authorized approver) has accepted liability for releasing the artifact to the named recipient. This is not machine-checkable; it is an act of judgment.
+
+`report-promote` is the command that performs the transition. It REFUSES to run from any state other than `AUDITED` and REQUIRES an explicit human acknowledgment token (see `commands/report-promote.md` for the protocol). On success it writes `<thread>.{N}.promote/receipt.md` capturing:
+
+- Who acknowledged (operator identity or signed approver name).
+- What was acknowledged (deliverable hash + named recipient from `_project.md`).
+- When (ISO timestamp).
+
+The `.promote/` sibling is the on-disk evidence that the thread is in state `CUSTOMER-READY`.
+
+**Framework extraction note (per #10)**: this two-stage extension is implemented inline in this skill. When `anvil/lib/state_machine.py` lands, the pattern (post-`AUDITED` named terminal states with explicit human-acknowledgment guards) is a candidate to be promoted to a first-class extension point. Similar gates likely needed by other skills: `pub` → `SUBMITTED`, `ip-uspto` → `FILED`. The recommendation is to wait until ≥2 skills need the pattern before extracting it.
+
+**Demotion**: a `CUSTOMER-READY` thread cannot be demoted. To correct a delivered report, start a new version (`<thread>.{N+2}/`) with a fresh `draft → review+audit → revise → promote` cycle. The original `CUSTOMER-READY` receipt remains as audit trail; the new receipt supersedes for delivery purposes.
+
+## Per-project scoping
+
+Reports are typically commissioned per-engagement. A single engagement may produce multiple reports (initial findings, follow-up, final delivery) that share substantial recipient context. The `_project.md` file at the project root captures this shared context once and is loaded by every command (`draft`, `review`, `audit`).
+
+### `_project.md` schema
+
+YAML frontmatter (required) + freeform prose (optional but recommended):
+
+```markdown
+---
+recipient: "Acme Corporation, Q2 Engagement"
+engagement_id: "ACME-2026-Q2"
+delivery_format: "pdf"             # pdf | latex | markdown
+confidentiality_class: "internal"  # public | internal | confidential | restricted
+prior_reports:
+  - thread: findings
+    final_version: 3
+    delivered_at: "2026-04-12"
+  - thread: interim
+    final_version: 2
+    delivered_at: "2026-05-01"
+voice_notes: "Technical but accessible; recipient CTO is an engineer. Avoid sales tone."
+---
+
+## Engagement brief
+
+(Freeform prose describing the engagement scope, recipient relationship,
+known sensitivities, prior interactions, anything the drafter / reviewer /
+auditor should keep in mind.)
+```
+
+**Required fields**: `recipient`, `engagement_id`. Everything else is optional with documented defaults.
+
+**Multiple concurrent reports per project**: yes, supported by thread naming. Two reports on the same engagement live as `reports/acme-q2/findings.1/` and `reports/acme-q2/recommendations.1/`. Each has independent state; both share `_project.md`.
+
+**Auditor use of `prior_reports`**: the auditor uses this list to cross-check the current draft for **contradictions with previously-delivered material**. Inconsistency across an engagement's report series is a critical-flag offense (see `rubric.md`, critical flag: "internal contradictions across the engagement").
+
+**Framework extraction note (per #10)**: per-project scoping is implemented inline by this skill. Other future skills (`pub` with multi-paper grant projects, `ip-uspto` with patent families) likely benefit from a parallel pattern. Candidate for `anvil/lib/project_scope.py` once a second consumer exists.
+
+## Command dispatch
+
+| Command | Role | Reads | Writes |
+|---|---|---|---|
+| `report` | portfolio orchestrator | all `<project>/<thread>.*/` dirs under cwd | (none; reports state per thread + recommends next command) |
+| `report-draft <project>/<thread>` | drafter | `_project.md`, `<thread>/BRIEF.md`, `<thread>/refs/`; for revisions, also `<thread>.{N}/` + all critic siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path) |
+| `report-review <project>/<thread>` | reviewer | `_project.md`, latest `<thread>.{N}/` | `<thread>.{N}.review/` |
+| `report-audit <project>/<thread>` | auditor | `_project.md` (incl. `prior_reports[]`), latest `<thread>.{N}/`, prior delivered reports | `<thread>.{N}.audit/` |
+| `report-revise <project>/<thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.*/` critic siblings (both `.review/` and `.audit/` required) | `<thread>.{N+1}/` with `changelog.md` |
+| `report-figures <project>/<thread>` | figurer | latest `<thread>.{N}/report.md` | figures/tables/PDF under `<thread>.{N}/exhibits/` and `<thread>.{N}/report.pdf` |
+| `report-promote <project>/<thread>` | promoter | `<thread>.{N}/` in state `AUDITED`, `_project.md` | `<thread>.{N}.promote/receipt.md` |
+
+The portfolio orchestrator (`report`) is the user-facing entry point for status; the six lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
+
+## Progress tracking
+
+Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. Schema mirrors `anvil:memo` with two extensions:
+
+- `phases.audit` — independent from `phases.review`; the auditor sibling writes to its own `_progress.json` inside `<thread>.{N}.audit/`.
+- `phases.promote` — written by `report-promote` to the version dir's `_progress.json` AND to a separate `_progress.json` inside `<thread>.{N}.promote/`.
+
+```json
+{
+  "version": 1,
+  "thread": "<thread>",
+  "project": "<project-slug>",
+  "phases": {
+    "draft":   { "state": "done",        "started": "...", "completed": "..." },
+    "figures": { "state": "in_progress", "started": "..." },
+    "promote": { "state": "done",        "started": "...", "completed": "...", "receipt_path": "<thread>.{N}.promote/receipt.md" }
+  },
+  "metadata": {
+    "iteration": 1,
+    "max_iterations": 4
+  }
+}
+```
+
+Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `report.md` exist? does the audit sibling's `verdict.md` exist?), not by flag — `_progress.json` is a resume hint.
+
+Until `anvil/lib/progress.py` lands (see #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: command updates one phase, preserves all others.
+
+## Rubric
+
+See `rubric.md` for the 8-dimension /40 scoring schema, the ≥35 advance threshold, the critical-flag short-circuit policy, and the auditor-specific findings format.
+
+## Output format
+
+Reports ship as **markdown source-of-truth + rendered PDF**. The PDF is the customer-visible deliverable; the markdown is the durable artifact (diffable, archivable, regeneratable).
+
+- **Primary path: markdown → PDF via pandoc** with the shipped `assets/pandoc-defaults.yaml` and `assets/style.css`. Works on any laptop with `pandoc` installed; no LaTeX toolchain required.
+- **Secondary path: LaTeX** via an opt-in `assets/report.tex` template for reports needing precise typography (legal, regulated industries). The skill detects `assets/report.tex` presence and routes accordingly. Consumers can drop their own `.tex` into `.anvil/skills/report/assets/report.tex` to override.
+
+Both paths produce `report.pdf` alongside `report.md` in the same version directory — the version dir is self-contained for archival.
+
+`report-figures` generates `report.pdf` as part of its run (the figures phase is the natural place for it since pandoc invocation produces both the rendered figures embedded in the PDF and the PDF itself). `report-promote` re-renders to verify the PDF matches the current `report.md` hash, then records the verified hash in the receipt.
+
+## Defaults and overrides
+
+Per anvil principle 8 ("Opinionated defaults, override liberally"), this skill ships with default templates and assets. Consumers override via `.anvil/skills/report/` in their own repo:
+
+- `voice.md` (optional) — author or organization voice/style the drafter reads in addition to its base prompt.
+- `rubric.overrides.md` (optional) — add domain-specific critical-flag examples or recipient-class adjustments.
+- `templates/report.template.md` (optional) — replace the default report skeleton.
+- `assets/style.css` / `assets/pandoc-defaults.yaml` / `assets/report.tex` (any combination) — override the rendering pipeline.
+- `BRIEF.md.example` and `_project.md.example` — reference shapes; both freeform prose with optional YAML frontmatter.
+
+Resolution rule: consumer overrides win when present, else fall back to skill defaults. (Concrete resolution helper deferred to `anvil/lib/` per #10; for v0 each command embeds the inline fallback check.)
+
+## Relationship to `anvil:memo`
+
+The patterns that recurred vs `anvil:memo` (#3) — input for #10's framework extraction:
+
+| Pattern | Same as memo | Report-specific |
+|---|---|---|
+| Versioned dirs `<thread>.{N}/` | ✓ | — |
+| Sibling critic dirs `.review/`, `.audit/` | ✓ (structure) | Both REQUIRED by default (memo: review only, audit optional) |
+| 8-dimension /40 rubric | ✓ (shape) | Different weights + ≥35 threshold (memo: ≥32) |
+| `_progress.json` per dir, validate-by-file | ✓ | + `phases.audit`, `phases.promote` |
+| Iteration cap (default 4) | ✓ | — |
+| Resume-by-deleting-partial-output | ✓ | — |
+| Idempotent commands | ✓ | — |
+| Critical-flag short-circuit | ✓ | + audit-side critical flags (factual error class) |
+| `draft → review → revise` core loop | ✓ | + parallel `audit` sibling required to leave DRAFTED |
+| Portfolio orchestrator pattern | ✓ | + project-scoped (one orchestrator per project, optional super-orchestrator across projects) |
+| Voice/rubric/template overrides | ✓ | + project-level `_project.md` overrides recipient context |
+| State machine ending at `AUDITED` | — | Extended to `CUSTOMER-READY` with explicit human-ack gate |
+| Per-project `_project.md` shared context | — | New: recipient + engagement + prior_reports cross-check |
+| PDF as primary deliverable | — | New: pandoc default + LaTeX opt-in |
+
+**Extraction candidates for `anvil/lib/` (per #10)**: project-scope loader, two-stage promotion state-machine extension hook, pandoc render helper. None should be extracted from a single consumer — wait until at least one more skill (likely `pub` or `ip-uspto`) needs a parallel pattern.

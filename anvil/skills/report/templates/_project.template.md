@@ -1,0 +1,38 @@
+---
+recipient: "Acme Corporation, Q2 Engagement"
+engagement_id: "ACME-2026-Q2"
+delivery_format: "pdf"             # pdf | latex | markdown
+confidentiality_class: "internal"  # public | internal | confidential | restricted
+prior_reports:
+  - thread: findings
+    final_version: 3
+    delivered_at: "2026-04-12"
+  - thread: interim
+    final_version: 2
+    delivered_at: "2026-05-01"
+voice_notes: "Technical but accessible; recipient CTO is an engineer. Avoid sales tone."
+---
+
+# Engagement: Acme Corporation, Q2 2026
+
+## Recipient context
+
+(Who is the recipient organization? Who is the primary reader at that organization?
+What is their technical background and what do they care most about hearing from us?
+What is the history of the relationship? Any sensitivities to keep in mind?)
+
+## Engagement scope
+
+(What did the engagement contract say we would deliver? What is in scope and what is
+explicitly out of scope? Are there hard constraints on what we can or cannot say?)
+
+## Communication norms
+
+(Preferred channels, escalation paths, recipient holidays/embargoes, formatting
+preferences (anonymized vs. named individuals in body, page-count expectations, etc.))
+
+## Notes on prior reports
+
+(For each prior report listed in `prior_reports[]` above: what was said, what changed
+since, anything that future reports should remain consistent with or explicitly
+update.)
