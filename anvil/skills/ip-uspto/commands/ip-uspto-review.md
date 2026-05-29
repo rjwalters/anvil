@@ -48,6 +48,11 @@ For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves
 2. **Resume check**: if a prior crashed review exists, delete partial output and re-review.
 3. **Initialize `_progress.json`** for the review dir.
 4. **Read inputs**: load all of `<thread>.{N}/` and `rubric.md` + any consumer override.
+   - **Consult `_outline.json`** as the structural ground truth for coherence checks. The outline records the section render plan (ids, order, `claim_tree`, per-feature `subsections`, figure list, `drawn_from` pointers from claims into the detailed description). Use it to:
+     - confirm every claim in `claim_tree` traces to a detailed-description subsection via `drawn_from`;
+     - confirm the abstract's coverage aligns with the `summary` section's `key_points`;
+     - confirm the figures enumerated in `brief-description-of-drawings.figures` correspond to entries in `drawings/drawing-descriptions.md`.
+   - The reviewer is NOT required to score `_outline.json` itself or enforce its presence — the drafter and reviser own that contract. The outline is a *reading aid* for coherence checks; light-touch adoption only at this stage.
 5. **Evaluate Dimension 6 — Specification completeness** (score 0–5):
    - Are FIELD, BACKGROUND, SUMMARY, BRIEF DESCRIPTION, DETAILED DESCRIPTION present and proportionate?
    - Does the detailed description cover every inventive feature claimed in CLAIMS?

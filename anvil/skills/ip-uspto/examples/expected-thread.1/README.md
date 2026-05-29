@@ -10,6 +10,7 @@ If you run `ip-uspto-intake adaptive-rf-filter` followed by `ip-uspto-inventorsh
 
 ```
 adaptive-rf-filter.1/
+  _outline.json        schema_version: 1; 7 sections (field, background, summary, brief-description-of-drawings, detailed-description, claims, abstract); all status: done
   spec.tex             ~3000-5000 words, sections per 37 CFR 1.77(b)
   claims.tex           ~3 independent + ~10-14 dependent claims
   abstract.txt         <150 words
@@ -64,9 +65,57 @@ assert (v1 / "drawings" / "drawing-descriptions.md").exists()
 prog = json.loads((v1 / "_progress.json").read_text())
 assert prog["phases"]["draft"]["state"] == "done"
 assert prog["metadata"]["iteration"] == 1
+
+# Outline control surface (see SKILL.md "Outline control surface")
+assert (v1 / "_outline.json").exists()
+outline = json.loads((v1 / "_outline.json").read_text())
+assert outline["schema_version"] == 1
+assert {s["id"] for s in outline["sections"]} >= {
+    "field",
+    "background",
+    "summary",
+    "brief-description-of-drawings",
+    "detailed-description",
+    "claims",
+    "abstract",
+}
+assert all(s["status"] == "done" for s in outline["sections"])
+assert any(s["id"] == "claims" and "claim_tree" in s for s in outline["sections"])
 ```
 
 A similar assertion set covers the critic-fan-out step: glob `adaptive-rf-filter.1.*/` must include the configured critic tags after critics have been run, each with `_summary.md` + `findings.md` + `_meta.json`.
+
+### Two-stage drafter invocation
+
+The two-stage path (outline pass, then section pass) must produce the same final structural shape as the one-shot path. A smoke flow:
+
+```
+ip-uspto-draft adaptive-rf-filter --outline-only
+# → adaptive-rf-filter.1/_outline.json exists; all sections status: pending; spec.tex/claims.tex/abstract.txt absent
+# → adaptive-rf-filter.1/_progress.json has phases.draft.state == "in_progress"
+
+ip-uspto-draft adaptive-rf-filter
+# → adaptive-rf-filter.1/_outline.json: all sections status: done
+# → adaptive-rf-filter.1/{spec.tex,claims.tex,abstract.txt,drawings/drawing-descriptions.md} all present
+# → adaptive-rf-filter.1/_progress.json has phases.draft.state == "done"
+```
+
+Smoke assertions for the intermediate (outline-only) state:
+
+```python
+v1 = thread.parent / f"{thread.name}.1"
+assert (v1 / "_outline.json").exists()
+outline = json.loads((v1 / "_outline.json").read_text())
+assert outline["schema_version"] == 1
+assert all(s["status"] == "pending" for s in outline["sections"])
+assert not (v1 / "spec.tex").exists()
+assert not (v1 / "claims.tex").exists()
+assert not (v1 / "abstract.txt").exists()
+prog = json.loads((v1 / "_progress.json").read_text())
+assert prog["phases"]["draft"]["state"] == "in_progress"
+```
+
+After the second invocation, the final state assertions above (`v1 / "spec.tex"` exists, `all(s["status"] == "done")`, etc.) MUST hold — the final `<thread>.1/` from the two-stage path is structurally indistinguishable from the one-shot path, except that the operator MAY have edited `_outline.json` between stages.
 
 ## End-to-end smoke flow
 
