@@ -63,9 +63,10 @@ Tracked as open issues at https://github.com/rjwalters/anvil/issues. v0 punch li
 - #7 — Implement `anvil:slides` skill (Marp)
 - #8 — Implement `anvil:report` skill
 - ~~#9~~ — Deferred from v0 (KB violates load-bearing primitives; revisit under a future "reference skill" category)
-- #10 — Implement `anvil/lib/` framework primitives (blocked by ≥2 skill implementations; includes shared Marp/figure pipeline for presentation skills)
+- ~~#10~~ — Landed (markdown snippets): `anvil/lib/snippets/` documents the conventions skills share (progress, timestamp, version_layout, thread_state, state_machine, rubric, critics, scorecard_kind). Python module bindings were explicitly deferred to a follow-up.
 - #11 — Implement `scripts/install-anvil.sh`
 - ~~#12~~ — Reverted: unified `anvil:presentation` was the wrong design move (would have been the only meta-skill in an artifact-identified catalog)
+- ~~#26~~ — Landed: canonical `_review.json` schema as Python (`anvil/lib/review_schema.py`) + JSON Schema export (`anvil/lib/review_schema.json`), discovery/aggregation/verdict primitives (`anvil/lib/critics.py`), legacy adapter for the memo `verdict.md`/`scoring.md`/`comments.md` and ip-uspto `_summary.md`/`findings.md`/`_meta.json` shapes, worked example fixture, and tests in `tests/lib/`. Complements #10's pure-markdown snippets: this is the machine-readable export of the `scorecard_kind` discriminator for non-LLM consumers. Per-skill migrations to write `_review.json` are tracked as separate follow-up issues.
 
 <!-- BEGIN LOOM ORCHESTRATION -->
 This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration. See `.loom/CLAUDE.md` for the full guide (roles, labels, worktrees, configuration).
