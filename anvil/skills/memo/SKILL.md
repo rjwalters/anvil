@@ -28,7 +28,7 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
     verdict.md             Top-level decision (advance / block) + total /40
     scoring.md             Per-dimension scores against the memo rubric
     comments.md            Line-level comments keyed to memo.md
-    _meta.json             { critic, scorecard_kind: "human-verdict", ... } (see lib/snippets/scorecard_kind.md)
+    _meta.json             scorecard kind + provenance; full required field set in lib/snippets/scorecard_kind.md
     _progress.json         Phase state for the reviewer
   <thread>.1.audit/        Optional auditor critic sibling (fact-check)
   <thread>.1.critic/       Optional substantive critic sibling
@@ -110,7 +110,7 @@ Critic-sibling sample (adds `for_version` naming the version critiqued):
 
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `memo.md` exist? does the exhibit referenced as `exhibits/fig-1.png` exist?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
-Critic siblings (e.g., `<thread>.{N}.review/`) follow the `human-verdict` scorecard kind documented in `anvil/lib/snippets/scorecard_kind.md`: they emit `verdict.md` + `scoring.md` + `comments.md` for human consumption. A `_meta.json` with `{"scorecard_kind": "human-verdict"}` is recommended (the default if `_meta.json` is absent).
+Critic siblings (e.g., `<thread>.{N}.review/`) follow the `human-verdict` scorecard kind documented in `anvil/lib/snippets/scorecard_kind.md`: they emit `verdict.md` + `scoring.md` + `comments.md` for human consumption. A `_meta.json` with `{"scorecard_kind": "human-verdict"}` is recommended for discovery purposes (other agents can detect the scorecard kind without inspecting filenames; absence defaults to `human-verdict`), but it is a **required output** of the `memo-review` command — the reviewer always writes it.
 
 ## Rubric
 

@@ -25,7 +25,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
   verdict.md       Top-level decision + total /40 + critical flags + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Line-level comments keyed to memo.md headings or excerpts
-  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
+  _meta.json       { critic, role, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
 
@@ -77,6 +77,8 @@ This command writes the critic-sibling shape documented in `anvil/lib/snippets/p
   }
 }
 ```
+
+> Note: using `review` as the phase name here is the documented v0 status quo; new critics should use their own tag per `anvil/lib/snippets/progress.md` (phase-name normalization across skills is deferred under #21 item 11).
 
 And the companion `_meta.json` declaring the scorecard kind (see `anvil/lib/snippets/scorecard_kind.md`):
 
