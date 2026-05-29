@@ -247,6 +247,46 @@ repo. The override file:
 The reviewer command loads both files (base + override) and applies
 both during scoring.
 
+## Advisory rubric overlays
+
+Some skills (currently `anvil:pub`) ship **advisory rubric overlays**
+in addition to the generic /40 rubric. These are venue-pinned YAMLs
+(e.g. `anvil/skills/pub/rubrics/neurips.yaml`) that produce
+supplementary scoring for venue-specific signal — NeurIPS
+reproducibility checklist, Nature's broad-significance bar, arXiv's
+category-correctness norm — without breaking the framework-wide
+/40 invariant.
+
+Key properties of advisory rubrics:
+
+- **They do NOT change the convergence gate.** The generic /40 with
+  its declared threshold remains the sole driver of the `advance`
+  decision. The venue overlay produces additional findings the
+  reviser consumes; it does NOT contribute points to the
+  gate-deciding total.
+- **They relax the sum-to-total invariant.** A venue overlay may
+  declare any sensible total (NeurIPS /16, Nature /15, arXiv /10).
+  The framework's "/40 means the same thing across skills" rule
+  applies only to the gate rubric (`advisory: false`).
+- **Threshold is optional.** Advisory rubrics have no gate, so no
+  threshold is required.
+
+The on-disk shape is the same `Rubric` model in `anvil/lib/rubric.py`
+(YAML-loaded) — the `advisory: true` flag is the discriminator. The
+machine-readable JSON Schema lives at
+`anvil/lib/rubric_schema.json`.
+
+Reviewer commands that consume an advisory rubric write its scores
+as a second `_review.json`-shaped file in the same `.review/` sibling
+directory (canonical name: `_review.venue.json`). Both files use the
+existing `Review` schema in `anvil/lib/review_schema.py`; the
+reviser's existing N-critics-one-reviser aggregator treats the
+venue file as one more critic input and the convergence gate is
+computed from the generic file only (filtered by `rubric` id).
+
+See `anvil/skills/pub/SKILL.md` and `anvil/skills/pub/rubric.md` for
+the canonical example of an advisory overlay in use.
+
 ## See also
 
 - `critics.md` — how multi-critic aggregation produces the composite
