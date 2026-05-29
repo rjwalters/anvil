@@ -1,0 +1,463 @@
+"""Tests for ``anvil.lib.cite``.
+
+Strategy
+--------
+
+- **Unit tests (no network).** Parsing, key generation, BibTeX writer
+  idempotency, and cache behavior are tested without any patching.
+- **Cassette tests (patched network).** ``resolve()`` is exercised by
+  patching ``urllib.request.urlopen`` to return the bytes of a fixture
+  file under ``tests/lib/cassettes/cite/``.
+- **One opt-in live test.** A single ``@pytest.mark.network`` test
+  hits the real Crossref API; skipped by default. Run with
+  ``pytest -m network`` from the repo root.
+
+Recording new cassettes
+-----------------------
+
+Cassettes are hand-curated; to add one:
+
+::
+
+    curl -H "User-Agent: anvil-cite/0.0.1" \\
+      "https://api.crossref.org/works/10.xxx/xxx" \\
+      > tests/lib/cassettes/cite/crossref-10.xxx_xxx.json
+
+    curl -H "User-Agent: anvil-cite/0.0.1" \\
+      "https://export.arxiv.org/api/query?id_list=YYMM.NNNNN" \\
+      > tests/lib/cassettes/cite/arxiv-YYMM.NNNNN.xml
+"""
+
+from __future__ import annotations
+
+import sys
+import urllib.parse
+from pathlib import Path
+from typing import Callable
+from unittest.mock import patch
+
+import pytest
+
+from anvil.lib.cite import (
+    BibRecord,
+    Identifier,
+    IdentifierKind,
+    UnsupportedIdentifierError,
+    bib_key,
+    cite,
+    parse_identifier,
+    resolve,
+)
+# NOTE: ``anvil.lib`` re-exports the function ``cite`` at the package
+# level, which shadows the submodule when accessed via attribute lookup
+# (``import anvil.lib.cite as ...`` returns the function, not the module).
+# Resolve the actual module via ``sys.modules`` so monkeypatching module-
+# level globals (``_CACHE_ROOT``) works.
+cite_mod = sys.modules["anvil.lib.cite"]
+
+
+CASSETTES = Path(__file__).resolve().parent / "cassettes" / "cite"
+
+
+# ---------------------------------------------------------------------------
+# Cassette helper
+# ---------------------------------------------------------------------------
+
+
+def _cassette_for(url: str) -> bytes:
+    """Map a URL to the hand-curated cassette bytes.
+
+    Test patches ``urllib.request.urlopen`` to call this helper.
+    """
+
+    if url.startswith("https://api.crossref.org/works/"):
+        doi = url.rsplit("/works/", 1)[1]
+        # The doi may have been URL-quoted by the resolver; unquote so
+        # the cassette filename matches the human-readable form.
+        doi = urllib.parse.unquote(doi)
+        # File-naming convention: '/' replaced with '_'.
+        safe = doi.replace("/", "_")
+        path = CASSETTES / f"crossref-{safe}.json"
+        return path.read_bytes()
+    if url.startswith("https://export.arxiv.org/api/query"):
+        query = urllib.parse.urlparse(url).query
+        params = urllib.parse.parse_qs(query)
+        ids = params.get("id_list", [""])[0]
+        path = CASSETTES / f"arxiv-{ids}.xml"
+        return path.read_bytes()
+    raise AssertionError(f"unexpected URL in test: {url}")
+
+
+class _FakeResponse:
+    """Minimal stand-in for the ``urlopen`` context manager."""
+
+    def __init__(self, data: bytes):
+        self._data = data
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *args) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._data
+
+
+def _make_urlopen(spy: dict) -> Callable:
+    """Return a patched urlopen that records calls into ``spy``."""
+
+    def _urlopen(req, timeout=None):  # noqa: ARG001 - test stub
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        spy.setdefault("calls", []).append(url)
+        return _FakeResponse(_cassette_for(url))
+
+    return _urlopen
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache(tmp_path, monkeypatch):
+    """Redirect ``~/.cache/anvil/cite`` to a per-test tmp dir.
+
+    Also ensures CITE_CACHE_BYPASS is unset by default, so each test
+    starts with a clean, isolated cache.
+    """
+
+    monkeypatch.setattr(cite_mod, "_CACHE_ROOT", tmp_path / "cite-cache")
+    monkeypatch.delenv("CITE_CACHE_BYPASS", raising=False)
+    yield
+
+
+# ---------------------------------------------------------------------------
+# 1. parse_identifier — DOI variants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("10.1038/nature12373", "10.1038/nature12373"),
+        ("doi:10.1038/nature12373", "10.1038/nature12373"),
+        ("https://doi.org/10.1038/nature12373", "10.1038/nature12373"),
+        ("https://dx.doi.org/10.1038/nature12373", "10.1038/nature12373"),
+        ("DOI:10.1038/nature12373", "10.1038/nature12373"),
+    ],
+)
+def test_parse_doi_variants(raw, expected):
+    ident = parse_identifier(raw)
+    assert ident.kind == IdentifierKind.DOI
+    assert ident.value == expected
+
+
+# ---------------------------------------------------------------------------
+# 2. parse_identifier — arXiv variants
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("2305.14325", "2305.14325"),
+        ("2305.14325v3", "2305.14325"),
+        ("arxiv:2305.14325", "2305.14325"),
+        ("arXiv:2305.14325v3", "2305.14325"),
+        ("https://arxiv.org/abs/2305.14325", "2305.14325"),
+        ("https://arxiv.org/abs/2305.14325v3", "2305.14325"),
+    ],
+)
+def test_parse_arxiv_variants(raw, expected):
+    ident = parse_identifier(raw)
+    assert ident.kind == IdentifierKind.ARXIV
+    assert ident.value == expected
+
+
+# ---------------------------------------------------------------------------
+# 3. parse_identifier — URL fallback
+# ---------------------------------------------------------------------------
+
+
+def test_parse_url_fallback():
+    ident = parse_identifier("https://example.com/papers/foo.pdf")
+    assert ident.kind == IdentifierKind.URL
+    assert ident.value == "https://example.com/papers/foo.pdf"
+
+
+# ---------------------------------------------------------------------------
+# 4. parse_identifier — garbage input
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "not a citation", "10.shortdoi"])
+def test_parse_garbage_raises(raw):
+    with pytest.raises(ValueError):
+        parse_identifier(raw)
+
+
+# ---------------------------------------------------------------------------
+# 5. bib_key — canonical case
+# ---------------------------------------------------------------------------
+
+
+def test_bib_key_canonical():
+    record = BibRecord(
+        entry_type="article",
+        authors=["Smith, John"],
+        title="Transformers for Everyone",
+        year=2024,
+    )
+    assert bib_key(record) == "smith2024transformers"
+
+
+# ---------------------------------------------------------------------------
+# 6. bib_key — stopword skipping
+# ---------------------------------------------------------------------------
+
+
+def test_bib_key_skips_stopwords():
+    record = BibRecord(
+        entry_type="article",
+        authors=["Doe, Jane"],
+        title="The Foo Bar",
+        year=2020,
+    )
+    assert bib_key(record) == "doe2020foo"
+
+
+# ---------------------------------------------------------------------------
+# 7. bib_key — ASCII folding
+# ---------------------------------------------------------------------------
+
+
+def test_bib_key_ascii_folds_diacritics():
+    record = BibRecord(
+        entry_type="article",
+        authors=["Müller, Hans"],
+        title="Über Quantengravitation",
+        year=2019,
+    )
+    # 'Müller' -> 'muller'; 'Über' (stopword? no) -> 'uber'.
+    assert bib_key(record) == "muller2019uber"
+
+
+# ---------------------------------------------------------------------------
+# 8. bib_key — collision resolution
+# ---------------------------------------------------------------------------
+
+
+def test_bib_key_collision_appends_b(tmp_path):
+    refs = tmp_path / "refs.bib"
+    refs.write_text(
+        "@article{smith2024transformers,\n"
+        "  author = {Smith, John},\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    record = BibRecord(
+        entry_type="article",
+        authors=["Smith, John"],
+        title="Transformers Strike Back",
+        year=2024,
+    )
+    assert bib_key(record, refs_bib=refs) == "smith2024transformersb"
+
+
+# ---------------------------------------------------------------------------
+# 9. resolve(DOI) — Crossref cassette
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_doi_crossref_cassette():
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.1038/nature12373")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        record = resolve(ident)
+    assert record.entry_type == "article"
+    assert record.title == "Nanometre-scale thermometry in a living cell"
+    assert record.journal == "Nature"
+    assert record.year == 2013
+    assert record.volume == "500"
+    assert record.issue == "7460"
+    assert record.pages == "54-58"
+    assert record.doi == "10.1038/nature12373"
+    assert record.authors[0] == "Kucsko, G."
+    assert len(record.authors) >= 3
+
+
+# ---------------------------------------------------------------------------
+# 10. resolve(arXiv) — arXiv cassette
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_arxiv_cassette():
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.ARXIV, value="1706.03762")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        record = resolve(ident)
+    assert record.entry_type == "misc"
+    assert record.title == "Attention Is All You Need"
+    assert record.year == 2017
+    assert record.eprint == "1706.03762"
+    assert record.eprinttype == "arxiv"
+    assert record.url == "https://arxiv.org/abs/1706.03762"
+    assert record.authors[0] == "Vaswani, Ashish"
+    assert len(record.authors) == 8
+
+
+# ---------------------------------------------------------------------------
+# 11. resolve(PMID / URL) — unsupported in v0
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "kind, value",
+    [
+        (IdentifierKind.PMID, "12345"),
+        (IdentifierKind.URL, "https://example.com/paper.html"),
+    ],
+)
+def test_resolve_unsupported_kinds(kind, value):
+    ident = Identifier(kind=kind, value=value)
+    with pytest.raises(UnsupportedIdentifierError):
+        resolve(ident)
+
+
+# ---------------------------------------------------------------------------
+# 12. cite() writes a new entry and returns the @key
+# ---------------------------------------------------------------------------
+
+
+def test_cite_writes_entry_and_returns_token(tmp_path):
+    spy: dict = {}
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        token = cite("10.1038/nature12373", tmp_path)
+    refs = tmp_path / "refs.bib"
+    assert refs.exists()
+    text = refs.read_text(encoding="utf-8")
+    assert token.startswith("@")
+    assert token == "@kucsko2013nanometre"
+    assert "@article{kucsko2013nanometre," in text
+    assert "title = {Nanometre-scale thermometry in a living cell}," in text
+    assert "doi = {10.1038/nature12373}," in text
+
+
+# ---------------------------------------------------------------------------
+# 13. cite() idempotency
+# ---------------------------------------------------------------------------
+
+
+def test_cite_idempotent_on_second_call(tmp_path):
+    spy: dict = {}
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        token1 = cite("10.1038/nature12373", tmp_path)
+        token2 = cite("10.1038/nature12373", tmp_path)
+    assert token1 == token2
+    text = (tmp_path / "refs.bib").read_text(encoding="utf-8")
+    # Only one entry; count occurrences of '@article{'.
+    assert text.count("@article{") == 1
+
+
+# ---------------------------------------------------------------------------
+# 14. cite() with two different identifiers producing colliding keys
+# ---------------------------------------------------------------------------
+
+
+def test_cite_collision_appends_suffix(tmp_path):
+    """Two distinct records that hash to the same base key get b/c suffixes."""
+
+    # We can't easily force two real DOIs to collide on lastname+year+word;
+    # instead, seed refs.bib with a hand-crafted entry that collides with
+    # the Crossref nature record's key, then cite() the real DOI.
+    refs = tmp_path / "refs.bib"
+    refs.write_text(
+        "@article{kucsko2013nanometre,\n"
+        "  author = {Different, Author},\n"
+        "  title = {Different paper, same key},\n"
+        "  doi = {10.9999/other},\n"
+        "  year = {2013},\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    spy: dict = {}
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        token = cite("10.1038/nature12373", tmp_path)
+    assert token == "@kucsko2013nanometreb"
+    text = refs.read_text(encoding="utf-8")
+    assert "@article{kucsko2013nanometre," in text
+    assert "@article{kucsko2013nanometreb," in text
+
+
+# ---------------------------------------------------------------------------
+# 15. cache hit short-circuits the second resolve call
+# ---------------------------------------------------------------------------
+
+
+def test_cache_hit_skips_network():
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.1038/nature12373")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        resolve(ident)
+        assert len(spy["calls"]) == 1
+        resolve(ident)
+        # Second call must be served from cache; no additional urlopen.
+        assert len(spy["calls"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# 16. cache miss writes the expected file
+# ---------------------------------------------------------------------------
+
+
+def test_cache_miss_writes_file():
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.1038/nature12373")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        resolve(ident)
+    expected = cite_mod._cache_path(ident)
+    assert expected.exists()
+    # Roundtrip-loadable as a BibRecord.
+    data = expected.read_text(encoding="utf-8")
+    BibRecord.model_validate_json(data)
+
+
+# ---------------------------------------------------------------------------
+# 17. CITE_CACHE_BYPASS disables read AND write
+# ---------------------------------------------------------------------------
+
+
+def test_cite_cache_bypass_disables_read_and_write(monkeypatch):
+    monkeypatch.setenv("CITE_CACHE_BYPASS", "1")
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.1038/nature12373")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        resolve(ident)
+        resolve(ident)
+    # Both calls hit the network (no read short-circuit).
+    assert len(spy["calls"]) == 2
+    # And no cache file was written.
+    assert not cite_mod._cache_path(ident).exists()
+
+
+# ---------------------------------------------------------------------------
+# 18. (opt-in) Live network smoke test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.network
+def test_live_doi_resolution_smoke():
+    """One live test against a stable DOI.
+
+    Skipped by default. Invoke with ``pytest -m network`` to run.
+    Acts as the cassette-recording reference: if this passes against
+    the real Crossref API and the cassette tests pass, the cassette is
+    still representative of the live API shape.
+    """
+
+    record = resolve("10.1038/nature12373")
+    assert record.entry_type == "article"
+    assert record.year == 2013
+    assert "Nanometre" in record.title or "nanometre" in record.title.lower()
