@@ -1,0 +1,93 @@
+---
+name: slides-handout
+description: Handout exporter for the slides skill. Terminal-only command. Produces a leave-behind PDF (4-up default, with --2-up and --notes-below alternates) from a READY+AUDITED+REHEARSED version. Requires Marp CLI.
+---
+
+# slides-handout — Handout exporter (terminal)
+
+**Role**: handout exporter.
+**Reads**: latest `<thread>.{N}/deck.md`, `<thread>.{N}/notes/*.md`, `<thread>.{N}/figures/`. Reads sibling progress files to verify READY+AUDITED+REHEARSED.
+**Writes**: `<thread>.{N}.handout/handout.pdf` and `<thread>.{N}.handout/_progress.json`.
+
+This is a **terminal-only** command. It runs once on the final converged version of the deck to produce a leave-behind PDF for the audience. The handout sibling is not consumed by any further skill phase; it exists for the consumer.
+
+## Why this phase exists
+
+Talks ship two artifacts to the audience: the live slides (projected during the talk) and the leave-behind PDF (handed out before, distributed after). The two artifacts have different optimal formats:
+
+- **Live slides** — one slide per page, large fonts, sparse content, designed for projection at distance.
+- **Leave-behind PDF** — multiple slides per page (4-up most commonly), or slides-with-notes-below for self-study, designed for desk reading.
+
+The handout exporter produces the leave-behind variant from the same `deck.md` source. It is terminal-only because handout export is a publication step, not a development step — only the final-converged version of a deck should ever produce a handout.
+
+## Inputs
+
+- **Thread slug** (positional argument).
+- **Layout flag** (optional): one of
+  - `--4-up` (default): four slides per page in a 2x2 grid.
+  - `--2-up`: two slides per page, stacked.
+  - `--notes-below`: one slide per page with presenter notes printed below the slide.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` AND `<thread>.{N}.review/verdict.md` recording `advance: true` AND `<thread>.{N}.audit/verdict.md` with no `wrong` claims AND `<thread>.{N}.rehearse/timing.md` with no time flag set.
+
+## Outputs
+
+```
+<thread>.{N}.handout/
+  handout.pdf          The leave-behind PDF
+  _progress.json       Phase state with handout: done, for_version: <N>
+```
+
+## Procedure
+
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`.
+2. **Verify READY**: read `<thread>.{N}.review/verdict.md`. If `advance != true` or there are critical flags, exit with an error: "thread is not READY; run `slides-revise` and re-review first."
+3. **Verify AUDITED**: read `<thread>.{N}.audit/verdict.md`. If any claim is verdicted `wrong`, exit with an error: "audit flag set on version <N>; resolve and re-audit first."
+4. **Verify REHEARSED**: read `<thread>.{N}.rehearse/density.md` and `timing.md`. If the density flag or time flag is set, exit with an error: "density or time flag set on version <N>; resolve and re-rehearse first."
+5. **Resume check**: if `<thread>.{N}.handout/_progress.json.handout.state == done` and `handout.pdf` exists, exit early with a notice (idempotent).
+6. **Initialize `_progress.json`**: `phases.handout.state = in_progress`, `phases.handout.started = <ISO>`, `for_version: <N>`, `metadata.layout: <layout flag>`.
+7. **Render**:
+   - **For `--4-up` and `--2-up`** layouts: invoke `marp <thread>.{N}/deck.md --pdf --allow-local-files --pdf-notes` with an `--theme-set` pointing at `templates/anvil-slides-theme.css`, then post-process the output PDF with `pdfjam` (or equivalent) to N-up.
+     - 4-up: `pdfjam --nup 2x2 --landscape --suffix 4up handout.pdf`
+     - 2-up: `pdfjam --nup 1x2 --suffix 2up handout.pdf`
+   - **For `--notes-below`** layout: render with Marp's notes-included PDF mode (`--pdf-notes`) and skip the N-up pass. Marp produces one slide per page with notes printed beneath when `--pdf-notes` is set.
+8. **Toolchain availability check**: if `marp` is not on PATH, exit with an instructive error: "Marp CLI required for handout export. Install via `npm install -g @marp-team/marp-cli` or run from a container with Marp pre-installed. The deck is otherwise complete; this step can be deferred."
+9. **Update `_progress.json`**: `phases.handout.state = done`, `phases.handout.completed = <ISO>`, `metadata.output_path = "handout.pdf"`.
+10. **Report**: print the path to the handout dir and a one-line status (e.g., `Generated 4-up handout for kdd-2026-keynote.3 → kdd-2026-keynote.3.handout/handout.pdf (22 slides → 6 pages)`).
+
+## Layout selection guidance
+
+- **4-up (default)**: best for conference talks where the audience wants a quick reference. Fits a 45-minute talk's deck onto a small number of pages; legible for skimming but not for deep study.
+- **2-up**: best for technical workshops where slides are denser and need more space. Use when the deck is short (≤20 slides) and detail matters.
+- **notes-below**: best for asynchronous learning (online courses, recorded talks, leave-behinds where the audience won't see the speaker). The notes-below variant turns the deck into a standalone document.
+
+The choice is per-talk and per-audience; the orchestrator does not pick automatically. The default of 4-up is the most common case.
+
+## Idempotence and resumability
+
+- A completed handout (`handout.state == done` AND `handout.pdf` exists) is never re-run. Re-invoking is a no-op with a notice.
+- A crashed handout is re-runnable after deleting partial output.
+- Re-running with a different layout flag overwrites the prior handout (the layout choice is part of the output, not part of the input). The reviser is responsible for choosing the right layout before invoking.
+
+## Notes for the handout exporter agent
+
+- **Terminal only.** Refuse to run on a deck that is not READY+AUDITED+REHEARSED. The pre-flight checks are not optional.
+- **Marp-dependent.** If Marp is unavailable, fail loudly and instructively rather than producing a partial output. The deck is still valid Marp markdown; the handout step can be deferred to a consumer environment that has Marp installed.
+- **Don't strip notes.** Even in 4-up layout, the source notes/ files should be preserved (the consumer may extract them separately). The handout PDF is one form; the notes are a separate one.
+- **Don't rename the output.** The convention is `handout.pdf`. Consumers who want a different name can rename after generation.
+
+## `_progress.json` snippet (handout sibling)
+
+```json
+{
+  "version": 1,
+  "thread": "<slug>",
+  "for_version": <N>,
+  "phases": {
+    "handout": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+  },
+  "metadata": {
+    "layout": "4-up",
+    "output_path": "handout.pdf"
+  }
+}
+```
