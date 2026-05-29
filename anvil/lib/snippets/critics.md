@@ -194,9 +194,33 @@ determine the scorecard kind. The migration in the PR introducing
 this lib adds the `_meta.json` annotation without changing the
 existing files.
 
+## Citation auditor — partial scorecard, no special aggregation
+
+Skills that opt in to the citation-quality dimensions
+(`citation_recall`, `citation_precision`; see `rubric.md`) typically
+assign ownership of those two dimensions to a single critic — the
+citation auditor (commonly `pub-audit`, `report-audit`, or
+`ip-uspto-priorart`). The auditor populates `citation_recall` and
+`citation_precision` in its own `Score` entries and leaves them
+`None` on the general reviewer's scorecard.
+
+This requires **no new aggregation behavior**. The existing partial-
+scorecard rule (per-dimension mean of non-null contributions across
+critics, see "Aggregation" above) handles it: the auditor's
+non-null values flow through, the reviewer's `None` values are
+ignored, and the aggregated composite reflects the auditor's verdict
+on citation quality alone.
+
+The lib's `cite.py` produces `refs.bib`; the auditor reads
+`refs.bib` plus the artifact body to compute recall and precision.
+Neither the resolver nor the aggregator needs to know about the
+citation dimensions specifically — they are ordinary opt-in
+dimension names per the existing convention.
+
 ## See also
 
 - `scorecard_kind.md` — the discriminator and per-kind file maps.
 - `version_layout.md` — sibling directory naming rules.
 - `state_machine.md` — when critics run in the lifecycle.
 - `progress.md` — `_progress.json` schema for the sibling directory.
+- `cite.md` — citation primitive on-disk convention.

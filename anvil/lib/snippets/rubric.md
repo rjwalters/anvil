@@ -91,6 +91,51 @@ correct by being well-written.
    not set them for stylistic concerns or polish issues (those live
    in comments at severity `minor` or `nit`).
 
+## Citation-quality dimensions (optional, opt-in per skill)
+
+Skills that produce sourced artifacts may name two of their dimensions
+using the canonical citation-quality vocabulary:
+
+- **`citation_recall`** — claims-with-citations / total-claims. How
+  much of the artifact's load-bearing content is sourced.
+- **`citation_precision`** — claims-supported-by-cited-source /
+  claims-with-citations. How well the cited sources actually back the
+  claims they're attached to.
+
+Both are integer scores on the same /weight scale as any other
+rubric dimension. The two-dim shape (rather than one combined
+"citation hygiene" dimension) lets each axis move independently —
+high recall with low precision is a different failure mode than the
+inverse.
+
+This is **opt-in**, not mandatory. Skills that don't produce sourced
+artifacts (`anvil:deck`, `anvil:slides`) leave them out entirely.
+Skills that do (`anvil:pub`, `anvil:report`, `anvil:memo`,
+`anvil:ip-uspto`) may name two of their eight dimensions accordingly.
+The lib does not enforce or detect this naming — it documents the
+convention so the eventual citation auditor critic can populate
+identifiable per-dimension scores per the existing partial-scorecard
+rule (see `critics.md`).
+
+### Per-consumer rubric migration
+
+The canonical "8 dimensions summing to /40" shape is preserved by
+**splitting** an existing citation-related dimension rather than
+adding two new ones outside the /40 envelope. Worked examples:
+
+| Skill | Before | After |
+|---|---|---|
+| `anvil:pub` | dim 8 "Citation hygiene", weight 5 | `citation_recall` + `citation_precision`, weights 2 + 3 (or any split summing to 5) |
+| `anvil:report` | dim 4 "Evidence trail / citation", weight 6 | `citation_recall` + `citation_precision`, weights 3 + 3 |
+
+The migration is per-skill and **not in scope** for the lib PR. Each
+consumer skill that opts in does so in its own follow-up PR (rubric.md
+edit + the owning critic's command spec).
+
+STORM (stanford-oval/storm) reports 84.83% / 85.18% on these dimensions
+in its retrieval-grounded essay generation, useful as calibration
+anchors when authoring a new rubric.
+
 ## Rubric override mechanism
 
 Every skill ships `rubric.md` in its source-controlled root. Consumers
