@@ -98,6 +98,7 @@ Each archetype is described in three parts: **purpose** (why the slide exists), 
 - Inputs cited (plant count from X, ACV from Y).
 - Named comparables (recent rounds in adjacent space; disclosed valuations).
 - Bottom-up sizing is the default. If you must use top-down, anchor with bottom-up.
+- **Layout**: figure (TAM/SAM/SOM chart) + **one** supporting line stating the bottom-up takeaway. Use the **figure + supporting line** idiom (see ["Figure layout idioms"](#figure-layout-idioms)); do **not** add a 3-bullet TAM/SAM/SOM list under the chart — figure + 3 bullets overflows 16:9.
 
 **Failure modes**: Top-down only ("$300B market × 1% = $3B"). Unsourced inputs. SAM = TAM (no actual segmentation). Year-5 SOM hockey-stick without a current data point.
 
@@ -113,6 +114,7 @@ Each archetype is described in three parts: **purpose** (why the slide exists), 
 - **Series A**: ARR (with MoM/QoQ growth), retention (cohort), expansion, named customers.
 - **Series B+**: Sustained growth, net retention >100%, segment expansion, gross margin trajectory.
 - Numbers should appear in the brief; the no-fabrication contract is most actionable on this slide.
+- **Layout**: traction chart + **one** supporting line with the headline numbers. Use the **figure + supporting line** idiom (see ["Figure layout idioms"](#figure-layout-idioms)); do **not** stack 3 bullets under the chart — figure + 3 bullets overflows 16:9.
 
 **Failure modes**: Projections as traction (the most common deck error). Vanity metrics (downloads, signups without paid conversion). Aggregated MRR with no growth rate. Logos without permission.
 
@@ -158,6 +160,7 @@ Each archetype is described in three parts: **purpose** (why the slide exists), 
 - 12-month projection with intermediate milestones (months 3 / 6 / 9 / 12).
 - Beyond 12 months: clearly labeled as projection, in appendix preferred.
 - Assumptions stated.
+- **Layout**: projections chart + **one** supporting line folding current ARR, the 12-month plan, and burn/runway together (they are terse enough to combine). Use the **figure + supporting line** idiom (see ["Figure layout idioms"](#figure-layout-idioms)); do **not** add a 3-bullet list under the chart — figure + 3 bullets overflows 16:9.
 
 **Failure modes**: Hockey-stick projection with no current data point. 5-year exit-ready ARR projections (no investor believes these). Burn rate that doesn't match the team size shown on Slide 10.
 
@@ -189,6 +192,57 @@ Each archetype is described in three parts: **purpose** (why the slide exists), 
 - FAQ — pre-empted objections with answers.
 
 **Discipline**: appendix slides are for follow-up Q&A, not for the live pitch. The pitch ends on the Ask. Appendix is what the investor flips through after the meeting.
+
+---
+
+## Figure layout idioms
+
+Any slide that carries a figure (Market #7, Traction #8, Financials #11, and ad-hoc appendix charts) must choose one of two layouts. The choice matters because a full-width matplotlib figure at slide scale already eats ~60% of the 16:9 safe area, so **figure + 3-4 bullets overflows** — it pushes content off the bottom even at the lean `anvil-deck.css` sizes. The two safe idioms:
+
+### Figure + supporting line (default)
+
+When the chart speaks for itself: place the figure, then **one** italic interpretation line beneath it. No bullet list.
+
+```markdown
+## Market
+
+![TAM / SAM / SOM](figures/market-sizing.png)
+
+_$8.3B TAM → $30B SAM → $5–10M Yr-3 SOM (300 units × $20K) — Mordor 2024_
+```
+
+This is the **lint-safe** idiom — it is the shape the static overflow lint (`lib/marp_lint.py`) and the `clean_figure_plus_supporting_line.md` fixture treat as clean (0 errors / 0 warnings). It is the layout the `deck.md.j2` template ships for Market, Traction, and Financials. Fold what would have been 3 bullets into the single line (e.g. combine current ARR, the 12-month plan, and burn/runway).
+
+### Two-column (figure-left / text-right)
+
+When the figure and the text both carry distinct, non-redundant content (e.g. an architecture diagram on the left with a numbered build sequence on the right). Use an inline HTML grid div — `html: true` is already pinned in the template frontmatter and at the CLI (`anvil/lib/marp/config.yml`), so no extra config is needed:
+
+```markdown
+## Solution
+
+<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:2em;align-items:center;">
+
+![Architecture](figures/solution.png)
+
+<div>
+
+- Capture: shared identity layer
+- Sync: conflict-free replication
+- Serve: analytics SDK
+
+</div>
+</div>
+```
+
+Do **not** invent a new theme CSS class for this — there is no `columns` class in `anvil-deck.css`, and a shared Marpit two-column macro in `anvil/lib/` is a deliberate follow-up, not part of this layout.
+
+**Caveat (escape-hatch territory):** the static overflow lint models **vertical capacity only**. It has no concept of side-by-side columns, charges a standalone full-width image the full image cost regardless of CSS grid/flex, and does **not** detect the Marpit `w:NN%` width hint. So a two-column slide with a full-width figure inside a column **will be flagged by the static lint** even though it renders fine. If you use two-column, suppress the static rule on that one slide with a per-slide directive and rely on the `deck-vision` VLM critic to catch real rendered overflow:
+
+```markdown
+<!-- anvil-lint-disable: slide-content-overflow -->
+```
+
+Prefer **figure + supporting line** unless the second column genuinely earns its place — it keeps the slide lint-clean without the escape hatch.
 
 ---
 
