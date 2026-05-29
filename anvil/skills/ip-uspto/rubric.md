@@ -1,0 +1,117 @@
+# USPTO patent review rubric
+
+Reviewers and critics score a patent application against 8 weighted dimensions summing to **40**. The threshold to advance is **≥35/40** (legal/customer-facing artifact per anvil's threshold table). A **§101 critical flag** or **§112 critical flag** short-circuits the verdict — the application is blocked regardless of total score until the flagged issue is addressed. Other critics may also raise critical flags following the same rule.
+
+USPTO patent applications have a different risk profile than memos: claim breadth and statutory compliance dominate. Every dimension is weighted equally at **5/40**. There is no single dimension that dominates because a failure in any of the eight is grounds for rejection or post-issuance vulnerability. Skills with softer outputs (memo, deck) skew weights; the patent skill is intentionally flat.
+
+## Dimensions
+
+| # | Dimension | Weight | Owning critic(s) | What it measures |
+|---|---|---|---|---|
+| 1 | **Claim breadth & dependency structure** | 5 | `claims` | Independent claim scope (not too narrow, not preempting); dependent claim ladder picks up fallback positions. Reads claim differentiation across independents. |
+| 2 | **§112(a) written description & enablement** | 5 | `s112` | Specification supports the full scope of each claim; a PHOSITA can practice the invention without undue experimentation; best mode is disclosed where required. |
+| 3 | **§112(b) definiteness (claim clarity)** | 5 | `s112`, `claims` | Antecedent basis is clean; "means for" language is properly supported in spec when used; ambiguous terms ("about", "substantially") are bounded or avoided. |
+| 4 | **§101 statutory subject matter** | 5 | `s101` | Alice/Mayo two-step screening — claims are not directed to an abstract idea, natural phenomenon, or law of nature without an inventive concept that significantly more. **Critical-flag eligible.** |
+| 5 | **Novelty positioning vs. cited art (§102/§103)** | 5 | `priorart` | Distinguishing features called out in spec and reflected in dependent claims; obviousness fallbacks staged; cited prior art is acknowledged in Background without admitting it as prior art under §103. |
+| 6 | **Specification completeness** | 5 | `review`, `s112` | Field, Background, Summary, Brief Description of Drawings, Detailed Description balance; embodiments, alternatives, ranges, definitions; no unsupported assertions. |
+| 7 | **Drawing-text correspondence** | 5 | `review` | Every reference numeral in spec appears in a drawing and vice versa; figure captions match the Brief Description of Drawings; numbering is consistent across spec/claims/drawings. |
+| 8 | **Formal compliance (37 CFR 1.71–1.84)** | 5 | `review`, pre-flight | Section headings per 37 CFR 1.77(b); paragraph numbering in `[0001]` style; abstract ≤150 words; claim count and multiple-dependent claim rules; margins, font, line spacing via the LaTeX class. |
+| | **Total** | **40** | | Advance threshold: ≥35 |
+
+## Critic ownership
+
+Each critic fills the rubric dimensions it owns and leaves others `null`. The reviser aggregates non-null scores by mean per dimension. A critic MAY contribute a score to a dimension it doesn't primarily own (e.g., the general `review` critic may comment on claim clarity); when it does, that score participates in the mean for that dimension.
+
+Ownership map (primary):
+
+| Critic | Dimensions owned |
+|---|---|
+| `review` (general reviewer) | 6, 7, 8 |
+| `s101` | 4 |
+| `s112` | 2, 3 |
+| `claims` | 1, 3 |
+| `priorart` | 5 |
+
+This intentionally overlaps for §112(b) (s112 + claims) — definiteness is both a statutory and a claim-drafting concern, and two independent perspectives is a feature.
+
+## Scoring guidance
+
+For each dimension owned, the critic assigns an integer between 0 and 5. A short justification accompanies each score (1–3 sentences pointing to specific evidence: spec section, claim number, figure number).
+
+Suggested calibration:
+- **5** — meets the standard convincingly; a sophisticated patent attorney would have no substantive objection on this dimension.
+- **4** — meets the standard with one specific weakness noted.
+- **3** — partial; multiple gaps or one significant weakness.
+- **2** — present but inadequate; major rework needed.
+- **1** — gravely deficient; this dimension alone may sink the application.
+- **0** — absent or actively misleading.
+
+## Advance threshold
+
+- **Aggregate ≥35/40** AND no unresolved critical flag → advance to `READY` (then `AUDITED`, then `FINALIZED`).
+- **Aggregate <35/40** OR any unresolved critical flag → block; revise.
+- Aggregation: per-dimension score = arithmetic mean of non-null critic scores for that dimension. Total = sum of per-dimension means.
+
+## Critical flags
+
+A critical flag is an issue severe enough that a sophisticated patent attorney would refuse to file the application as-is, regardless of how well other dimensions score. The **§101** and **§112** critics are explicitly flagged as critical-flag-eligible. Other critics may raise critical flags; the same short-circuit rule applies.
+
+Illustrative §101 critical flags:
+- Claims directed to an abstract idea (mathematical concept, mental process, certain methods of organizing human activity) without an inventive concept under Alice step 2.
+- Claims directed to a natural phenomenon or law of nature without significantly more.
+- Pure software claims that recite generic computer components performing well-understood, routine, conventional activity.
+
+Illustrative §112 critical flags:
+- Independent claim recites a feature with no support in the specification (§112(a) written description failure).
+- "Means for" claim language with no corresponding structure disclosed in the spec for the named function (§112(f) → §112(b) indefiniteness).
+- Dependent claim broader than its parent (a structural drafting error).
+- Antecedent basis missing for a claim term ("the widget" with no prior "a widget").
+
+Illustrative `claims` or `priorart` critical flags:
+- Independent claim is anticipated by a single reference in `<thread>/prior-art/` (§102).
+- Independent claim is a verbatim copy of a competitor's published claim.
+- Recommended dependent claim ladder is missing the obvious narrowing fallback (e.g., no dependent claim narrowing to a specific embodiment described in the spec).
+
+This list is illustrative, not exhaustive. Critics should raise critical flags whenever, in their professional judgment, an issue meets the standard above.
+
+## `_summary.md` format (uniform across critics)
+
+The critic writes a `_summary.md` at the top of its sibling dir with:
+
+1. **Critic tag**: e.g., `s101`, `s112`, `claims`, `priorart`, `review`.
+2. **Critical flag**: `flagged: true` or `flagged: false`.
+3. **Critical flag justification** (if flagged): one paragraph per flag.
+4. **Per-dimension scorecard**: a markdown table with columns `# | Dimension | Weight | Score | Justification`. Critics leave non-owned dimensions as score `null` and justification `n/a`.
+5. **Top 3 revision priorities** (if any score <4 or any flag set): the highest-leverage changes the reviser should focus on.
+
+The detail (per-finding location, severity, suggested fix) lives in `findings.md`.
+
+## `findings.md` format
+
+A markdown document listing individual findings. Each finding is a section:
+
+```
+### Finding 1 — <short title>
+
+- **Severity**: `critical` | `blocker` | `major` | `minor` | `nit`
+- **Location**: `spec.tex § Detailed Description ¶ [0023]` (or `claims.tex claim 7`, or `drawings/fig-2.svg`)
+- **Rationale**: 1–3 sentences explaining the issue.
+- **Suggested fix**: concrete change the reviser should make.
+```
+
+`critical` severity findings correspond 1:1 with the critical-flag list in `_summary.md`. `blocker` findings are dimension-score-tanking but not statutorily fatal. Lower severities are quality-of-life and should be addressed when they don't conflict with higher-severity changes.
+
+## `_meta.json` format
+
+```json
+{
+  "critic": "s101",
+  "role": "ip-uspto-101.md",
+  "started": "2026-05-28T15:00:00Z",
+  "finished": "2026-05-28T15:18:00Z",
+  "model": "claude-opus-4-7",
+  "schema_version": 1
+}
+```
+
+The critic sibling dir is **read-only once written** (its own `_progress.json.review.state == done`). Revisions consume it without modifying it.
