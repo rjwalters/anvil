@@ -186,6 +186,27 @@ The cycle continues until:
 - **The version directory is immutable once `revise.state == done`.** No post-hoc edits. If you missed something, the next iteration handles it.
 - **Structural continuity is the default.** Carry the prior version's `_outline.json` forward verbatim, then make the minimum set of structural edits that the findings demand. The "Outline delta" row family is the audit trail proving the structural drift across iterations was deliberate.
 
+### D6 note — vision findings fix the DRAWING SOURCE, not the spec
+
+The optional `ip-uspto-vision` critic (`commands/ip-uspto-vision.md`) is discovered and aggregated exactly like the source-side critics — its `<thread>.{N}.vision/_review.json` is globbed by `<thread>.{N}.*/` and its drawing-vision dimensions (dv1–dv5) merge into the aggregate via the same mean-of-non-null rule. **But the resolution for a vision finding is categorically different from a text-critic finding:**
+
+- A text-critic finding (`s101`, `s112`, `claims`, `priorart`, `review`) is resolved by editing `spec.tex`, `claims.tex`, or `abstract.txt`.
+- A **vision finding is resolved by editing the DRAWING SOURCE** — the per-figure SVG (illustrator / TikZ output) or the matplotlib script for a data-plot figure — under `<thread>.{N}/drawings/`, **NOT** the spec prose. The vision critic looks at pixels; its findings (illegible reference numeral, low-contrast line weight, overlapping label, missing "FIG. N", a numeral drawn that the spec never describes) are all properties of the rendered drawing, not the specification text.
+
+Concrete mapping the reviser must follow when a `[vision]`-tagged finding appears in the bundle:
+
+| Vision finding (dim) | Fix lives in | NOT in |
+|---|---|---|
+| `reference_numeral_legibility` — numeral unreadable / clipped at examiner scale | the figure source (resize / reposition the numeral, raise rasterization DPI) | `spec.tex` |
+| `line_weight_contrast` — faint / gray / color line art | the figure source (black ink, uniform line weight) | `spec.tex` |
+| `label_placement` — labels overlap or sit outside the drawing border | the figure source (move labels / lead lines inside the border) | `spec.tex` |
+| `figure_number_visibility` — a view missing its "FIG. N" label | the figure source (add / unclip the figure label) | `spec.tex` |
+| `cross_reference_accuracy` — a numeral on the drawing the spec never describes, or pointing at the wrong part | usually the figure source (correct the drawn numeral); **only** edit `spec.tex` if the spec genuinely omits a part the drawing correctly shows | — |
+
+When a revision addresses vision findings it therefore touches `<thread>.{N+1}/drawings/` (and, for data plots, the matplotlib script that produced the PNG), and records the change in `_revision-log.md` with the figure as the location (`drawings/fig-2.svg`). Do **not** "resolve" a vision finding by editing spec prose — that leaves the rendered drawing defect in place and the next vision pass will re-flag it. The `cross_reference_accuracy` dim is the one case that can cut either way: if the drawing shows a numeral the spec omits, the correct fix may be to add the part description to the spec rather than delete the numeral from the drawing — use judgment and document the direction in the findings ledger.
+
+This makes the prior bullet's "Carry over `drawings/` unmodified UNLESS a finding required figure changes" concrete: a `[vision]` finding **is** such a finding. After re-rendering the affected drawings, the vision critic should be re-run on `<thread>.{N+1}/` along with the other critics so the next aggregate reflects the fix.
+
 ## `_progress.json` snippet (revised version dir)
 
 ```json
