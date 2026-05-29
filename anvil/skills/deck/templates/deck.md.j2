@@ -93,9 +93,14 @@ _{{ stage_label }} · {{ round_target }} · {{ founder_name }}_
 
 ![TAM / SAM / SOM]({{ market_chart_path | default("figures/market-sizing.png") }})
 
-- **TAM**: {{ tam_label }} — {{ tam_basis }}
-- **SAM**: {{ sam_label }} — {{ sam_basis }}
-- **SOM**: {{ som_label }} — {{ som_basis_year_3 }}
+_{{ market_one_line }}_
+
+{# Figure + one supporting line (the lint-safe idiom — see assets/slide-archetypes.md
+   "Figure layout idioms"). The chart carries TAM/SAM/SOM; this single italic line
+   states the bottom-up takeaway, e.g.
+   "{{ tam_label }} TAM → {{ sam_label }} SAM → {{ som_label }} Yr-3 SOM
+    ({{ som_basis_year_3 }}) — {{ tam_basis }}". Do NOT add a bullet list under the
+   chart: figure + 3+ bullets overflows 16:9. -#}
 
 <!-- speaker: Bottom-up logic. Walk the multiplication; cite the input sources from the brief. -->
 
@@ -105,9 +110,13 @@ _{{ stage_label }} · {{ round_target }} · {{ founder_name }}_
 
 ![Traction chart]({{ traction_chart_path | default("figures/traction.png") }})
 
-- {{ traction_bullet_1 }}
-- {{ traction_bullet_2 }}
-- {{ traction_bullet_3 }}
+_{{ traction_one_line }}_
+
+{# Figure + one supporting line (lint-safe idiom). The chart carries the trend;
+   this single italic line states the headline numbers, e.g.
+   "{{ traction_bullet_1 }}; {{ traction_bullet_2 }}; {{ traction_bullet_3 }}".
+   Real numbers only — projections labeled as projections in the speaker notes.
+   Do NOT add a bullet list under the chart (figure + 3+ bullets overflows 16:9). -#}
 
 <!-- speaker: Real numbers only. Projections labeled as projections. -->
 
@@ -143,9 +152,14 @@ _{{ stage_label }} · {{ round_target }} · {{ founder_name }}_
 
 ![Financial projections]({{ financials_chart_path | default("figures/financials.png") }})
 
-- Current ARR: **{{ current_arr }}** (real)
-- 12-month plan: {{ twelve_month_arr_target }} (projection — see speaker notes for assumptions)
-- Current burn: {{ current_burn_per_month }}/mo · Runway: {{ current_runway_months }} months
+_{{ financials_one_line }}_
+
+{# Figure + one supporting line (lint-safe idiom). Fold current ARR, the 12-month
+   plan, and burn/runway into one italic line — they are already terse, e.g.
+   "Current ARR {{ current_arr }} (real); 12-mo plan {{ twelve_month_arr_target }}
+    (projection — see notes); burn {{ current_burn_per_month }}/mo,
+    {{ current_runway_months }} months runway".
+   Do NOT add a bullet list under the chart (figure + 3+ bullets overflows 16:9). -#}
 
 <!-- speaker: Hockey-stick projections without intermediate milestones get cut. Show the build. -->
 
@@ -153,13 +167,13 @@ _{{ stage_label }} · {{ round_target }} · {{ founder_name }}_
 
 <!-- _class: ask -->
 
-## The ask
+{# Single H2 heading on the ask slide. Do NOT add a `## The ask` tag or an H1 hero
+   above it: the dark `_class: ask` background + headline already signal the ask, and
+   an H2 tag + H1 hero + bullets overflows the tighter ask-slide capacity (and trips
+   the H1+H2 anti-pattern penalty). Use one H2, then a single inline use-of-funds line. #}
+## Raising **{{ round_size }}** to {{ runway_milestone }}
 
-# Raising **{{ round_size }}** to {{ runway_milestone }}
-
-- **{{ use_eng_pct }}%** engineering · **{{ use_gtm_pct }}%** GTM
-- **{{ use_hires_pct }}%** hires · **{{ use_reserve_pct }}%** reserve
-- {{ runway_at_target }} months of runway at this round size
+{{ use_eng_pct }}% engineering · {{ use_gtm_pct }}% GTM · {{ use_hires_pct }}% hires · {{ use_reserve_pct }}% reserve — {{ runway_at_target }} months runway.
 
 _{{ founder_name }} · {{ contact_email }}_
 
