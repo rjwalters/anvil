@@ -98,6 +98,7 @@ For a new thread, `N+1 == 1` → output is `<thread>.1/`.
     - For each diagram/architecture/flowchart slide, write a Mermaid source file: `figures/src/<name>.mmd`.
     - For each data chart slide, write a matplotlib script: `figures/src/<name>.py` and source data: `figures/src/<name>.csv`. If the brief contains the data inline, extract it to CSV first.
     - The drafter does NOT run renders — `deck-figures` handles rendering. The drafter is responsible for producing source files that `deck-figures` can render unambiguously.
+    - See `assets/figure-conventions.md` for matplotlib `$`-escaping, DPI, palette, transparency, and output-path conventions when writing `figures/src/*.py`.
 11. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO>`.
 12. **Report**: print the path and a one-line status (e.g., `Drafted acme-seed.1/ (deck.md: 12 slides, speaker-notes.md: 12 sections, 4 figures specified)`).
 
