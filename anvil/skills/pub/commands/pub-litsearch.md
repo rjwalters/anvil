@@ -87,6 +87,8 @@ The drafter is free to merge entries from `candidates.bib` into the version dir'
 
 ## `_progress.json` snippet
 
+This command writes the critic-sibling shape documented in `anvil/lib/snippets/progress.md`. Litsearch siblings live at `<thread>.0.litsearch/` (pre-draft) or `<thread>.{N}.litsearch/` (re-run after reviewer feedback):
+
 ```json
 {
   "version": 1,
@@ -98,4 +100,6 @@ The drafter is free to merge entries from `candidates.bib` into the version dir'
 }
 ```
 
-`for_version: 0` for the pre-draft sibling; `for_version: <N>` for re-runs at version `N`. Merge rule (shallow): preserve fields not touched by this command.
+`for_version: 0` for the pre-draft sibling; `for_version: <N>` for re-runs at version `N`. Merge rule (shallow): preserve fields not touched by this command. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
+
+Litsearch outputs (`notes.md` + `candidates.bib`) are a domain-specific scorecard; the sibling SHOULD declare `scorecard_kind: human-verdict` in `_meta.json` per `anvil/lib/snippets/scorecard_kind.md` (the drafter reads the notes narratively, not as a programmatic per-dimension partial scorecard).

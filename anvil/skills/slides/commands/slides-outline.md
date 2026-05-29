@@ -127,4 +127,6 @@ The `outline.md` is the authoritative narrative spine for the drafter to expand 
 }
 ```
 
+Merge rule (shallow): preserve fields not touched by this command. See `anvil/lib/snippets/progress.md` for the full read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC format. This sibling SHOULD declare `scorecard_kind: human-verdict` in `_meta.json` per `anvil/lib/snippets/scorecard_kind.md` (the reviewer and reviser consume these outputs as narrative, not as programmatic partial scorecards).
+
 The outline sibling's `_progress.json` carries `for_version: 0` to distinguish it from version-dir progress files. Merge rule (shallow): preserve fields not touched by this command.

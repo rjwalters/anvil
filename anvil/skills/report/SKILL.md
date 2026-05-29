@@ -180,7 +180,7 @@ Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. 
 
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `report.md` exist? does the audit sibling's `verdict.md` exist?), not by flag — `_progress.json` is a resume hint.
 
-Until `anvil/lib/progress.py` lands (see #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: command updates one phase, preserves all others.
+The canonical `_progress.json` schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention. The merge is shallow: command updates one phase, preserves all others. Critic siblings (`<thread>.{N}.review/`, `<thread>.{N}.audit/`) follow the `human-verdict` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`; the report-skill version-dir schema adds a `project: <slug>` field and a `phases.promote` extension (the promotion sibling at `<thread>.{N}.promote/` also writes its own `_progress.json`).
 
 ## Rubric
 

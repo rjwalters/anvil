@@ -28,6 +28,7 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
   verdict.md       Top-level decision + total /40 + critical flags + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Line-level comments keyed to report.md headings or excerpts
+  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
 
@@ -35,7 +36,7 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/report.md`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
-3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version = N`.
+3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
 4. **Read inputs**: load `<thread>.{N}/report.md`, enumerate `exhibits/`, load `_project.md` for recipient calibration context, load `rubric.md` and any consumer override.
 5. **Score each dimension** (1–8 per rubric, /40 total, customer-facing weights):
    - Assign an integer between 0 and the dimension's weight.

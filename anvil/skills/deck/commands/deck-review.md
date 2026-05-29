@@ -181,3 +181,6 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
 ```
 
 Merge rule: shallow merge; preserve fields not touched by this command.
+
+
+**Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "human-verdict"` per `anvil/lib/snippets/scorecard_kind.md`. This is the deck aggregator critic, which emits BOTH the `human-verdict` shape (verdict.md, scoring.md, comments.md) and the `machine-summary` shape (_summary.md, findings.md); the primary kind is `human-verdict` because the aggregated `verdict.md` is the primary deliverable for the orchestrator.

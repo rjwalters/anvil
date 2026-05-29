@@ -124,3 +124,6 @@ Standard: completed = no-op; crashed = re-runnable after deleting partial output
 - **An arc breaks when the conclusion doesn't follow.** "We're raising $3M to build the product" is fine for pre-seed but breaks the arc of a deck that claimed product-market fit on Slide 5.
 - **Don't critique design, market math, problem clarity, traction, or team here.** Other critics own those dimensions. Stay in the arc + ask lane. (If you spot a fabrication issue in passing, flag it in `comments.md` as an aside — but score only owned dimensions.)
 - **The ask is the test.** A deck that doesn't have a concrete ask isn't a pitch deck; it's a company overview. Score harshly when the ask is missing or vague.
+
+
+**Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "machine-summary"` per `anvil/lib/snippets/scorecard_kind.md`. This is a deck specialist critic — `machine-summary` shape (`_summary.md` + `findings.md`), partial scorecard with non-owned dimensions set to `null`. The deck-review aggregator reads this sibling's `_summary.md` and combines its scores into the composite verdict.

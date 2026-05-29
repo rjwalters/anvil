@@ -85,4 +85,6 @@ The reviewer scores Dimension 7 (Format / presentation quality) in part on wheth
 }
 ```
 
+Merge rule (shallow): preserve fields not touched by this command. See `anvil/lib/snippets/progress.md` for the full read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC format.
+
 Merge rule: preserve all other phases. The figurer only touches `phases.figures`.

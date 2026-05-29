@@ -104,4 +104,6 @@ After this command produces `<thread>.{N+1}/`, the orchestrator should run BOTH 
 }
 ```
 
+Merge rule (shallow): preserve fields not touched by this command. See `anvil/lib/snippets/progress.md` for the full read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC format.
+
 Note `metadata.revised_from` — the version this revision was produced from. Helpful for the orchestrator's anomaly detection (catches gaps in the version chain).

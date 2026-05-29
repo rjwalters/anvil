@@ -146,7 +146,7 @@ Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by fil
 
 Critic sibling `_progress.json` files carry a `for_version: <N>` field naming the version they critique.
 
-Until `anvil/lib/progress.py` lands (see issue #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: a command updates one phase, preserves all others.
+The canonical `_progress.json` schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention. The merge is shallow: a command updates one phase, preserves all others. Critic siblings (`<thread>.{N}.review/`, `<thread>.{N}.audit/`, `<thread>.{N}.rehearse/`, `<thread>.0.outline/`) follow the `human-verdict` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`.
 
 ## Renderer — Markdown + Marp
 

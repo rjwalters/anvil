@@ -57,6 +57,8 @@ The reviewer scores Dimension 8 (Prose & structure) in part on whether exhibits 
 
 ## `_progress.json` snippet
 
+This command updates `phases.figures` only, per the shallow merge rule documented in `anvil/lib/snippets/progress.md`. The full version-dir shape is preserved across the read-merge-write:
+
 ```json
 {
   "phases": {
@@ -65,4 +67,4 @@ The reviewer scores Dimension 8 (Prose & structure) in part on whether exhibits 
 }
 ```
 
-Merge rule: preserve all other phases. The figurer only touches `phases.figures`.
+Merge rule (shallow): preserve all other phases and all `metadata` fields. The figurer only touches `phases.figures`. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.

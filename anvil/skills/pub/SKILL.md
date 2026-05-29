@@ -112,7 +112,7 @@ Each version dir and critic sibling dir contains `_progress.json`. Schema (match
 
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `main.tex` exist? does each `\includegraphics{figures/fig-1.pdf}` resolve to a file?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
-Until `anvil/lib/progress.py` lands (issue #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: a command updates one phase, preserves all others.
+The canonical `_progress.json` schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention. The merge is shallow: a command updates one phase, preserves all others. Critic siblings (`<thread>.{N}.review/`, `<thread>.{N}.audit/`, `<thread>.{N}.litsearch/`) follow the `human-verdict` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`.
 
 ## Rubric
 

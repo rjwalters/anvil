@@ -38,7 +38,7 @@ Dimension 3 is jointly owned with `claims` — both critics may score it; the re
 <thread>.{N}.s112/
   _summary.md       Critic tag s112, critical flag, dim 2 + dim 3 scores, top revision priorities
   findings.md       Per-claim and per-spec-section §112 findings
-  _meta.json        { critic, role, started, finished, model, schema_version }
+  _meta.json        { critic, role, started, finished, model, schema_version, scorecard_kind: "machine-summary" }
   _progress.json    Phase state for the s112 critic
 ```
 
@@ -111,3 +111,8 @@ Standard.
   }
 }
 ```
+
+
+## Scorecard kind
+
+This critic emits the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`. The `_meta.json` MUST include `"scorecard_kind": "machine-summary"` so the `ip-uspto-revise` aggregator can correctly discriminate this sibling from any `human-verdict` siblings (e.g., consumer-added narrative critics).

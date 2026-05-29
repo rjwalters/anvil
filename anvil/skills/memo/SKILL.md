@@ -28,6 +28,8 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
     verdict.md             Top-level decision (advance / block) + total /40
     scoring.md             Per-dimension scores against the memo rubric
     comments.md            Line-level comments keyed to memo.md
+    _meta.json             { critic, scorecard_kind: "human-verdict", ... } (see lib/snippets/scorecard_kind.md)
+    _progress.json         Phase state for the reviewer
   <thread>.1.audit/        Optional auditor critic sibling (fact-check)
   <thread>.1.critic/       Optional substantive critic sibling
   <thread>.2/              Revised version (after revise consumes v1 + all critic siblings)
@@ -74,7 +76,9 @@ The portfolio orchestrator is the user-facing entry point for status; the four l
 
 ## Progress tracking
 
-Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. Schema:
+Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. The canonical schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention.
+
+Version-dir sample (no `for_version` — that field is only on critic siblings):
 
 ```json
 {
@@ -91,9 +95,22 @@ Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. 
 }
 ```
 
+Critic-sibling sample (adds `for_version` naming the version critiqued):
+
+```json
+{
+  "version": 1,
+  "thread": "<thread>",
+  "for_version": 1,
+  "phases": {
+    "review": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+  }
+}
+```
+
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `memo.md` exist? does the exhibit referenced as `exhibits/fig-1.png` exist?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
-Until `anvil/lib/progress.py` lands (see issue #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: command updates one phase, preserves all others.
+Critic siblings (e.g., `<thread>.{N}.review/`) follow the `human-verdict` scorecard kind documented in `anvil/lib/snippets/scorecard_kind.md`: they emit `verdict.md` + `scoring.md` + `comments.md` for human consumption. A `_meta.json` with `{"scorecard_kind": "human-verdict"}` is recommended (the default if `_meta.json` is absent).
 
 ## Rubric
 

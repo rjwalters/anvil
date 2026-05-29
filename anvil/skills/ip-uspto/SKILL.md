@@ -129,12 +129,12 @@ Every critic directory contains:
 <thread>.{N}.<tag>/
   _summary.md         Scorecard (8-dim /40 partial — critic only fills dimensions it owns) + critical flag boolean
   findings.md         Itemized findings, each with: severity, location (file:section), rationale, suggested fix
-  _meta.json          { critic: <tag>, role: <which role md>, started: <iso>, finished: <iso>, model: <hint>, schema_version: 1 }
+  _meta.json          { critic: <tag>, role: <which role md>, started: <iso>, finished: <iso>, model: <hint>, schema_version: 1, scorecard_kind: "machine-summary" }
 ```
 
 Uniform schema enables `ip-uspto-revise` to enumerate findings programmatically without per-critic special-casing. Critics that don't fill a rubric dimension leave it `null` rather than zero — the reviser aggregates non-null scores by mean.
 
-**Schema note**: this schema (`_summary.md` / `findings.md` / `_meta.json`) intentionally differs from the memo skill's (`verdict.md` / `scoring.md` / `comments.md`). The divergence is tracked for reconciliation when the framework lib is extracted (issue #10). Anvil ships both shapes pending that work; consumers should not depend on one schema across skills.
+**Schema note**: this schema (`_summary.md` / `findings.md` / `_meta.json`) is the canonical `machine-summary` scorecard kind documented in `anvil/lib/snippets/scorecard_kind.md`. The memo, pub, slides, and report skills use the `human-verdict` kind (`verdict.md` / `scoring.md` / `comments.md`); the deck skill is the layered/aggregator reference (both kinds present). The two-kind discriminator (set in `_meta.json` as `scorecard_kind`) is how consumers distinguish the shapes without hardcoding skill-specific knowledge — see `anvil/lib/snippets/scorecard_kind.md` and `anvil/lib/snippets/critics.md` for the aggregation rules.
 
 ### Reviser composition
 
@@ -175,7 +175,7 @@ Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. 
 
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `spec.tex` exist? does `_summary.md` parse?), not by flag — `_progress.json` is a resume hint, not the source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
-Until `anvil/lib/progress.py` lands (see issue #10), each command reads and writes `_progress.json` directly with a minimal JSON read-merge-write snippet. The merge is shallow: command updates one phase, preserves all others.
+The canonical `_progress.json` schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention. The merge is shallow: command updates one phase, preserves all others. All ip-uspto critic siblings (`<thread>.{N}.review/`, `.s101/`, `.s112/`, `.claims/`, `.priorart/`, `.audit/`, `.preflight/`) follow the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`: each emits `_summary.md` + `findings.md` + `_meta.json` (with `scorecard_kind: machine-summary`); each fills only its owned rubric dimensions and leaves others `null` for the reviser's mean aggregation.
 
 ## Rubric
 

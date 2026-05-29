@@ -122,3 +122,6 @@ The contract is enforced post-hoc by `deck-audit`. The drafter is responsible fo
   }
 }
 ```
+
+
+**Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.

@@ -34,7 +34,7 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
 <thread>.{N}.audit/
   _summary.md       Pass/fail boolean + per-check status
   findings.md       Itemized findings (severity, location, rationale, suggested fix)
-  _meta.json        { critic: "audit", role: "ip-uspto-audit.md", started, finished, model, schema_version }
+  _meta.json        { critic: "audit", role: "ip-uspto-audit.md", started, finished, model, schema_version, scorecard_kind: "machine-summary" }
   _progress.json    Phase state for the audit
 ```
 
@@ -165,3 +165,8 @@ A failed audit (any `blocker` finding) blocks `ip-uspto-finalize`. The operator 
   }
 }
 ```
+
+
+## Scorecard kind
+
+This critic emits the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`. The `_meta.json` MUST include `"scorecard_kind": "machine-summary"` so the `ip-uspto-revise` aggregator can correctly discriminate this sibling from any `human-verdict` siblings (e.g., consumer-added narrative critics).

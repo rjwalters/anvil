@@ -46,7 +46,7 @@ This critic runs the Alice/Mayo analysis on each independent claim and reports f
 <thread>.{N}.s101/
   _summary.md       Critic tag s101, critical flag, dimension 4 score, top revision priorities
   findings.md       Per-claim Alice/Mayo analysis with severity ratings
-  _meta.json        { critic, role, started, finished, model, schema_version }
+  _meta.json        { critic, role, started, finished, model, schema_version, scorecard_kind: "machine-summary" }
   _progress.json    Phase state for the s101 critic
 ```
 
@@ -151,3 +151,8 @@ Standard: completed `_summary.md` is never overwritten; crashed runs re-runnable
   }
 }
 ```
+
+
+## Scorecard kind
+
+This critic emits the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`. The `_meta.json` MUST include `"scorecard_kind": "machine-summary"` so the `ip-uspto-revise` aggregator can correctly discriminate this sibling from any `human-verdict` siblings (e.g., consumer-added narrative critics).

@@ -30,6 +30,7 @@ A thread cannot reach `READY` (the terminal-for-rubric state) without an `AUDITE
 <thread>.{N}.audit/
   verdict.md       Top-level audit verdict + flag status + summary table
   claims.md        Every technical claim enumerated with verdict and citation
+  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state with audit: done, for_version: <N>
 ```
 
@@ -37,7 +38,7 @@ A thread cannot reach `READY` (the terminal-for-rubric state) without an `AUDITE
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. If `<thread>.{N}.audit/_progress.json.audit.state == done` and `verdict.md` exists, the audit is complete — exit early with a notice (idempotent).
 2. **Resume check**: if `audit.state == in_progress` without `verdict.md`, delete partial output and re-audit.
-3. **Initialize `_progress.json`**: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version: <N>`.
+3. **Initialize `_progress.json`**: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version: <N>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`); slides-audit ships task-specific `claims.md` alongside the scorecard-kind declaration.
 4. **Enumerate claims**: scan `deck.md` AND every `notes/*.md` file. A *technical claim* is any statement that:
    - asserts a numerical value, ratio, or statistic;
    - asserts an attribution (author, paper, year, institution);

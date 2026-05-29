@@ -47,7 +47,7 @@ This critic evaluates each independent claim against each supplied prior-art ref
 <thread>.{N}.priorart/
   _summary.md       Critic tag priorart, critical flag, dim 5 score, per-reference per-claim risk table
   findings.md       Per-claim per-reference detailed analysis
-  _meta.json        { critic, role, started, finished, model, schema_version }
+  _meta.json        { critic, role, started, finished, model, schema_version, scorecard_kind: "machine-summary" }
   _progress.json    Phase state for the priorart critic
 ```
 
@@ -135,3 +135,8 @@ Standard. Note that re-running this critic after the operator adds more prior ar
   }
 }
 ```
+
+
+## Scorecard kind
+
+This critic emits the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`. The `_meta.json` MUST include `"scorecard_kind": "machine-summary"` so the `ip-uspto-revise` aggregator can correctly discriminate this sibling from any `human-verdict` siblings (e.g., consumer-added narrative critics).

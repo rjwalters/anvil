@@ -25,6 +25,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
   verdict.md       Top-level decision + total /40 + critical flags + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Line-level comments keyed to main.tex section headings or excerpts
+  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
 
@@ -32,7 +33,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/main.tex`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
-3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`.
+3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
 4. **Read inputs**: load `<thread>.{N}/main.tex`, `<thread>.{N}/refs.bib`, enumerate `figures/`, load `rubric.md` and any consumer override.
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
@@ -71,7 +72,9 @@ The review sibling directory is **read-only once written**. Revisions consume it
 - **Comments should be actionable.** "Tighten this section" is not useful. "Replace the unsourced 87% accuracy claim in the abstract with a citation to Table 2, or remove the claim" is useful.
 - **Defer fact-check to the auditor.** This phase scores citation hygiene (do entries exist and are they well-formed) but does not verify cited papers actually support claims. Save the per-citation claim-support pass for `pub-audit`.
 
-## `_progress.json` snippet (review sibling)
+## `_progress.json` and `_meta.json` snippets (review sibling)
+
+This command writes the critic-sibling shape documented in `anvil/lib/snippets/progress.md` (with `for_version` naming the version reviewed), and a `_meta.json` declaring the scorecard kind per `anvil/lib/snippets/scorecard_kind.md`:
 
 ```json
 {
@@ -84,4 +87,16 @@ The review sibling directory is **read-only once written**. Revisions consume it
 }
 ```
 
-The review sibling's `_progress.json` is structurally similar to the version dir's but with a `for_version` field naming the version it reviews. Merge rule (shallow): preserve fields not touched by this command.
+```json
+{
+  "critic": "review",
+  "role": "pub-review.md",
+  "started":  "<ISO>",
+  "finished": "<ISO>",
+  "model": "<model-id>",
+  "schema_version": 1,
+  "scorecard_kind": "human-verdict"
+}
+```
+
+Merge rule (shallow): preserve fields not touched by this command. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
