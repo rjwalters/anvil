@@ -24,7 +24,7 @@ Every Anvil skill ships at minimum:
 | `<type>-draft` | Produce the first version. | Brief or upstream artifact. | `<thread>.1/` |
 | `<type>-review` | Score the latest version. | `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `<type>-revise` | Apply the review's `fix` field. | `<thread>.{N}/`, `<thread>.{N}.review/` | `<thread>.{N+1}/` |
-| `<type>-audit` | Final pre-flight (optional). | Latest READY version. | `<thread>.{N}.audit/` |
+| `<type>-audit` | Tool-evidence verification (optional or mandatory per skill). See `anvil/lib/snippets/audit.md` for the `.review/` vs `.audit/` distinction and the per-finding `tool_calls[]` contract. | Latest READY version. | `<thread>.{N}.audit/` with `_review.json` `kind: tool_evidence`. |
 
 Some skills add `<type>-figures` (for skills with assets / diagrams) or
 specialist critic commands (`<type>-narrative`, `<type>-market`, etc.).
@@ -86,6 +86,57 @@ are for cross-cutting "stop reading" defects.)
 **Computing the verdict** is the *aggregator's* job, not any single
 critic's. Per-critic `verdict` fields are accepted but ignored — set them
 only as a per-critic sanity check, not as the source of truth.
+
+### Audit-class critics: `kind: tool_evidence`
+
+Audit-class critics (typically `<type>-audit`) MUST set
+`kind: "tool_evidence"` on their `_review.json` payload, and every entry
+in `findings[]` MUST carry a non-empty `tool_calls` array recording the
+tool invocations that produced the evidence. The schema validator at
+`anvil/lib/review_schema.py::Review._validate_kind_required_fields`
+rejects any `tool_evidence` review whose findings omit `tool_calls`. See
+`anvil/lib/snippets/audit.md` for the principled `.review/` vs `.audit/`
+split and the per-skill mapping table.
+
+Minimal `_review.json` example for an audit critic:
+
+```json
+{
+  "schema_version": "1",
+  "kind": "tool_evidence",
+  "version_dir": "<thread>.{N}",
+  "critic_id": "<type>-audit",
+  "scores": [
+    {
+      "dimension": "<dim_1>",
+      "score": 4,
+      "max": 5,
+      "critical": false,
+      "justification": "Citation resolution check passed."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "major",
+      "dimension": "<dim_1>",
+      "rationale": "Cited paper does not support the surrounding claim.",
+      "suggested_fix": "Drop the citation or replace with a supporting source.",
+      "tool_calls": [
+        {
+          "tool": "grep",
+          "args": { "pattern": "\\\\cite\\{smith2024\\}", "path": "main.tex" },
+          "result_summary": "1 occurrence at line 142"
+        },
+        {
+          "tool": "read_pdf",
+          "args": { "path": "refs/smith2024.pdf" },
+          "result_summary": "Section 3 discusses unrelated topic"
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## Directory layout
 
