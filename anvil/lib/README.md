@@ -434,6 +434,126 @@ Unit tests live in `tests/lib/`:
 
 Run with `pytest tests/lib/` from the repo root.
 
+## Citations: `cite.py`
+
+The citation primitive lives in `anvil/lib/cite.py`. It is the
+machine-side companion to the markdown convention documented in
+`snippets/cite.md`. Public API:
+
+```python
+from pathlib import Path
+from anvil.lib.cite import (
+    cite,
+    resolve,
+    parse_identifier,
+    bib_key,
+    Identifier,
+    BibRecord,
+    IdentifierKind,
+    CiteResolutionError,
+    UnsupportedIdentifierError,
+)
+
+# 1. Top-level convenience: parse, resolve, write, return @key.
+key = cite("10.1038/nature12373", Path("acme-seed.3"))
+# -> "@kucsko2013nanometre"
+# refs.bib has gained one entry; calling again is a no-op (idempotent).
+
+# 2. Lower-level: parse + resolve separately.
+identifier = parse_identifier("https://arxiv.org/abs/1706.03762")
+record = resolve(identifier)
+# record is a BibRecord with entry_type="misc", eprint="1706.03762", ...
+
+# 3. Generate a bib key without writing.
+plain_key = bib_key(record)             # 'vaswani2017attention'
+collision_safe = bib_key(record, refs_bib=Path("acme-seed.3/refs.bib"))
+```
+
+### Supported identifier kinds (v0)
+
+| Kind | Status | Resolver |
+|---|---|---|
+| `DOI` | supported | Crossref (`https://api.crossref.org/works/{doi}`) |
+| `ARXIV` | supported | arXiv API (`https://export.arxiv.org/api/query?id_list=...`) |
+| `PMID` | parses, raises `UnsupportedIdentifierError` on `resolve()` | follow-up |
+| `URL` | parses, raises `UnsupportedIdentifierError` on `resolve()` | follow-up |
+
+`parse_identifier` returns `IdentifierKind.URL` for any well-formed
+`http(s)://` URL it does not recognize as a DOI or arXiv ID. The
+`UnsupportedIdentifierError` then comes from `resolve()` so callers can
+distinguish "garbage input" (raises `ValueError` at parse) from "valid
+URL but no scraper in v0" (raises `UnsupportedIdentifierError` at
+resolve).
+
+### Cache
+
+Resolved records cache to `~/.cache/anvil/cite/<kind>/<urlquoted-value>.json`.
+Atomic writes (`.tmp` then `os.rename`); directory mode is `0700`. No
+TTL — bibliographic records are stable. Set `CITE_CACHE_BYPASS=1` to
+disable both read and write (useful when debugging the live resolver
+against test cassettes).
+
+### BibTeX shape
+
+The writer emits BibTeX 0.99 entries with a fixed field order
+(`author`, `title`, `journal`, `year`, `volume`, `number`, `pages`,
+`doi`, `eprint`, `eprinttype`, `url`). Empty fields are omitted
+entirely. Multi-author lists use ` and ` as the separator. One blank
+line between entries.
+
+`@article` is used for Crossref journal articles; `@misc` for arXiv
+preprints (with `eprint` + `eprinttype=arxiv`). `inproceedings` and
+`book` are reserved in the `BibRecord.entry_type` literal so a future
+resolver can populate them without a schema bump.
+
+### Citation-quality rubric dimensions
+
+Skills that produce sourced artifacts opt in to two canonical rubric
+dimensions:
+
+- **`citation_recall`** — claims-with-citations / total-claims.
+- **`citation_precision`** — claims-supported-by-cited-source /
+  claims-with-citations.
+
+These are first-class dimensions, not sub-fields of any other dim,
+because the `Score` model enforces one integer score per dimension.
+Adding them is **per-consumer rubric work**, not lib work — the lib
+documents the naming convention but does not split any existing skill
+rubric. See `snippets/rubric.md` for the migration pattern (split an
+existing citation-related dimension to preserve the /40 envelope).
+
+### The CSL boundary
+
+**`cite.py` produces BibTeX. CSL is per-skill.** The lib ships zero
+CSL files and zero CSL knowledge. Consumer skills that want
+CSL-rendered citations (e.g. `anvil:pub`, `anvil:report`) ship an
+`apa-7.csl` or similar under their own `assets/` directory and the
+skill's render command picks it up.
+
+`anvil:ip-uspto` uses a custom BibTeX style (USPTO formal-requirements
+formatting); the lib does not need to know about that either.
+
+### Tests
+
+Unit tests live in `tests/lib/test_cite.py`. Cassettes
+(hand-curated Crossref JSON + arXiv Atom XML) are committed under
+`tests/lib/cassettes/cite/`. `urllib.request.urlopen` is patched at
+test time to return cassette content; no live network calls happen in
+CI. A single `@pytest.mark.network` test against a live DOI is
+provided for smoke testing and is skipped by default.
+
+To record additional cassettes:
+
+```bash
+curl -H "User-Agent: anvil-cite/0.0.1 (https://github.com/rjwalters/anvil)" \
+  "https://api.crossref.org/works/10.xxx/xxx" \
+  > tests/lib/cassettes/cite/crossref-10.xxx_xxx.json
+
+curl -H "User-Agent: anvil-cite/0.0.1 (https://github.com/rjwalters/anvil)" \
+  "https://export.arxiv.org/api/query?id_list=YYMM.NNNNN" \
+  > tests/lib/cassettes/cite/arxiv-YYMM.NNNNN.xml
+```
+
 ## Deferred (NOT in v0)
 
 The following are explicitly out of scope and are tracked as separate
