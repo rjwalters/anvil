@@ -21,10 +21,19 @@ Every `_progress.json` carries this minimum shape:
   },
   "metadata": {
     "iteration": <N>,
-    "max_iterations": <N>
-  }
+    "max_iterations": <N>,
+    "score_history": [
+      { "iteration": 1, "total": 28, "threshold": 32 },
+      { "iteration": 2, "total": 30, "threshold": 32 }
+    ]
+  },
+  "termination_reason": "THRESHOLD_MET | CRITICAL_FLAG | STALLED | MAX_ITERATIONS"
 }
 ```
+
+`metadata.score_history` and the top-level `termination_reason` are
+**optional** and added by #27 for stable-score termination. See
+"Convergence fields" below.
 
 Critic sibling directories (`<thread>.{N}.<tag>/`) carry an additional
 top-level field naming the version they critique:
@@ -47,6 +56,71 @@ not touch.
 | `done` | Phase completed successfully. |
 | `completed` field is set. |
 | `failed` | Phase ran but did not produce valid output. Caller decides whether to retry from `pending` or escalate. |
+
+## Convergence fields (added by #27)
+
+Two optional fields participate in the secondary "stable-score termination"
+stop condition. Both are additive and the shallow-merge rule (see
+"Read-merge-write recipe" below) preserves them: a command that does not
+own these fields will read them, leave them untouched, and write them back.
+
+### `metadata.score_history`
+
+An array of per-iteration scorecard summaries, appended one entry per
+review iteration:
+
+```json
+"score_history": [
+  { "iteration": 1, "total": 28, "threshold": 32 },
+  { "iteration": 2, "total": 30, "threshold": 32 },
+  { "iteration": 3, "total": null, "threshold": 32 }
+]
+```
+
+- `iteration`: 1-indexed iteration number, matching `metadata.iteration`
+  at the time the entry was appended.
+- `total`: the per-version aggregated total from
+  `anvil.lib.critics.aggregate`. Use `null` (NOT `0`) when no scorecard
+  was produced — e.g., a critical-flag short-circuit fired before the
+  reviewer wrote a scorecard.
+- `threshold`: the advance threshold at that iteration. Captured per-row
+  so a mid-loop threshold override remains auditable.
+
+The array is the input to `anvil.lib.convergence.check_stable` and
+`anvil.lib.convergence.decide_termination`. The orchestrator extracts the
+`total` column in iteration order and passes it as the `history` argument.
+
+The reviser/orchestrator command is responsible for appending the row for
+the iteration it just finished. Other commands MUST NOT mutate
+`score_history`; they read it as input only.
+
+### `termination_reason` (top-level)
+
+A top-level field set by the review/revise command **only** when it has
+just decided to terminate the convergence loop. Absent (or `null`) on
+intermediate iterations. Values:
+
+| Value | Meaning |
+|---|---|
+| `THRESHOLD_MET` | `total >= threshold`, no critical flag — `ADVANCE`. |
+| `CRITICAL_FLAG` | A critical flag is set — `BLOCK`. |
+| `STALLED` | The last `lookback` totals are within `± window` and below threshold — secondary stop condition. Verdict = `STALLED`. |
+| `MAX_ITERATIONS` | Iteration cap exhausted without convergence. Verdict stays `REVISE`; the termination reason distinguishes "ran out of budget" from "demonstrated plateau". |
+
+The resolution order is documented in `rubric.md`'s "Convergence logic"
+and implemented in `anvil.lib.convergence.decide_termination`. The two
+sources MUST agree; the Python implementation is the source of truth for
+programmatic use, the snippet for LLM-side authoring.
+
+### Why this is additive
+
+Both fields are optional and absent in pre-#27 `_progress.json` files. The
+shallow-merge rule (every command preserves top-level + `metadata` fields
+it does not own) means existing commands that have not been migrated to
+write these fields continue to function unchanged. The only command that
+needs to know about them is the review/revise command (which appends to
+`score_history`) and the orchestrator's stop-condition check (which reads
+both).
 
 ## Validation discipline
 
@@ -77,9 +151,18 @@ def write_phase(path, phase, fields):
 
 **Merge rule (shallow)**: the command updates one phase, preserves all
 others, and preserves any top-level fields it does not own (`metadata`,
-`for_version`, `project`, skill-specific extensions). The merge is shallow:
-do not attempt deep recursive merges of `metadata` sub-objects unless the
-specific snippet says otherwise.
+`for_version`, `project`, `termination_reason`, skill-specific
+extensions). The merge is shallow: do not attempt deep recursive merges
+of `metadata` sub-objects unless the specific snippet says otherwise.
+
+Specifically:
+
+- `termination_reason` (top-level, added by #27) is preserved on every
+  shallow merge. Only the review/revise command that decided termination
+  writes this field. Other commands MUST NOT clear it.
+- `metadata.score_history` (added by #27) is preserved on every shallow
+  merge. Only the review/revise command that just finished an iteration
+  appends to it. Other commands MUST NOT mutate it.
 
 **Atomicity**: write to a temp file in the same directory, then `rename()`
 over the target. This avoids corrupting `_progress.json` if the process
