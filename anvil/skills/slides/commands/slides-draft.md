@@ -49,12 +49,14 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
      theme: anvil-slides-theme
      size: 16:9
      paginate: true
+     math: mathjax
+     html: true
      ---
      ```
-     (The `theme: anvil-slides-theme` reference resolves to `templates/anvil-slides-theme.css` when rendered with `marp --theme-set <path-to-theme>`; consumers may override.)
+     (The `theme: anvil-slides-theme` reference resolves to `templates/anvil-slides-theme.css` when rendered with `marp --theme-set <path-to-theme>`; consumers may override. `math: mathjax` + `html: true` mirror the framework pin at `anvil/lib/marp/config.yml` so `deck.md` renders correctly even without the CLI config file.)
    - **One slide per `---` block.** The first slide is the title slide.
-   - **Math** via KaTeX: `$x^2$` inline, `$$\nabla \cdot E = \rho / \varepsilon_0$$` display.
-   - **Diagrams** via Mermaid in fenced code blocks tagged `mermaid`. Marp renders them inline.
+   - **Math** via MathJax (Marp v3 default): `$x^2$` inline, `$$\nabla \cdot E = \rho / \varepsilon_0$$` display.
+   - **Diagrams** via inline Mermaid in fenced code blocks tagged `mermaid`. Marp renders them inline at PDF-export time (enabled by `html: true`).
    - **Figures** referenced as `![alt](figures/<name>.png)`. The drafter may emit stubs (referenced filenames that don't yet exist); `slides-figures` resolves them. The drafter MUST NOT invent data — figure stubs reference source data that the brief or refs provide.
    - **Density discipline**: target ≤30 words per slide body; never exceed 50 words or 7 bullets (hard cap from rubric critical-flag #2). One idea per slide.
    - **Font size minimums**: rely on the theme defaults (≥24pt body, ≥18pt code). Do not override font sizes in slide-local CSS unless the brief explicitly requires it.

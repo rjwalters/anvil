@@ -9,12 +9,21 @@
      theme: anvil-deck      — references the shipped theme in assets/anvil-deck.css
      paginate: true         — page numbers on every slide except title
      size: 16:9             — investor-standard aspect ratio
+     math: mathjax          — Marp v3 default math engine; covers more LaTeX than KaTeX
+     html: true             — allows inline HTML/<script> (required for inline mermaid)
+
+   The math + html pins are also set at the CLI level via
+   anvil/lib/marp/config.yml (consumed with `marp --config-file ...`); pinning
+   them here keeps deck.md self-describing so it renders correctly even when
+   that config file is not on the CLI line.
 #}
 ---
 marp: true
 theme: anvil-deck
 paginate: true
 size: 16:9
+math: mathjax
+html: true
 ---
 
 <!-- _class: title -->

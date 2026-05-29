@@ -41,18 +41,49 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
    - For `deck.pdf`: check if exists AND is newer than `deck.md` AND newer than any figure it references. If so, skip render.
    - If all figures + PDF up to date AND `phases.figures.state == done` → exit early (no-op).
 3. **Initialize `_progress.json`**: `phases.figures.state = in_progress`, `phases.figures.started = <ISO>`.
-4. **Render Mermaid diagrams**:
-   - For each `figures/src/<name>.mmd`:
-     ```bash
-     mmdc \
-       --input figures/src/<name>.mmd \
-       --output figures/<name>.png \
-       --width 1600 \
-       --height 900 \
-       --backgroundColor white
-     ```
-     (`mmdc` from `@mermaid-js/mermaid-cli`; install via `npm install -g @mermaid-js/mermaid-cli`.)
-   - On render failure: write a stub `figures/<name>.png-FAILED.md` describing the error, leave the prior PNG (if any) in place, continue with other figures.
+4. **Resolve Mermaid diagrams (inline-default)**:
+
+   The framework Marp pin (`anvil/lib/marp/config.yml`) sets `html: true`,
+   which lets fenced ```mermaid blocks render natively inside `deck.md`. The
+   default routing for diagrams is therefore **inline fenced ```mermaid blocks
+   in `deck.md`** — no out-of-band rendering, no PNG file, no `mmdc`
+   invocation. The drafter is expected to produce mermaid this way; the
+   figurer's job for this default path is a no-op (the diagram lives in the
+   markdown source and Marp handles it at PDF-render time in step 7).
+
+   **Fallback: `mmdc → PNG` out-of-band rendering.** A `.mmd` source under
+   `figures/src/` is the explicit opt-in signal that the diagram has been
+   pulled out of `deck.md` and should be rendered as a PNG. This path exists
+   for the small number of cases mermaid's inline auto-layout cannot handle:
+
+   - **Custom geometry** — the diagram needs an explicit width/height or
+     aspect ratio Marp's default cannot accommodate.
+   - **Transparent compositing** — the diagram must be overlaid on a
+     theme-colored background and needs `--backgroundColor transparent`.
+   - **Auto-layout breakdown** — the diagram is larger than the slide's safe
+     area (caught by `slide-content-overflow` lint) and only fits when
+     rendered at a forced viewport.
+   - **Explicit marker on a fence** — the drafter left a
+     `<!-- anvil-figure: png -->` HTML comment on the line directly above a
+     ```mermaid fence in `deck.md`. Treat this as a "render this fence
+     out-of-band" directive: extract the mermaid body to
+     `figures/src/<derived-name>.mmd` and proceed with the PNG path below.
+
+   When triggered, render with:
+   ```bash
+   mmdc \
+     --input figures/src/<name>.mmd \
+     --output figures/<name>.png \
+     --width 1600 \
+     --height 900 \
+     --backgroundColor white
+   ```
+   (`mmdc` from `@mermaid-js/mermaid-cli`; install via `npm install -g @mermaid-js/mermaid-cli`.)
+
+   On render failure: write a stub `figures/<name>.png-FAILED.md` describing
+   the error, leave the prior PNG (if any) in place, continue with other
+   figures. A failed fallback render does NOT silently re-inline the diagram
+   — the drafter chose the PNG path on purpose, so the failure is visible.
 5. **Render matplotlib charts**:
    - For each `figures/src/<name>.py`: run the script. Convention: the script accepts the working directory `figures/src/` and writes its output to `figures/<name>.png`.
    - Standard script shape:
@@ -82,17 +113,27 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
    ```bash
    marp <thread>.{N}/deck.md \
      --pdf \
+     --html \
+     --config-file anvil/lib/marp/config.yml \
      --theme-set anvil/skills/deck/assets/anvil-deck.css \
      --allow-local-files \
      --output <thread>.{N}/deck.pdf
    ```
+   - `--html` is required so inline `<script>`-style mermaid blocks survive into the rendered PDF (per `anvil/lib/marp/config.yml` and the inline-mermaid default in step 4 above).
+   - `--config-file anvil/lib/marp/config.yml` pins the framework-shared Marp options (`html`, `allowLocalFiles`, theme search path). In an installed consumer repo this resolves to `.anvil/lib/marp/config.yml`. The explicit `--html`, `--theme-set`, and `--allow-local-files` flags are kept as belt-and-suspenders so the CLI still does the right thing when the config file is missing or has been overridden.
    - `--allow-local-files` is required for Marp to inline local image references.
    - If `marp` is missing: write a stub `<thread>.{N}/deck.pdf-FAILED.md` describing the missing dependency. Exit `phases.figures.state = failed` (the orchestrator surfaces this).
    - If render succeeds but produces zero pages (rare; usually indicates a malformed Marp directive): log `[blocker]` and exit failed.
 8. **Optional PPTX export**:
    - If the operator passed `--pptx` to `deck-figures`, also produce `<thread>.{N}/deck.pptx`:
      ```bash
-     marp <thread>.{N}/deck.md --pptx --theme-set anvil/skills/deck/assets/anvil-deck.css --allow-local-files --output <thread>.{N}/deck.pptx
+     marp <thread>.{N}/deck.md \
+       --pptx \
+       --html \
+       --config-file anvil/lib/marp/config.yml \
+       --theme-set anvil/skills/deck/assets/anvil-deck.css \
+       --allow-local-files \
+       --output <thread>.{N}/deck.pptx
      ```
    - Default behavior is PDF-only; PPTX is opt-in because PowerPoint export is a handoff feature, not a review-loop artifact.
 9. **Update `_progress.json`**: `phases.figures.state = done`, `phases.figures.completed = <ISO>`.

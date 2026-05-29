@@ -15,7 +15,7 @@ The `slides` skill produces technically defensible talk slides through the canon
 - **`slides-rehearse`** — time-budget and density check (deterministic word-count + heuristic spoken-time estimate).
 - **`slides-handout`** — terminal-only export of a leave-behind PDF (2-up / 4-up / notes-below variants).
 
-Slides are produced as **Markdown + Marp** sources (`deck.md`). Marp is the anvil-pinned presentation renderer for both `slides` and `deck`; Beamer is available only as a consumer-side override for users with hard constraints (e.g., conference proceedings requiring LaTeX submission). Math via KaTeX; diagrams via Mermaid or matplotlib-rendered images.
+Slides are produced as **Markdown + Marp** sources (`deck.md`). Marp is the anvil-pinned presentation renderer for both `slides` and `deck`; Beamer is available only as a consumer-side override for users with hard constraints (e.g., conference proceedings requiring LaTeX submission). Math via MathJax (Marp v3 default); diagrams via inline Mermaid or matplotlib-rendered images. The renderer pin (`math: mathjax`, `html: true`, theme search path) lives in `anvil/lib/marp/config.yml` and is the single source of truth for both shipped presentation skills.
 
 ## Talk vs. deck — the load-bearing distinction
 
@@ -156,17 +156,17 @@ Slides are authored as a single `deck.md` Marp document. One slide per `---` blo
 - Body font ≥24pt, code font ≥18pt — enforced so projected slides remain readable at distance.
 - Color-blind-safe palette (Okabe-Ito); no critical information conveyed by color alone.
 - Section divider slides for arc-marking.
-- KaTeX math: `$\nabla \cdot E = \rho / \varepsilon_0$` inline; `$$ ... $$` display.
-- Mermaid diagrams render natively in Marp (CLI + browser).
+- MathJax math (Marp v3 default): `$\nabla \cdot E = \rho / \varepsilon_0$` inline; `$$ ... $$` display. The math engine is pinned to `mathjax` in both the per-document frontmatter (`templates/deck.md.j2`) and the CLI config (`anvil/lib/marp/config.yml`).
+- Mermaid diagrams render natively in Marp as fenced ```mermaid blocks in `deck.md` — no out-of-band PNG rendering required. The `html: true` pin (frontmatter + `anvil/lib/marp/config.yml`) is what lets the inline `<script>` blocks Marp emits survive into the rendered PDF. See `assets/marp-renderer.md` for the worked example.
 
-**Rendering**: `marp deck.md --pdf --html --allow-local-files` produces a slide PDF (and an HTML preview). The skill does not assume Marp is installed at runtime — the drafter writes valid Marp markdown; the rendering step is the consumer's responsibility (or `slides-handout`'s, which does require Marp for PDF export).
+**Rendering**: `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --allow-local-files` produces a slide PDF (and an HTML preview). The skill does not assume Marp is installed at runtime — the drafter writes valid Marp markdown; the rendering step is the consumer's responsibility (or `slides-handout`'s, which does require Marp for PDF export).
 
 **Why Marp** (anvil framework decision, locked in CLAUDE.md):
 1. Markdown is the lingua franca of anvil — all artifact bodies are markdown for diff/audit reasons.
-2. KaTeX is sufficient for the vast majority of technical talks; LaTeX-grade typesetting is over-budget for the audience (slide projection, not journal printing).
+2. MathJax (Marp v3 default) covers a wider LaTeX subset than KaTeX and is sufficient for the vast majority of technical talks; LaTeX-grade typesetting is over-budget for the audience (slide projection, not journal printing).
 3. Mermaid produces respectable architecture and flow diagrams without leaving markdown.
 4. Marp's static HTML/PDF output is portable; no proprietary runtime required for playback.
-5. The renderer is pinned at the framework level (CLAUDE.md), not per-skill — both `slides` and `deck` share it. This is what unlocks the lib-extraction in #10.
+5. The renderer is pinned at the framework level (CLAUDE.md and `anvil/lib/marp/config.yml`), not per-skill — both `slides` and `deck` share it. This is what unlocks the lib-extraction in #10.
 
 **Beamer override path**: a consumer with hard LaTeX requirements (e.g., a conference that requires `.tex` submission) drops `.anvil/skills/slides/templates/anvil-slides.cls` + a `deck.tex.j2` template into their repo and overrides the drafter prompt via `.anvil/skills/slides/voice.md`. The framework does not ship Beamer support; it does not stand in the way.
 

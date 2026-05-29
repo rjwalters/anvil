@@ -35,6 +35,9 @@ anvil/lib/
     rubric.md                  8-dim /40 scoring shape + convergence logic.
     critics.md                 Sibling discovery + aggregation rules.
     scorecard_kind.md          human-verdict | machine-summary discriminator.
+  marp/                        Marp renderer pin shared by deck + slides (#32).
+    config.yml                 Canonical Marp config consumed via
+                                `marp --config-file <path>` by both skills.
   review_schema.py             Pydantic models for the unified `_review.json`
                                 payload (the machine-readable canonicalization
                                 of the markdown snippets above). (#26)
@@ -49,6 +52,91 @@ anvil/lib/
   examples/
     review-example.json        Fully-populated worked example fixture.
 ```
+
+## Marp renderer pin
+
+The framework pins **Marp** as the canonical renderer for both shipped
+presentation skills (`anvil:deck`, `anvil:slides`) per the
+`Presentation renderer` convention in `CLAUDE.md`. The pin has two
+load-bearing halves:
+
+1. **`anvil/lib/marp/config.yml`** — CLI-side pin. Every `marp ...`
+   invocation in both skills passes
+   `--config-file anvil/lib/marp/config.yml` (resolved to
+   `.anvil/lib/marp/config.yml` in an installed consumer repo). Marp accepts
+   this directly via its `--config-file` flag — no Python shim required;
+   config-not-code lands cleanly.
+2. **Per-document frontmatter** — every `deck.md` produced by either skill
+   includes `math: mathjax` and `html: true` in its top frontmatter block
+   (via `anvil/skills/{deck,slides}/templates/deck.md.j2`). This keeps the
+   markdown source self-describing: a `deck.md` checked into a consumer
+   repo renders correctly under plain `marp deck.md --pdf` even when the
+   config file is missing.
+
+When the two halves disagree, Marp's own precedence rule wins
+(frontmatter > config-file > CLI flag). The framework treats divergence
+as a bug — issue against this repo so the pin gets re-aligned.
+
+### What is pinned and why
+
+| Option | Pinned value | Why load-bearing |
+|---|---|---|
+| `math` | `mathjax` | Marp v3 default. Covers a wider LaTeX subset than KaTeX (the v2 default), which matters for talk-grade theorem statements and fundraising-deck unit-economics formulas. Pinned in frontmatter for self-describing source; `config.yml` omits it so the Marp default tracks any future version change without a config-file update. |
+| `html` | `true` | Enables inline `<script>` blocks. Marp renders fenced ```mermaid blocks as inline `<script>` — without `html: true`, the block silently drops from the output PDF. This is the load-bearing enabler for the inline-mermaid-default decision documented in `anvil/skills/{deck,slides}/commands/{deck,slides}-figures.md`. |
+| `allowLocalFiles` | `true` | Required for Marp to inline `![](figures/foo.png)` references. Without it, every embedded PNG renders as a broken-image icon. |
+| `themeSet` | both shipped themes | Lets the per-document `theme: anvil-deck` / `theme: anvil-slides-theme` references resolve without a `--theme-set` CLI flag. Consumer overrides (`.anvil/skills/{deck,slides}/templates/<their-theme>.css`) are still respected via the per-command `--theme-set` flag, which Marp merges with this set. |
+
+### Inline mermaid as the default for diagrams
+
+The `html: true` pin enables a structural decision both skills' figure
+commands depend on: **fenced ```mermaid blocks in `deck.md` are the default
+routing for diagrams**. No out-of-band `mmdc → PNG` step, no `figures/*.png`
+file for diagrams that mermaid can express, no separate render pass.
+
+The `mmdc → PNG` path remains documented as an explicit fallback for the
+small number of cases mermaid's auto-layout cannot handle (custom geometry,
+transparent compositing, oversized diagrams that overflow the safe area, or
+an explicit `<!-- anvil-figure: png -->` marker from the drafter). See:
+
+- `anvil/skills/deck/commands/deck-figures.md` step 4 — fallback procedure
+  for the deck skill.
+- `anvil/skills/slides/commands/slides-figures.md` § "Mermaid (default for
+  diagrams)" — fallback procedure for the slides skill.
+
+### Cross-reference to issue #23
+
+The Marp renderer pin (this issue, #32) and matplotlib-side figure
+conventions (issue #23, lands at
+`anvil/skills/deck/assets/figure-conventions.md`) are independent. This
+pin owns the Marp/renderer side: math engine, html flag, mermaid routing.
+Issue #23 owns the matplotlib-side: `$`-escape conventions in axis labels,
+color palette helpers, DPI defaults, accessibility (color-blind-safe
+palettes).
+
+They share the figure pipeline but touch different files. The per-skill
+`assets/marp-renderer.md` cheat-sheets cross-reference both, so a deck or
+slides author who needs the full pipeline view can navigate to either side
+without reading the issue tracker.
+
+### Cheat-sheets
+
+Per-skill author-facing reference at:
+
+- `anvil/skills/deck/assets/marp-renderer.md`
+- `anvil/skills/slides/assets/marp-renderer.md`
+
+Each documents the three figure paths (matplotlib PNG, inline mermaid,
+MathJax) with one minimal worked example per path, plus the canonical CLI
+render line.
+
+### Smoke tests
+
+Each skill's `tests/` directory contains a `test_marp_smoke.py` that
+asserts the smoke fixture (`tests/fixtures/marp-smoke/deck.md`) parses
+with the pinned frontmatter and passes the `slide-content-overflow` lint.
+A conditional check renders the fixture via Marp CLI when the binary is on
+`PATH` and skips otherwise — matching the existing skill-test discipline
+(no hard dependency on Node tooling at CI time).
 
 ## How skills consume snippets
 
@@ -351,9 +439,6 @@ Run with `pytest tests/lib/` from the repo root.
 The following are explicitly out of scope and are tracked as separate
 follow-up issues:
 
-- **`presentation_renderer`** — shared Marp pipeline for deck + slides.
-  Will land when both skills have stabilized their render-time
-  requirements.
 - **`citation_lint`** — deterministic count of unsourced numeric
   claims. Skill-specific (memo/pub care; deck/slides much less).
 - **`voice_lint`** — ban LLM tics ("available on request",
