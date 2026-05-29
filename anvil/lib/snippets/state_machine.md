@@ -36,6 +36,31 @@ cap marks the thread `BLOCKED` and requires human review.
 The cap is configurable per-thread by writing
 `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root.
 
+### Secondary terminal verdict: `STALLED` (#27)
+
+In addition to the primary terminators (`THRESHOLD_MET`, `CRITICAL_FLAG`,
+`MAX_ITERATIONS`), the convergence loop can halt with `verdict: STALLED`
+when the last `lookback` aggregated totals are all within `± window` of
+each other AND the latest total is below the threshold AND no critical
+flag is set. Defaults: `window=1`, `lookback=2` (two consecutive rounds
+within ±1).
+
+`STALLED` does NOT produce a `READY` transition. The thread is still
+below threshold; the verdict says "the score has stopped moving" rather
+than "the work has converged". The orchestrator (or human) reads
+`termination_reason: "STALLED"` and decides whether to escalate, swap
+critics, or accept the below-threshold result.
+
+`STALLED` is the **lowest-priority** terminator — `CRITICAL_FLAG`,
+`THRESHOLD_MET`, and `MAX_ITERATIONS` all resolve first. The full
+resolution order is in `rubric.md`'s "Convergence logic" section and
+implemented in `anvil.lib.convergence.decide_termination`.
+
+The score history that drives the stable check is recorded in
+`metadata.score_history` in `_progress.json` (see `progress.md`). The
+terminal verdict (when one fires) is recorded in the top-level
+`termination_reason` field.
+
 ## Critical-flag short-circuit
 
 Any critical flag set by any sibling critic short-circuits regardless of
