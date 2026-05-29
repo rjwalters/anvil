@@ -34,13 +34,23 @@ from anvil.lib.convergence import (
     check_stable,
     decide_termination,
 )
+from anvil.lib.rubric import (
+    CriticalFlagDefinition,
+    Rubric,
+    RubricDimension,
+    discover_venue_rubric,
+    load_rubric,
+)
 
 
 __all__ = [
     "BibRecord",
     "CiteResolutionError",
+    "CriticalFlagDefinition",
     "Identifier",
     "IdentifierKind",
+    "Rubric",
+    "RubricDimension",
     "TERMINATION_CRITICAL_FLAG",
     "TERMINATION_MAX_ITERATIONS",
     "TERMINATION_STALLED",
@@ -50,6 +60,8 @@ __all__ = [
     "check_stable",
     "cite",
     "decide_termination",
+    "discover_venue_rubric",
+    "load_rubric",
     "parse_identifier",
     "resolve",
 ]

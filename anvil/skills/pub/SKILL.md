@@ -75,6 +75,58 @@ Thresholds: **≥32/40** advances. **<32/40** requires revision. Any critical fl
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
+### `<thread>/.anvil.json` schema
+
+The per-thread config supports the following optional fields:
+
+```json
+{
+  "max_iterations": 4,
+  "venue": "neurips"
+}
+```
+
+| Field | Type | Default | Effect |
+|---|---|---|---|
+| `max_iterations` | int | 4 | Iteration cap (see above). |
+| `venue` | string | none | Target venue slug. When set, `pub-review` also scores the paper against the matching venue YAML and writes `_review.venue.json` alongside `_review.json`. Advisory only; does not change the /40 gate. See "Venue overlays" below. |
+
+### Venue overlays (advisory)
+
+`anvil:pub` supports **venue-pinned advisory rubrics** in addition to the generic /40. When `<thread>/.anvil.json` declares a `venue`, the reviewer scores the paper against the matching venue YAML and writes the results as a second `_review.json`-shaped file (`_review.venue.json`) in the same `.review/` sibling dir. The venue overlay is **advisory only** — the generic /40 rubric remains the sole driver of the `advance` decision, preserving the framework-wide "/40 means the same thing across skills" invariant. See `rubric.md` for the convergence-gate semantics and `anvil/lib/snippets/rubric.md` for the framework-wide rule.
+
+The Python-side schema and loader live in `anvil/lib/rubric.py` (`Rubric`, `load_rubric`, `discover_venue_rubric`).
+
+#### Shipped venue YAMLs
+
+| Venue | File | Total | Notes |
+|---|---|---|---|
+| `neurips` | `rubrics/neurips.yaml` | /16 | Soundness, presentation, contribution, novelty, reproducibility. |
+| `nature` | `rubrics/nature.yaml` | /15 | Broad significance, accessibility, evidence strength, novelty. |
+| `arxiv` | `rubrics/arxiv.yaml` | /10 | Citation completeness, reproducibility, clarity, scope/category. |
+
+Each YAML cites its public source in a header comment so the overlay can be updated as venue guidelines change.
+
+#### Venue discovery (three-tier search)
+
+`discover_venue_rubric` (in `anvil/lib/rubric.py`) searches three tiers in order — first hit wins:
+
+1. **Per-thread**: `<thread>/.anvil/rubrics/<venue>.yaml`. For a single thread that wants a non-shipped venue overlay without touching the consumer install.
+2. **Consumer-installed**: `<consumer>/.anvil/skills/pub/rubrics/<venue>.yaml` (where `<consumer>` defaults to the portfolio directory, i.e., `<thread>.parent`). For consumer-wide custom venues.
+3. **Skill-shipped**: `<skill_root>/rubrics/<venue>.yaml` — the framework defaults (`neurips`, `nature`, `arxiv`). In an installed consumer repo, this is `.anvil/skills/pub/rubrics/<venue>.yaml`.
+
+Search precedence: per-thread > consumer-installed > skill-shipped. Both override tiers are consumer-controlled; the per-thread file is more specific and wins. Skill-shipped is the fallback.
+
+When `venue` is set but no matching YAML is found in any tier, the reviewer emits a stdout warning and proceeds with the generic rubric only. The review is not blocked by the missing venue overlay — the generic /40 gate continues to apply unchanged.
+
+#### Adding a consumer venue
+
+A consumer who wants to ship a custom venue (e.g., ICLR) drops a `Rubric`-shaped YAML into one of the two override tiers above. The YAML must validate against the `Rubric` schema in `anvil/lib/rubric.py` with `advisory: true`. See the shipped `rubrics/neurips.yaml` as a worked example. Set `venue: <slug>` in `<thread>/.anvil.json` to activate.
+
+### Area Chair pattern (AI-Scientist) maps to existing N-critics-one-reviser
+
+The "Area Chair ensemble" pattern published in AI-Scientist (Sakana, 2024) — multiple reviewer agents whose outputs are merged into a single recommendation — maps directly onto the framework's existing **N parallel critics, one reviser** primitive in `anvil/lib/critics.py::aggregate`. No separate AC role is needed in this skill; the reviser pass IS the AC pass. The venue overlay above is a parallel design move: the reviser already aggregates across all `<thread>.{N}.<critic>/` siblings, so the venue scorecard at `_review.venue.json` is consumed in the same machinery as `.review/_review.json`, `.audit/_review.json`, etc.
+
 **READY vs AUDITED distinction.** Unlike memo (where `AUDITED` is rarely reached), `pub-audit` is part of the normal lifecycle. A paper is **not done** until it reaches `AUDITED`: the auditor's job is to verify every `\cite{}` resolves and every cited claim is actually supported. The PDF compile check (see Acceptance criteria) lives in the auditor's responsibility because it requires the bibliography to be valid.
 
 ## Command dispatch
