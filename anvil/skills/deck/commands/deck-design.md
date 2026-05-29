@@ -43,14 +43,17 @@ Total ownership: 5/40. Other dimensions remain `null` in this critic's `_summary
 2. **Initialize `_progress.json`** + `_meta.json`.
 3. **Ensure deck.pdf exists**:
    - If `<thread>.{N}/deck.pdf` exists and is newer than `deck.md`, use it.
-   - Otherwise, run the Marp renderer:
+   - Otherwise, run the Marp renderer (same invocation as `deck-figures` step 7 — single source of truth):
      ```bash
      marp <thread>.{N}/deck.md \
        --pdf \
+       --html \
+       --config-file anvil/lib/marp/config.yml \
        --theme-set anvil/skills/deck/assets/anvil-deck.css \
        --allow-local-files \
        --output <thread>.{N}/deck.pdf
      ```
+     `--html` and `--config-file anvil/lib/marp/config.yml` are required so the rendered PDF matches what `deck-figures` produces — without them, inline fenced ```mermaid blocks drop silently and the design critic critiques a deck that the operator never sees in production.
    - If `marp` is not installed, emit a finding (`[blocker] Marp not installed — design critique cannot run`) and exit early with `_progress.json.design.state = failed`. The orchestrator surfaces this to the operator.
 4. **Render per-slide PNGs**:
    - Use a PDF-to-image tool (`pdftoppm` from poppler-utils, or `pdf2image` in Python) to produce one PNG per slide at 1920×1080 (or 1600×900 if disk-space-constrained).
