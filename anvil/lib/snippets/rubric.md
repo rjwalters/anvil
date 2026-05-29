@@ -105,6 +105,54 @@ The Python implementation is `anvil.lib.convergence.decide_termination`,
 which is the source of truth for programmatic use. This snippet is the
 source of truth for LLM-side authoring. The two MUST agree.
 
+## Judgment dimensions vs tool-evidence dimensions
+
+Rubric dimensions split along the CRITIC tool-vs-judgment line (see
+`audit.md`). A **judgment dimension** is scored from the text alone by a
+strong reader; a **tool-evidence dimension** requires an external
+verification step (citation resolution, build check, numeric audit,
+prior-art search). The split governs *which critic scores the dimension*,
+not the dimension definition itself — the same dimension name can be
+scored by a `kind: judgment` review critic and (re-)scored by a
+`kind: tool_evidence` audit critic at the audit phase. The aggregator
+merges contributions via the standard mean-of-non-null rule; it is
+indifferent to which critic kind produced the score.
+
+The same dimension can therefore appear on both a review and an audit
+critic when the artifact warrants it. For example, a `methodology`
+dimension on a `pub-review` (judgment-kind) might score how clearly the
+method is *described*, while the same dimension on a `pub-audit`
+(tool_evidence-kind) re-scores the same dim against a tool-verified
+check that the cited datasets/code actually exist and behave as
+described.
+
+### Worked example: `anvil:pub`
+
+| Dimension | Typically scored by | Kind | Why |
+|---|---|---|---|
+| `clarity` | `pub-review` | `judgment` | A reader can assess prose quality from the text alone. |
+| `argument_coherence` | `pub-review` | `judgment` | Argument flow is a subjective-quality check. |
+| `methodology` | `pub-review` + (optionally) `pub-audit` | `judgment` + `tool_evidence` | The reviewer scores method *clarity*; the auditor re-scores method *verifiability* (does the cited dataset exist, does the code compile). |
+| `citation_recall` | `pub-audit` | `tool_evidence` | Requires resolving every `\cite{}` against `refs.bib` plus an external lookup of the cited source. |
+| `citation_precision` | `pub-audit` | `tool_evidence` | Requires reading the cited source to verify claim support — a tool call (or human-in-the-loop on author-supplied PDFs in `<thread>/refs/`). |
+| `build_cleanliness` | `pub-audit` | `tool_evidence` | Runs `pdflatex` / `bibtex` and inspects exit codes plus the compile log. |
+
+### Worked example: `anvil:ip-uspto`
+
+| Dimension | Typically scored by | Kind | Why |
+|---|---|---|---|
+| `claim_breadth` | `ip-uspto-claims` | `judgment` | A patent attorney scores claim scope vs prior art from the spec alone. |
+| `s101_eligibility` | `ip-uspto-s101` | `judgment` | Statutory-subject-matter analysis from the spec; doctrinal, not tool-augmented. |
+| `s112_enablement` | `ip-uspto-s112` | `judgment` | Written-description analysis from the spec; doctrinal. |
+| `prior_art_coverage` | `ip-uspto-priorart` (judgment today, `tool_evidence` once tool-augmented) | `judgment` → `tool_evidence` | When the prior-art critic searches an external corpus, it becomes a tool-evidence critic; today it ships judgment-only. |
+| `inventor_consistency` | `ip-uspto-audit` | `tool_evidence` | Cross-checks `spec.tex` front matter against `inventorship.md` and `BRIEF.md` — a grep/diff tool call per inventor. |
+| `reference_numeral_coherence` | `ip-uspto-audit` | `tool_evidence` | Greps every `\ref{}` against the figure source files. |
+
+The takeaway: judgment dimensions tend to live on review-class critics
+(`<skill>-review` and doctrinal specialists); tool-evidence dimensions
+tend to live on audit-class critics. The same rubric dim can appear on
+both classes when the artifact warrants belt-and-suspenders verification.
+
 ## Critical-flag semantics
 
 Critical flags are NOT a sub-score deduction. They are a binary
@@ -207,3 +255,5 @@ both during scoring.
   from each critic.
 - `state_machine.md` — where the convergence check sits in the
   lifecycle.
+- `audit.md` — the `.review/` (judgment) vs `.audit/` (tool-evidence)
+  distinction with skill-by-skill mapping table.

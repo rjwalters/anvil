@@ -23,9 +23,31 @@ EMPTY → DRAFTED → REVIEWED → REVISED → … → READY
 
 `READY` is terminal for skills that ship without a mandatory audit phase
 (memo, deck). `AUDITED` is terminal for skills where audit is mandatory
-(pub, slides). Some skills add further terminal states past `AUDITED`
-(report → `CUSTOMER-READY`; ip-uspto → `FINALIZED`); see Extension Points
-below.
+(pub, slides, report, ip-uspto). Some skills add further terminal states
+past `AUDITED` (report → `CUSTOMER-READY`; ip-uspto → `FINALIZED`); see
+Extension Points below.
+
+### Review vs audit: the principled split
+
+The `REVIEWED → REVISED → ... → READY` portion of the loop operates on
+**subjective LLM judgment** — rubric dimensions a strong reader scores
+from the text alone (structure, clarity, argument coherence). Review-
+sibling `_review.json` payloads carry `kind: judgment`.
+
+The `READY → AUDITED` transition is reserved for **tool-evidence
+verification** — citation resolution, numeric consistency, build
+cleanliness, prior-art coverage, regulatory checks. Audit-sibling
+`_review.json` payloads carry `kind: tool_evidence`, and every finding
+records the tool call that produced its evidence. The expensive
+tool-call budget is intentionally deferred to the post-`READY` phase so
+it only runs against a draft that has already converged on subjective
+quality.
+
+Audit critical flags (fabricated citation, build failure, numerical
+inconsistency) short-circuit `READY → AUDITED` regardless of the
+aggregated score. See `audit.md` for the full distinction, the
+load-bearing `tool_calls` contract, and the per-skill audit-vs-review
+mapping table.
 
 ## Convergence and iteration cap
 
@@ -155,3 +177,5 @@ EMPTY
 - `progress.md` — `_progress.json` records phase state for each step.
 - `critics.md` — how the review/revise loop discovers and aggregates
   critic outputs.
+- `audit.md` — the principled `.review/` (judgment) vs `.audit/`
+  (tool-evidence) distinction; load-bearing fields and per-skill mapping.
