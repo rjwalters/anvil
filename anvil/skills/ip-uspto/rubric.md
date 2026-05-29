@@ -34,6 +34,27 @@ Ownership map (primary):
 
 This intentionally overlaps for §112(b) (s112 + claims) — definiteness is both a statutory and a claim-drafting concern, and two independent perspectives is a feature.
 
+## Vision critic — drawing dimensions (optional sibling)
+
+The optional `ip-uspto-vision` critic (`commands/ip-uspto-vision.md`) owns a **separate drawing-vision rubric subset**, scored independently of the 8-dimension /40 main rubric above. It critiques the rendered **drawings only** (line art, reference numerals, lead lines) — never the spec prose, which the source-side text critics cover. These dimensions exist because the main rubric's Dim 7 (drawing-text correspondence) can only be read from the source; whether a numeral is *legible at examiner scale*, whether the line art is *high-contrast black-on-white*, whether labels *overlap or fall outside the border*, and whether each view carries a visible *"FIG. N"* are render-time visual facts invisible in the LaTeX source.
+
+| Dim | Name | Weight | What it measures (37 CFR 1.84) |
+|---|---|---|---|
+| dv1 | **Reference numeral legibility** | 5 | Every reference numeral is readable at the reduced scale a USPTO examiner views the sheet. The most common drawing-objection ground. |
+| dv2 | **Line weight / contrast** | 5 | Black ink line art on white, uniform well-defined line weights, no gray fills or low-contrast color (37 CFR 1.84(l)). |
+| dv3 | **Label placement** | 5 | Numeral labels and lead lines placed cleanly: no overlap with line art or each other, none outside the drawing border. |
+| dv4 | **Figure-number visibility** | 5 | Every drawing/view carries a visible, unclipped "FIG. N" label (37 CFR 1.84(u)). |
+| dv5 | **Cross-reference accuracy** | 5 | Numerals *drawn on the figures* correspond to numerals the spec describes (the pixels-side half of Dim 7; the text-source half — does every spec `\refnum{N}` appear in a drawing? — stays with the `review` critic). |
+| | **Total** | **25** | Scored 0–5 each. |
+
+These dv1–dv5 dimensions are **disjoint from the eight main-rubric dimensions** and from each other's owning critics: the vision critic leaves the 8 main dims `null`, and the source-side critics (`review`, `s101`, `s112`, `claims`, `priorart`) leave dv1–dv5 `null`. The reviser's mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`) merges the scorecards cleanly with no schema or aggregation changes. A vision finding can raise the framework `rendered_overflow_unrecoverable` critical flag (e.g. a load-bearing reference numeral clipped at the drawing border), which short-circuits the verdict to `BLOCK` like any other critical flag.
+
+| Critic | Drawing dimensions owned |
+|---|---|
+| `vision` (drawings critic, optional) | dv1, dv2, dv3, dv4, dv5 |
+
+The vision pass is optional: a thread whose figurer produced only illustrator **stubs** (no rendered `fig-*.svg` / `fig-*.png`) has nothing for the vision critic to look at, and the critic skips without writing a scorecard. Threads with rendered drawings (TikZ mode, or illustrator output dropped into `drawings/`) SHOULD have a vision pass before finalize.
+
 ## Scoring guidance
 
 For each dimension owned, the critic assigns an integer between 0 and 5. A short justification accompanies each score (1–3 sentences pointing to specific evidence: spec section, claim number, figure number).
