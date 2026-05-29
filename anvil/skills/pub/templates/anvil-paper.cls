@@ -13,7 +13,7 @@
 %%   \title{}, \author{}, \date{}, \abstract{}
 %%   Standard \section, \subsection, \subsubsection
 %%   natbib (\citep, \citet) loaded with numbers + sort&compress
-%%   graphicx, amsmath, amssymb, hyperref loaded
+%%   graphicx, amsmath, amssymb, xcolor, hyperref loaded
 %%   plainnat bibliography style baked in
 
 \NeedsTeXFormat{LaTeX2e}
@@ -40,6 +40,7 @@
 \RequirePackage{microtype}
 \RequirePackage[round,sort&compress,authoryear]{natbib}
 \RequirePackage{booktabs}
+\RequirePackage{xcolor}
 \RequirePackage{caption}
 \captionsetup{font=small,labelfont=bf}
 \RequirePackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
