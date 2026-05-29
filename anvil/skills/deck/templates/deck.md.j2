@@ -1,0 +1,166 @@
+{# Marp slide-source template for anvil:deck.
+   Slides are separated by `---` on its own line.
+   Speaker notes can be embedded inline as HTML comments matching `<!-- speaker: ... -->`
+   (Marp's native presenter-notes mechanism). A parallel speaker-notes.md is also produced
+   by deck-draft for ease of human editing.
+
+   Required Marp frontmatter:
+     marp: true             — enables Marp processing
+     theme: anvil-deck      — references the shipped theme in assets/anvil-deck.css
+     paginate: true         — page numbers on every slide except title
+     size: 16:9             — investor-standard aspect ratio
+#}
+---
+marp: true
+theme: anvil-deck
+paginate: true
+size: 16:9
+---
+
+<!-- _class: title -->
+
+# {{ company_name }}
+## {{ one_line_tagline }}
+
+_{{ stage_label }} · {{ round_target }} · {{ founder_name }}_
+
+<!-- speaker: Open with the one-line description. Pause. The deck answers three questions in order: what we do, why now, and what we're asking for. -->
+
+---
+
+## The problem
+
+{{ problem_one_paragraph }}
+
+- {{ problem_bullet_1 }}
+- {{ problem_bullet_2 }}
+- {{ problem_bullet_3 }}
+
+<!-- speaker: Make the problem concrete and quantified within 30 seconds. -->
+
+---
+
+## Why now
+
+{{ why_now_one_paragraph }}
+
+<!-- speaker: Name the specific recent change — technology unlock, regulatory shift, behavior change — that opened this window. -->
+
+---
+
+## Our solution
+
+{{ solution_one_paragraph }}
+
+![Solution architecture]({{ solution_diagram_path | default("figures/solution.png") }})
+
+<!-- speaker: Plain language. Avoid the buzzwords investors have heard 200 times this month. -->
+
+---
+
+## Competition
+
+| | {{ competitor_1 }} | {{ competitor_2 }} | **{{ company_name }}** |
+|---|---|---|---|
+| {{ axis_1 }} | {{ c1_a1 }} | {{ c2_a1 }} | **{{ us_a1 }}** |
+| {{ axis_2 }} | {{ c1_a2 }} | {{ c2_a2 }} | **{{ us_a2 }}** |
+| {{ axis_3 }} | {{ c1_a3 }} | {{ c2_a3 }} | **{{ us_a3 }}** |
+
+<!-- speaker: Honest framing. No competitor-smearing. -->
+
+---
+
+## Product
+
+![Product screenshot]({{ product_screenshot_path | default("assets/product.png") }})
+
+{{ product_one_paragraph }}
+
+<!-- speaker: One screenshot, one paragraph. Detail belongs in the demo, not on the slide. -->
+
+---
+
+## Market
+
+![TAM / SAM / SOM]({{ market_chart_path | default("figures/market-sizing.png") }})
+
+- **TAM**: {{ tam_label }} — {{ tam_basis }}
+- **SAM**: {{ sam_label }} — {{ sam_basis }}
+- **SOM**: {{ som_label }} — {{ som_basis_year_3 }}
+
+<!-- speaker: Bottom-up logic. Walk the multiplication; cite the input sources from the brief. -->
+
+---
+
+## Traction
+
+![Traction chart]({{ traction_chart_path | default("figures/traction.png") }})
+
+- {{ traction_bullet_1 }}
+- {{ traction_bullet_2 }}
+- {{ traction_bullet_3 }}
+
+<!-- speaker: Real numbers only. Projections labeled as projections. -->
+
+---
+
+## Business model
+
+{{ business_model_one_paragraph }}
+
+| Metric | Value |
+|---|---|
+| Pricing | {{ pricing }} |
+| ACV | {{ acv }} |
+| CAC | {{ cac }} |
+| Payback period | {{ payback_months }} months |
+
+<!-- speaker: Unit economics. Investor will compute LTV/CAC; show your work. -->
+
+---
+
+## Team
+
+| | | |
+|---|---|---|
+| ![{{ founder_1_name }}]({{ founder_1_photo | default("assets/founder-1.png") }}) | **{{ founder_1_name }}** | {{ founder_1_bio_one_line }} |
+| ![{{ founder_2_name }}]({{ founder_2_photo | default("assets/founder-2.png") }}) | **{{ founder_2_name }}** | {{ founder_2_bio_one_line }} |
+
+<!-- speaker: Founder–market fit explicit. Prior outcomes named. -->
+
+---
+
+## Financials
+
+![Financial projections]({{ financials_chart_path | default("figures/financials.png") }})
+
+- Current ARR: **{{ current_arr }}** (real)
+- 12-month plan: {{ twelve_month_arr_target }} (projection — see speaker notes for assumptions)
+- Current burn: {{ current_burn_per_month }}/mo · Runway: {{ current_runway_months }} months
+
+<!-- speaker: Hockey-stick projections without intermediate milestones get cut. Show the build. -->
+
+---
+
+<!-- _class: ask -->
+
+## The ask
+
+# Raising **{{ round_size }}** to {{ runway_milestone }}
+
+- **{{ use_eng_pct }}%** engineering · **{{ use_gtm_pct }}%** GTM
+- **{{ use_hires_pct }}%** hires · **{{ use_reserve_pct }}%** reserve
+- {{ runway_at_target }} months of runway at this round size
+
+_{{ founder_name }} · {{ contact_email }}_
+
+<!-- speaker: Specific ask. Don't end on "thank you" — end on the ask, then take questions. -->
+
+---
+
+{# Optional appendix slides go after the ask. #}
+<!-- _class: appendix -->
+
+## Appendix
+
+{# Drafter populates appendix slides as needed: detailed unit economics, technical architecture, market sizing deep-dive, FAQ slides. #}
