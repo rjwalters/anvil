@@ -31,6 +31,7 @@ A **patent thread** is a single patent application authored across one or more r
     drawings/                     Figure stubs or rendered drawings
       fig-1.tex                   (TikZ flowcharts) or fig-1.svg / fig-1.pdf
       drawing-descriptions.md     Stub descriptions for human illustrator (default v0)
+    _outline.json                 Section-by-section drafting plan (control surface; see "Outline control surface")
     _progress.json                Phase state for this version
     _revision-log.md              (revisions only) Maps prior critic findings to changes
   <thread>.1.review/              General reviewer sibling (clarity, structure, voice)
@@ -176,6 +177,140 @@ Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. 
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `spec.tex` exist? does `_summary.md` parse?), not by flag — `_progress.json` is a resume hint, not the source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
 The canonical `_progress.json` schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention. The merge is shallow: command updates one phase, preserves all others. All ip-uspto critic siblings (`<thread>.{N}.review/`, `.s101/`, `.s112/`, `.claims/`, `.priorart/`, `.audit/`, `.preflight/`) follow the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`: each emits `_summary.md` + `findings.md` + `_meta.json` (with `scorecard_kind: machine-summary`); each fills only its owned rubric dimensions and leaves others `null` for the reviser's mean aggregation.
+
+## Outline control surface
+
+Each `<thread>.{N}/` directory contains `_outline.json` — a typed control surface that records the section-by-section drafting plan for this version. The outline is **load-bearing**: it is the diff-able interface where an operator can inspect and edit the structure of the application before the drafter pays for full section generation, and it is the per-section resume index during drafting and revising.
+
+The outline is **additive** to the existing draft outputs (`spec.tex`, `claims.tex`, `abstract.txt`, `drawings/drawing-descriptions.md`) — it does not replace them. Each outline section carries the file routing and heading macro the drafter uses to deterministically place its rendered output without re-deriving from the section id.
+
+### Schema
+
+```json
+{
+  "schema_version": 1,
+  "thread": "<slug>",
+  "title": "...",
+  "iteration": 1,
+  "sections": [
+    {
+      "id": "field",
+      "file": "spec.tex",
+      "heading_macro": "\\fieldoftheinvention",
+      "target_tokens": 120,
+      "key_points": ["..."],
+      "sources_to_cite": [],
+      "status": "pending"
+    },
+    {
+      "id": "background",
+      "file": "spec.tex",
+      "heading_macro": "\\background",
+      "target_tokens": 1200,
+      "subsections": [
+        {"id": "problem", "key_points": ["..."]},
+        {"id": "prior-approaches", "key_points": ["..."]}
+      ],
+      "sources_to_cite": ["doi:...", "arxiv:..."],
+      "status": "pending"
+    },
+    {
+      "id": "summary",
+      "file": "spec.tex",
+      "heading_macro": "\\summary",
+      "target_tokens": 800,
+      "key_points": ["mirror independent claim 1 at higher level", "..."],
+      "status": "pending"
+    },
+    {
+      "id": "brief-description-of-drawings",
+      "file": "spec.tex",
+      "heading_macro": "\\briefdescriptionofdrawings",
+      "target_tokens": 200,
+      "figures": [
+        {"n": 1, "caption": "..."},
+        {"n": 2, "caption": "..."}
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "detailed-description",
+      "file": "spec.tex",
+      "heading_macro": "\\detaileddescription",
+      "target_tokens": 6000,
+      "subsections": [
+        {
+          "id": "feature-1",
+          "feature_ref": "BRIEF.md#3.1",
+          "key_points": ["..."],
+          "ranges": [{"param": "freq", "range": "5GHz-80GHz", "preferred": "40GHz"}],
+          "alternatives": [{"param": "substrate", "values": ["Si", "GaAs", "InP"]}],
+          "refnums": [10, 12, 14, 16],
+          "target_tokens": 1800
+        }
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "claims",
+      "file": "claims.tex",
+      "target_tokens": 3000,
+      "claim_tree": [
+        {"n": 1, "type": "independent", "topic": "apparatus", "key_limitations": ["..."]},
+        {"n": 2, "type": "dependent", "parent": 1, "topic": "...", "drawn_from": "feature-1#alt:Si"},
+        {"n": 9, "type": "independent", "topic": "method", "key_limitations": ["..."]}
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "abstract",
+      "file": "abstract.txt",
+      "target_tokens": 200,
+      "word_cap": 150,
+      "status": "pending"
+    }
+  ]
+}
+```
+
+### Field semantics
+
+- `schema_version`: integer, currently `1`. Migrations bump this.
+- `thread`: the thread slug; matches `_progress.json.thread`.
+- `title`: human title (from `BRIEF.md` frontmatter).
+- `iteration`: integer matching `_progress.json.metadata.iteration`. Bumped when the reviser copies the outline forward.
+- `sections`: ordered array; the drafter MUST iterate in array order. The order is the authoritative render order. The minimum required section ids are `field`, `background`, `summary`, `brief-description-of-drawings`, `detailed-description`, `claims`, `abstract`.
+- For each section:
+  - `id`: unique within the array. Maps onto the §5a–§5i drafter steps.
+  - `file`: target file (`spec.tex` | `claims.tex` | `abstract.txt`). Lets the drafter route rendered output deterministically without per-id special-casing.
+  - `heading_macro`: LaTeX macro that opens the section in `spec.tex` (omitted for `claims.tex` / `abstract.txt`, which use their own structure).
+  - `target_tokens`: drafter budget hint. Soft cap; the drafter MAY exceed if the inventive material justifies, but should report the overrun in its closing summary.
+  - `key_points` / `subsections` / `figures` / `claim_tree`: section-specific structured content the drafter conditions on. Free-form within their typed shape.
+  - `sources_to_cite`: optional citation identifiers (DOI, arXiv, USPTO publication number). Slot for future citation primitive.
+  - `status`: lifecycle state, see below.
+
+### Status lifecycle
+
+Per-section `status` values mirror `_progress.json` phase states:
+
+| State | Meaning |
+|---|---|
+| `pending` | Section has not been rendered yet for this version. |
+| `in_progress` | Section render started but did not complete (crash, abort). |
+| `done` | Section has been rendered; its bytes in `file` are valid. |
+| `failed` | Section render attempted and failed (error captured in `_progress.json.phases.draft.errors`). |
+
+The drafter advances a section from `pending` → `in_progress` → `done` (or `failed`) one section at a time, persisting `_outline.json` after each transition so a crash leaves a recoverable state.
+
+### Validation rule
+
+Consistent with the rest of the skill: **file existence and section presence in the target file win over the flag**. A section flagged `done` whose bytes are absent from `file` is treated as not-done (re-rendered on resume). A section flagged `pending` whose bytes ARE present in `file` (because, say, the operator hand-wrote it) is treated as `done` (skipped). The flag is a resume hint; the file is the source of truth — same rule as `_progress.json`.
+
+The draft phase is `done` only when every section has `status: done` AND its bytes validate by the file-existence check.
+
+### Schema location
+
+The schema is documented inline here for v0. There is no separate `schemas/` directory; promotion to a versioned JSON Schema file is deferred to `anvil/lib/` extraction under issue #10.
 
 ## Rubric
 

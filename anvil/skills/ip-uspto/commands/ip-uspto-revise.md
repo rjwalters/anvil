@@ -37,6 +37,7 @@ If aggregate <35 OR any unresolved critical flag, write the next version:
 
 ```
 <thread>.{N+1}/
+  _outline.json        Copied from <thread>.{N}/_outline.json; selectively updated for sections being changed (see "Outline carry-forward")
   spec.tex             Revised specification
   claims.tex           Revised claims
   abstract.txt         Revised abstract (regenerated if claims changed)
@@ -81,6 +82,20 @@ If aggregate <35 OR any unresolved critical flag, write the next version:
 ### Path B: produce the next version
 
 7b. Initialize `<thread>.{N+1}/_progress.json` with `phases.revise.state = in_progress`, `metadata.iteration = N+1`, `metadata.max_iterations`, `metadata.revised_from = N`.
+
+#### Outline carry-forward
+
+Before building the revision plan, propagate the prior version's outline forward so structural continuity is the default and divergence is auditable:
+
+1. **Copy** `<thread>.{N}/_outline.json` to `<thread>.{N+1}/_outline.json` verbatim. Bump `iteration` to `N+1`.
+2. **Default**: every carried section keeps `status: done`. Structural shape (section ids, ordering, `subsections`, `claim_tree`) is preserved across iterations unless a critic finding requires otherwise.
+3. **Selective update**: when a finding requires a structural change (new dependent claim, new subsection in `detailed-description`, retargeted `key_points`, changed `claim_tree[].drawn_from` pointer, etc.), edit the corresponding section entry in place and reset its `status` to `pending` (the reviser will regenerate that section's bytes when producing the revised artifact files). Carried-forward sections that did NOT change keep `status: done` — the reviser does NOT regenerate them.
+4. **Non-structural prose edits** (e.g., tightening the BACKGROUND paragraph for clarity, swapping a word in a claim limitation) do NOT count as a structural change to the outline. They are recorded only in the findings ledger; `_outline.json` is unchanged for those sections.
+5. **Out-of-scope changes**: the reviser does NOT add new top-level sections (the seven required ids are fixed by `BRIEF.md` / 37 CFR 1.77(b)) and does NOT remove sections. It MAY add or remove `subsections` within `detailed-description`, MAY add or remove entries in `claim_tree`, and MAY change `figures` within `brief-description-of-drawings`.
+6. **Validation**: the copied outline keeps `schema_version: 1`. If the prior version's outline is missing or has a different `schema_version`, abort with an error so a migration is forced before the revision proceeds.
+
+The reviser records the structural delta in `_revision-log.md` as an "Outline delta" row family (see §10b below).
+
 8b. **Build a revision plan**:
    - Concatenate every critic's `findings.md` into a single bundle, prefixed by `[<tag>]` so each finding's origin is traceable.
    - Group findings by severity: all `critical` first, then `blocker`, then `major`, then `minor`, then `nit`.
@@ -96,6 +111,7 @@ If aggregate <35 OR any unresolved critical flag, write the next version:
    - **Regenerate `abstract.txt`** only if claims or detailed description changed materially; otherwise carry over.
    - **Use the same templates** as the drafter (`assets/template-spec.tex.j2`); the reviser is fundamentally a re-drafter informed by critic feedback.
    - **Preserve sections that scored well** — do NOT regress on dimensions that already met the standard. The `_revision-log.md` is the audit trail proving you did not lose ground.
+   - **Outline-driven regeneration**: sections whose `_outline.json` entries were reset to `status: pending` during outline carry-forward MUST be regenerated; sections still flagged `status: done` MUST be carried over byte-for-byte UNLESS a non-structural prose edit applies (in which case the carried section is edited in place and the outline status remains `done`). After regeneration, advance the section's `status` back to `done` in the new version's `_outline.json`.
 10b. **Write `_revision-log.md`**: a markdown document with two parts:
     - **Findings ledger**: a table mapping each finding (by `[<tag>] severity location`) to the change made.
 
@@ -110,6 +126,19 @@ If aggregate <35 OR any unresolved critical flag, write the next version:
       | [review] nit abstract.txt       | Abstract uses "ultra-high"; consider specific number           | Declined — added range to spec instead, kept abstract general for searchability |
       ```
 
+    - **Outline delta**: a table of every change made to `_outline.json` during carry-forward. Empty (`(no outline changes — structural continuity preserved)`) is a valid and common state for late-cycle iterations.
+
+      ```markdown
+      | Section id            | Change                                                                                                  | Triggering finding(s)              |
+      |-----------------------|---------------------------------------------------------------------------------------------------------|------------------------------------|
+      | claims                | Added `claim_tree[7]` (dependent on claim 1, drawn_from `feature-2#alt:GaAs`); status reset to pending  | [claims] major claims.tex:7        |
+      | detailed-description  | Added `subsections[].id == "feature-5-edge-case"`; status reset to pending                              | [s112] blocker spec.tex:¶[0034]    |
+      | brief-description-of-drawings | Added `figures[5] = {n: 5, caption: "..."}` to match new feature-5 subsection; status reset to pending | (cascade from detailed-description) |
+      | summary               | (no structural change; prose tightening only — see findings ledger row [review] minor)                  |                                    |
+      ```
+
+      If no outline edits were made this revision, include the row family header and a single explanatory line so the reader knows the absence is deliberate.
+
     - **Dimension-by-dimension trajectory**: target score per dimension after this revision, with the specific changes that move it.
 
       ```markdown
@@ -121,7 +150,7 @@ If aggregate <35 OR any unresolved critical flag, write the next version:
       | 5 | §102/§103     | 2.0 | 4 | Added limitation to claim 1 distinguishing Smith-2019 |
       ```
 
-11b. **Validate**: same as the drafter — verify `spec.tex`, `claims.tex`, `abstract.txt`, `drawings/` all present and non-empty.
+11b. **Validate**: same as the drafter — verify `_outline.json`, `spec.tex`, `claims.tex`, `abstract.txt`, `drawings/` all present and non-empty. Additionally: every section in the carried-forward `_outline.json` MUST be `status: done` by the end of the revise step (the version directory is closed once `revise.state == done`).
 12b. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 13b. **Report**: e.g., `Revised acme-widget.2 → acme-widget.3/ (addressed 12 findings, declined 1; iteration 3/5). Next: ip-uspto-pre-flight acme-widget.`
 
@@ -155,6 +184,7 @@ The cycle continues until:
 - **Declined findings are legitimate.** Sometimes a critic is wrong. Document the disagreement; let the next pass adjudicate. Repeatedly declining the same finding across iterations is a structural problem that should be raised to the operator.
 - **Conflict resolution is your judgment call.** When two critics give opposing advice, choose; do not paper over. The choice is part of the revision log.
 - **The version directory is immutable once `revise.state == done`.** No post-hoc edits. If you missed something, the next iteration handles it.
+- **Structural continuity is the default.** Carry the prior version's `_outline.json` forward verbatim, then make the minimum set of structural edits that the findings demand. The "Outline delta" row family is the audit trail proving the structural drift across iterations was deliberate.
 
 ## `_progress.json` snippet (revised version dir)
 
