@@ -114,7 +114,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 | `slides` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
 | `slides-outline <thread>` | outliner | `<thread>/BRIEF.md` (+ `<thread>/refs/`) | `<thread>.0.outline/outline.md` |
 | `slides-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ refs); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings; AND `<thread>.0.outline/` if present | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `slides-revise`) |
-| `slides-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
+| `slides-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
 | `slides-audit <thread>` | auditor | latest `<thread>.{N}/` (deck.md AND notes/) | `<thread>.{N}.audit/` |
 | `slides-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
 | `slides-figures <thread>` | figurer | latest `<thread>.{N}/deck.md` | figures under `<thread>.{N}/figures/` |
@@ -207,6 +207,27 @@ The Marp renderer supports both inline notes (HTML comments) and sidecar notes (
 The skill prompt instructs the figurer to **never invent data** — only render what the brief or user-supplied scripts provide. Auditor flags figures whose source is unclear. (TikZ is not used; it requires the LaTeX toolchain, which Marp does not invoke.)
 
 **`slides-handout`** — *terminal-state export variant.* Runs only on a READY+AUDITED+REHEARSED version. Emits a separate PDF: 2-up or 4-up layout, OR slides-with-notes-below format. Default is **4-up**; `--notes-below` and `--2-up` flags select alternates. Pitch decks have an analogous "leave-behind PDF" need — flagged for `anvil/lib/` extraction (see §lib-sharing-candidates below). Requires Marp CLI installed; falls back to a stub `.md` placeholder with the intended layout described if Marp is unavailable.
+
+### Pre-flight overflow lint
+
+`slides-review` runs a fast deterministic lint over `<thread>.{N}/deck.md` before scoring. The lint is a Python-stdlib port of marp-vscode's experimental `slide-content-overflow` diagnostic; the slides-side module (`anvil/skills/slides/lib/marp_lint.py`) is a thin re-export of the deck-side single source of truth (`anvil/skills/deck/lib/marp_lint.py`) so behaviour cannot drift between the two skills. The renderer is pinned at the framework level (Marp); the lint is therefore renderer-pinned, not skill-pinned.
+
+**What it catches** (deterministic source-only heuristics):
+- Figure + 4+ bullets + footer line on 16:9 (the issue #24 pattern, common on results slides).
+- `_class: ask`-style takeaway slides with both H1 and H2 stacked plus body content (the issue #25 pattern).
+- Dense bullet lists, deep code blocks, large tables, headings stacked on a single slide.
+
+**What it does NOT catch**:
+- True rendered overflow caused by font fallback, image aspect ratio, theme overrides, or KaTeX block size — these are caught by the vision critic (issue #30).
+- Semantic overflow (slide is logically too crowded but fits in the safe area). The reviewer's qualitative comments cover this.
+- Per-slide spoken-time / density (that is the `slides-rehearse` critic's job).
+
+**How it gates `slides-review`**:
+- `severity: error` findings hard-fail the review: `advance: false`, `Slide overflow (lint)` listed alongside any audit/density/time flag in `verdict.md`, and the per-slide errors emitted into `findings.md` § Lint findings.
+- `severity: warning` findings are recorded but do not block advance.
+- The lint runs ONLY in `slides-review`. `slides-draft`, `slides-audit`, `slides-figures`, and `slides-rehearse` do not invoke it. This keeps the per-phase responsibility boundaries clean — the drafter is allowed to produce an overflowing slide so the reviser sees the failure mode.
+
+**Escape hatch — `<!-- anvil-lint-disable: slide-content-overflow -->`**: any slide that contains this HTML comment has its `slide-content-overflow` finding downgraded to `severity: info`. The finding is still recorded so the reviser sees that the slide is dense, but `advance` is not blocked. Use this for legitimately-dense slides that have been visually validated (e.g., a deliberately busy reference figure, or a comparison table that needs all rows). Document the rationale in the slide's `notes/<NN>-*.md` so the auditor can spot-check.
 
 ## Rubric
 

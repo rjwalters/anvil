@@ -54,6 +54,11 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
    - `<thread>/BRIEF.md` (to ground claims — every traction number on a slide should trace to the brief).
    - Optionally `<thread>.{N}/figures/` for sanity-checking diagrams.
    - Sibling critic `_summary.md` files at the same `N` (if they exist), for verdict aggregation.
+5b. **Run pre-flight overflow lint**:
+   - Invoke `anvil/skills/deck/lib/marp_lint.py`'s `lint_deck(<thread>.{N}/deck.md)`. This is a Python-stdlib heuristic port of marp-vscode's `slide-content-overflow` diagnostic (see the module docstring for the upstream SHA pin and the per-slide `<!-- anvil-lint-disable: slide-content-overflow -->` escape hatch).
+   - The call returns a `LintResult` with `errors: list[Finding]`, `warnings: list[Finding]`, and `infos: list[Finding]`. Each `Finding` has `slide` (1-based slide number), `line` (1-based source line), `rule`, `severity`, and `message`.
+   - The lint is **review-phase only** — drafter, auditor, figurer, and the specialist critics (`deck-narrative`, `deck-market`, `deck-design`) do not invoke it. The drafter is intentionally allowed to produce an overflowing slide so the reviser sees the failure mode (issue #31, AC6).
+   - Cache the `LintResult` for the `_summary.md` and `findings.md` writes below; cache `lint.errors > 0` as `lint_critical_flag` for the verdict logic.
 6. **Score owned dimensions**:
    - **Dim 2 — Problem clarity** (0–5): Does the problem slide convey what hurts, for whom, how much, in <30 seconds? Cite specific slide language. Vague problems, self-evident problems, or problems explained only via solution score low.
    - **Dim 5 — Traction / proof** (0–5): Does the traction slide show real evidence at the stage's level? Are projections clearly labeled as projections? Cross-check every number against `BRIEF.md` — any number on the slide not in the brief is a `Fabricated traction` critical flag.
@@ -70,7 +75,7 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
    | 5 | Traction / proof   | 5      | 3     | Slide 8 lists 8 paying customers and 3 LOIs (all verified in brief). Missing: retention/cohort data and revenue cadence. |
    | 6 | Team credibility   | 4      | 3     | Founder bios are specific (prior roles named). Gap: no advisors slide; brief lists 2 advisors. |
    ```
-9. **Write `_summary.md`** as a JSON-in-markdown scorecard:
+9. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 5b:
    ```markdown
    # Review summary
 
@@ -88,12 +93,25 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
        "7_ask_specificity":          null,
        "8_design_polish":            null
      },
+     "lint": {
+       "ran": true,
+       "errors": 2,
+       "warnings": 3,
+       "errors_by_slide": [
+         { "slide": 4, "line": 27, "rule": "slide-content-overflow", "severity": "error", "message": "Slide exceeds estimated vertical capacity by ~2.0 line-units..." },
+         { "slide": 7, "line": 51, "rule": "slide-content-overflow", "severity": "error", "message": "..." }
+       ],
+       "warnings_by_slide": [
+         { "slide": 5, "line": 36, "rule": "slide-content-overflow", "severity": "warning", "message": "..." }
+       ]
+     },
      "critical_flag": false,
      "critical_flag_notes": []
    }
    ```
    ```
-   If a critical flag is raised, set `critical_flag: true` and populate `critical_flag_notes` with one object per flag: `{ "type": "fabricated_traction", "slide_ref": "Slide 8", "justification": "..." }`.
+   - When `lint.errors > 0`, set `critical_flag: true` and append an entry of the form `{ "type": "slide_overflow_lint", "slide_refs": ["Slide 4", "Slide 7"], "justification": "Pre-flight overflow lint flagged N slides..." }` to `critical_flag_notes` — the lint is treated as a fourth-category critical flag.
+   - If a non-lint critical flag is also raised, populate `critical_flag_notes` with one object per flag: `{ "type": "fabricated_traction", "slide_ref": "Slide 8", "justification": "..." }`.
 10. **Write slide-level `comments.md`**: list specific feedback keyed to slide number + heading. Group by severity (`blocker` / `major` / `minor` / `nit`). Example:
     ```
     ## Slide 8 — Traction
@@ -112,13 +130,21 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
     1. **[major]** Slide 8: ARR discrepancy ($420k on slide vs $380k in brief). Suggested fix: use $380k or explain the delta in speaker notes with citation.
     2. **[blocker]** Slide 11: Hockey-stick projection with no intermediate milestones. Suggested fix: replace with month-by-month build to a $5M ARR target, or scope projection to next 12 months only.
     ...
+
+    ## Lint findings
+
+    Each entry comes from the pre-flight `slide-content-overflow` lint (step 5b). Errors block advance; warnings are recorded for the reviser but do not block.
+
+    1. **[error]** Slide 4 (line 27): Slide exceeds estimated vertical capacity by ~2.0 line-units (estimated 15.6u vs. capacity 13.0u). Top costs: image=7.0u, h2=2.0u, bullet=1.1u. Suggested fix: collapse the trailing 4 bullets into a single italic supporting line under the figure, or move the figure to a two-column block.
+    2. **[error]** Slide 7 (line 51): Slide exceeds estimated vertical capacity by ~2.7 line-units. Top costs: h1=3.2u, h1+h2-anti-pattern=1.5u. Suggested fix: drop the H2 slide tag — the `_class: ask` dark background already signals "the ask"; use a single H2 headline.
+    3. **[warning]** Slide 5 (line 36): Slide borderline (estimated 14.0u vs. capacity 13.0u). Suggested fix (non-blocking): consider trimming one bullet.
     ```
-    Each finding: severity, slide reference, rationale (1–2 sentences), suggested fix (1 sentence).
+    Each finding: severity, slide reference (with source line), rationale (1–2 sentences), suggested fix (1 sentence). The "Lint findings" section is present even if empty (write `_No lint findings._`).
 12. **Aggregate verdict** (this reviewer is the canonical verdict author):
     - Glob `<thread>.{N}.*/_summary.md` (siblings + self). Parse each.
     - For each rubric dimension, compute the aggregate score as the mean of non-null critic scores. Round to one decimal for display; sum for total.
-    - For critical flag, take logical OR of all critic flags.
-    - Decision: `advance = (total >= 35) AND (no critical flag)`.
+    - For critical flag, take logical OR of all critic flags **including the pre-flight lint**. If this `_summary.md`'s own `lint.errors > 0`, the aggregated critical flag is true regardless of any other critic.
+    - Decision: `advance = (total >= 35) AND (no critical flag)`. When `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags — the rubric total is reported honestly but does not save the verdict.
 13. **Write `verdict.md`**:
     ```markdown
     # Verdict — <thread> v<N>
@@ -143,12 +169,14 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
     ## Critical flags
 
     - **Market-math error** (raised by deck-market): TAM calculation on Slide 6 multiplies units wrong — claimed $50B but inputs yield $5B. Reviser must recompute.
+    - **Slide overflow (lint)** (raised by deck-review pre-flight, 2 errors): Slides 4 and 7 exceed estimated vertical capacity per the `slide-content-overflow` heuristic. See `findings.md` § Lint findings for the per-slide breakdown and suggested fixes.
 
     ## Top revision priorities
 
     1. Fix Slide 6 TAM calculation (critical flag).
-    2. Slide 11 projection — replace hockey stick with month-by-month build.
-    3. Slide 8 ARR discrepancy ($420k vs brief $380k).
+    2. Resolve the 2 overflow-lint errors on slides 4 and 7 (critical flag — blocks advance).
+    3. Slide 11 projection — replace hockey stick with month-by-month build.
+    4. Slide 8 ARR discrepancy ($420k vs brief $380k).
     ```
 14. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
 15. **Update `_meta.json`**: `finished: <ISO>`.
