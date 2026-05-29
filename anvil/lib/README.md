@@ -44,6 +44,12 @@ anvil/lib/
   review_schema.json           Auto-generated JSON Schema export of the
                                 pydantic models. Regenerate with
                                 `python3 -m anvil.lib.export_schema`. (#26)
+  rubric.py                    Pydantic models for the rubric YAML shape
+                                (generic /40 + advisory venue overlays),
+                                YAML loader, three-tier venue discovery. (#33)
+  rubric_schema.json           Auto-generated JSON Schema export of the
+                                rubric pydantic models. Regenerate with
+                                `python3 -m anvil.lib.export_schema`. (#33)
   critics.py                   Discovery, loading, aggregation, verdict
                                 computation, and a legacy adapter that reads
                                 the memo prose triple and the ip-uspto
@@ -52,7 +58,8 @@ anvil/lib/
                                 decisions: `check_stable` and
                                 `decide_termination`. Produces `Verdict.STALLED`
                                 for plateaued threads. (#27)
-  export_schema.py             One-shot exporter for review_schema.json.
+  export_schema.py             One-shot exporter for review_schema.json AND
+                                rubric_schema.json.
   examples/
     review-example.json        Fully-populated worked example fixture.
 ```
@@ -562,6 +569,108 @@ curl -H "User-Agent: anvil-cite/0.0.1 (https://github.com/rjwalters/anvil)" \
   "https://export.arxiv.org/api/query?id_list=YYMM.NNNNN" \
   > tests/lib/cassettes/cite/arxiv-YYMM.NNNNN.xml
 ```
+
+## Rubric YAMLs: `rubric.py`
+
+The rubric primitive lives in `anvil/lib/rubric.py`. It is the
+machine-side companion to the rubric shape documented in
+`snippets/rubric.md`. Public API:
+
+```python
+from pathlib import Path
+from anvil.lib.rubric import (
+    Rubric,
+    RubricDimension,
+    CriticalFlagDefinition,
+    load_rubric,
+    discover_venue_rubric,
+)
+
+# 1. Load a YAML rubric.
+rubric = load_rubric(Path("anvil/skills/pub/rubrics/neurips.yaml"))
+# rubric.id == "anvil-pub-neurips-v1"
+# rubric.advisory == True
+
+# 2. Discover the venue overlay for a thread (reads <thread>/.anvil.json).
+overlay = discover_venue_rubric(
+    thread_dir=Path("portfolio/q3-method"),
+    skill_root=Path(".anvil/skills/pub"),  # or anvil/skills/pub in dev
+)
+# Returns the loaded Rubric, or None if .anvil.json has no venue field
+# (or the venue YAML cannot be found in any tier).
+```
+
+### Two rubric kinds, one model
+
+The same `Rubric` pydantic model serves both rubric kinds; the
+discriminator is the `advisory` field:
+
+| `advisory` | Use | sum-to-total | threshold |
+|---|---|---|---|
+| `false` (default) | Generic /40 convergence-gate rubric | enforced | required |
+| `true` | Venue-pinned advisory overlay (e.g. NeurIPS, Nature) | not enforced | optional |
+
+Advisory rubrics produce supplementary scoring the reviser consumes
+for additional signal, but do NOT contribute to the convergence-gate
+decision. This preserves the framework-wide "/40 means the same
+thing across skills" invariant while letting venue overlays declare
+their own totals (NeurIPS /16, Nature /15, arXiv /10) honestly.
+
+### Venue discovery search order
+
+`discover_venue_rubric` reads `<thread>/.anvil.json` for the `venue`
+field. When set, it searches three tiers in order — first hit wins:
+
+1. **Per-thread**: `<thread>/.anvil/rubrics/<venue>.yaml`.
+   For a single thread that wants a non-shipped venue overlay
+   without modifying the consumer install.
+2. **Consumer-installed**:
+   `<consumer>/.anvil/skills/pub/rubrics/<venue>.yaml`
+   (where `<consumer>` defaults to `<thread>.parent`, i.e., the
+   portfolio dir). For consumer-wide custom venues.
+3. **Skill-shipped**: `<skill_root>/rubrics/<venue>.yaml`
+   (`anvil/skills/pub/rubrics/` in source; `.anvil/skills/pub/rubrics/`
+   in an installed consumer repo). The framework defaults
+   (`neurips`, `nature`, `arxiv`).
+
+When the venue field is set but no matching YAML is found,
+`discover_venue_rubric` returns `None`. The caller is responsible
+for warning and proceeding without the overlay (the generic gate is
+still in force).
+
+### Shipped venue overlays
+
+The `anvil:pub` skill ships three venue YAMLs at
+`anvil/skills/pub/rubrics/`:
+
+| Venue | Dimensions | Total | Critical flags |
+|---|---|---|---|
+| `neurips` | soundness, presentation, contribution, novelty, reproducibility | /16 | unverified_reproducibility_claim, missing_baseline, prior_work_omission |
+| `nature` | broad_significance, accessibility, evidence_strength, novelty | /15 | incremental_only, jargon_inaccessible, single_experiment_claim |
+| `arxiv` | citation_completeness, reproducibility, clarity_of_contribution, scope_classification | /10 | category_mismatch, unstated_contribution |
+
+Each YAML has a header comment citing its public source so the
+overlay can be updated when venue guidelines change.
+
+### Consumer override pattern
+
+To ship a custom venue overlay (e.g., `iclr`), a consumer drops a
+`Rubric`-shaped YAML into one of:
+
+- `<portfolio>/.anvil/skills/pub/rubrics/iclr.yaml` (portfolio-wide), or
+- `<thread>/.anvil/rubrics/iclr.yaml` (single thread).
+
+Set `venue: iclr` in `<thread>/.anvil.json` to activate. The
+`Rubric` model validates `advisory: true` plus the dimensions/critical
+flags exactly as for shipped overlays.
+
+### Tests
+
+Unit tests live in `tests/lib/test_rubric.py`. Coverage: shipped YAML
+load + per-dim id pinning, advisory vs non-advisory validation,
+duplicate-id rejection, three-tier discovery (including per-thread vs
+consumer-installed precedence), explicit `consumer_root` argument,
+malformed `.anvil.json` handling, and JSON Schema export.
 
 ## Deferred (NOT in v0)
 

@@ -38,6 +38,8 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 6. **Read inputs**:
    - Prior version's `main.tex`, `refs.bib`, `figures/`.
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
+   - `<thread>.{N}.review/_review.json` (canonical generic /40 scorecard) via `anvil.lib.critics.load_review`.
+   - `<thread>.{N}.review/_review.venue.json` IF present — the venue advisory overlay scorecard. Load via the same `load_review` (both files use the existing `Review` schema in `anvil/lib/review_schema.py`; no new shape). The venue file's findings and critical_flags ARE actionable for the reviser, but a venue critical flag does NOT independently force another revise iteration (the convergence gate is computed from the generic file's verdict only).
    - `<thread>.{N}.audit/` if present: `citation-audit.md`, `numerical-audit.md`, `flags.md`.
    - `<thread>.{N}.litsearch/` if present: `notes.md` + `candidates.bib` (the reviser may merge new entries into the revised `refs.bib`).
    - Every other `<thread>.{N}.<critic>/` sibling discovered on disk.
@@ -59,16 +61,20 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - Verify every `\cite{key}` in the new `main.tex` resolves before marking the phase done.
 10. **Write `changelog.md`**: a markdown table mapping each critic note to the change made.
 
+    Label each entry's `Source` column with both the sibling dir and the **source rubric**: `generic` for entries originating in the generic /40 `_review.json`, `venue:<slug>` for entries from `_review.venue.json`, and `audit` / `litsearch` for the corresponding sibling dirs. This lets a reader see at a glance which rubric flagged which issue — important because the venue overlay is advisory only and a reader may wish to weight venue-origin entries differently.
+
     ```
-    | Source                            | Note                                    | Resolution                                  |
-    |-----------------------------------|-----------------------------------------|---------------------------------------------|
-    | q3-method.1.review (blocker)      | TAM figure unsourced in Sec. 4          | Cited Acme2025 (added to refs.bib)          |
-    | q3-method.1.review (major)        | Related Work omits Smith2024            | Added paragraph + citation from litsearch   |
-    | q3-method.1.audit (critical-flag) | Cite{jones2023} resolves to wrong paper | Removed jones2023 cite; replaced with jones2024 (verified)  |
-    | q3-method.1.audit                 | Table 2 accuracy 87.3 ≠ text 87.1       | Recomputed; both now 87.3                   |
+    | Source                                       | Note                                    | Resolution                                  |
+    |----------------------------------------------|-----------------------------------------|---------------------------------------------|
+    | q3-method.1.review (generic, blocker)        | TAM figure unsourced in Sec. 4          | Cited Acme2025 (added to refs.bib)          |
+    | q3-method.1.review (generic, major)          | Related Work omits Smith2024            | Added paragraph + citation from litsearch   |
+    | q3-method.1.review (venue:neurips, major)    | Missing baseline vs. Chen2024 in Tab. 1 | Added baseline column with rerun results    |
+    | q3-method.1.review (venue:neurips, minor)    | Reproducibility checklist gap: seeds    | Added seed table to appendix                |
+    | q3-method.1.audit (critical-flag)            | Cite{jones2023} resolves to wrong paper | Removed jones2023 cite; replaced with jones2024 (verified)  |
+    | q3-method.1.audit                            | Table 2 accuracy 87.3 ≠ text 87.1       | Recomputed; both now 87.3                   |
     ```
 
-    For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next reviewer pass can override or accept the reviser's judgment.
+    For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next reviewer pass can override or accept the reviser's judgment. Declining a `venue:<slug>` entry is reasonable when the venue advice conflicts with the generic-rubric guidance — note the trade-off in the resolution column.
 11. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 12. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised q3-method.1 → q3-method.2/ (addressed 9 notes including 2 critical-flags, declined 1)`).
 
@@ -93,7 +99,7 @@ The cycle continues until:
 
 - **Do not regress.** If a section scored 5/6 in the prior review, the next version should keep it at ≥5/6. The `changelog.md` is the audit trail proving you did not lose ground while addressing other dimensions.
 - **Critical flags trump everything.** Audit and review critical flags MUST be addressed. Failing to do so is a worse outcome than declining a stylistic suggestion. A revision that does not address a flagged citation error will be re-flagged and the iteration cap will burn through quickly.
-- **Declined notes are a feature, not a bug.** Sometimes the reviewer is wrong. Document the disagreement in `changelog.md` so the next reviewer can re-evaluate with full context. Critical flags, however, are not appropriate to decline — challenge them in changelog if you must, but address them in the prose.
+- **Declined notes are a feature, not a bug.** Sometimes the reviewer is wrong. Document the disagreement in `changelog.md` so the next reviewer can re-evaluate with full context. Generic-rubric critical flags, however, are not appropriate to decline — challenge them in changelog if you must, but address them in the prose. **Venue critical flags** (from `_review.venue.json`) are advisory: addressing them is good practice for the target venue, but declining a venue critical flag is acceptable when the trade-off is justified (document the reasoning in the changelog).
 - **Preserve `figures/src/`.** The figurer relies on source scripts for re-render. Carry them over verbatim unless the revision deletes the corresponding figure.
 
 ## `_progress.json` snippet (revised version dir)

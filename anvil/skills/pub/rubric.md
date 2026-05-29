@@ -62,9 +62,41 @@ The reviewer writes a `verdict.md` at the top of the review sibling dir with:
 
 ```
 <thread>.{N}.review/
-  verdict.md       Top-level decision (see above)
-  scoring.md       Per-dimension score + justification
-  comments.md      Line-level comments keyed to main.tex sections
+  verdict.md           Top-level decision (see above)
+  scoring.md           Per-dimension score + justification
+  comments.md          Line-level comments keyed to main.tex sections
+  _review.json         Generic /40 scorecard (canonical critic JSON; see anvil/lib/review_schema.py).
+  _review.venue.json   (optional) Venue advisory overlay scorecard, written
+                       when <thread>/.anvil.json sets a `venue` field that
+                       resolves to a known venue YAML. Same JSON schema as
+                       _review.json; informational only.
 ```
 
 The reviewer dir is **read-only once written** (state: `done` in its own `_progress.json`). Revisions consume it without modifying it.
+
+## Venue-pinned advisory overlay rubrics
+
+A paper thread may declare a target venue in `<thread>/.anvil.json`:
+
+```json
+{
+  "max_iterations": 4,
+  "venue": "neurips"
+}
+```
+
+When set and a matching YAML is found, the reviewer also scores the paper against a **venue-pinned advisory rubric** (NeurIPS reviewer form, Nature broad-significance bar, arXiv reader norms, etc.) and writes a second `_review.venue.json` alongside the generic `_review.json`. The venue file uses the same `Review` schema in `anvil/lib/review_schema.py` (no new on-disk shape).
+
+**Critical: the venue overlay is ADVISORY ONLY. It does NOT change the /40 convergence gate.** The generic 8-dimension rubric above (with its ≥32/40 threshold and the critical-flag short-circuit) remains the sole driver of the `advance` decision. The venue overlay produces additional findings the reviser consumes for venue-specific signal; it does NOT contribute points to the gate-deciding total. This preserves the framework-wide "/40 means the same thing across skills" invariant documented in `anvil/lib/snippets/rubric.md`.
+
+Shipped venues:
+
+| Venue YAML | Total | Notes |
+|---|---|---|
+| `rubrics/neurips.yaml` | /16 | Soundness, presentation, contribution, novelty, reproducibility. Sources NeurIPS reviewer form. |
+| `rubrics/nature.yaml` | /15 | Broad significance, accessibility, evidence strength, novelty. Sources Nature reviewer instructions. |
+| `rubrics/arxiv.yaml` | /10 | Citation completeness, reproducibility, clarity of contribution, scope classification. De-facto reader bar + arXiv moderation. |
+
+Each YAML cites its public source in a header comment so it can be updated as venue guidelines change. The schema for these YAMLs is `anvil/lib/rubric.py::Rubric` with `advisory: true`; the loader skips the sum-to-/40 invariant for advisory rubrics. The venue discovery search order (per-thread → consumer-installed → skill-shipped) and the consumer override pattern are documented in `SKILL.md`.
+
+When `venue` is set but no matching YAML is found, the reviewer emits a stdout warning and proceeds with the generic rubric only. The thread's review is not blocked by the missing venue — the generic gate continues to apply.

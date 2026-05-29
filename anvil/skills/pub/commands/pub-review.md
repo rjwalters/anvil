@@ -17,16 +17,24 @@ The review sibling directory is **read-only once written**. Revisions consume it
 - **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/main.tex` existing.
 - **Rubric**: `anvil/skills/pub/rubric.md` (8 dimensions, /40, ≥32 threshold, critical flags).
 - **Optional consumer override**: `.anvil/skills/pub/rubric.overrides.md` (additional critical-flag examples; never reduces the base rubric).
+- **Optional thread config**: `<thread>/.anvil.json`. The `venue` field, if set, triggers an additional advisory scoring pass against the matching venue rubric YAML (see `SKILL.md` § "Venue overlays").
 
 ## Outputs
 
 ```
 <thread>.{N}.review/
-  verdict.md       Top-level decision + total /40 + critical flags + top revision priorities
-  scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
-  comments.md      Line-level comments keyed to main.tex section headings or excerpts
-  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
-  _progress.json   Phase state for the reviewer (phase: review)
+  verdict.md         Top-level decision + total /40 + critical flags + top revision priorities
+  scoring.md         Per-dimension score (0–weight) + 1–3 sentence justification each
+  comments.md        Line-level comments keyed to main.tex section headings or excerpts
+  _review.json       Canonical critic JSON (anvil/lib/review_schema.py) — generic /40 scorecard
+                     with `rubric: "anvil-pub-v1"`. Drives the convergence gate.
+  _review.venue.json (optional) Venue advisory overlay scorecard, when `<thread>/.anvil.json`
+                     declared a `venue` that resolved to a matching YAML. Same `Review` schema,
+                     with `rubric: "anvil-pub-<venue>-v1"`. ADVISORY ONLY: this file does NOT
+                     change the convergence-gate decision; it surfaces venue-specific findings
+                     for the reviser.
+  _meta.json         { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
+  _progress.json     Phase state for the reviewer (phase: review)
 ```
 
 ## Procedure
@@ -34,7 +42,8 @@ The review sibling directory is **read-only once written**. Revisions consume it
 1. **Discover state**: find the highest `N` with `<thread>.{N}/main.tex`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
 3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
-4. **Read inputs**: load `<thread>.{N}/main.tex`, `<thread>.{N}/refs.bib`, enumerate `figures/`, load `rubric.md` and any consumer override.
+4. **Read inputs**: load `<thread>.{N}/main.tex`, `<thread>.{N}/refs.bib`, enumerate `figures/`, load `rubric.md` and any consumer override. Also call `anvil.lib.rubric.discover_venue_rubric(<thread>, <skill_root>)`; this reads `<thread>/.anvil.json` for an optional `venue` field and returns the matching `Rubric` (or `None`).
+   - If `<thread>/.anvil.json` declared a `venue` but `discover_venue_rubric` returned `None` (no matching YAML in any tier), print a one-line stdout warning (`pub-review: venue '<slug>' declared in .anvil.json but no matching rubric YAML found; proceeding with generic /40 only`) and continue. Do NOT fail the review — the generic gate is still in force.
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (section heading, excerpt, figure, table) from the paper.
@@ -56,8 +65,26 @@ The review sibling directory is **read-only once written**. Revisions consume it
    - Critical flags (if any)
    - Dimension summary table (per-dim scores; full justifications in `scoring.md`)
    - Top 3 revision priorities (if `advance: false`)
-10. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
-11. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed q3-method.1 → q3-method.1.review/ (28/40, advance: false, 1 critical flag)`).
+10. **Write canonical `_review.json`** for the generic /40 scorecard. This is the canonical critic JSON shape documented in `anvil/lib/review_schema.py` (`Review` model). Fields:
+    - `version_dir`: `"<thread>.{N}"`
+    - `critic_id`: `"pub-review"`
+    - `rubric`: `"anvil-pub-v1"`
+    - `scores`: one entry per generic-rubric dimension (id matching `rubric.md` dimension numbering/naming), with `max` echoed from the rubric.
+    - `findings`: optional, mirror of severity-tagged `comments.md` items.
+    - `critical_flags`: mirror of any flags raised.
+    - `total`, `threshold` (32), `verdict`.
+    The convergence-gate decision (`advance`) is computed from THIS file only.
+11. **Venue overlay (conditional)**: if `discover_venue_rubric` returned a non-None `Rubric` in step 4, score the paper against the venue rubric in addition to the generic /40 — read each venue dimension's `description` and `calibration` from the YAML, assign integer scores in `[0, weight]`, set venue critical flags as warranted. Write the result to `<thread>.{N}.review/_review.venue.json` using the same `Review` schema:
+    - `version_dir`: `"<thread>.{N}"`
+    - `critic_id`: `"pub-review-venue"`
+    - `rubric`: the venue rubric's `id` (e.g., `"anvil-pub-neurips-v1"`)
+    - `scores`: one entry per venue-rubric dimension (id matching the YAML's `dimensions[].id`).
+    - `total`: sum of venue dim scores (informational only — does NOT contribute to the convergence gate).
+    - `threshold`: omit OR echo the YAML's threshold if declared. The aggregator filters by `rubric` id when computing the gate, so this file's threshold is informational.
+    - `verdict`: omit (per-critic verdicts are ignored by the aggregator).
+    The venue file's findings and critical_flags ARE consumed by the reviser for venue-specific signal — but a venue critical flag does NOT block the convergence gate (which only fires on flags carried in the generic `_review.json`). Mention the venue overlay in `verdict.md` (e.g., a one-paragraph note: `"Advisory venue overlay scored 12/16 against anvil-pub-neurips-v1; see _review.venue.json for findings."`).
+12. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
+13. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed q3-method.1 → q3-method.1.review/ (28/40, advance: false, 1 critical flag) [+ venue overlay 12/16 vs anvil-pub-neurips-v1]`).
 
 ## Idempotence and resumability
 
