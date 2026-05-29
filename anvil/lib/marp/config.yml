@@ -24,11 +24,16 @@
 # What is pinned and why:
 #
 #   html: true
-#     Required so inline <script>/HTML blocks survive into the rendered
-#     HTML/PDF output. Without it, fenced ```mermaid blocks (which Marp
-#     turns into <script> blocks) silently drop. This is the load-bearing
-#     enabler for the inline-mermaid-default decision documented in
-#     anvil/skills/{deck,slides}/commands/{deck,slides}-figures.md.
+#     Lets raw <script>/HTML blocks in the source pass through into the
+#     rendered HTML/PDF output. NOTE (verified, issue #65): html: true does
+#     NOT make fenced ```mermaid blocks render as diagrams in the canonical
+#     --pdf output. With marp-cli v4.4.0 / marp-core v4.3.0, an inline
+#     ```mermaid fence emits as RAW MONOSPACE CODE in the PDF (the grammar
+#     leaks verbatim), not a diagram — --html only passes raw HTML through and
+#     does not execute mermaid.js during Marp's PDF render. Diagrams MUST be
+#     pre-rendered to PNG via `mmdc` (see
+#     anvil/skills/{deck,slides}/commands/{deck,slides}-figures.md). html: true
+#     remains pinned for genuine raw-HTML slides and local-image inlining.
 #
 #   allowLocalFiles: true
 #     Required for Marp to inline local image references (figures/*.png,

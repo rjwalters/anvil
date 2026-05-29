@@ -14,8 +14,16 @@ preference:
 | Path | Source | Lives in `deck.md` as | When to use |
 |---|---|---|---|
 | **Matplotlib PNG** | `figures/<name>.py` + `figures/<name>.csv` | `![alt](figures/<name>.png)` | Data plots (results, ablation tables, distributions, benchmark curves) — anything driven by a real dataset. |
-| **Inline mermaid** | Fenced ```mermaid block directly in `deck.md` | (the block itself) | Architecture diagrams, sequence diagrams, system flows, protocol traces, state machines. **Default for diagrams.** |
+| **Mermaid PNG (`mmdc`)** | `figures/<name>.mmd` | `![alt](figures/<name>.png)` | Architecture diagrams, sequence diagrams, system flows, protocol traces, state machines. **Default for diagrams.** Requires `mmdc` (see warning below). |
 | **MathJax** | Inline `$...$` or display `$$...$$` in `deck.md` | (inline source) | Theorem statements, equations, derivations, formal definitions. |
+
+> **Inline ```mermaid does NOT render in the PDF (verified, issue #65).** A
+> fenced ```mermaid block left in `deck.md` emits as raw monospace code in the
+> canonical `--pdf` output — it is NOT turned into a diagram. `html: true` only
+> passes raw HTML through; it does not execute mermaid.js during Marp's PDF
+> render. Render every diagram to a PNG via `mmdc` (Path 2 below) and reference
+> it as `![alt](figures/<name>.png)`. `mmdc` is therefore a **required**
+> dependency for any deck with a diagram, not a fallback.
 
 Each path has one minimal worked example below, tuned for a talk / lecture
 audience.
@@ -60,12 +68,10 @@ In `deck.md`:
 DPI, and `$`-escaping conventions (for `\$` in axis labels) are owned by
 issue #23's `figure-conventions.md` (cross-reference; not yet landed).
 
-### Path 2 — Inline mermaid (diagrams) — **default**
+### Path 2 — Mermaid PNG via `mmdc` (diagrams) — **default**
 
-A sequence diagram for a protocol walkthrough, directly in `deck.md`:
-
-````markdown
-# Protocol — request lifecycle
+A sequence diagram for a protocol walkthrough. Write the source to
+`figures/protocol.mmd`:
 
 ```mermaid
 sequenceDiagram
@@ -81,30 +87,37 @@ sequenceDiagram
     G -->> C: response
 ```
 
+In `deck.md`, reference the rendered PNG:
+
+```markdown
+# Protocol — request lifecycle
+
+![Request lifecycle — cache-hit path](figures/protocol.png)
+
 The cache hit avoids the database round-trip; tail latency drops from 180ms
 to 12ms on the p99.
-````
+```
 
-That's it. Marp renders the mermaid block at PDF-export time. No `.mmd`
-file, no `mmdc` invocation, no PNG, no out-of-band step. The figurer treats
-this as a no-op.
+`slides-figures` renders the `.mmd` source to a PNG with `mmdc`:
 
-This works because Marp emits the mermaid block as an inline `<script>`,
-and `anvil/lib/marp/config.yml` pins `html: true` so the script survives
-into the rendered output. The per-document frontmatter (`math: mathjax`,
-`html: true` in `templates/deck.md.j2`) is the belt; the CLI config is the
-suspenders.
+```bash
+mmdc --input figures/protocol.mmd --output figures/protocol.png \
+     --width 1600 --height 900 --backgroundColor white
+```
 
-**When to fall back to PNG** (the `mmdc → PNG` path):
+**Why not inline?** A fenced ```mermaid block left directly in `deck.md`
+emits as **raw monospace code** in the canonical `--pdf` output (verified,
+issue #65) — it is NOT rendered into a diagram. `--html` / `html: true` only
+passes raw HTML through; it does not execute mermaid.js during Marp's PDF
+render. So diagrams must be pre-rendered to PNG. If a drafter leaves an inline
+```mermaid fence (or marks one with `<!-- anvil-figure: png -->`),
+`slides-figures` extracts it to `figures/<name>.mmd` and renders it through
+this path.
 
-- Custom geometry (the diagram is too tall for the safe area at mermaid's
-  default layout).
-- Transparent compositing (overlay on a slide-background image).
-- Explicit marker — drop `<!-- anvil-figure: png -->` on the line above a
-  ```mermaid fence to signal "render this one out-of-band."
-
-See `commands/slides-figures.md` § "Mermaid (default for diagrams)" for
-the fallback procedure.
+**`mmdc` is required** for any deck with a diagram. It pulls Puppeteer + a
+~300MB+ headless Chromium; in CI/containers it needs `--puppeteerConfigFile`
+with `{"args":["--no-sandbox"]}`. See `commands/slides-figures.md` §
+"Mermaid (default for diagrams)" for the full procedure.
 
 ### Path 3 — MathJax (theorem statements and equations)
 
@@ -147,13 +160,16 @@ marp <thread>.{N}/deck.md \
 
 Three flags are load-bearing:
 
-- `--html` enables the inline `<script>` blocks Marp emits for mermaid
-  fences. Without it, mermaid diagrams disappear from the rendered PDF.
+- `--html` lets raw HTML in the source pass through into the rendered PDF.
+  Note: it does NOT make inline ```mermaid fences render as diagrams
+  (verified false, issue #65) — diagrams go through `mmdc → PNG` (Path 2).
+  `--html` is kept for genuine raw-HTML slides and config parity.
 - `--config-file anvil/lib/marp/config.yml` pins the framework-shared
   options (`html`, `allowLocalFiles`, theme search path). Consumer repos
   resolve this to `.anvil/lib/marp/config.yml`.
 - `--allow-local-files` lets Marp inline `![](figures/...)` references.
-  Without it, every embedded PNG renders as a broken-image icon.
+  Without it, every embedded PNG renders as a broken-image icon. This is the
+  flag that matters for the mermaid PNGs `mmdc` produces.
 
 The explicit `--html`, `--theme-set`, and `--allow-local-files` flags are
 kept on the CLI line as belt-and-suspenders so the render still does the
@@ -171,7 +187,7 @@ The handout exporter (`slides-handout`) uses the same invocation plus
 - `anvil/skills/slides/templates/deck.md.j2` — per-document frontmatter
   that mirrors the config-file pin.
 - `anvil/skills/slides/commands/slides-figures.md` — full figure pipeline
-  including the inline-mermaid default and the `mmdc` PNG fallback.
+  including the `mmdc → PNG` diagram path.
 - `anvil/skills/slides/commands/slides-handout.md` — handout exporter
   using the same canonical render line.
 - `anvil/skills/slides/lib/marp_lint.py` — `slide-content-overflow` lint

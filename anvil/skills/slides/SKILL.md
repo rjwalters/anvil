@@ -15,7 +15,7 @@ The `slides` skill produces technically defensible talk slides through the canon
 - **`slides-rehearse`** — time-budget and density check (deterministic word-count + heuristic spoken-time estimate).
 - **`slides-handout`** — terminal-only export of a leave-behind PDF (2-up / 4-up / notes-below variants).
 
-Slides are produced as **Markdown + Marp** sources (`deck.md`). Marp is the anvil-pinned presentation renderer for both `slides` and `deck`; Beamer is available only as a consumer-side override for users with hard constraints (e.g., conference proceedings requiring LaTeX submission). Math via MathJax (Marp v3 default); diagrams via inline Mermaid or matplotlib-rendered images. The renderer pin (`math: mathjax`, `html: true`, theme search path) lives in `anvil/lib/marp/config.yml` and is the single source of truth for both shipped presentation skills.
+Slides are produced as **Markdown + Marp** sources (`deck.md`). Marp is the anvil-pinned presentation renderer for both `slides` and `deck`; Beamer is available only as a consumer-side override for users with hard constraints (e.g., conference proceedings requiring LaTeX submission). Math via MathJax (Marp v3 default); diagrams via Mermaid rendered to PNG with `mmdc` (inline ```mermaid does not render in the PDF, issue #65) or matplotlib-rendered images. The renderer pin (`math: mathjax`, `html: true`, theme search path) lives in `anvil/lib/marp/config.yml` and is the single source of truth for both shipped presentation skills.
 
 ## Talk vs. deck — the load-bearing distinction
 
@@ -158,7 +158,7 @@ Slides are authored as a single `deck.md` Marp document. One slide per `---` blo
 - Color-blind-safe palette (Okabe-Ito); no critical information conveyed by color alone.
 - Section divider slides for arc-marking.
 - MathJax math (Marp v3 default): `$\nabla \cdot E = \rho / \varepsilon_0$` inline; `$$ ... $$` display. The math engine is pinned to `mathjax` in both the per-document frontmatter (`templates/deck.md.j2`) and the CLI config (`anvil/lib/marp/config.yml`).
-- Mermaid diagrams render natively in Marp as fenced ```mermaid blocks in `deck.md` — no out-of-band PNG rendering required. The `html: true` pin (frontmatter + `anvil/lib/marp/config.yml`) is what lets the inline `<script>` blocks Marp emits survive into the rendered PDF. See `assets/marp-renderer.md` for the worked example.
+- Mermaid diagrams are pre-rendered to PNG via `mmdc` (`figures/<name>.mmd` → `figures/<name>.png`) and referenced as `![alt](figures/<name>.png)`. NOTE (verified, issue #65): inline fenced ```mermaid blocks do NOT render as diagrams in the canonical `--pdf` output — they emit as raw monospace code. `html: true` only passes raw HTML through; it does not execute mermaid.js during Marp's PDF render. `mmdc` is therefore required for any deck with a diagram. See `assets/marp-renderer.md` for the worked example.
 
 **Rendering**: `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --allow-local-files` produces a slide PDF (and an HTML preview). The skill does not assume Marp is installed at runtime — the drafter writes valid Marp markdown; the rendering step is the consumer's responsibility (or `slides-handout`'s, which does require Marp for PDF export).
 
@@ -201,7 +201,7 @@ The Marp renderer supports both inline notes (HTML comments) and sidecar notes (
 **`slides-rehearse`** — *time-budget + density check.* Mechanical pass: counts words per slide, estimates spoken-time-per-slide (default heuristic: 90s base + 30s per non-trivial figure + 1.5s per word of presenter notes, capped at 3 min/slide for technical depth slides). Emits `<thread>.{N}.rehearse/timing.md` with per-slide and aggregate estimates, density violations, and recommended cuts. Deterministic-first (regex/wordcount) with LLM judgment only for "is this figure trivial or non-trivial?" classification. Feeds Dimensions 4 and 8 directly.
 
 **`slides-figures`** — *figure generation, talk-specific defaults.* Writes into `<thread>.{N}/figures/` (part of the artifact, not a sibling). Three asset paths:
-- **Mermaid** for flowcharts and block diagrams — first-class in Marp, no preprocessing needed.
+- **Mermaid** for flowcharts and block diagrams — rendered to PNG via `mmdc` (`figures/<name>.mmd` → `figures/<name>.png`). Inline fences do NOT render in the PDF (issue #65), so `mmdc` is required for any deck with a diagram.
 - **matplotlib (Python)** for data plots from real datasets; rendered to PNG or SVG and referenced via `![alt](figures/fig-1.png)`.
 - **External assets** (PNG/SVG) allowed for screenshots and photos.
 

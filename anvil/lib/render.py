@@ -81,9 +81,13 @@ def render_marp_to_pdf(
     """Render a Marp Markdown deck to PDF.
 
     Invokes the ``marp`` CLI with ``--pdf --html
-    --config-file <config> --allow-local-files`` so inline mermaid blocks,
-    local image references, and the pinned Marp options (per #32) all
-    survive into the rendered PDF.
+    --config-file <config> --allow-local-files`` so raw HTML, local image
+    references, and the pinned Marp options (per #32) all survive into the
+    rendered PDF.
+
+    Note: ``--html`` does NOT cause inline ```mermaid fences to render as
+    diagrams in the PDF (verified false, issue #65) — those must be
+    pre-rendered to PNG via ``mmdc`` (see :func:`check_mmdc_available`).
 
     Parameters
     ----------
@@ -142,6 +146,58 @@ def render_marp_to_pdf(
             f"{result.stderr.strip() or result.stdout.strip()}"
         )
     return out_pdf
+
+
+# ---------------------------------------------------------------------------
+# Mermaid (mmdc) preflight
+# ---------------------------------------------------------------------------
+
+# Remediation message surfaced when ``mmdc`` is absent. Shared by the
+# figurer preflight and any caller that wants to emit a ``[blocker]`` with the
+# full install story. ``mmdc`` is REQUIRED for any deck containing a diagram:
+# inline ```mermaid fences do NOT render as diagrams in the canonical
+# ``marp --pdf`` output (verified, issue #65) — they degrade to raw code — so
+# ``mmdc → PNG`` is the only working diagram path for the PDF.
+MMDC_REMEDIATION = (
+    "mmdc (mermaid-cli) not found on PATH — required to render mermaid "
+    "diagrams to PNG. Install with `npm install -g @mermaid-js/mermaid-cli`. "
+    "Note: mmdc pulls Puppeteer + a ~300MB+ headless Chromium on first "
+    "install. In CI/containers Chromium typically needs --no-sandbox: pass "
+    "`mmdc --puppeteerConfigFile <file>` where <file> contains "
+    '{"args":["--no-sandbox"]}.'
+)
+
+
+def check_mmdc_available() -> bool:
+    """Return ``True`` if the ``mmdc`` (mermaid-cli) binary is on PATH.
+
+    This is the preflight guard the deck/slides figurers run before any
+    ``mmdc → PNG`` render. It mirrors the ``shutil.which("marp")`` guard in
+    :func:`render_marp_to_pdf` so the figurer can fail fast with a legible
+    ``[blocker]`` (see :data:`MMDC_REMEDIATION`) instead of producing a deck
+    that references a PNG ``mmdc`` never rendered.
+
+    ``mmdc`` is required for any deck containing a diagram, not a fallback:
+    inline ```mermaid fences do not render in the canonical ``marp --pdf``
+    output (verified, issue #65). A deck with zero diagrams does not need
+    ``mmdc`` and callers should not invoke this preflight in that case.
+
+    Kept binary-presence-only (no Chromium launch) so it is unit-testable
+    with a stubbed/monkeypatched ``shutil.which`` and requires no real
+    Chromium at test time.
+    """
+    return shutil.which("mmdc") is not None
+
+
+def require_mmdc() -> None:
+    """Raise :class:`RenderError` with full remediation if ``mmdc`` is absent.
+
+    Convenience wrapper over :func:`check_mmdc_available` for callers that
+    prefer the raise-on-missing shape used by :func:`render_marp_to_pdf`'s
+    ``marp`` guard.
+    """
+    if not check_mmdc_available():
+        raise RenderError(MMDC_REMEDIATION)
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +402,10 @@ def render_matplotlib_figures(figures_dir: Path) -> List[Path]:
 
 __all__ = [
     "DEFAULT_MARP_CONFIG",
+    "MMDC_REMEDIATION",
     "RenderError",
+    "check_mmdc_available",
+    "require_mmdc",
     "render_marp_to_pdf",
     "render_pdf_to_pngs",
     "render_pandoc_to_pdf",

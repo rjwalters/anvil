@@ -14,8 +14,16 @@ preference:
 | Path | Source | Lives in `deck.md` as | When to use |
 |---|---|---|---|
 | **Matplotlib PNG** | `figures/src/<name>.py` + `figures/src/<name>.csv` | `![alt](figures/<name>.png)` | Data charts (bar, line, scatter, distribution) — anything with axes and real numbers. |
-| **Inline mermaid** | Fenced ```mermaid block directly in `deck.md` | (the block itself) | Architecture diagrams, sequence diagrams, flowcharts, state machines. **Default for diagrams.** |
+| **Mermaid PNG (`mmdc`)** | `figures/src/<name>.mmd` | `![alt](figures/<name>.png)` | Architecture diagrams, sequence diagrams, flowcharts, state machines. **Default for diagrams.** Requires `mmdc` (see warning below). |
 | **MathJax** | Inline `$...$` or display `$$...$$` in `deck.md` | (inline source) | Any inline equation or formula. |
+
+> **Inline ```mermaid does NOT render in the PDF (verified, issue #65).** A
+> fenced ```mermaid block left in `deck.md` emits as raw monospace code in the
+> canonical `--pdf` output — it is NOT turned into a diagram. `html: true` only
+> passes raw HTML through; it does not execute mermaid.js during Marp's PDF
+> render. Render every diagram to a PNG via `mmdc` (Path 2 below) and reference
+> it as `![alt](figures/<name>.png)`. `mmdc` is therefore a **required**
+> dependency for any deck with a diagram, not a fallback.
 
 Each path has one minimal worked example below.
 
@@ -54,12 +62,9 @@ In `deck.md`:
 DPI, and `$`-escaping conventions are owned by
 `assets/figure-conventions.md` (cross-reference).
 
-### Path 2 — Inline mermaid (diagrams) — **default**
+### Path 2 — Mermaid PNG via `mmdc` (diagrams) — **default**
 
-In `deck.md`, directly:
-
-````markdown
-## Solution architecture
+Write the diagram source to `figures/src/<name>.mmd`:
 
 ```mermaid
 flowchart LR
@@ -69,26 +74,38 @@ flowchart LR
     C --> E[(Postgres)]
     D --> E
 ```
-````
 
-That's it. Marp renders the mermaid block at PDF-export time. No `.mmd` file,
-no `mmdc` invocation, no PNG, no out-of-band step. The figurer treats this
-as a no-op.
+In `deck.md`, reference the rendered PNG:
 
-This works because Marp emits the mermaid block as an inline `<script>`,
-and `anvil/lib/marp/config.yml` pins `html: true` so the script survives
-into the rendered output. The per-document frontmatter (`math: mathjax`,
-`html: true` in `templates/deck.md.j2`) is the belt; the CLI config is the
-suspenders.
+```markdown
+## Solution architecture
 
-**When to fall back to PNG** (the `mmdc → PNG` path):
+![Solution architecture]( figures/architecture.png )
+```
 
-- Custom geometry (mermaid's auto-layout can't fit the safe area).
-- Transparent compositing (overlay on theme-colored background).
-- Explicit marker — drop `<!-- anvil-figure: png -->` on the line above a
-  ```mermaid fence to signal "render this one out-of-band."
+`deck-figures` renders the `.mmd` source to a PNG with `mmdc`:
 
-See `commands/deck-figures.md` step 4 for the fallback procedure.
+```bash
+mmdc --input figures/src/architecture.mmd \
+     --output figures/architecture.png \
+     --width 1600 --height 900 --backgroundColor white
+```
+
+**Why not inline?** A fenced ```mermaid block left directly in `deck.md`
+emits as **raw monospace code** in the canonical `--pdf` output (verified,
+issue #65) — it is NOT rendered into a diagram. `--html` / `html: true` only
+passes raw HTML through; it does not execute mermaid.js during Marp's PDF
+render. So diagrams must be pre-rendered to PNG. If the drafter does leave an
+inline ```mermaid fence (or marks one with `<!-- anvil-figure: png -->`),
+`deck-figures` extracts it to `figures/src/<name>.mmd` and renders it through
+this path.
+
+**`mmdc` is required** for any deck with a diagram. It pulls Puppeteer + a
+~300MB+ headless Chromium; in CI/containers it needs
+`--puppeteerConfigFile` with `{"args":["--no-sandbox"]}`. `deck-figures`
+preflights `mmdc` before any render and emits a `[blocker]` + proactive
+`<name>.png-FAILED.md` stub if it is absent. See `commands/deck-figures.md`
+step 4 for the full procedure.
 
 ### Path 3 — MathJax (equations)
 
@@ -128,13 +145,16 @@ marp <thread>.{N}/deck.md \
 
 Three flags are load-bearing:
 
-- `--html` enables the inline `<script>` blocks Marp emits for mermaid
-  fences. Without it, mermaid diagrams disappear from the rendered PDF.
+- `--html` lets raw HTML in the source pass through into the rendered PDF.
+  Note: it does NOT make inline ```mermaid fences render as diagrams
+  (verified false, issue #65) — diagrams go through `mmdc → PNG` (Path 2).
+  `--html` is kept for genuine raw-HTML slides and config parity.
 - `--config-file anvil/lib/marp/config.yml` pins the framework-shared
   options (`html`, `allowLocalFiles`, theme search path). Consumer repos
   resolve this to `.anvil/lib/marp/config.yml`.
 - `--allow-local-files` lets Marp inline `![](figures/...)` references.
-  Without it, every embedded PNG renders as a broken-image icon.
+  Without it, every embedded PNG renders as a broken-image icon. This is the
+  flag that matters for the mermaid PNGs `mmdc` produces.
 
 The explicit `--html`, `--theme-set`, and `--allow-local-files` flags are
 kept on the CLI line as belt-and-suspenders so the render still does the
@@ -149,7 +169,7 @@ right thing when the config file is missing or has been overridden.
 - `anvil/skills/deck/templates/deck.md.j2` — per-document frontmatter that
   mirrors the config-file pin.
 - `anvil/skills/deck/commands/deck-figures.md` — full figure pipeline
-  including the inline-mermaid default and the `mmdc` PNG fallback.
+  including the `mmdc → PNG` diagram path and the required-`mmdc` preflight.
 - `anvil/skills/deck/lib/marp_lint.py` — `slide-content-overflow` lint that
   runs on the resulting markdown source (catches the figure + bullets + footer
   pattern that mermaid auto-layout cannot save).
