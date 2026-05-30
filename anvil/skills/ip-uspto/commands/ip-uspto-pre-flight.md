@@ -74,9 +74,11 @@ This command catches mechanical formal-compliance issues (37 CFR 1.71–1.84 der
    - Missing or out-of-order headings are findings with severity `blocker`.
    - **Deterministic**: regex.
 
-   ### Check 7 — Page geometry sanity
-   - Verify `spec.tex` uses `\documentclass{anvil-uspto}` (or a clearly identified consumer override).
-   - The class enforces 1-inch margins, US Letter, 12pt, 1.5 spacing. If the class is not in use, raise a finding with severity `blocker`.
+   ### Check 7 — Page geometry sanity (string-presence check)
+   - Verify `spec.tex` *references* `\documentclass{anvil-uspto}` (or a clearly identified consumer override) on the documentclass line.
+   - The class, when loaded by `pdflatex`, enforces 1-inch margins, US Letter, 12pt, 1.5 spacing. If the class is not even referenced in the source, raise a finding with severity `blocker`.
+   - **Scope is intentionally narrow**: this is a regex on the `\documentclass{...}` line, not a verification that `anvil-uspto.cls` actually resolves on the LaTeX `TEXINPUTS` path. A typo in the class name or a missing/wrong class declaration is caught here; a present-and-correct declaration that nonetheless fails to find the class file at compile time is caught by **Check 9 (render-gate)**, which runs `pdflatex` and surfaces `Class \`anvil-uspto' not found` / `File \`anvil-uspto.cls' not found` as a `blocker` finding.
+   - Together: Check 7 is the cheap source-side check (no LaTeX needed) that catches missing or wrong declarations early; Check 9 is the compile-time check that catches class-file resolution failures (bad `TEXINPUTS`, missing class file in the install layout). Both are required — neither subsumes the other.
    - **Deterministic**: regex on documentclass line.
 
    ### Check 8 — Claim count thresholds
@@ -138,7 +140,7 @@ The pre-flight result gates the loop edge `REVISED → REVIEWED`:
 
 - **Deterministic first.** Do not invoke the LLM for checks that have unambiguous deterministic implementations. Save the LLM budget for the genuinely ambiguous case (Check 4 fallback).
 - **Reference numeral check is partial.** Full reference-numeral correspondence (e.g., "is reference 42 actually depicting the same component everywhere it appears?") is the `review` critic's job. Pre-flight only checks existence/presence.
-- **The class file is the enforcement mechanism for geometry.** Pre-flight verifies the class is in use, not the geometry directly — if the class is loaded, geometry is correct by construction.
+- **The class file is the enforcement mechanism for geometry.** Pre-flight does not verify geometry directly. Check 7 confirms the source *references* `\documentclass{anvil-uspto}` (a cheap string-presence regex); Check 9 (render-gate) confirms `pdflatex` can actually *resolve and load* the class file from `TEXINPUTS`. Once both checks pass, geometry is correct by construction (the class enforces margins, paper size, font size, and line spacing at compile time).
 
 
 ## Scorecard kind
