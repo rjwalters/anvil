@@ -71,17 +71,17 @@ def empty_pdf(tmp_path) -> Path:
 
 @pytest.fixture
 def overfull_clean_log() -> Path:
-    return FIXTURES / "overfull_clean.log"
+    return FIXTURES / "overfull_clean.txt"
 
 
 @pytest.fixture
 def overfull_dirty_log() -> Path:
-    return FIXTURES / "overfull_dirty.log"
+    return FIXTURES / "overfull_dirty.txt"
 
 
 @pytest.fixture
 def compile_failure_log() -> Path:
-    return FIXTURES / "compile_failure.log"
+    return FIXTURES / "compile_failure.txt"
 
 
 @pytest.fixture
