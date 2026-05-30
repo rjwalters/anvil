@@ -65,7 +65,7 @@ Resolution order: per-version assets → consumer-repo assets → skill defaults
 
 ## Validation by file existence
 
-The reviewer scores Dimension 7 (Format / presentation quality) in part on whether `report.pdf` exists, is renderable, and contains the expected exhibits. The figurer's job is to make that check pass. Validation: for every `![...](exhibits/<filename>)` and `(see Figure N)` / `(see Table N)` reference in `report.md`, the file `exhibits/<filename>` must exist AND `report.pdf` must successfully render.
+The reviewer (`report-review`) performs a deterministic existence + freshness check on `report.pdf` as part of Dimension 7 scoring: missing or stale (older than `report.md`) caps Dimension 7 ≤ 2/4 with a `major` finding (see `commands/report-review.md` step 4c). The figurer's job is to keep that check passing. Rendered-content quality (figure legibility, table overflow, page-break artifacts) is scored by the optional `report-vision` critic — not by `report-review`. Validation: for every `![...](exhibits/<filename>)` and `(see Figure N)` / `(see Table N)` reference in `report.md`, the file `exhibits/<filename>` must exist AND `report.pdf` must successfully render.
 
 ## Notes for the figurer agent
 
