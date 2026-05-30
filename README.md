@@ -35,6 +35,14 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 
 Not yet wired up. See [CHANGELOG.md](CHANGELOG.md) for status.
 
+**Optional Python extras.** Anvil's core ships subprocess-only (no Python deps). Advanced detectors that need a third-party library are exposed as opt-in extras:
+
+```bash
+uv pip install -e .[auto_shrink]   # enables the anvil:deck silent-Marp-auto-shrink lint (#102)
+```
+
+When an extra isn't installed, the corresponding check gracefully skips and the surrounding command (e.g. `deck-review`) proceeds normally with a clear remediation message in its output.
+
 ## Repository layout
 
 ```
