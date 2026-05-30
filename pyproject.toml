@@ -1,0 +1,98 @@
+# Anvil — Python project metadata
+#
+# This is Anvil's FIRST declared Python-deps file. The philosophy is:
+#
+#   Anvil prefers subprocess-only operation. Python deps are added only when
+#   they enable a check that's genuinely better than the subprocess
+#   equivalent, and they are ALWAYS optional — the core skills ship with
+#   zero Python deps so that `python3 -c 'from anvil.lib.render import ...'`
+#   works in a stock venv with no install step.
+#
+# Practical consequence: every dependency below lives under
+# `[project.optional-dependencies]`. The base `[project]` table declares no
+# runtime deps. Consumers opt in to advanced detectors per-skill via extras:
+#
+#     uv pip install -e .[auto_shrink]    # Marp auto-shrink lint (deck)
+#
+# Future advanced/optional checks that need a third-party Python library
+# should land here as additional extras (one extra per detector / capability),
+# not as a base runtime requirement. The preflights in `anvil/lib/render.py`
+# (see `check_mmdc_available`, `check_pdfjam_available`,
+# `check_auto_shrink_deps_available`) detect each capability at runtime and
+# emit a remediation message if it isn't available — they never hard-fail
+# the surrounding pipeline.
+#
+# Tooling: this file follows PEP 621 + uv conventions. `uv pip install -e .`
+# installs the framework code editable; `[tool.uv]` is a marker so uv's
+# tooling treats this as a uv-managed project (no lockfile is checked in
+# yet; the optional-extra set is small and pinned only with lower bounds).
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anvil"
+version = "0.0.1"
+description = "AI-orchestrated artifact creation using the filesystem as the coordination layer."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Anvil contributors" },
+]
+keywords = ["ai", "artifacts", "review", "rubric", "marp", "latex"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Libraries",
+]
+
+# Base install: ZERO runtime Python deps. Anvil's core is subprocess-only
+# (marp, mmdc, pdftoppm, pdfjam, pandoc are all CLI binaries). See the
+# header comment above for the philosophy.
+dependencies = []
+
+# Opt-in extras. Each one corresponds to a single advanced check that needs
+# a third-party Python library. The preflights in `anvil/lib/render.py`
+# graceful-skip when an extra is missing — the surrounding command still
+# runs and emits a clear remediation message.
+[project.optional-dependencies]
+# `anvil:deck` silent-Marp-auto-shrink lint (issue #102 / #100b).
+# Detects pages where Marp's CSS fit-to-frame scaling has silently shrunk
+# the slide. Image-based — samples background from corner patches of the
+# already-rendered per-page PNG, takes argmax/argmin on rows-with-content
+# to compute a content bbox. Needs PIL/numpy for the pixel arithmetic.
+auto_shrink = [
+    "Pillow>=10.0",
+    "numpy>=1.24",
+]
+# Test-time dev deps. Not required for any shipped skill; install for
+# running the test suite locally.
+dev = [
+    "pytest>=7.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/rjwalters/anvil"
+Issues = "https://github.com/rjwalters/anvil/issues"
+
+# --- uv tooling marker -------------------------------------------------------
+# Present so `uv` recognises this as a uv-managed project. No locked deps
+# yet; the extras above use lower-bound pins only.
+[tool.uv]
+
+# --- setuptools: keep the package layout minimal ----------------------------
+# We do not currently distribute Anvil as a wheel. This config exists so
+# `uv pip install -e .` works against the source tree (the editable install
+# is the only supported invocation today). Skills and lib live under
+# `anvil/`; tests under `tests/` and `anvil/skills/*/tests/` are not
+# packaged.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["anvil*"]
+exclude = ["tests*", "*.tests", "*.tests.*", "tests.*"]
