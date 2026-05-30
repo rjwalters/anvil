@@ -338,7 +338,9 @@ DST_LIB="$TARGET/.anvil/lib"
 if [[ -d "$SRC_LIB" ]]; then
   # Copy contents (cp -R src/. dest preserves contents, not the wrapper dir).
   do_action "install $DST_LIB from $SRC_LIB" copy_tree "$SRC_LIB" "$DST_LIB"
-  ok "framework lib installed"
+  # Suppress post-action confirmation under --dry-run; the [dry-run] line above
+  # is the truthful record (issue #81). Stage 1-4/10 diagnostic ok: lines stay.
+  [[ "$DRY_RUN" == true ]] || ok "framework lib installed"
 else
   warn "source lib not found: $SRC_LIB (skipping)"
 fi
@@ -349,7 +351,8 @@ SRC_ROLES="$ANVIL_ROOT/anvil/roles"
 DST_ROLES="$TARGET/.anvil/roles"
 if [[ -d "$SRC_ROLES" ]]; then
   do_action "install $DST_ROLES from $SRC_ROLES" copy_tree "$SRC_ROLES" "$DST_ROLES"
-  ok "roles installed"
+  # Suppress post-action confirmation under --dry-run (issue #81).
+  [[ "$DRY_RUN" == true ]] || ok "roles installed"
 else
   warn "source roles not found: $SRC_ROLES (skipping)"
 fi
@@ -391,7 +394,10 @@ for skill in "${SELECTED_SKILLS[@]}"; do
     write_shim "$skill" "$shim_dir" "$shim_file"
 
   INSTALLED_SKILLS+=("$skill")
-  ok "skill '$skill' installed"
+  # Suppress post-action confirmation under --dry-run (issue #81). The
+  # INSTALLED_SKILLS array is still populated so the Stage 11 summary can
+  # accurately report what a real run WOULD install (relabel branch below).
+  [[ "$DRY_RUN" == true ]] || ok "skill '$skill' installed"
 done
 
 # ----- Stage 8: CLAUDE.md additive merge ------------------------------------
@@ -502,9 +508,18 @@ check_renderer_deps || DEPS_MISSING=$?
 # ----- Stage 11: summary ----------------------------------------------------
 info "Stage 11: summary"
 echo ""
-echo "  installed skills:    ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
-echo "  skipped overrides:   ${SKIPPED_OVERRIDES[*]:-(none)}"
-echo "  target:              $TARGET/.anvil"
+if [[ "$DRY_RUN" == true ]]; then
+  # Under --dry-run, relabel the summary so the operator sees WHAT a real run
+  # would install (load-bearing info — the point of --dry-run) without the
+  # lying "installed skills:" framing (issue #81).
+  echo "  would install:       ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
+  echo "  would skip:          ${SKIPPED_OVERRIDES[*]:-(none)}"
+  echo "  would target:        $TARGET/.anvil"
+else
+  echo "  installed skills:    ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
+  echo "  skipped overrides:   ${SKIPPED_OVERRIDES[*]:-(none)}"
+  echo "  target:              $TARGET/.anvil"
+fi
 echo "  renderer deps:       $([[ "$DEPS_MISSING" -eq 0 ]] && echo "all present" || echo "$DEPS_MISSING missing -- re-run with --check-deps for detail")"
 echo ""
 if [[ "$DRY_RUN" == true ]]; then
