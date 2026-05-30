@@ -25,7 +25,7 @@ Conflating them removes a useful kill-switch. A report can pass the rubric and s
 - **Project + thread path** (positional argument): `<project>/<thread>`.
 - **Acknowledgment token** (REQUIRED): one of:
   - `--confirm-customer-ready` flag PLUS an interactive prompt where the operator must type the EXACT report title (read from `report.md`'s H1 heading) to confirm. Substring matches and lowercase-fuzzy matches are rejected.
-  - Or, in non-interactive automation contexts, a `--ack-file <path>` argument pointing to a signed acknowledgment file the operator created out of band (the skill validates that the file exists, was modified within the last 24 hours, and contains the exact report title + recipient identity from `_project.md`).
+  - Or, in non-interactive automation contexts, a `--ack-file <path>` argument pointing to a structured YAML acknowledgment file the operator created out of band. The skill parses the YAML and verifies a structured `ack:` token (schema in step 6); substring-quoting of the title/recipient is **not accepted** in v0.0.1+. The 24h modtime window is retained as defense-in-depth.
   - The skill REFUSES to run without one of these. There is no `--yes` shortcut.
 - **State precondition**: thread must be in state `AUDITED`. The skill verifies this by checking BOTH `<thread>.{N}.review/verdict.md` (advance: true, no flags) AND `<thread>.{N}.audit/verdict.md` (pass: true, no flags). Verifies `<thread>.{N}/report.pdf` exists and is newer than `report.md`.
 
@@ -57,7 +57,7 @@ And updates `<project>/<thread>.{N}/_progress.json` with `phases.promote.state =
 
 **Acknowledged by**: <operator identity — git user.name from env, or value from --ack-file>
 **Acknowledged at**: <ISO timestamp>
-**Method**: <"interactive prompt" | "ack-file: <path>">
+**Method**: <"interactive prompt" | "ack-file (structured token): <path>">
 
 ## Rubric clearance
 
@@ -86,7 +86,36 @@ And updates `<project>/<thread>.{N}/_progress.json` with `phases.promote.state =
 5. **Verify rendering match**: compute SHA256 of both `report.md` and `report.pdf`. Re-render the PDF if `report.md` modtime is newer than `report.pdf` modtime — a stale PDF cannot be promoted. (If re-render is needed and `report-figures` has not been invoked since the last `report.md` change, fail with "report.pdf is stale; run report-figures first" rather than re-rendering implicitly — promotion should be a no-op check, not a side-effect cascade.)
 6. **Acknowledgment** (REQUIRED — no shortcut path):
    - **Interactive path** (`--confirm-customer-ready`): print the report title, recipient, engagement_id, and SHA256 of the PDF to the operator. Prompt: "Type the exact report title to confirm CUSTOMER-READY promotion." Read input. Reject if it does not match the H1 character-for-character (whitespace-trimmed comparison; case-sensitive). On three rejected attempts, exit with no promotion.
-   - **Non-interactive path** (`--ack-file <path>`): validate that the ack file exists, was modified within the last 24 hours, and contains (anywhere in its text body) BOTH the exact report title AND the exact recipient string from `_project.md`. If either substring is missing or the file is older than 24 hours, exit with no promotion.
+   - **Non-interactive path** (`--ack-file <path>`): the ack file MUST be a pure YAML document (no markdown wrapper) carrying a structured `ack:` token. Parse the file with `yaml.safe_load` and verify the schema below. v0.0.1+ rejects the prior substring-quoting contract (no fallback, no deprecation shim — anvil is alpha and has no shipped consumers of the legacy path).
+
+     **Required schema** (snake_case; pure YAML):
+     ```yaml
+     ack:
+       report_title: "<exact H1 from report.md, whitespace-trimmed>"
+       recipient:    "<exact recipient field from _project.md>"
+       sha256:       "<lowercase hex sha256 of report.pdf at promotion time>"
+     ```
+
+     **Validation rules:**
+     - All three subkeys under `ack:` are REQUIRED.
+     - Top-level keys other than `ack` are IGNORED — operators MAY add workflow fields like `signature:`, `signed_by:`, `notes:` without schema churn.
+     - Unknown keys UNDER `ack:` are REJECTED — typos like `report-title` or `sha-256` must fail closed.
+     - `ack.report_title` must EXACTLY match the H1 heading from `report.md` (whitespace-trimmed comparison; case-sensitive; no substring or fuzzy matching).
+     - `ack.recipient` must EXACTLY match the recipient string from `_project.md` (whitespace-trimmed; case-sensitive).
+     - `ack.sha256` must EXACTLY match `hashlib.sha256(report.pdf).hexdigest()` computed at promotion time (lowercase hex, no `sha256:` prefix, no whitespace). The skill computes the digest of the on-disk PDF and rejects on any mismatch.
+     - The ack file's mtime must be within the last 24 hours (defense-in-depth against stale ack files).
+
+     **Eight failure modes — each MUST exit with its own specific message** (no generic "ack rejected" fallback; the operator must see which check failed without guessing):
+     1. **file not found** — the path passed via `--ack-file` does not exist on disk.
+     2. **YAML parse error** — the file exists but `yaml.safe_load` raises `YAMLError` (unclosed quote, tab indent, malformed mapping, etc.).
+     3. **missing `ack:` key** — the document parsed cleanly but has no top-level `ack:` mapping.
+     4. **missing required subkey** — one of `report_title` / `recipient` / `sha256` is absent under `ack:` (the error names the specific missing key).
+     5. **unknown subkey under `ack:`** — a key other than the three required subkeys appears under `ack:` (the error names the offending key — catches typos like `report-title`, `sha-256`, `title`).
+     6. **`report_title` mismatch** — value present but does not equal the `report.md` H1.
+     7. **`recipient` mismatch** — value present but does not equal the `_project.md` recipient.
+     8. **`sha256` mismatch + modtime > 24h** — sha256 does not match the current PDF digest. If the ack file's mtime is also older than 24h, the error specifically calls out the staleness (the operator's first fix is usually to regenerate the ack file against the fresh PDF).
+
+     If any check fails, exit with no promotion and no on-disk state.
 7. **Detect supersession**: enumerate other `<thread>.{prior_N}.promote/` siblings under the project for the same thread slug. If any exist, the new promotion supersedes them. Prompt the operator for a one-line `Cause:` (or read from the ack file). Record both the prior version reference and the cause in `receipt.md`. (The skill does NOT modify prior `.promote/` siblings; they remain as audit trail. The newest `.promote/` is canonical for delivery.)
 8. **Initialize `_progress.json`** (in the promote sibling dir): `phases.promote.state = in_progress`, `phases.promote.started = <ISO>`, `for_version = N`.
 9. **Write `receipt.md`** per the schema above, including the verified SHA256 of `report.pdf` and `report.md`, the operator identity, acknowledgment method, and rubric clearance summary.
