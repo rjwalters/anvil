@@ -136,6 +136,89 @@ setting colors from the tokens above prevents it.
 `:root` block and use those values — do not hard-code the shipped palette into a
 chart for a deck on a custom theme.
 
+### Unicode glyphs (`→`, `←`, `—`, `−`) and per-glyph fallback
+
+A chart that labels an axis or annotates a bar with `→` (U+2192) or other
+non-ASCII typographic glyphs hits a matplotlib gotcha: Helvetica Neue does not
+contain those glyphs, and by default matplotlib renders them as the
+missing-glyph box (`☐`) and emits a `Glyph N missing from font (Helvetica
+Neue)` `UserWarning` per offending glyph. The motivating case from the #74
+re-render wave was a `→` between two labels on an axis tick, which showed up
+in the rendered PNG as a hollow square.
+
+**The shipped `apply()` style fixes this for free.** As of the figure-theming
+follow-up to #74, `anvil.mplstyle` declares `font.family` as a concrete list
+of family names — `Helvetica Neue, HelveticaNeue, Helvetica, Arial, DejaVu
+Sans` — instead of the `sans-serif` alias. matplotlib 3.6+ does **per-glyph
+fallback** only when `font.family` is itself a concrete list: a glyph the
+primary font lacks is looked up family-by-family down the chain, and DejaVu
+Sans (always bundled with matplotlib) is the universal last-resort backstop
+for arrows, em dashes, the Unicode minus, and similar. The `sans-serif` alias
+form — `font.family: sans-serif` plus `font.sans-serif: [list]` — silently
+disables this and falls back to first-available-family-wins.
+
+**Author rule.** If you call `apply()` near the top of your figure script
+(the canonical entry point — section 6 below), you get per-glyph fallback by
+default; no further action. If you override `font.family` yourself after
+`apply()`, use the explicit-list form, not the alias:
+
+```python
+# OK — concrete family list, per-glyph fallback works
+plt.rcParams["font.family"] = ["Helvetica Neue", "DejaVu Sans"]
+
+# NOT OK — alias form, per-glyph fallback DISABLED
+plt.rcParams["font.family"] = "sans-serif"
+```
+
+Glyphs in the same category as `→` (Helvetica Neue lacks them; DejaVu Sans
+covers them all): `←` (U+2190), `↑` (U+2191), `↓` (U+2193), the em dash `—`
+(U+2014), and the Unicode minus `−` (U+2212, the real minus sign that pairs
+visually with `+`, as opposed to the ASCII hyphen-minus `-`).
+
+### Semantic mermaid `classDef`s
+
+mermaid diagrams in a deck (fenced `` ```mermaid `` blocks rendered by `mmdc`
+through `anvil/lib/figures/mermaid-theme.json`) get the navy primary palette
+by default. To mark individual nodes as semantically meaningful — needs
+attention, complete, de-emphasized — use one of the four canonical class
+names the shipped theme already ships as `classDef`s:
+
+| Class | Semantic | Fill | Text |
+|---|---|---|---|
+| `anvil-accent` | "the accent one" (same as default; explicit re-statement) | `#1f4e7a` navy | white |
+| `anvil-muted` | backgrounded / de-emphasized / in-review | `#6b6b6b` grey | white |
+| `anvil-warning` | needs attention / rejected / failed / blocked | `#b5651d` rust | white |
+| `anvil-success` | approved / complete / passed | `#2d5f3f` forest | white |
+
+Apply with the standard `:::className` suffix on a node. **Do not hand-roll a
+`classDef`** — the theme's shipped `themeCSS` already defines all four with
+`!important`, so per-source `classDef foo fill:#xxx` declarations are
+unnecessary at best and break the white-on-color text contract at worst (the
+heirloom `consent_flow` white-on-white regression was a hand-rolled
+`classDef` that set fill but not color):
+
+````markdown
+```mermaid
+graph LR
+  A[Intake] --> B[Review]
+  B -->|approved| C[Ship]
+  B -->|rejected| D[Block]
+  C:::anvil-success
+  D:::anvil-warning
+  B:::anvil-muted
+```
+````
+
+Authors who want to see the class names in their `.mmd` source for
+self-documentation MAY also add `classDef anvil-warning fill:#b5651d` etc. —
+but the shipped `themeCSS` is the source of truth for the rendered hex (the
+`!important` rules in the injected `<style>` override per-source
+declarations), so omitting the per-source `classDef` is the cleaner pattern.
+
+For a one-off color outside the four semantic classes — rare — fall back to
+the matching hex from `anvil/lib/figures/palette.py` (`ANVIL_NAVY_TINT` is the
+only color in the figure palette without a semantic class).
+
 ## 4. Transparent backgrounds
 
 Always save with `transparent=True`:
