@@ -1,7 +1,7 @@
 # Anvil - Repository Guide
 
-**Anvil Version**: 0.0.1
-**Status**: Alpha — skeleton only, skills being implemented
+**Anvil Version**: 0.1.0
+**Status**: v0.1.0 — installable; 8 skills shipped. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
 
