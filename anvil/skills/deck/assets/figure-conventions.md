@@ -345,3 +345,9 @@ and legibility specifics live in `deck-vision`.
   also the shared `anvil.mplstyle` and `mermaid-theme.json`.
 - `assets/anvil-deck.css` — `:root` is the cross-format source of truth for the
   palette; `palette.py` mirrors it and a drift test keeps them in sync.
+- `assets/slide-archetypes.md` — the **slide-layout** side: the figure +
+  supporting-line idiom and the italic supporting-line word budget (lint rule
+  `figure-italic-supporting-line-too-long` in `lib/marp_lint.py`) that
+  constrains what authors write underneath a chart. The budget is stated
+  there, not duplicated here — this doc is the chart-generation half of the
+  pipeline; slide-archetypes is the chart-placement half.

@@ -98,9 +98,12 @@ _{{ market_one_line }}_
 {# Figure + one supporting line (the lint-safe idiom — see assets/slide-archetypes.md
    "Figure layout idioms"). The chart carries TAM/SAM/SOM; this single italic line
    states the bottom-up takeaway, e.g.
-   "{{ tam_label }} TAM → {{ sam_label }} SAM → {{ som_label }} Yr-3 SOM
-    ({{ som_basis_year_3 }}) — {{ tam_basis }}". Do NOT add a bullet list under the
-   chart: figure + 3+ bullets overflows 16:9. -#}
+   "$8.3B TAM → $30B SAM → $5–10M Yr-3 SOM (300 units × $20K) — Mordor 2024"
+   (16 words / 71 chars — safe).
+   Budget: ≤18 words / ≤108 chars (lint rule: figure-italic-supporting-line-too-long;
+   see assets/slide-archetypes.md). TAM/SAM/SOM lines grow in practice — tighten
+   aggressively if your numbers carry longer qualifiers.
+   Do NOT add a bullet list under the chart: figure + 3+ bullets overflows 16:9. -#}
 
 <!-- speaker: Bottom-up logic. Walk the multiplication; cite the input sources from the brief. -->
 
@@ -113,8 +116,14 @@ _{{ market_one_line }}_
 _{{ traction_one_line }}_
 
 {# Figure + one supporting line (lint-safe idiom). The chart carries the trend;
-   this single italic line states the headline numbers, e.g.
-   "{{ traction_bullet_1 }}; {{ traction_bullet_2 }}; {{ traction_bullet_3 }}".
+   this single italic line folds the headline numbers (three would-be bullets) into
+   one terse sentence, e.g.
+   "$340K ARR Q4 (40% QoQ); 12 design partners (3 paying); 92% logo retention"
+   (13 words / 78 chars — safe).
+   Budget: ≤18 words / ≤108 chars (lint rule: figure-italic-supporting-line-too-long;
+   see assets/slide-archetypes.md). Three folded bullets are the HIGHEST-risk pattern
+   for this rule — keep each clause short and drop any qualifier that's already in the
+   speaker notes.
    Real numbers only — projections labeled as projections in the speaker notes.
    Do NOT add a bullet list under the chart (figure + 3+ bullets overflows 16:9). -#}
 
@@ -156,12 +165,15 @@ _{{ financials_one_line }}_
 
 {# Figure + one supporting line (lint-safe idiom). Fold current ARR, the 12-month
    plan, and burn/runway into one italic line — they are already terse, e.g.
-   "Current ARR {{ current_arr }} (real); 12-mo plan {{ twelve_month_arr_target }}
-    (projection — see notes); burn {{ current_burn_per_month }}/mo,
-    {{ current_runway_months }} months runway".
+   "Current ARR $1.2M (real); 12-mo plan $4M; burn $200K/mo, 18 months runway"
+   (12 words / 73 chars — safe).
+   Budget: ≤18 words / ≤108 chars (lint rule: figure-italic-supporting-line-too-long;
+   see assets/slide-archetypes.md). The "projection" qualifier intentionally lives
+   in the adjacent speaker note rather than inline — that ~5-word parenthetical
+   ate the headroom in earlier drafts of this template.
    Do NOT add a bullet list under the chart (figure + 3+ bullets overflows 16:9). -#}
 
-<!-- speaker: Hockey-stick projections without intermediate milestones get cut. Show the build. -->
+<!-- speaker: Hockey-stick projections without intermediate milestones get cut. Show the build. The 12-month ARR number is a projection — name it as such here so the inline italic line can stay terse. -->
 
 ---
 
