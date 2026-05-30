@@ -27,6 +27,11 @@ This command consumes any number of critic siblings at the current version and p
   figures/            Carried over + updated figures (with src/ regenerable)
   _progress.json      Phase state with revise: done
   _revision-log.md    Maps each critic finding to the change made (or "declined" with reason)
+  _consistency.md     CONDITIONAL — only present when step 9.5's stale-token sweep
+                      finds priced-number tokens (e.g. `$54B+`, `15-25%`) in companion
+                      files (figure scripts / speaker-notes) that the revised
+                      deck.md no longer asserts. Absent on a clean revision so
+                      no noise on threads that touched no numeric anchors.
 ```
 
 ## Discover-glob → aggregate-scorecards → emit-or-loop algorithm
@@ -87,6 +92,16 @@ For the decision:
    - **Preserve the no-fabrication contract**: every number / name / asset on a slide must continue to trace to `<thread>/BRIEF.md`. The reviser is allowed to drop content but not invent.
    - If a critic's finding implicitly asks the reviser to invent a number ("add ARR retention number to Slide 8"), the reviser MUST either pull the number from the brief OR decline the finding with `Resolution: declined — number not in brief; founder to provide before next iteration`.
 9. **Produce revised `speaker-notes.md`** at `<thread>.{N+1}/speaker-notes.md`: parallel revision; update notes for any slide whose content changed.
+9.5. **Sweep for stale priced-number tokens** — call `anvil.lib.revise_consistency.sweep` on the deck.md and speaker-notes.md deltas to catch the silent-staleness pattern from #113 (numbers that moved on the slide but were left untouched in companion files):
+    - **Deck-vs-companions sweep.** Compute removed-token delta between `<thread>.{N}/deck.md` and `<thread>.{N+1}/deck.md`. Scan companions: the **old** version's `<thread>.{N}/figures/src/*.{py,csv,mmd}` (deliberately operating on the v(N) figure-sources *before* the carry-over in step 10 — findings then drive the per-file updates in step 10) plus the just-written `<thread>.{N+1}/speaker-notes.md`.
+    - **Speaker-notes-vs-figures sweep** (optional second pass). When speaker-notes carried a different numeric framing than deck.md and was rewritten in step 9 above, also run a sweep with old_source=`<thread>.{N}/speaker-notes.md`, new_source=`<thread>.{N+1}/speaker-notes.md`, companions=`<thread>.{N}/figures/src/*.{py,csv,mmd}`. Catches sub-case (b) from the issue body (draftwell canary: deck slide 7 SAM framing changed, speaker-notes carried v2 framing).
+    - **Two safety rules make false positives rare without an allowlist**: (1) only tokens *removed* across the v(N) → v(N+1) delta are candidates (a number still asserted by the new deck is not flagged); (2) tokens that *survive* anywhere in the new source are filtered (the number may have moved between slides but is still in the deck). Operator may extend with `ignore_tokens` per-thread if a specific token (e.g. a quoted historical figure in a footnote) keeps tripping the sweep.
+    - **Output handling — conditional, no noise on clean revisions**:
+      - If `sweep(...).passed()` → **no `_consistency.md` is written; no `_revision-log.md` subsection is added.** This is the common case on revisions that don't touch numbers.
+      - If findings present → write `<thread>.{N+1}/_consistency.md` with one structured row per finding (companion file, line, stale token, suggested fix) and proceed to step 10 below.
+    - **Reviser behaviour on findings** — the operator-facing outcome: each stale-token finding is one of two things:
+      - **Real staleness (preferred resolution: update the companion in step 10).** The reviser changes the companion file as part of the figure carry-over to match the new deck token. Record the update in `_revision-log.md`'s "Stale token findings" subsection (see step 11 template).
+      - **Legitimate divergence (resolution: decline with rationale).** The companion's token references a deliberately distinct concept (e.g., historical comparison, footnote context). Record the decline in `_revision-log.md`'s "Stale token findings" subsection with a one-line reason; the next iteration's sweep will keep re-flagging until the operator either updates the file or adds the token to the per-thread `ignore_tokens` allowlist.
 10. **Carry over and update `figures/`**:
     - Copy `figures/src/` from prior version. Update specific source files for any chart / diagram that needed regeneration per critic findings.
     - Do not copy rendered PNGs / PDFs — those are produced by `deck-figures` after revise completes.
@@ -135,6 +150,19 @@ For the decision:
 
     - `deck-design` critic was not run on this iteration (figures/ updated, deck.pdf needs re-render). Operator should run `deck-figures` then `deck-design` on .2 before next aggregate.
     - Founder follow-up needed: advisor public-listing permission for Slide 10.
+
+    ## Stale token findings
+
+    Detected by `anvil/lib/revise_consistency.sweep` in step 9.5. See
+    `_consistency.md` for the full machine-readable table. ONLY present
+    when step 9.5 wrote `_consistency.md` (no subsection on a clean
+    revision).
+
+    | Companion | Line | Stale token | Resolution |
+    |---|---|---|---|
+    | figures/src/market-convergence.py | 142 | $54B+ | Updated to $25.9B; replaced chart caption to match Slide 7 revision. |
+    | speaker-notes.md | 87 | $2-4B/mo | Updated to $0.8-1.5B/yr matching Slide 7 SAM reframing. |
+    | figures/src/footnote-chart.py | 23 | $54B+ | Declined — token is the 2024 historical-compare reference (deliberate divergence from the 2026 figure on Slide 7). Will revisit if sweep keeps re-flagging. |
     ```
 12. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 13. **Report**: one-line status (e.g., `Revised acme-seed.1 → acme-seed.2/ (addressed 1 critical flag + 3 major + 2 minor findings; declined 2; 1 founder follow-up)`).

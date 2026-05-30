@@ -242,6 +242,36 @@ Neither the resolver nor the aggregator needs to know about the
 citation dimensions specifically — they are ordinary opt-in
 dimension names per the existing convention.
 
+## Deterministic-checks family — consistency sweep alongside render-gate / marp-lint
+
+Some critics are cheap mechanical greps rather than full LLM
+judgments. They run *before* the expensive content review, surface as
+typed `Review(kind=tool_evidence)` payloads so the existing aggregator
+consumes them without any schema change, and (by convention) emit
+findings at `severity="minor"` so a false positive can be declined
+without forcing a `Verdict.BLOCK`.
+
+The family currently has three members:
+
+- **`anvil/lib/render_gate.py`** — page-fit, overfull-box, compile-
+  success, and placeholder-scan gates over a compiled PDF + log
+  (`Kind.TOOL_EVIDENCE`; `CriticalFlag` on fail because a missing PDF
+  IS a blocker).
+- **`anvil/skills/deck/lib/marp_lint.py`** — slide-source overflow /
+  layout linter over the markdown before Marp render.
+- **`anvil/lib/revise_consistency.py`** — stale-token sweep for the
+  `*-revise` lifecycle. Compares old- and new-source priced-number
+  tokens (money, percent, ranges), then flags companions (figure
+  scripts, speaker-notes, CSVs) that still reference a token the new
+  source has fully dropped. Wired into `deck-revise` step 9.5;
+  available to every other `*-revise` command on adoption.
+
+All three share: deterministic regex/tool greps (no LLM), `to_review`
+that emits `Kind.TOOL_EVIDENCE` with a single null-scored dim so the
+aggregator stays untouched, and a `passed()` predicate the skill
+wiring uses to decide whether to write the sidecar file (no noise on
+clean runs).
+
 ## See also
 
 - `scorecard_kind.md` — the discriminator and per-kind file maps.
