@@ -107,7 +107,7 @@ Standard.
   "thread": "<slug>",
   "for_version": <N>,
   "phases": {
-    "review": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+    "s112": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
   }
 }
 ```

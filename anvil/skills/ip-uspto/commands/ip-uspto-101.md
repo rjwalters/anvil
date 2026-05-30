@@ -147,7 +147,7 @@ Standard: completed `_summary.md` is never overwritten; crashed runs re-runnable
   "thread": "<slug>",
   "for_version": <N>,
   "phases": {
-    "review": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+    "s101": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
   }
 }
 ```
