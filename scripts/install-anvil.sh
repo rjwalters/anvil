@@ -74,7 +74,7 @@ TARGET=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skills=*) SKILLS_FILTER="${1#--skills=}"; shift ;;
+    --skills=*) SKILLS_FILTER="${1#--skills=}"; [[ -z "$SKILLS_FILTER" ]] && error "--skills requires a comma-separated list"; shift ;;
     --skills)   shift; SKILLS_FILTER="${1:-}"; [[ -z "$SKILLS_FILTER" ]] && error "--skills requires a comma-separated list"; shift ;;
     --force)    FORCE=true; shift ;;
     --dry-run)  DRY_RUN=true; shift ;;
