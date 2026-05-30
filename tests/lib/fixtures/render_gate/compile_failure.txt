@@ -1,0 +1,17 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024)
+entering extended mode
+(./paper.tex
+LaTeX2e <2023-11-01>
+(/usr/local/texlive/2024/texmf-dist/tex/latex/base/article.cls)
+! Undefined control sequence.
+l.42 \unknowncommand
+                    {arg}
+! LaTeX Error: Environment foo undefined.
+l.51 \begin{foo}
+! Missing $ inserted.
+l.63 a_b
+! Emergency stop.
+l.63 a_b
+
+!  ==> Fatal error occurred, no output PDF file produced!
+Transcript written on paper.log.
