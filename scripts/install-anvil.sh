@@ -8,7 +8,7 @@
 #   --skills=<a,b,c>  Install only the listed skills (default: all)
 #   --force           Overwrite consumer-edited skill files (default: skip with warning)
 #   --dry-run         Print planned actions, write nothing
-#   --check-deps      Check renderer dependencies (marp/pdftoppm/mmdc) and exit
+#   --check-deps      Check renderer dependencies (marp/pdftoppm/mmdc/pdfjam) and exit
 #   -y, --yes         Non-interactive (skip confirmation prompts)
 #   -h, --help        Show this help and exit
 #
@@ -124,6 +124,22 @@ check_renderer_deps() {
   else
     warn "mmdc MISSING (REQUIRED for any deck with a diagram — inline mermaid does NOT render in the PDF). Install: npm install -g @mermaid-js/mermaid-cli"
     note "mmdc pulls Puppeteer + a ~300MB+ headless Chromium; in CI/containers pass --puppeteerConfigFile with {\"args\":[\"--no-sandbox\"]}."
+    missing=$((missing + 1))
+  fi
+
+  # pdfjam is OPTIONAL (not REQUIRED): only `slides-handout --4-up` and
+  # `--2-up` need it for the N-up post-process. The default `--notes-below`
+  # handout path renders via Marp's native `--pdf-notes` mode and has zero
+  # pdfjam dependency. Marp cannot natively express N-up (verified, issue
+  # #85: Marp's rendering model is one-section-per-page; no CLI flag or CSS
+  # injection combines N sections onto a single rendered page), so a
+  # post-process is the only N-up path. Counted in `missing` so the summary
+  # line surfaces it.
+  if command -v pdfjam >/dev/null 2>&1; then
+    ok "pdfjam present ($(command -v pdfjam))"
+  else
+    warn "pdfjam MISSING (OPTIONAL — only required for \`slides-handout --4-up\` and \`--2-up\` N-up layouts; the default \`--notes-below\` handout does NOT need it). Install: tlmgr install pdfjam / apt-get install texlive-extra-utils / brew install --cask mactex-no-gui"
+    note "TeX Live is a multi-GB install; if you only need the notes-below handout layout, this warning can be safely ignored."
     missing=$((missing + 1))
   fi
 
