@@ -91,20 +91,22 @@ Other rubric dimensions are scored by other critics and remain `null` in this cr
    ```
    ## Findings (narrative)
 
-   1. **[major]** Slide 4 → 5: Why-now claim ("AI agents are mature enough") not connected to the product. Suggested fix: add a sentence to Slide 5 explicitly using AI-agent capability that wouldn't have existed 18 months ago.
-   2. **[minor]** Slide 7 (Competition) sits awkwardly between Market and Traction. Suggested fix: move to after Solution (Slide 4) so differentiation is established before market sizing.
+   1. **[major]** Slide 3 → 4: Why-now claim ("AI agents are mature enough") not connected to the solution. Suggested fix: add a sentence to Slide 4 explicitly using AI-agent capability that wouldn't have existed 18 months ago.
+   2. **[minor]** Slide 10 (Team) sits between Business model (Slide 9) and Financials (Slide 11); the team intro lands cold after a pricing table. Suggested fix: add a transitional speaker-notes line ("having shown how revenue works, here is the team that will execute it") rather than reordering — Team's canonical slot is Slide 10.
    3. **[major]** Slide 12 (Ask): "Raising $3M" but no breakdown. Suggested fix: add use-of-funds bullet (40% eng / 30% GTM / 20% hires / 10% runway) and runway-to-milestone framing.
    ```
 10. **Write `comments.md`** (sequence-level, not slide-level):
     ```
     ## Slide order
 
-    Current: Title → Problem → Solution → Why-now → Product → Market → Competition → Traction → Business model → Team → Financials → Ask. The Competition slide is out of place (recommended order: Title → Problem → Why-now → Solution → Competition → Product → Market → Traction → Business model → Team → Financials → Ask).
+    The canonical order is: Title → Problem → Why now → Solution → Competition → Product → Market → Traction → Business model → Team → Financials → Ask. This is the order `templates/deck.md.j2` ships and the order this critic grades against.
+
+    Example misorder (illustrative): a deck that opens Title → Team → Problem (leading with founder bios before establishing the problem) almost always reads as a personal pitch rather than a company pitch. The standard fix is to move Team to its canonical slot at Slide 10.
 
     ## Transitions
 
-    - Slide 2 → 3 (Problem → Solution): strong; solution directly answers the problem stated.
-    - Slide 4 → 5 (Why-now → Product): weak; the why-now claim doesn't manifest in the product description. See finding #1.
+    - Slide 2 → 3 (Problem → Why now): strong; the why-now claim names a concrete recent change that opens the window for the problem just stated.
+    - Slide 3 → 4 (Why now → Solution): weak; the why-now claim doesn't manifest in the solution description. See finding #1.
     - Slide 10 → 11 (Team → Financials): abrupt; consider a transitional sentence.
 
     ## Slide count

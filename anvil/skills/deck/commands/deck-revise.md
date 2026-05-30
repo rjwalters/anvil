@@ -100,7 +100,7 @@ For the decision:
 
     | Source | Flag | Resolution |
     |---|---|---|
-    | acme-seed.1.market | Market-math error: Slide 6 TAM cited as $50B; recomputation from inputs yields $5B | Slide 6 rewritten with correct $5B TAM, recomputation shown in speaker notes, source data committed to figures/src/tam-inputs.csv |
+    | acme-seed.1.market | Market-math error: Slide 7 TAM cited as $50B; recomputation from inputs yields $5B | Slide 7 rewritten with correct $5B TAM, recomputation shown in speaker notes, source data committed to figures/src/tam-inputs.csv |
 
     ## Major findings addressed
 
