@@ -14,7 +14,7 @@ Customer-facing reports fail differently from internal memos: a typo in a memo i
 | 4 | **Evidence trail / citation** | 6 | Every quantitative claim cites source (interview, document, measurement, dataset). Audit-checkable: the auditor sibling can mechanically walk the citation chain. Critical-flag offense if a quantitative claim has no source. |
 | 5 | **Risk & limitation disclosure** | 4 | Scope boundaries, sample limits, assumptions stated explicitly. Protects both author and recipient. A report that omits its limits is a report that overclaims. |
 | 6 | **Internal consistency** | 4 | Numbers in body match exec summary match tables match prior reports in this engagement. Common failure when reports go through multiple revisions; the auditor sibling explicitly checks this. |
-| 7 | **Format / presentation quality** | 4 | Tables render, figures legible, pagination clean, headers/footers consistent, recipient-appropriate branding. Customer-visible — sloppy presentation undermines trust in the technical content. |
+| 7 | **Format / presentation quality** | 4 | Tables render, figures legible, pagination clean, headers/footers consistent, recipient-appropriate branding. Customer-visible — sloppy presentation undermines trust in the technical content. `report-review` enforces a deterministic existence + freshness gate on `report.pdf` (cap at 2/4 if missing or stale; see `commands/report-review.md` step 4c). |
 | 8 | **Tone & audience calibration** | 3 | Written for the named recipient (from `_project.md`) — appropriate jargon level, no hedging-to-hide, no overselling. Lowest weight but non-zero: a technically correct report in the wrong tone still damages the engagement. |
 | | **Total** | **40** | Advance threshold: ≥35 |
 

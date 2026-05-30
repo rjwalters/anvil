@@ -37,7 +37,7 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
 1. **Discover state**: find the highest `N` with `<thread>.{N}/report.md`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
 3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
-4. **Read inputs**: load `<thread>.{N}/report.md`, enumerate `exhibits/`, load `_project.md` for recipient calibration context, load `rubric.md` and any consumer override.
+4. **Read inputs**: load `<thread>.{N}/report.md`, enumerate `exhibits/`, load `_project.md` for recipient calibration context, load `rubric.md` and any consumer override. Also stat `<thread>.{N}/report.pdf` for the existence + freshness check in step 4c — the PDF is stat-only, its content is not read by this critic; see `report-vision` for rendered-content review.
 4b. **Run render-gate (pre-flight)** — mirrors `deck-review.md` step 5b:
    - Invoke `anvil/lib/render_gate.py`'s `gate(...)` against `<thread>.{N}/report.pdf` (produced by `report-figures`; see `commands/report-figures.md`).
    - **Inputs:**
@@ -50,11 +50,20 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
    - When `report.pdf` is absent (e.g., `report-figures` has not run), the gate fails open with a clear stdout message (`report-review: render-gate skipped — report.pdf not present; run report-figures first`). The review proceeds normally.
    - Write `GateResult.to_json()` to `<thread>.{N}.review/_gate.json` for CI inspection.
    - On failure, the gate's `to_review(...)` Review carries one `CriticalFlag` per failed gate dimension; the aggregator (`anvil/lib/critics.py`) treats this as `BLOCK` per the standard `compute_verdict` path. No schema change needed.
+4c. **Verify deliverable existence + freshness** (lightweight stat-only check, complements 4b's render-gate):
+   - **Why this is additive over 4b**: the render-gate from #64 (step 4b above) deliberately fails open on a missing `report.pdf` — line 50 explicitly states "the gate fails open with a clear stdout message ... The review proceeds normally." Separately, the render-gate has no concept of source/output mtime ordering — so a stale PDF (figurer ran on version N, then `report.md` was edited in-place without re-running figures) passes 4b cleanly. This check enforces existence + freshness so a report can't advance without the deliverable being built against the current source.
+   - The check uses `anvil/skills/report/lib/pdf_freshness.py::check_pdf_freshness(version_dir)`. It is deterministic (file-stat only, no model call, no PDF parse).
+   - **If `<thread>.{N}/report.pdf` does NOT exist**: append a Dimension 7 finding to `comments.md` with severity `major`, rationale `"Rendered deliverable not built — figurer has not run on this version (or its output was deleted). Run report-figures before review can score Dimension 7 substantively."`, evidence_span `"<thread>.{N}/report.pdf"`, suggested_fix `"Run report-figures <project>/<thread>"`. Cap Dimension 7's score at 2/4 for this version.
+   - **Else if `<thread>.{N}/report.pdf` mtime is OLDER than `<thread>.{N}/report.md` mtime**: append a Dimension 7 finding with severity `major`, rationale `"Rendered deliverable is stale — report.md was modified after report.pdf was built. The PDF the recipient would see does not reflect the current source."`, evidence_span `"<thread>.{N}/report.pdf (mtime: <ISO>) older than <thread>.{N}/report.md (mtime: <ISO>)"`, suggested_fix `"Re-run report-figures to refresh the deliverable"`. Cap Dimension 7's score at 2/4.
+   - **Else (PDF exists and is fresher than source)**: no finding. Dimension 7 scoring proceeds normally from the markdown source.
+   - This check does NOT read PDF content — that is `report-vision`'s territory.
+   - The check does NOT set a `critical_flag` — `major` severity at the rubric-cap level is the right calibration. A missing/stale PDF affects ADVANCE via the rubric total (capped Dim 7 ≤ 2/4 contributes ≤ 2 to the /40 total), not via critical-flag short-circuit. The reviewer can still substantively evaluate the markdown.
 
 5. **Score each dimension** (1–8 per rubric, /40 total, customer-facing weights):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the report.
    - Record per-dimension result in `scoring.md` as a markdown table with columns `# | Dimension | Weight | Score | Justification`.
+   - **Dimension 7 cap from step 4c**: if step 4c emitted a finding (missing or stale `report.pdf`), Dimension 7's score is capped at 2/4 regardless of the markdown-source assessment. The justification must reference the step 4c finding.
 6. **Identify critical flags** (review-side; see `rubric.md` for the list and definitions):
    - Recommendation contradicts a finding
    - Named third party mischaracterized
