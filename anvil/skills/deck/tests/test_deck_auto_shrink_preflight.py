@@ -26,6 +26,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 
 # Ensure repo root is importable. This file lives at
 # anvil/skills/deck/tests/test_deck_auto_shrink_preflight.py — four levels
@@ -41,6 +43,17 @@ from anvil.lib.render import (  # noqa: E402
 )
 
 
+# NOTE: this file is intentionally NOT module-gated on the ``[auto_shrink]``
+# extra. The whole point of the preflight test suite is to be unit-testable
+# in CI before the optional extra is installed (per the module docstring
+# above) — every test except ``test_returns_true_when_both_modules_importable``
+# either stubs ``importlib.util.find_spec`` to simulate missing modules or
+# asserts on the remediation string. Only the live happy-path check needs
+# real Pillow/numpy at test time; it is gated per-test via
+# ``pytest.importorskip`` so the rest of the file stays runnable on a
+# stock venv. See pyproject.toml's top comment for the convention.
+
+
 class TestCheckAutoShrinkDepsAvailable(unittest.TestCase):
     """``check_auto_shrink_deps_available`` returns bool based on importability.
 
@@ -54,6 +67,17 @@ class TestCheckAutoShrinkDepsAvailable(unittest.TestCase):
         # (they are required for the optional extra); the live call must
         # return True. This is the "happy path" check, parallel to the
         # ``shutil.which`` "/usr/local/bin/mmdc" stub for mmdc.
+        #
+        # This is the ONLY test in the file that needs the real
+        # ``[auto_shrink]`` extra installed; the rest stub ``find_spec``
+        # or assert on the remediation string. Gate it per-test so the
+        # file as a whole stays runnable on a stock venv.
+        pytest.importorskip(
+            "PIL", reason="Pillow not installed ([auto_shrink] extra)"
+        )
+        pytest.importorskip(
+            "numpy", reason="numpy not installed ([auto_shrink] extra)"
+        )
         self.assertTrue(check_auto_shrink_deps_available())
 
     @staticmethod
@@ -102,6 +126,15 @@ class TestCheckAutoShrinkDepsAvailable(unittest.TestCase):
         machinery — would have to stub them too. It does not, proving the
         check stays import-test-only and is safe to call in tight loops.
         """
+        # Asserts the live call returns True, so PIL/numpy must actually
+        # be importable here. Gate per-test so the rest of the file stays
+        # runnable on a stock venv without the ``[auto_shrink]`` extra.
+        pytest.importorskip(
+            "PIL", reason="Pillow not installed ([auto_shrink] extra)"
+        )
+        pytest.importorskip(
+            "numpy", reason="numpy not installed ([auto_shrink] extra)"
+        )
         # Spy on subprocess.run: the preflight must never shell out.
         with mock.patch(
             "anvil.lib.render.subprocess.run",

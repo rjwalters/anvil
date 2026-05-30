@@ -38,6 +38,19 @@ from pathlib import Path
 
 import pytest
 
+# Gate the entire module on the ``[auto_shrink]`` optional extra. The
+# detector under test, the fixture-generation conftest, and the
+# ``_content_bbox`` pixel primitive all need ``Pillow`` and ``numpy`` at
+# test time (the fixtures' ``_make_png`` paints synthetic PNGs with
+# Pillow, and the detector's argmax reduction is numpy-based). When the
+# extra is absent (stock venv without ``uv pip install -e .[auto_shrink]``)
+# pytest skips the whole file with a clear reason instead of erroring at
+# collection or first fixture call. Matches the precedent set by
+# ``tests/lib/test_figures.py`` for matplotlib. See pyproject.toml's top
+# comment for the convention.
+pytest.importorskip("PIL", reason="Pillow not installed ([auto_shrink] extra)")
+pytest.importorskip("numpy", reason="numpy not installed ([auto_shrink] extra)")
+
 
 # Ensure repo root is importable. This file lives at
 # anvil/skills/deck/tests/test_auto_shrink_detector.py — four levels deep
