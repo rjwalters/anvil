@@ -13,6 +13,13 @@ Public modules:
   functions for the multi-iteration termination decision (threshold met /
   critical flag / max-iterations / stalled). Produces ``Verdict.STALLED``
   when successive revisions have plateaued.
+- ``revise_consistency``: stale-token sweep for the ``*-revise``
+  lifecycle. Compares old- vs new-source priced-number tokens and flags
+  companion files (figure scripts, speaker-notes, CSVs) that still
+  reference a token the new source has fully dropped. Wired into
+  ``deck-revise`` step 9.5; available to every other ``*-revise``
+  command on adoption. See ``anvil/lib/snippets/critics.md``'s
+  "Deterministic-checks family" section.
 """
 
 from anvil.lib.cite import (
@@ -34,6 +41,15 @@ from anvil.lib.convergence import (
     check_stable,
     decide_termination,
 )
+from anvil.lib.revise_consistency import (
+    DEFAULT_COMPANION_GLOBS,
+    DEFAULT_IGNORE_TOKENS,
+    DEFAULT_TOKEN_SET,
+    ConsistencyResult,
+    StaleFinding,
+    TokenSet,
+    sweep,
+)
 from anvil.lib.rubric import (
     CriticalFlagDefinition,
     Rubric,
@@ -46,15 +62,21 @@ from anvil.lib.rubric import (
 __all__ = [
     "BibRecord",
     "CiteResolutionError",
+    "ConsistencyResult",
     "CriticalFlagDefinition",
+    "DEFAULT_COMPANION_GLOBS",
+    "DEFAULT_IGNORE_TOKENS",
+    "DEFAULT_TOKEN_SET",
     "Identifier",
     "IdentifierKind",
     "Rubric",
     "RubricDimension",
+    "StaleFinding",
     "TERMINATION_CRITICAL_FLAG",
     "TERMINATION_MAX_ITERATIONS",
     "TERMINATION_STALLED",
     "TERMINATION_THRESHOLD_MET",
+    "TokenSet",
     "UnsupportedIdentifierError",
     "bib_key",
     "check_stable",
@@ -64,4 +86,5 @@ __all__ = [
     "load_rubric",
     "parse_identifier",
     "resolve",
+    "sweep",
 ]
