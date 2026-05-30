@@ -84,6 +84,11 @@ This command catches mechanical formal-compliance issues (37 CFR 1.71–1.84 der
    - USPTO charges fees beyond 20 total claims and 3 independent claims (37 CFR 1.16(h)–(j)). NOT a compliance failure but a cost-budget signal.
    - Findings: severity `minor` if total > 20 or independents > 3 (informational).
 
+   ### Check 9 — Render-gate (compile + overfull + placeholders)
+   - Invoke `anvil/lib/render_gate.py`'s `compile_and_gate(...)` against `<thread>.{N}/spec.tex` with `engine="pdflatex"`. The gate runs four deterministic sub-checks: page count (`page_cap=None` — patents are uncapped), overfull boxes (>5.0pt threshold), compile success, and source-side placeholders (`TODO` / `[TBD]` / `(figure)` / `.MISSING` plus the ip-uspto-specific `\refnum{??}` / `\anvilpara{}` patterns supplied via `placeholder_patterns`).
+   - **Mechanical / pass-fail**, like Checks 1–8 — does NOT score a rubric dimension. The check produces one or more findings (one per failed sub-check) with severity `blocker`, which step 6's pass/fail rule already short-circuits on. On engine-unavailable (`pdflatex` not on PATH), the gate degrades gracefully with `compile_status="unavailable"` and emits a `minor` finding (not a blocker) — pre-flight still passes on CI without LaTeX so the rest of the pipeline remains usable.
+   - Write the `GateResult.to_json()` payload to `<thread>.{N}.preflight/_gate.json` for CI inspection alongside `_summary.md` / `findings.md`.
+
 5. **LLM fallback (only when triggered by Check 4)**: if any dependency phrasing was unparseable by the deterministic check, hand the dependent claim text to an LLM with the question: "Does this claim depend on a single antecedent claim, multiple antecedent claims (multiple-dependent), or is it ambiguous?" Use the answer to complete Check 4.
 6. **Determine pass/fail**: pass iff no finding has severity `blocker`.
 7. **Write `_summary.md`**:

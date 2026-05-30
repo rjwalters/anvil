@@ -44,6 +44,19 @@ The review sibling directory is **read-only once written**. Revisions consume it
 3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
 4. **Read inputs**: load `<thread>.{N}/main.tex`, `<thread>.{N}/refs.bib`, enumerate `figures/`, load `rubric.md` and any consumer override. Also call `anvil.lib.rubric.discover_venue_rubric(<thread>, <skill_root>)`; this reads `<thread>/.anvil.json` for an optional `venue` field and returns the matching `Rubric` (or `None`).
    - If `<thread>/.anvil.json` declared a `venue` but `discover_venue_rubric` returned `None` (no matching YAML in any tier), print a one-line stdout warning (`pub-review: venue '<slug>' declared in .anvil.json but no matching rubric YAML found; proceeding with generic /40 only`) and continue. Do NOT fail the review — the generic gate is still in force.
+4b. **Run render-gate (pre-flight)** — mirrors `deck-review.md` step 5b:
+   - Invoke `anvil/lib/render_gate.py`'s `gate(...)` against the paper PDF. Mirror the `marp_lint.py` integration shape used in `deck-review.md` step 5b (a deterministic pre-flight that emits a typed `Review` with `kind=tool_evidence` plus a sibling `_gate.json` for CI inspection — see `anvil/lib/render_gate.py` module docstring).
+   - **Inputs:**
+     - `pdf_path`: `<thread>.{N}/paper.pdf` — produced by `pub-audit`'s `pdflatex && bibtex && pdflatex && pdflatex` cycle.
+     - `log_path`: `<thread>.{N}.audit/compile-log.txt` — captured by `pub-audit` (see `commands/pub-audit.md`).
+     - `source_paths`: `[<thread>.{N}/main.tex]` plus any `\input`/`\include` children.
+     - `page_cap=None` — paper length is venue-dependent; the generic gate does not enforce a cap. (A consumer with a hard venue cap can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`.)
+     - `overfull_threshold_pt=5.0`, `placeholder_patterns=None` (use `DEFAULT_PLACEHOLDER_PATTERNS`).
+   - **Audit-first ordering (fail-open)**: when `paper.pdf` and `compile-log.txt` are **absent** (i.e., this `pub-review` was invoked before `pub-audit`), the gate fails open with a clear stdout message (`pub-review: render-gate skipped — paper.pdf / compile-log.txt not present; run pub-audit first`). The review proceeds normally without gate enforcement. The strict "audit must run first" ordering is intentionally out of scope here (a separate state-machine change).
+   - Write the `GateResult.to_json()` payload to `<thread>.{N}.review/_gate.json` for CI inspection.
+   - Cache the `GateResult` for the `_summary.md` `render_gate` block and the critical-flag wiring in step 7.
+   - When `GateResult.passed=False`, append one entry per failed gate dimension to `critical_flag_notes` in `_review.json` (type prefix: `render_gate_<dim>`), via `GateResult.to_review(...).critical_flags`. The aggregator then forces `Verdict.BLOCK` per the standard `anvil/lib/critics.py::compute_verdict` path; no schema change needed.
+
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (section heading, excerpt, figure, table) from the paper.

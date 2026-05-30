@@ -198,6 +198,8 @@ Both paths produce `report.pdf` alongside `report.md` in the same version direct
 
 `report-figures` generates `report.pdf` as part of its run (the figures phase is the natural place for it since pandoc invocation produces both the rendered figures embedded in the PDF and the PDF itself). `report-promote` re-renders to verify the PDF matches the current `report.md` hash, then records the verified hash in the receipt.
 
+**`report-review` render-gate hook (deterministic pre-flight).** `report-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate.py`. The gate checks page count (`page_cap=None` — customer reports vary; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`), overfull boxes (>5.0pt threshold; **skipped when `delivery_format` selects the pandoc path** — no `Overfull` semantics in CSS output), compile success, and source-side placeholders. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension; the existing `anvil/lib/critics.py::compute_verdict` path treats this as `BLOCK`. See `commands/report-review.md` step 4b.
+
 ## Defaults and overrides
 
 Per anvil principle 8 ("Opinionated defaults, override liberally"), this skill ships with default templates and assets. Consumers override via `.anvil/skills/report/` in their own repo:
