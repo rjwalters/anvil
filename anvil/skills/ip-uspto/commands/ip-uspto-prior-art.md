@@ -131,7 +131,7 @@ Standard. Note that re-running this critic after the operator adds more prior ar
   "thread": "<slug>",
   "for_version": <N>,
   "phases": {
-    "review": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+    "priorart": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
   }
 }
 ```
