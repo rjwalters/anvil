@@ -4,13 +4,21 @@
 #
 #   Anvil prefers subprocess-only operation. Python deps are added only when
 #   they enable a check that's genuinely better than the subprocess
-#   equivalent, and they are ALWAYS optional — the core skills ship with
-#   zero Python deps so that `python3 -c 'from anvil.lib.render import ...'`
-#   works in a stock venv with no install step.
+#   equivalent, and *detector* deps are ALWAYS optional — the core skills
+#   ship with as few Python deps as possible so that
+#   `python3 -c 'from anvil.lib.render import ...'` works in a stock venv
+#   with no extras installed.
 #
-# Practical consequence: every dependency below lives under
-# `[project.optional-dependencies]`. The base `[project]` table declares no
-# runtime deps. Consumers opt in to advanced detectors per-skill via extras:
+# Exception: `pydantic` is declared as a base `[project]` dep because it's
+# the schema library `anvil/lib/review_schema.py` is built on and that
+# `anvil/lib/__init__.py` transitively requires at import time (`cite`,
+# `critics`, `rubric`, `convergence`, `vision` all consume the schema). It
+# is not an opt-in detector; it is load-bearing for the package's import
+# chain. Detector-style additions still go under `[project.optional-dependencies]`.
+#
+# Practical consequence: every *detector* dependency below lives under
+# `[project.optional-dependencies]`. The base `[project]` table declares
+# only `pydantic`. Consumers opt in to advanced detectors per-skill via extras:
 #
 #     uv pip install -e .[auto_shrink]    # Marp auto-shrink lint (deck)
 #
@@ -52,10 +60,16 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 
-# Base install: ZERO runtime Python deps. Anvil's core is subprocess-only
-# (marp, mmdc, pdftoppm, pdfjam, pandoc are all CLI binaries). See the
-# header comment above for the philosophy.
-dependencies = []
+# Base install: one runtime Python dep. Anvil's core is otherwise
+# subprocess-only (marp, mmdc, pdftoppm, pdfjam, pandoc are all CLI
+# binaries). `pydantic` is the lone declared base dep because it's the
+# schema library that `anvil/lib/review_schema.py` and downstream modules
+# (`critics`, `rubric`, `cite`, `vision`, `convergence`) depend on — it's
+# load-bearing for `anvil/lib/__init__.py`'s import chain, not an opt-in
+# detector. See the header comment above for the broader philosophy.
+dependencies = [
+    "pydantic>=2.0",
+]
 
 # Opt-in extras. Each one corresponds to a single advanced check that needs
 # a third-party Python library. The preflights in `anvil/lib/render.py`
