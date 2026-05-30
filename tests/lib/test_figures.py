@@ -80,6 +80,8 @@ def test_palette_constants_match_css_root(css_vars: dict[str, str]) -> None:
         "--anvil-rule": palette.ANVIL_RULE,
         "--anvil-bg": palette.ANVIL_BG,
         "--anvil-bg-section": palette.ANVIL_BG_SECTION,
+        "--anvil-warning": palette.ANVIL_WARNING,
+        "--anvil-success": palette.ANVIL_SUCCESS,
     }
     for css_name, constant in expected.items():
         assert css_name in css_vars, f"{css_name} missing from anvil-deck.css :root"
@@ -109,7 +111,8 @@ def test_package_reexports_constants() -> None:
     from anvil.lib import figures
 
     for name in ("ANVIL_NAVY", "ANVIL_INK", "ANVIL_MUTED", "ANVIL_RULE",
-                 "ANVIL_BG", "ANVIL_BG_SECTION", "ANVIL_RAMP", "apply"):
+                 "ANVIL_BG", "ANVIL_BG_SECTION", "ANVIL_WARNING",
+                 "ANVIL_SUCCESS", "ANVIL_RAMP", "apply"):
         assert hasattr(figures, name), f"anvil.lib.figures does not re-export {name}"
 
 

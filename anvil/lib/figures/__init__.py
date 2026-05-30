@@ -34,6 +34,8 @@ from anvil.lib.figures.palette import (
     ANVIL_NAVY_TINT,
     ANVIL_RAMP,
     ANVIL_RULE,
+    ANVIL_SUCCESS,
+    ANVIL_WARNING,
     MPLSTYLE_PATH,
     apply,
 )
@@ -49,6 +51,8 @@ __all__ = [
     "ANVIL_NAVY_TINT",
     "ANVIL_RAMP",
     "ANVIL_RULE",
+    "ANVIL_SUCCESS",
+    "ANVIL_WARNING",
     "MPLSTYLE_PATH",
     "apply",
 ]
