@@ -48,7 +48,7 @@ A single command that an operator (or orchestrating agent) runs to see the state
 5. Detect anomalies and surface them:
    - A `<slug>.{N}/_progress.json` with any phase in state `in_progress` AND the version dir is older than 10 minutes — likely a crashed phase; recommend resuming.
    - A critic sibling dir (`<slug>.{N}.<critic>/`) without a matching `<slug>.{N}/` — orphan; report.
-   - A gap in version numbers (e.g., `<slug>.1/` and `<slug>.3/` with no `<slug>.2/`) — report.
+   - A gap in version numbers (e.g., `<slug>.1/` and `<slug>.3/` with no `<slug>.2/`) — report. **Exception**: a `<slug>.0.outline/` directory without a peer `<slug>.0/` is NOT a gap; `N=0` is reserved for pre-draft phases (see `SKILL.md` § Artifact contract and § State machine) and no `<slug>.0/` version is ever produced. Readers MAY consult `<slug>.0.outline/_progress.json.for_version == 0` to confirm outline-vs-version semantics before deciding whether to flag.
    - A `<slug>.{N}.audit/verdict.md` recording a `wrong` claim that has not been addressed in any `<slug>.{M>N}/changelog.md` — report (audit flag carried forward unresolved).
    - A `<slug>.{N}.rehearse/timing.md` recording a time flag where projected duration is significantly over the slot — report (with the current overrun percentage).
 

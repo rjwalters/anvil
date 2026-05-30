@@ -46,7 +46,8 @@ The handout exporter produces the leave-behind variant from the same `deck.md` s
 5. **Resume check**: if `<thread>.{N}.handout/_progress.json.handout.state == done` and `handout.pdf` exists, exit early with a notice (idempotent).
 6. **Initialize `_progress.json`**: `phases.handout.state = in_progress`, `phases.handout.started = <ISO>`, `for_version: <N>`, `metadata.layout: <layout flag>`.
 7. **Render**:
-   - **For `--4-up` and `--2-up`** layouts: invoke the canonical Marp render line below, then post-process the output PDF with `pdfjam` (or equivalent) to N-up.
+   - **pdfjam precheck (N-up layouts only)**: if the invoked layout is `--4-up` or `--2-up`, call `anvil.lib.render.check_pdfjam_available()` BEFORE invoking `marp`. If it returns `false`, exit fast with `[blocker]` and the `PDFJAM_REMEDIATION` message (`anvil.lib.render.require_pdfjam()` raises with the canonical text). pdfjam is OPTIONAL at the framework level — it is required only for the N-up post-process. The `--notes-below` path SKIPS this precheck entirely; do NOT call `require_pdfjam()` for `--notes-below`, since that layout has no pdfjam dependency and a false-positive blocker would lock out users who deliberately chose the pdfjam-free path.
+   - **For `--4-up` and `--2-up`** layouts: invoke the canonical Marp render line below, then post-process the output PDF with `pdfjam` to N-up.
      ```bash
      marp <thread>.{N}/deck.md \
        --pdf \
@@ -59,7 +60,7 @@ The handout exporter produces the leave-behind variant from the same `deck.md` s
      ```
      - 4-up: `pdfjam --nup 2x2 --landscape --suffix 4up handout.pdf`
      - 2-up: `pdfjam --nup 1x2 --suffix 2up handout.pdf`
-   - **For `--notes-below`** layout: render with Marp's notes-included PDF mode (`--pdf-notes`) and skip the N-up pass. Marp produces one slide per page with notes printed beneath when `--pdf-notes` is set. Use the same invocation as above; the `pdfjam` post-process step is omitted.
+   - **For `--notes-below`** layout: render with Marp's notes-included PDF mode (`--pdf-notes`) and skip the N-up pass. Marp produces one slide per page with notes printed beneath when `--pdf-notes` is set. Use the same invocation as above; the `pdfjam` post-process step is omitted and the pdfjam precheck is skipped. Marp cannot natively express N-up (verified, issue #85: Marp's rendering model is one-section-per-page), so `--notes-below` is the only N-up-free handout path.
    - `--html` and `--config-file anvil/lib/marp/config.yml` mirror the deck pin for raw HTML pass-through and the theme search path; they do **NOT** cause inline fenced ```mermaid blocks to render as diagrams in the handout (verified false, issue #65). Diagrams are pre-rendered to PNG by `slides-figures` via the `mmdc → PNG` path, and the handout inherits whatever images `deck.md` references — `--html` is for raw HTML pass-through, not mermaid execution. See `anvil/skills/slides/assets/marp-renderer.md` for the full pipeline rationale.
 8. **Toolchain availability check**: if `marp` is not on PATH, exit with an instructive error: "Marp CLI required for handout export. Install via `npm install -g @marp-team/marp-cli` or run from a container with Marp pre-installed. The deck is otherwise complete; this step can be deferred."
 9. **Update `_progress.json`**: `phases.handout.state = done`, `phases.handout.completed = <ISO>`, `metadata.output_path = "handout.pdf"`.
@@ -83,6 +84,7 @@ The choice is per-talk and per-audience; the orchestrator does not pick automati
 
 - **Terminal only.** Refuse to run on a deck that is not READY+AUDITED+REHEARSED. The pre-flight checks are not optional.
 - **Marp-dependent.** If Marp is unavailable, fail loudly and instructively rather than producing a partial output. The deck is still valid Marp markdown; the handout step can be deferred to a consumer environment that has Marp installed.
+- **pdfjam is OPTIONAL.** Required only for `--4-up` and `--2-up` (the N-up post-process); the `--notes-below` default-friendly layout has no pdfjam dependency. If a user on `--4-up`/`--2-up` lacks pdfjam, fail fast with the `PDFJAM_REMEDIATION` blocker rather than producing a silently-not-N-up PDF; suggest `--notes-below` as the pdfjam-free alternative in the failure message.
 - **Don't strip notes.** Even in 4-up layout, the source notes/ files should be preserved (the consumer may extract them separately). The handout PDF is one form; the notes are a separate one.
 - **Don't rename the output.** The convention is `handout.pdf`. Consumers who want a different name can rename after generation.
 
