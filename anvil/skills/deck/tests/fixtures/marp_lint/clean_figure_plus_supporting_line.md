@@ -8,4 +8,4 @@ theme: anvil-deck
 
 ![Why-now timeline](figures/why-now-timeline.png)
 
-_Buyer-proof from adjacent categories carries the deck: HNW + HENRY consumers pay $300–5K for premium self-improvement appliances._
+_Adjacent categories: HNW + HENRY consumers pay $300–5K for premium self-improvement appliances._

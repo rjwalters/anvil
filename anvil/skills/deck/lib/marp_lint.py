@@ -50,10 +50,24 @@ Anvil-specific design choices vs. upstream
 
 Anvil-specific scope
 --------------------
-- Only the ``slide-content-overflow`` rule is implemented. The
+- Only the ``slide-content-overflow`` rule is ported from upstream. The
   ``image-resource``, ``frontmatter-deprecated-syntax``, and other
   marp-vscode rules are not ported (they are either irrelevant to Anvil's
   pipeline or out of scope for this iteration).
+- The ``figure-italic-supporting-line-too-long`` rule is **Anvil-original**
+  (no marp-vscode upstream). It detects a long italic supporting line
+  directly under a standalone figure block — the figure-idiom regression
+  documented in issues #100 / #101. Authors fold what would have been three
+  bullets into one italic sentence; the sentence wraps to 2-3 rendered lines
+  and clips at the slide bottom on 16:9 because italic glyph width is ~5%
+  wider than upright body weight and the caption margins eat additional
+  vertical space. The threshold (18 words OR 108 characters) is anchored
+  against the shipped ``clean_figure_plus_supporting_line.md`` fixture and
+  the canary regressions from the post-#68 re-render wave (bower.v2 slides
+  7/10, citation-clear.v2 slides 7/8, bibliotype.v2 slide 7 — all 25-32
+  words). Severity is ``warning`` (the check is a heuristic for *likely*
+  overflow; the upstream-derived ``slide-content-overflow`` rule remains
+  the authoritative hard-fail capacity check).
 
 Public API
 ----------
@@ -80,8 +94,14 @@ from pathlib import Path
 #: Upstream commit SHA the ported diagnostic is derived from.
 UPSTREAM_SHA: str = "3b8617431867b68f4241c453ae2c7601a4298aa8"
 
-#: List of marp-vscode rules ported in this module.
-PORTED_RULES: tuple[str, ...] = ("slide-content-overflow",)
+#: List of rules implemented in this module. ``slide-content-overflow`` is
+#: ported from marp-vscode (see ``UPSTREAM_SHA``); ``figure-italic-supporting-
+#: line-too-long`` is Anvil-original (derived from #100 / #101 / canary
+#: regressions — see module docstring "Anvil-specific scope").
+PORTED_RULES: tuple[str, ...] = (
+    "slide-content-overflow",
+    "figure-italic-supporting-line-too-long",
+)
 
 
 # Slide-geometry model ---------------------------------------------------------
@@ -161,6 +181,29 @@ class Geometry:
     # units. We subtract this from capacity rather than from the cost so the
     # finding message still reports the slide's content total honestly.
     ask_class_capacity_penalty_units: float = 2.4
+
+    # Budget for an italic supporting line directly under a standalone figure
+    # block (the post-#68 "figure + ONE italic line" idiom — see
+    # ``assets/slide-archetypes.md`` "Figure layout idioms"). The two
+    # thresholds fire as a logical **OR**: a line longer than EITHER bound
+    # is flagged.
+    #
+    # - 18 words: 18 × ~5 chars + spaces ≈ 108 chars. Anchored against the
+    #   shipped ``clean_figure_plus_supporting_line.md`` fixture (originally
+    #   17 words / 124 chars; tightened to ≤108 chars in the same PR that
+    #   introduced this rule). Catches the bower / citation-clear /
+    #   bibliotype canary regressions (25-32 words) with comfortable
+    #   headroom.
+    # - 108 chars: italic glyphs are ~5% wider than upright body weight; the
+    #   ``body_paragraph_chars_per_line = 70`` constant above implies a
+    #   two-line wrap kicks in around ~134 italic chars. 108 leaves a ~20%
+    #   safety margin (matches the ``capacity_units = 13`` vs raw 14-unit
+    #   budget margin elsewhere in this Geometry).
+    #
+    # A consumer with a wider safe area or smaller body font overrides via
+    # the existing ``lint_deck(path, geometry=Geometry(...))`` parameter.
+    italic_supporting_line_max_words: int = 18
+    italic_supporting_line_max_chars: int = 108
 
 
 _DEFAULT_GEOMETRY = Geometry()
@@ -346,6 +389,22 @@ class _CostBreakdown:
 # Detect a `_class: ask` directive on the slide.
 _CLASS_ASK_RE = re.compile(
     r"^\s*<!--\s*_class:\s*ask\s*-->\s*$", re.MULTILINE
+)
+
+# Anchored variant of the image regex: matches a STANDALONE figure block —
+# a single `![alt](path)` reference that is the entire line (modulo
+# surrounding whitespace). Used as the trigger for the
+# ``figure-italic-supporting-line-too-long`` rule, where only a standalone
+# figure block (not an inline image in a paragraph) sets up the "figure +
+# italic supporting line" idiom.
+_STANDALONE_FIGURE_RE = re.compile(r"^\s*!\[[^\]]*\]\([^)]*\)\s*$")
+
+# Single ``_..._`` or ``*...*`` italic delimiter spanning the WHOLE stripped
+# line. The inner character class ``[^_*]`` deliberately rejects
+# bold-italic (``**_..._**`` / ``_**...**_``) and adjacent emphasis runs:
+# those are content emphasis patterns, not figure supporting lines.
+_FULL_LINE_ITALIC_RE = re.compile(
+    r"^\s*[_*]([^_*][^_*\n]*?)[_*]\s*$"
 )
 
 
@@ -570,6 +629,137 @@ def _estimate_slide_cost(slide: _Slide, geo: Geometry) -> _CostBreakdown:
     return breakdown
 
 
+# figure-italic-supporting-line-too-long check --------------------------------
+
+
+def _check_italic_supporting_lines(
+    slide: _Slide, geo: Geometry, suppressed: bool
+) -> list[Finding]:
+    """Detect long italic supporting lines directly under a standalone figure.
+
+    Implements the rule documented in the module docstring's "Anvil-specific
+    scope" section. State machine, per slide:
+
+    1. Scan ``slide.body`` lines. Skip blank and directive-comment lines.
+    2. **Trigger**: a line matching ``_STANDALONE_FIGURE_RE`` (a single
+       ``![alt](path)`` reference that IS the line, modulo whitespace).
+    3. **Advance** past blank and directive-comment lines.
+    4. **Italic accumulator**: if the next non-blank, non-directive line
+       matches ``_FULL_LINE_ITALIC_RE`` (single ``_..._`` or ``*...*``
+       spanning the whole stripped line, bold-italic explicitly rejected),
+       enter italic-block state. Continue accumulating consecutive italic
+       lines (soft-wrap support) until a blank, non-italic, directive, or
+       end-of-slide closes the block.
+    5. **Measure**: word count = ``len(inner.split())``; char count =
+       ``len(inner)`` of the inner text with the italic delimiters stripped
+       (delimiters don't render and shouldn't be counted).
+    6. **Flag** if ``words > geo.italic_supporting_line_max_words`` OR
+       ``chars > geo.italic_supporting_line_max_chars``. Emit a ``warning``
+       with ``rule="figure-italic-supporting-line-too-long"`` (downgraded
+       to ``info`` if the per-slide ``anvil-lint-disable`` directive is set
+       for this rule).
+    7. After any close (flagged or not), continue scanning for the next
+       figure trigger within the same slide. A slide with two figures gets
+       two independent checks.
+    """
+    findings: list[Finding] = []
+    body_lines = slide.body.splitlines()
+    n = len(body_lines)
+    i = 0
+
+    while i < n:
+        line = body_lines[i]
+        stripped = line.strip()
+
+        # Skip blanks and directive comments while hunting for a trigger.
+        if not stripped or _DIRECTIVE_COMMENT_RE.match(line):
+            i += 1
+            continue
+
+        # Look for the trigger: a standalone figure block.
+        if not _STANDALONE_FIGURE_RE.match(line):
+            i += 1
+            continue
+
+        # Trigger found. Advance past blanks and directive lines.
+        j = i + 1
+        while j < n:
+            stripped_j = body_lines[j].strip()
+            if not stripped_j or _DIRECTIVE_COMMENT_RE.match(body_lines[j]):
+                j += 1
+                continue
+            break
+
+        # j is now at the next non-blank, non-directive line (or past end).
+        if j >= n:
+            break
+
+        # Is it an italic line? If not, no italic-block to measure — go back
+        # to scanning for the next trigger from the next line.
+        first_italic_match = _FULL_LINE_ITALIC_RE.match(body_lines[j])
+        if not first_italic_match:
+            i = j + 1
+            continue
+
+        # Italic accumulator: consume consecutive italic lines (soft-wrap)
+        # until a blank, non-italic, directive, or end-of-slide.
+        block_start = j
+        inner_parts: list[str] = [first_italic_match.group(1).strip()]
+        k = j + 1
+        while k < n:
+            line_k = body_lines[k]
+            stripped_k = line_k.strip()
+            if not stripped_k:
+                break
+            if _DIRECTIVE_COMMENT_RE.match(line_k):
+                break
+            m_k = _FULL_LINE_ITALIC_RE.match(line_k)
+            if not m_k:
+                break
+            inner_parts.append(m_k.group(1).strip())
+            k += 1
+
+        # Measure across the accumulated block. Delimiters are excluded
+        # because they don't render.
+        inner_text = " ".join(p for p in inner_parts if p)
+        words = len(inner_text.split())
+        chars = len(inner_text)
+
+        over_words = words > geo.italic_supporting_line_max_words
+        over_chars = chars > geo.italic_supporting_line_max_chars
+        if over_words or over_chars:
+            # Compose the message (per AC1 / the curator's example phrasing).
+            message = (
+                f"Italic supporting line under figure is {words} words / "
+                f"{chars} chars; budget is "
+                f"≤{geo.italic_supporting_line_max_words} words / "
+                f"≤{geo.italic_supporting_line_max_chars} chars. "
+                "Likely wraps to 2+ lines and clips at slide bottom on 16:9 "
+                "(italic glyphs run ~5% wider than upright body weight)."
+            )
+            findings.append(
+                Finding(
+                    slide=slide.index,
+                    # 1-based file-level line, computed via the same
+                    # convention as slide-content-overflow: slide.start_line
+                    # is the 1-based first-line of the slide; block_start is
+                    # the 0-based offset within slide.body of the italic
+                    # block's first line.
+                    line=slide.start_line + block_start,
+                    rule="figure-italic-supporting-line-too-long",
+                    severity="info" if suppressed else "warning",
+                    message=message,
+                )
+            )
+
+        # Continue scanning from the line after the italic block — a slide
+        # with two figures gets two independent checks.
+        i = k
+        continue
+
+    return findings
+
+
 # Public API -------------------------------------------------------------------
 
 
@@ -585,13 +775,35 @@ def lint_source(
     """
     geo = geometry or _DEFAULT_GEOMETRY
     result = LintResult()
-    if "slide-content-overflow" not in rules:
+    run_overflow = "slide-content-overflow" in rules
+    run_italic = "figure-italic-supporting-line-too-long" in rules
+    if not (run_overflow or run_italic):
         return result
 
     slides = _split_slides(source)
     for slide in slides:
-        # Escape hatch.
+        # Escape hatch — collected once per slide; each rule asks the set.
         disabled_rules = _collect_disabled_rules(slide.raw)
+
+        # --- figure-italic-supporting-line-too-long ----------------------
+        # Run this first because it does not depend on the capacity model.
+        # Suppressed findings downgrade to ``info`` (same protocol as the
+        # overflow rule's escape hatch).
+        if run_italic:
+            italic_suppressed = (
+                "figure-italic-supporting-line-too-long" in disabled_rules
+            )
+            for finding in _check_italic_supporting_lines(
+                slide, geo, italic_suppressed
+            ):
+                if finding.severity == "info":
+                    result.infos.append(finding)
+                else:
+                    result.warnings.append(finding)
+
+        if not run_overflow:
+            continue
+
         suppressed = "slide-content-overflow" in disabled_rules
 
         breakdown = _estimate_slide_cost(slide, geo)

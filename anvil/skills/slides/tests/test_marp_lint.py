@@ -43,7 +43,12 @@ class TestSlidesMirror(unittest.TestCase):
         # AC1 contract: lint_deck + LintResult + structured Findings.
         self.assertTrue(callable(lint_deck))
         self.assertTrue(callable(lint_source))
-        self.assertEqual(PORTED_RULES, ("slide-content-overflow",))
+        # The slides skill mirrors the deck skill's marp_lint module, so
+        # whatever rules the deck side ships also appear here. The contract
+        # this test pins is the marp-vscode-ported rule (the one with a
+        # tracked ``UPSTREAM_SHA``); Anvil-original rules grow the tuple
+        # additively as they land in the deck skill.
+        self.assertIn("slide-content-overflow", PORTED_RULES)
         # The upstream SHA pin is shared between deck and slides.
         self.assertTrue(UPSTREAM_SHA)
         self.assertEqual(len(UPSTREAM_SHA), 40)
