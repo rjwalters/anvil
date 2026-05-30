@@ -30,6 +30,15 @@
 # emit a remediation message if it isn't available — they never hard-fail
 # the surrounding pipeline.
 #
+# Test discipline for optional-extras-gated code: any test file that depends
+# on an optional extra (e.g. `Pillow`/`numpy` for `[auto_shrink]`) must
+# `pytest.importorskip(<module>)` it at module top — or per-test if only a
+# subset of tests need the extra. This makes the test suite run cleanly on a
+# stock venv without extras (tests skip with a clear reason rather than
+# erroring at collection or first fixture call). See
+# `tests/lib/test_figures.py` for the module-level pattern and
+# `tests/lib/test_cite.py` for the `pytest.mark.network` env-gated pattern.
+#
 # Tooling: this file follows PEP 621 + uv conventions. `uv pip install -e .`
 # installs the framework code editable; `[tool.uv]` is a marker so uv's
 # tooling treats this as a uv-managed project (no lockfile is checked in
