@@ -1,0 +1,10 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024)
+entering extended mode
+(./paper.tex
+Overfull \hbox (12.3pt too wide) in paragraph at lines 42--45
+[]\OT1/cmr/m/n/10 This is a much wider line that exceeds the page width.
+Overfull \vbox (8.7pt too high) detected at line 77
+Overfull \hbox (3.5pt too wide) in paragraph at lines 88--89
+[1] [2]
+Output written on paper.pdf (2 pages, 23456 bytes).
+Transcript written on paper.log.

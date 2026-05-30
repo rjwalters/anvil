@@ -191,6 +191,8 @@ See `rubric.md` for the 8-dimension /40 scoring schema (paper-tuned weights, rig
 
 The auditor (`pub-audit`) may re-run scripts in `figures/src/` to verify rendered outputs are current; this verification policy is documented in `pub-audit.md`.
 
+**`pub-review` render-gate hook (deterministic pre-flight).** `pub-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate.py` (the LaTeX-skill analog of `marp_lint` for the deck/slides skills). The gate checks page count (`page_cap=None` — paper length is venue-dependent; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`), overfull boxes (>5.0pt threshold), compile success, and source-side placeholders (`TODO` / `[TBD]` / `(figure)` / `.MISSING`). The gate runs after `pub-audit` has produced `paper.pdf` + `compile-log.txt`; if invoked before audit, the gate fails open with a clear stdout message and the review proceeds without enforcement. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension, which the existing `anvil/lib/critics.py::compute_verdict` path treats as `BLOCK`. See `commands/pub-review.md` step 4b.
+
 ## Templates / assets
 
 - **Default LaTeX class**: `templates/anvil-paper.cls` — minimal generic single-column class with `\title`, `\author`, `\abstract`, standard sectioning, and `\bibliographystyle{plainnat}` baked in. Compiles cleanly with `pdflatex` + `bibtex` from a fresh checkout, no venue-specific assumptions. Supports an `anonymous` option (`\documentclass[anonymous]{anvil-paper}`) that suppresses author/affiliation rendering for double-blind submission.

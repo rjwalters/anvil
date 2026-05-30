@@ -1,0 +1,16 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024) (preloaded format=xelatex)
+ restricted \write18 enabled.
+entering extended mode
+(./paper.tex
+LaTeX2e <2023-11-01> patch level 1
+L3 programming layer <2024-02-20>
+(/usr/local/texlive/2024/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2023/05/17 v1.4n Standard LaTeX document class
+)
+(./paper.aux)
+Overfull \hbox (3.2pt too wide) in paragraph at lines 12--14
+[]\OT1/cmr/m/n/10 This is some text that is slightly too wide.
+[1] (./paper.aux)
+LaTeX Font Info:    Trying to load font information for OT1+cmr on input line 12.
+Output written on paper.pdf (1 page, 12345 bytes).
+Transcript written on paper.log.

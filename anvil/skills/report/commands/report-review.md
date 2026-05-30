@@ -38,6 +38,19 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
 3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
 4. **Read inputs**: load `<thread>.{N}/report.md`, enumerate `exhibits/`, load `_project.md` for recipient calibration context, load `rubric.md` and any consumer override.
+4b. **Run render-gate (pre-flight)** — mirrors `deck-review.md` step 5b:
+   - Invoke `anvil/lib/render_gate.py`'s `gate(...)` against `<thread>.{N}/report.pdf` (produced by `report-figures`; see `commands/report-figures.md`).
+   - **Inputs:**
+     - `pdf_path`: `<thread>.{N}/report.pdf`.
+     - `log_path`: when `_project.md.delivery_format` is the LaTeX path, the compile log captured by `report-figures` at `<thread>.{N}/.report-build.log`; otherwise `None` (pandoc path produces no persistent log).
+     - `source_paths`: `[<thread>.{N}/report.md]`.
+     - `page_cap=None` — customer report length varies; the gate does not enforce. Consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`.
+     - `overfull_threshold_pt=5.0`, `placeholder_patterns=None` (use `DEFAULT_PLACEHOLDER_PATTERNS`).
+     - `engine`: `"pandoc"` when `_project.md.delivery_format` is the pandoc path, else the LaTeX engine name. **When `engine="pandoc"` the overfull-box check is skipped** (pandoc/CSS output has no `Overfull` semantics — the gate emits a documented note in `reasons`).
+   - When `report.pdf` is absent (e.g., `report-figures` has not run), the gate fails open with a clear stdout message (`report-review: render-gate skipped — report.pdf not present; run report-figures first`). The review proceeds normally.
+   - Write `GateResult.to_json()` to `<thread>.{N}.review/_gate.json` for CI inspection.
+   - On failure, the gate's `to_review(...)` Review carries one `CriticalFlag` per failed gate dimension; the aggregator (`anvil/lib/critics.py`) treats this as `BLOCK` per the standard `compute_verdict` path. No schema change needed.
+
 5. **Score each dimension** (1–8 per rubric, /40 total, customer-facing weights):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the report.
