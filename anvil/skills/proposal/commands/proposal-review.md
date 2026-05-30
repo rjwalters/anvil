@@ -38,6 +38,18 @@ This is one of the **two REQUIRED critic siblings** for the proposal skill (the 
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
 3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
 4. **Read inputs**: load `<thread>.{N}/proposal.tex`, enumerate `figures/`, read `customer_kind`, load `rubric.md` and any consumer override.
+4b. **Run render-gate (pre-flight)** — mirrors `deck-review.md` step 5b:
+   - Invoke `anvil/lib/render_gate.py`'s `compile_and_gate(...)` against `<thread>.{N}/proposal.tex` with `engine="xelatex"`. Mirror the `marp_lint.py` integration shape used in `deck-review.md` step 5b (a deterministic pre-flight that emits a typed `Review` with `kind=tool_evidence` plus a sibling `_gate.json` for CI inspection — see `anvil/lib/render_gate.py` module docstring).
+   - **Inputs:**
+     - `tex_path`: `<thread>.{N}/proposal.tex`.
+     - `engine`: `"xelatex"` (matches the `anvil-proposal.cls` fontspec setup).
+     - `extra_source_paths`: any `\input`/`\include` children (none in the default skeleton, but consumer overrides may add them).
+     - `page_cap=None` — proposal length is customer/sponsor-dependent (a short pitch may run 4 pages; a complex build spec 20+). The generic gate does not enforce a cap. Consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap` if a venue / client / budget reviewer has a hard limit. A recommended 4–20 pages range is documented in `SKILL.md` as guidance only.
+     - `overfull_threshold_pt=5.0`, `placeholder_patterns=None` (use `DEFAULT_PLACEHOLDER_PATTERNS`).
+   - **First-compile semantics**: this is the *first* command in the proposal lifecycle to invoke the LaTeX compiler — `proposal-audit` reads the source but does not compile a PDF, and `proposal-figures` runs after `READY`. The gate triggers `xelatex` and gates the resulting PDF + log in one step (`compile_and_gate`). On engine-unavailable (xelatex not on PATH), the gate degrades gracefully with `compile_status="unavailable"`; the review proceeds without enforcement and the rest of the pipeline remains usable on stock CI without LaTeX installed.
+   - Write the `GateResult.to_json()` payload to `<thread>.{N}.review/_gate.json` for CI inspection.
+   - On failure, the gate's `to_review(...)` Review carries one `CriticalFlag` per failed gate dimension (type prefix: `render_gate_<dim>`); the aggregator (`anvil/lib/critics.py::compute_verdict`) treats this as `BLOCK` per the standard path. No schema change needed.
+
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (section heading, excerpt, figure) from the proposal.
