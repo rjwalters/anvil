@@ -7,14 +7,16 @@
 #   ./scripts/version.sh set 0.1.0          # Set explicit version
 #   ./scripts/version.sh set 0.1.0 --tag    # Set version, commit, and tag
 #
-# As the project grows beyond CLAUDE.md (e.g. pyproject.toml when lib/ lands),
-# add the new files to VERSION_FILES below and extend get_version_from_file().
+# Currently covers CLAUDE.md and pyproject.toml. To extend when a new
+# version-bearing file lands, add it to VERSION_FILES below and add matching
+# case-arms to both get_version_from_file() and set_version().
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 VERSION_FILES=(
   "CLAUDE.md"
+  "pyproject.toml"
 )
 
 get_version() {
@@ -27,6 +29,13 @@ get_version_from_file() {
     CLAUDE.md)
       grep -o 'Anvil Version\*\*: [0-9]*\.[0-9]*\.[0-9]*' "$REPO_ROOT/$file" \
         | grep -o '[0-9]*\.[0-9]*\.[0-9]*'
+      ;;
+    pyproject.toml)
+      # Anchored on ^...$ so only the top-level [project] version line matches;
+      # immune to a future nested-table `version = "..."` string elsewhere in
+      # the file (e.g. a `[tool.foo]` block).
+      grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"$' "$REPO_ROOT/$file" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
       ;;
     *)
       echo "unknown file: $file" >&2
@@ -67,6 +76,13 @@ set_version() {
     case "$file" in
       CLAUDE.md)
         sed -i.bak "s/Anvil Version\*\*: [0-9]*\.[0-9]*\.[0-9]*/Anvil Version**: $new/" "$REPO_ROOT/$file"
+        rm "$REPO_ROOT/$file.bak"
+        ;;
+      pyproject.toml)
+        # Anchored on ^...$ — only the top-level [project] version line
+        # gets rewritten; any future nested-table `version = "..."` is left
+        # alone. Mirrors the regex in get_version_from_file() above.
+        sed -i.bak -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+"$/version = "'"$new"'"/' "$REPO_ROOT/$file"
         rm "$REPO_ROOT/$file.bak"
         ;;
     esac
