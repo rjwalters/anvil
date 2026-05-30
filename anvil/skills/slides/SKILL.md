@@ -74,7 +74,7 @@ A **slides thread** is a single talk delivered to a specific audience in a speci
 
 Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
 
-The outline lives at `<thread>.0.outline/` — sibling-shaped (read-only critic-style directory feeding the drafter), but indexed as `.0` because no `<thread>.0/` version exists. This is a deliberate naming choice so the outline appears in the portfolio orchestrator's enumeration alongside other siblings; orchestrators look for `<thread>.<N>.<phase>/` patterns and `N=0` is reserved for pre-draft phases.
+The outline lives at `<thread>.0.outline/` — sibling-shaped (read-only critic-style directory feeding the drafter), but indexed as `.0` because no `<thread>.0/` version exists. This is a deliberate naming choice so the outline appears in the portfolio orchestrator's enumeration alongside other siblings; orchestrators look for `<thread>.<N>.<phase>/` patterns and `N=0` is reserved for pre-draft phases. **Reader-guidance invariant**: orchestrators, anomaly detectors, and any other consumer MUST treat the absence of `<thread>.0/` as expected when `<thread>.0.outline/` exists, NOT as a version-number gap; consult `_progress.json.for_version` (which records `0` for the outline) to disambiguate sibling-vs-version semantics. The `slides` portfolio orchestrator's gap detector (`commands/slides.md` step 5) carries this exemption explicitly.
 
 ## State machine
 

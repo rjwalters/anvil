@@ -201,6 +201,65 @@ def require_mmdc() -> None:
 
 
 # ---------------------------------------------------------------------------
+# pdfjam preflight (OPTIONAL — only needed for slides-handout N-up layouts)
+# ---------------------------------------------------------------------------
+
+# Remediation message surfaced when ``pdfjam`` is absent and a handout layout
+# that needs it (``--4-up`` or ``--2-up``) is requested. ``pdfjam`` is OPTIONAL
+# at the framework level: ``slides-handout --notes-below`` uses Marp's native
+# ``--pdf-notes`` mode (one slide per page with notes printed beneath) and
+# requires no post-processing. Marp's rendering model is fundamentally
+# one-section-per-page; there is no Marp CLI flag (or CSS injection) that
+# combines N sections onto a single rendered page, so a post-process step is
+# the only N-up path for the ``--4-up`` and ``--2-up`` handout variants.
+PDFJAM_REMEDIATION = (
+    "pdfjam (TeX Live's pdfjam package) not found on PATH — required only for "
+    "`slides-handout --4-up` and `slides-handout --2-up` N-up handout layouts. "
+    "Install via `tlmgr install pdfjam` (if TeX Live is already present), "
+    "`apt-get install texlive-extra-utils` (Debian/Ubuntu), or "
+    "`brew install --cask mactex-no-gui` (macOS). "
+    "Note: TeX Live is a multi-GB install; if you do not need N-up handouts "
+    "you can use `slides-handout --notes-below` instead, which renders via "
+    "Marp's `--pdf-notes` mode and does NOT require pdfjam."
+)
+
+
+def check_pdfjam_available() -> bool:
+    """Return ``True`` if the ``pdfjam`` binary is on PATH.
+
+    This is the preflight guard ``slides-handout`` runs before invoking the
+    N-up post-process step for ``--4-up`` and ``--2-up`` layouts. It mirrors
+    the ``shutil.which("mmdc")`` guard in :func:`check_mmdc_available` so the
+    handout exporter can fail fast with a legible ``[blocker]`` (see
+    :data:`PDFJAM_REMEDIATION`) instead of producing a one-slide-per-page PDF
+    while the user expected a 4-up grid.
+
+    ``pdfjam`` is OPTIONAL, not required: ``slides-handout --notes-below``
+    renders via Marp's native ``--pdf-notes`` mode and produces a usable
+    leave-behind PDF with zero pdfjam dependency. Callers should not invoke
+    this preflight when the requested layout is ``--notes-below``.
+
+    Kept binary-presence-only (no subprocess spawn) so it is unit-testable
+    with a stubbed/monkeypatched ``shutil.which`` and requires no real TeX
+    Live install at test time.
+    """
+    return shutil.which("pdfjam") is not None
+
+
+def require_pdfjam() -> None:
+    """Raise :class:`RenderError` with full remediation if ``pdfjam`` is absent.
+
+    Convenience wrapper over :func:`check_pdfjam_available` for callers that
+    prefer the raise-on-missing shape used by :func:`render_marp_to_pdf`'s
+    ``marp`` guard. The handout exporter calls this only when the requested
+    layout is ``--4-up`` or ``--2-up`` — the ``--notes-below`` path renders
+    without invoking this guard.
+    """
+    if not check_pdfjam_available():
+        raise RenderError(PDFJAM_REMEDIATION)
+
+
+# ---------------------------------------------------------------------------
 # PDF → per-page PNGs
 # ---------------------------------------------------------------------------
 
@@ -403,9 +462,12 @@ def render_matplotlib_figures(figures_dir: Path) -> List[Path]:
 __all__ = [
     "DEFAULT_MARP_CONFIG",
     "MMDC_REMEDIATION",
+    "PDFJAM_REMEDIATION",
     "RenderError",
     "check_mmdc_available",
+    "check_pdfjam_available",
     "require_mmdc",
+    "require_pdfjam",
     "render_marp_to_pdf",
     "render_pdf_to_pngs",
     "render_pandoc_to_pdf",
