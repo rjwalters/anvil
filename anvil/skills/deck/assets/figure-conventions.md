@@ -331,7 +331,55 @@ see `commands/deck-vision.md` for the dimension definitions:
 palette *consistency across slides* — but the per-chart mathtext, palette-hex,
 and legibility specifics live in `deck-vision`.
 
-## 8. See also
+## 8. Why is my slide visibly small? (Marp silent auto-shrink)
+
+A slide whose figure and bullets occupy maybe 40% of slide height when peer
+slides fill 85% is almost never an authoring mistake — it is Marp's CSS
+`fit-to-frame` rule kicking in. When a `<section>` is over-budget by a small
+amount, Marp doesn't always clip; it sometimes silently scales the whole
+frame to fit. Two or three auto-shrunk slides in a deck read as
+"unfinished" even though the markdown source is clean and the PDF opens
+without warnings.
+
+This is harder to catch than loud overflow (the source-side `marp_lint`
+`slide-content-overflow` rule covers that — see section 7 above). The
+silent variant only becomes obvious when you put the shrunk slide next to a
+peer slide that wasn't shrunk; the type-size delta is the tell. A reader
+without the comparison just assumes the slide was meant to read that small.
+
+**The lint that catches it.** `deck-review` runs a deterministic
+post-render detector (`anvil/skills/deck/lib/auto_shrink_detector.py`,
+issue #102 / #100b) that renders `deck.pdf` to per-page PNGs, computes a
+content bounding box per page from pixel-diff against the corner-sampled
+background, classifies each slide by `<!-- _class: ... -->` directive
+(defaulting to `content`), and emits an `auto-shrink-fit-compression`
+finding for any page whose bottom margin exceeds BOTH 1.5× the per-class
+median AND 18% of slide height. Singleton-class slides (typically one
+`title`, one `ask`) are skipped — too few peers for a median. The check
+is optional at the framework level (needs `Pillow` + `numpy`, opt-in via
+`uv pip install -e .[auto_shrink]`); when the deps aren't installed,
+`deck-review` records an info-level skip note and proceeds.
+
+**Remediation.** Trim 10–20 words from the densest element on the slide,
+or move one bullet (or one body paragraph) to a peer slide. The
+[slide-archetypes budget guidance](#slide-archetypes) — under the
+`marp_lint` doc — is the source-side analogue: stay within the word
+budget the archetype documents and Marp won't have anything to scale.
+
+**Why not just rely on `deck-vision`?** The vision critic's
+`v1 vertical_overflow` dimension is the qualitative VLM companion ("does
+this look bad?"), but every invocation costs an API call. The deterministic
+detector is free per page (~50ms at 150 DPI) and runs every review; the
+VLM rubric is for content judgements the detector can't make ("is this
+the *right* density of content for the slide's role?").
+
+**Why not extend `marp_lint`?** That module is intentionally source-side
+only (Python port of marp-vscode's `slide-content-overflow` DOM
+diagnostic, applied to markdown without rendering). Auto-shrink is a
+post-render symptom — by the time you can measure it, the source-side
+check has already passed.
+
+## 9. See also
 
 - `assets/marp-renderer.md` — the **mermaid / MathJax** side of the asset
   pipeline (inline `$...$` slide math is independent of the matplotlib `\$`

@@ -54,11 +54,18 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
    - `<thread>/BRIEF.md` (to ground claims — every traction number on a slide should trace to the brief).
    - Optionally `<thread>.{N}/figures/` for sanity-checking diagrams.
    - Sibling critic `_summary.md` files at the same `N` (if they exist), for verdict aggregation.
-5b. **Run pre-flight overflow lint**:
+5b. **Run pre-flight overflow lint (source-side)**:
    - Invoke `anvil/skills/deck/lib/marp_lint.py`'s `lint_deck(<thread>.{N}/deck.md)`. This is a Python-stdlib heuristic port of marp-vscode's `slide-content-overflow` diagnostic (see the module docstring for the upstream SHA pin and the per-slide `<!-- anvil-lint-disable: slide-content-overflow -->` escape hatch).
    - The call returns a `LintResult` with `errors: list[Finding]`, `warnings: list[Finding]`, and `infos: list[Finding]`. Each `Finding` has `slide` (1-based slide number), `line` (1-based source line), `rule`, `severity`, and `message`.
    - The lint is **review-phase only** — drafter, auditor, figurer, and the specialist critics (`deck-narrative`, `deck-market`, `deck-design`) do not invoke it. The drafter is intentionally allowed to produce an overflowing slide so the reviser sees the failure mode (issue #31, AC6).
    - Cache the `LintResult` for the `_summary.md` and `findings.md` writes below; cache `lint.errors > 0` as `lint_critical_flag` for the verdict logic.
+5c. **Run silent-Marp-auto-shrink lint (post-render, optional)** — issue #102 / #100b:
+   - Invoke `anvil/skills/deck/lib/auto_shrink_detector.py`'s `detect_auto_shrink(<thread>.{N}/deck.pdf, <thread>.{N}/deck.md)`. The detector reads the rendered PNGs (reuses `<thread>.{N}.vision/slides/` if the vision critic already populated it; otherwise renders fresh via `anvil/lib/render.py::render_pdf_to_pngs`), computes a per-page content bbox by sampling the background from corner patches and thresholding pixel diffs, classifies each slide by `<!-- _class: ... -->` directive (default `content`), and flags any page whose `bottom_margin_norm` exceeds BOTH `1.5 × class_median` AND `0.18`. Singleton-class slides (typically one `title`, one `ask`) are recorded as skipped with a reason — never flagged.
+   - **Why a post-render check is necessary**: Marp's CSS `fit-to-frame` behaviour silently scales the entire `<section>` down to fit a slightly-over-budget page rather than clipping; the slide compiles clean, the PDF opens fine, and the reader sees a slide that reads small without any obvious failure mode. `marp_lint` (step 5b) catches *loud* overflow source-side; this detector catches the *silent* fit-to-scale post-render. `deck-vision` v1 `vertical_overflow` is the qualitative VLM companion (one API call per slide); this detector is deterministic and free.
+   - The call returns an `AutoShrinkResult` with `findings: list[AutoShrinkFinding]`, `skipped: bool`, `reason: str | None`, `per_class_medians: dict[str, float]`, and `skipped_classes: dict[str, str]`. Each `AutoShrinkFinding` has `slide`, `class_name`, `bottom_margin_norm`, `median_bottom_margin_norm`, `ratio`, `rule="auto-shrink-fit-compression"`, `severity` (always `"error"`), and a human-readable `message` with an actionable fix hint.
+   - **Graceful-skip on missing deps**: the detector needs `Pillow` and `numpy`, which are OPTIONAL Anvil extras (install via `uv pip install -e .[auto_shrink]`). The detector's first step calls `anvil.lib.render.check_auto_shrink_deps_available()`; if it returns `False`, the detector returns `AutoShrinkResult(skipped=True, reason=AUTO_SHRINK_REMEDIATION)` without raising. Record the skip as a `severity="info"` lint entry — the rest of `deck-review` proceeds normally. (Same pattern as the `mmdc` preflight #65 and the `pdfjam` preflight #85.)
+   - **Graceful-skip on missing PDF**: if `deck.pdf` does not yet exist (the user hasn't run `deck-figures`), the detector returns `AutoShrinkResult(skipped=True, reason="deck.pdf not found at ...")`. Record as an info-level skip; do not block.
+   - Cache the `AutoShrinkResult` for the `_summary.md` and `findings.md` writes below. Errors from this lint OR into `lint_critical_flag` alongside the `marp_lint` errors — `lint_critical_flag = (marp_lint.errors > 0) or (auto_shrink.errors > 0)`. Per the curator's design (#102 D3), the two checks are *complementary*: `marp_lint` catches the source-side overflow before render; this detector catches the post-render auto-shrink that source-side checks structurally can't see.
 6. **Score owned dimensions**:
    - **Dim 2 — Problem clarity** (0–5): Does the problem slide convey what hurts, for whom, how much, in <30 seconds? Cite specific slide language. Vague problems, self-evident problems, or problems explained only via solution score low.
    - **Dim 5 — Traction / proof** (0–5): Does the traction slide show real evidence at the stage's level? Are projections clearly labeled as projections? Cross-check every number against `BRIEF.md` — any number on the slide not in the brief is a `Fabricated traction` critical flag.
@@ -103,14 +110,30 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
        ],
        "warnings_by_slide": [
          { "slide": 5, "line": 36, "rule": "slide-content-overflow", "severity": "warning", "message": "..." }
-       ]
+       ],
+       "auto_shrink": {
+         "ran": true,
+         "skipped": false,
+         "reason": null,
+         "errors": 1,
+         "warnings": 0,
+         "infos": 0,
+         "findings": [
+           { "slide": 9, "class_name": "content", "bottom_margin_norm": 0.34, "median_bottom_margin_norm": 0.12, "ratio": 2.83, "rule": "auto-shrink-fit-compression", "severity": "error", "message": "Slide 9 (class 'content') has bottom margin 34.0% of slide height; class median is 12.0% (2.83x). Marp likely fit-to-frame-scaled this page — trim 10–20 words from the densest element or move one bullet to a peer slide so the content fits without auto-shrink." }
+         ],
+         "per_class_medians": { "content": 0.12 },
+         "skipped_classes": { "title": "only 1 page(s) in class 'title' — minimum 3 required for a peer-median comparison.", "ask": "only 1 page(s) in class 'ask' — minimum 3 required for a peer-median comparison." }
+       }
      },
      "critical_flag": false,
      "critical_flag_notes": []
    }
    ```
    ```
-   - When `lint.errors > 0`, set `critical_flag: true` and append an entry of the form `{ "type": "slide_overflow_lint", "slide_refs": ["Slide 4", "Slide 7"], "justification": "Pre-flight overflow lint flagged N slides..." }` to `critical_flag_notes` — the lint is treated as a fourth-category critical flag.
+   - When `lint.errors > 0` (sum of source-side `errors` AND `auto_shrink.errors`), set `critical_flag: true` and append entries to `critical_flag_notes`:
+     - source-side overflow: `{ "type": "slide_overflow_lint", "slide_refs": ["Slide 4", "Slide 7"], "justification": "Pre-flight overflow lint flagged N slides..." }`.
+     - auto-shrink: `{ "type": "auto_shrink_fit_compression", "slide_refs": ["Slide 9"], "justification": "Marp silent auto-shrink detected on N slide(s) — rendered PNG bbox shows slide content occupies <50% of peer-class median height. See lint.auto_shrink.findings for the per-slide breakdown." }`.
+     Both flag categories live under the "fourth-category critical flag" bucket (per `rubric.md`'s open-ended slot for "any other issue a sophisticated investor would catch and disqualify on") — a deck whose slides visibly read smaller than peer slides reads as unfinished.
    - If a non-lint critical flag is also raised, populate `critical_flag_notes` with one object per flag: `{ "type": "fabricated_traction", "slide_ref": "Slide 8", "justification": "..." }`.
 10. **Write slide-level `comments.md`**: list specific feedback keyed to slide number + heading. Group by severity (`blocker` / `major` / `minor` / `nit`). Example:
     ```
@@ -140,11 +163,32 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
     3. **[warning]** Slide 5 (line 36): Slide borderline (estimated 14.0u vs. capacity 13.0u). Suggested fix (non-blocking): consider trimming one bullet.
     ```
     Each finding: severity, slide reference (with source line), rationale (1–2 sentences), suggested fix (1 sentence). The "Lint findings" section is present even if empty (write `_No lint findings._`).
+
+    A second post-render lint block (issue #102) sits under its own subsection. When `auto_shrink.skipped == true` (deps missing or PDF absent), record the skip reason as a single info-severity entry rather than omitting the section — the reviser should see WHY the check didn't run:
+
+    ```
+    ## Auto-shrink lint findings (post-render, optional)
+
+    Each entry comes from the `auto-shrink-fit-compression` detector (step 5c). Errors block advance via the lint critical flag — Marp silently scaled the slide down to fit, which reads as "unfinished" next to peer slides.
+
+    1. **[error]** Slide 9 (class 'content', bm=34% vs class median 12%, ratio 2.83x): Marp likely fit-to-frame-scaled this page. Suggested fix: trim 10–20 words from the densest element, or move one bullet to a peer slide so the content fits without auto-shrink.
+    ```
+
+    Or, when the detector was skipped:
+
+    ```
+    ## Auto-shrink lint findings (post-render, optional)
+
+    _Skipped: <reason from AutoShrinkResult.reason>._
+
+    Per-class medians: { content: 0.12 }
+    Skipped classes (too few peers): { title: "only 1 page", ask: "only 1 page" }
+    ```
 12. **Aggregate verdict** (this reviewer is the canonical verdict author):
     - Glob `<thread>.{N}.*/_summary.md` (siblings + self). Parse each.
     - For each rubric dimension, compute the aggregate score as the mean of non-null critic scores. Round to one decimal for display; sum for total.
-    - For critical flag, take logical OR of all critic flags **including the pre-flight lint**. If this `_summary.md`'s own `lint.errors > 0`, the aggregated critical flag is true regardless of any other critic.
-    - Decision: `advance = (total >= 35) AND (no critical flag)`. When `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags — the rubric total is reported honestly but does not save the verdict.
+    - For critical flag, take logical OR of all critic flags **including both pre-flight lints** (source-side `marp_lint` from step 5b AND post-render `auto_shrink_detector` from step 5c). If this `_summary.md`'s own `lint.errors > 0` OR `lint.auto_shrink.errors > 0`, the aggregated critical flag is true regardless of any other critic.
+    - Decision: `advance = (total >= 35) AND (no critical flag)`. When `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags; when `lint.auto_shrink.errors > 0`, the verdict additionally lists `Slide auto-shrink (lint)`. The rubric total is reported honestly but does not save the verdict.
 13. **Write `verdict.md`**:
     ```markdown
     # Verdict — <thread> v<N>

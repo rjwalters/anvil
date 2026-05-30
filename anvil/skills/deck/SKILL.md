@@ -167,6 +167,20 @@ The portfolio orchestrator is the user-facing entry point for status; the lifecy
 
 **Escape hatch — `<!-- anvil-lint-disable: slide-content-overflow -->`**: any slide that contains this HTML comment has its `slide-content-overflow` finding downgraded to `severity: info`. The finding is still recorded (the reviser sees that the slide is dense), but `advance` is not blocked. Use this for legitimately-dense slides that have been visually validated (e.g., a deliberately busy reference grid, or a comparison table that needs all rows). Document the rationale in `speaker-notes.md` so the auditor can spot-check.
 
+### Post-render auto-shrink detector (optional extra)
+
+A companion check (`anvil/skills/deck/lib/auto_shrink_detector.py`, issue #102 / #100b) runs in `deck-review` after the source-side lint and catches the *silent* failure mode the source-side check structurally can't see: Marp's CSS `fit-to-frame` rule silently scaling a slide whose content is over-budget by a small amount, instead of clipping. The author sees no compile warning and a clean PDF; the slide just reads visibly smaller than peers.
+
+The detector renders `deck.pdf` to per-page PNGs (reusing what `deck-vision` already produces if present), computes per-page content bounding boxes via pixel-diff against the corner-sampled background, classifies each slide by `<!-- _class: ... -->` directive (default `content`), and flags any page whose bottom margin exceeds BOTH 1.5× the per-class median AND 18% of slide height (both required: the ratio catches outliers vs peers; the absolute floor prevents noise on decks where peers all happen to have small bottom margins). Singleton-class slides (typically one `title`, one `ask`) are skipped — too few peers for a meaningful median.
+
+**Dependencies (OPTIONAL extra).** The detector needs `Pillow` and `numpy`. Anvil's core ships subprocess-only (see `pyproject.toml`); these are exposed as an opt-in extra:
+
+```bash
+uv pip install -e .[auto_shrink]
+```
+
+When the extra is not installed, `deck-review` graceful-skips the auto-shrink check (mirrors the `mmdc` preflight #65 and `pdfjam` preflight #85 pattern); the rest of the review proceeds normally and the skip is recorded as an info-level lint note in `_summary.md`. The `marp_lint` source-side check above is unaffected — it has no third-party dependencies.
+
 ## Asset generation — hybrid policy
 
 Pitch decks are asset-dense. Anvil ships **deterministic asset paths only**; generative imagery is consumer-extension territory.

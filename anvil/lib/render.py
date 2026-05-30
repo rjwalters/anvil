@@ -53,6 +53,7 @@ with a message naming both options.
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import subprocess
 from pathlib import Path
@@ -260,6 +261,65 @@ def require_pdfjam() -> None:
 
 
 # ---------------------------------------------------------------------------
+# auto-shrink detector preflight (OPTIONAL — deck silent-Marp-auto-shrink lint)
+# ---------------------------------------------------------------------------
+
+# Remediation message surfaced when ``Pillow`` and/or ``numpy`` are absent and
+# the deck-review auto-shrink lint is requested. The detector lives at
+# ``anvil/skills/deck/lib/auto_shrink_detector.py`` and is OPTIONAL at the
+# framework level: ``deck-review`` graceful-skips the check when the deps are
+# missing rather than failing the whole review.
+#
+# Mirrors the #65 (mmdc) and #85 (pdfjam) preflight pattern: this module's
+# ``check_*_available`` family is the single place skills look up "is this
+# third-party tool/library installed?". The remediation string is the install
+# story to print into the skip-record so the user knows how to enable the
+# check on the next run.
+AUTO_SHRINK_REMEDIATION = (
+    "Pillow and/or numpy not importable — required only for the optional "
+    "`anvil:deck` silent-Marp-auto-shrink lint (issue #102 / #100b). "
+    "Install via the opt-in extra: `uv pip install -e .[auto_shrink]` "
+    "(or `pip install Pillow numpy`). The rest of `deck-review` proceeds "
+    "without this check; the missing-deps note is recorded as an info-level "
+    "lint entry in the review _summary.md."
+)
+
+
+def check_auto_shrink_deps_available() -> bool:
+    """Return ``True`` if both ``Pillow`` and ``numpy`` import cleanly.
+
+    Pure import-test — performs NO rendering and NO subprocess spawn. This
+    is the preflight guard the deck-review auto-shrink lint runs before
+    invoking ``auto_shrink_detector.detect_auto_shrink``. It mirrors the
+    ``check_mmdc_available`` (#65) and ``check_pdfjam_available`` (#85)
+    pattern so the deck command, the detector, and the smoke tests all
+    share one implementation.
+
+    Both libraries are OPTIONAL: ``deck-review`` graceful-skips the
+    auto-shrink lint when this returns ``False`` and emits the
+    :data:`AUTO_SHRINK_REMEDIATION` message as an info-level lint entry.
+    Callers should NOT raise on a ``False`` return — that would defeat the
+    graceful-skip contract documented in the deck-review command.
+
+    Kept import-test-only (no model loading, no PIL.Image.open call) so it
+    is unit-testable with a stubbed/monkeypatched ``importlib.util.find_spec``
+    and requires no real Pillow/numpy install at test time. ``find_spec``
+    consults the import-system finders directly (bypassing the
+    ``sys.modules`` cache), which is what we want for both production use
+    (the modules genuinely aren't installed) and for monkeypatched tests
+    (we want the stub to determine the answer, not a stale cached import).
+    """
+    for module_name in ("PIL", "numpy"):
+        try:
+            spec = importlib.util.find_spec(module_name)
+        except (ImportError, ValueError):
+            return False
+        if spec is None:
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # PDF → per-page PNGs
 # ---------------------------------------------------------------------------
 
@@ -460,10 +520,12 @@ def render_matplotlib_figures(figures_dir: Path) -> List[Path]:
 
 
 __all__ = [
+    "AUTO_SHRINK_REMEDIATION",
     "DEFAULT_MARP_CONFIG",
     "MMDC_REMEDIATION",
     "PDFJAM_REMEDIATION",
     "RenderError",
+    "check_auto_shrink_deps_available",
     "check_mmdc_available",
     "check_pdfjam_available",
     "require_mmdc",

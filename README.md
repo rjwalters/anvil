@@ -71,6 +71,14 @@ Run `./scripts/install-anvil.sh --check-deps` to see which are present on your s
 9. **Opinionated defaults, override liberally.** Anvil-shipped skills are starting points. Consumers extend them with project-specific voice, rubrics, templates, and asset generators via `.anvil/skills/<name>/`.
 10. **Skill identity = artifact identity.** One skill per standardized artifact type, not parameterized meta-skills with `--type` flags. When two skills share infrastructure (renderer, palette, scoring primitive), the sharing lives in `anvil/lib/`, not by collapsing the skills.
 
+**Optional Python extras.** Anvil's core ships subprocess-only (no Python deps). Advanced detectors that need a third-party library are exposed as opt-in extras:
+
+```bash
+uv pip install -e .[auto_shrink]   # enables the anvil:deck silent-Marp-auto-shrink lint (#102)
+```
+
+When an extra isn't installed, the corresponding check gracefully skips and the surrounding command (e.g. `deck-review`) proceeds normally with a clear remediation message in its output.
+
 ## Repository layout
 
 ```
