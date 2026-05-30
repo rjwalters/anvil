@@ -168,12 +168,12 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
 
     ## Critical flags
 
-    - **Market-math error** (raised by deck-market): TAM calculation on Slide 6 multiplies units wrong — claimed $50B but inputs yield $5B. Reviser must recompute.
+    - **Market-math error** (raised by deck-market): TAM calculation on Slide 7 multiplies units wrong — claimed $50B but inputs yield $5B. Reviser must recompute.
     - **Slide overflow (lint)** (raised by deck-review pre-flight, 2 errors): Slides 4 and 7 exceed estimated vertical capacity per the `slide-content-overflow` heuristic. See `findings.md` § Lint findings for the per-slide breakdown and suggested fixes.
 
     ## Top revision priorities
 
-    1. Fix Slide 6 TAM calculation (critical flag).
+    1. Fix Slide 7 TAM calculation (critical flag).
     2. Resolve the 2 overflow-lint errors on slides 4 and 7 (critical flag — blocks advance).
     3. Slide 11 projection — replace hockey stick with month-by-month build.
     4. Slide 8 ARR discrepancy ($420k vs brief $380k).
