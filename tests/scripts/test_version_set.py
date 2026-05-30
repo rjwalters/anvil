@@ -136,8 +136,18 @@ def test_version_check_detects_drift(tmp_path: Path) -> None:
     # Mutate ONLY pyproject.toml, leaving CLAUDE.md alone. This is the exact
     # bug scenario from issue #109 (pre-fix `check` silently passed because
     # pyproject.toml was not in VERSION_FILES).
+    #
+    # Read the current version dynamically rather than hardcoding a sentinel
+    # like 0.0.1 — that would silently start no-op'ing the moment the real
+    # files bump (caught the release PR for 0.1.0; if we hardcoded the bug
+    # would re-surface on every future bump).
+    current = _pyproject_version(pyproject)
+    drifted_version = "9.9.9"
+    assert current != drifted_version, (
+        "test invariant: drifted_version must differ from current"
+    )
     drifted = pyproject.read_text().replace(
-        'version = "0.0.1"', 'version = "0.9.9"'
+        f'version = "{current}"', f'version = "{drifted_version}"'
     )
     pyproject.write_text(drifted)
 
@@ -150,4 +160,4 @@ def test_version_check_detects_drift(tmp_path: Path) -> None:
     # mismatched file (operator-readable diagnostic).
     combined = check_result.stdout + check_result.stderr
     assert "pyproject.toml" in combined
-    assert "0.9.9" in combined
+    assert drifted_version in combined
