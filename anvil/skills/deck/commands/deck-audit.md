@@ -64,7 +64,7 @@ The auditor does **not own any rubric dimension directly** — it does not score
    - "Founder Name" — attested in BRIEF.md Team section ✓
    - Date "Series Seed · 2026-Q3" — attested in BRIEF.md frontmatter (target_close: "2026-Q3") ✓
 
-   ## Slide 6 (Market)
+   ## Slide 7 (Market)
 
    - "$5B SAM" — verified by independent recomputation: 250,000 plants × 28% addressable × $80,000 ACV = $5.6B (within rounding) ✓
    - "250,000 US plants" — BRIEF.md Market section cites NAM 2024 census; ref file `refs/nam-census-2024.pdf` page 47 confirms ✓

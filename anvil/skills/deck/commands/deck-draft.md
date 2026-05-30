@@ -37,14 +37,14 @@ For a new thread, `N+1 == 1` → output is `<thread>.1/`.
 3. **Resume check**: if `<thread>.{N+1}/_progress.json` exists with `draft.state == in_progress`, treat as a crashed prior run. Delete any partial `deck.md` and re-draft. If `draft.state == done`, the version is already drafted — exit early with a notice (idempotent; this command does not overwrite a completed draft).
 4. **Initialize `_progress.json`**: write `phases.draft.state = in_progress`, `phases.draft.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations` (inherit from `<thread>/.anvil.json` if set, else 4).
 5. **Read inputs**: load `BRIEF.md`. Enumerate `refs/` and `assets/`. Load the slide-archetype reference at `anvil/skills/deck/assets/slide-archetypes.md` for canonical slide patterns.
-6. **Plan the slide order**: standard fundraising structure (target 10–15 slides):
+6. **Plan the slide order**: standard fundraising structure (target 10–15 slides). The order below is the canonical order shipped by `templates/deck.md.j2` and `templates/speaker-notes.md.j2` and is the order the narrative critic (`deck-narrative`) grades against:
    - **Slide 1**: Title — company name, one-line tagline, founder name, date.
    - **Slide 2**: Problem — concrete, specific, evocative.
-   - **Slide 3**: Solution — plain language, one paragraph + one diagram/screenshot if asset available.
-   - **Slide 4**: Why now — what changed in the world. If brief flagged this as weak, address head-on.
-   - **Slide 5**: Product — what it actually is. Screenshot from `assets/` if available.
-   - **Slide 6**: Market — TAM/SAM/SOM with bottom-up logic. Chart in `figures/src/`.
-   - **Slide 7**: Competition — 2x2 or table. No competitor smearing.
+   - **Slide 3**: Why now — what changed in the world. Establishes the open window before the solution lands.
+   - **Slide 4**: Solution — plain language, one paragraph + one diagram/screenshot if asset available. Lands on the why-now setup.
+   - **Slide 5**: Competition — 2x2 or table. Establishes the competitive landscape so the product reveal lands as differentiated. No competitor smearing.
+   - **Slide 6**: Product — what it actually is. Screenshot from `assets/` if available.
+   - **Slide 7**: Market — TAM/SAM/SOM with bottom-up logic. Chart in `figures/src/`.
    - **Slide 8**: Traction — only numbers from the brief. No projections unless explicitly labeled.
    - **Slide 9**: Business model — unit economics if applicable; pricing.
    - **Slide 10**: Team — only people in the brief. No anonymous "advisors".

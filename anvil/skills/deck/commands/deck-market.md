@@ -66,7 +66,7 @@ Total ownership: 10/40. Other dimensions are scored by other critics and remain 
    ```markdown
    # TAM/SAM/SOM independent recomputation
 
-   ## Deck's claim (Slide 6)
+   ## Deck's claim (Slide 7)
 
    - TAM: $20B (claimed)
    - SAM: $5B (claimed)

@@ -62,7 +62,21 @@ Each archetype is described in three parts: **purpose** (why the slide exists), 
 
 ---
 
-## 5. Product
+## 5. Competition
+
+**Purpose**: Show you understand the landscape and where you sit in it. Lands ahead of the product reveal so the product reads as differentiated.
+
+**Content discipline**:
+- Either: (a) 2x2 grid with named axes and named competitors placed in quadrants, or (b) feature matrix with named competitors and named features.
+- 2–4 named competitors (not "various players" or "the incumbents").
+- Honest framing of competitor strengths. Don't smear; investors will check.
+- Your position emphasized but not exaggerated.
+
+**Failure modes**: "No direct competition" (signals you don't understand the market, OR signals the market is too small). Generic axes ("Better / Worse" — useless). Competitor positions that don't match their actual product.
+
+---
+
+## 6. Product
 
 **Purpose**: Show that the product exists; what it looks like; what stage it's at.
 
@@ -72,20 +86,6 @@ Each archetype is described in three parts: **purpose** (why the slide exists), 
 - Specific feature callouts only if directly relevant to differentiation.
 
 **Failure modes**: Generic SaaS dashboard mock-up (signals product doesn't exist). Multi-screenshot "feature tour" (loses the investor's attention). Aspirational features shown as current.
-
----
-
-## 6. Competition
-
-**Purpose**: Show you understand the landscape and where you sit in it.
-
-**Content discipline**:
-- Either: (a) 2x2 grid with named axes and named competitors placed in quadrants, or (b) feature matrix with named competitors and named features.
-- 2–4 named competitors (not "various players" or "the incumbents").
-- Honest framing of competitor strengths. Don't smear; investors will check.
-- Your position emphasized but not exaggerated.
-
-**Failure modes**: "No direct competition" (signals you don't understand the market, OR signals the market is too small). Generic axes ("Better / Worse" — useless). Competitor positions that don't match their actual product.
 
 ---
 
