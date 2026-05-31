@@ -50,6 +50,8 @@ A **deck thread** is a single pitch artifact (typically: one round, one ask) aut
 
 Versioned dirs and critic siblings are **immutable once their `_progress.json` records the relevant phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
 
+**Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks aliasing the current version (`<thread>.latest -> <thread>.{max_N}`, `<thread>.latest.review -> <thread>.{max_N}.review`, `<thread>.latest.design -> <thread>.{max_N}.design`, `<thread>.latest.audit -> <thread>.{max_N}.audit`) so downstream tooling — figure scripts pulling numbers from a peer thread via `refs/<thread>.latest/...`, share scripts pointing at "the current deck PDF", CI gates checking `<thread>.latest/deck.pdf` — can target stable paths without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped deck commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery glob (`<thread>.{N}.*/`) matches only digit-N suffixes, so a `.latest*` entry is invisible to the reviser's critic-sibling enumeration and cannot perturb anvil's state-machine derivation.
+
 ### Sibling-critic convention
 
 Deck is the **reference implementation** for the layered scorecard pattern documented in `anvil/lib/snippets/scorecard_kind.md`:

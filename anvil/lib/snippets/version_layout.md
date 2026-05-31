@@ -86,6 +86,93 @@ When an orchestrator detects a gap (e.g., `<thread>.0.outline/` exists
 but no `<thread>.1/`), the state is `OUTLINED` (or `BRIEF_DONE`, etc.,
 per the skill's state machine), not an anomaly.
 
+## Convenience `.latest` symlinks (optional consumer convention)
+
+Consumers MAY add convenience symlinks per project that alias the
+highest-N version of a thread:
+
+```
+<thread>.latest        -> <thread>.{max_N}/
+<thread>.latest.review -> <thread>.{max_N}.review/
+<thread>.latest.<tag>  -> <thread>.{max_N}.<tag>/      e.g., .latest.design, .latest.audit
+```
+
+These are **optional and consumer-maintained**. Anvil-shipped commands
+do not write, require, or read them in v0 — they exist purely to give
+human operators and downstream tooling a stable path that always
+resolves to the current version (no N-parsing required).
+
+### Discovery-glob guarantee
+
+The discovery enumeration documented in `thread_state.md` (lines 33–53)
+matches only directories whose suffix is a digit-N, optionally followed
+by an alphanumeric critic tag:
+
+| Pattern enumerated | Regex |
+|---|---|
+| `<thread>.{N}/`        | `^<slug>\.(\d+)$` |
+| `<thread>.{N}.<tag>/`  | `^<slug>\.(\d+)\.([a-zA-Z0-9-]+)$` |
+
+A `.latest` (or `.latest.review`, `.latest.design`, …) suffix is **not**
+a digit and is therefore **invisible** to the version and sibling
+enumerators — even when the symlink resolves to a real directory. The
+`enumerate_versions` / `enumerate_siblings` functions in
+`thread_state.md` return the same list whether or not `.latest`
+symlinks are present in the portfolio directory.
+
+This is the load-bearing guarantee for the convention: a consumer who
+adds `<thread>.latest -> <thread>.{max_N}` does not perturb anvil's
+state-machine derivation. The symlinks are inert from the framework's
+perspective.
+
+### Typical usage
+
+After a reviser writes `<thread>.{N+1}/`, the consumer's wrapper script
+re-points the symlink in a single atomic step:
+
+```
+ln -sfn <thread>.{N+1} <thread>.latest
+ln -sfn <thread>.{N+1}.review <thread>.latest.review   # if/when the review lands
+```
+
+Downstream tools (figure scripts cross-referencing another thread,
+share scripts pointing at "the current PDF", `pdfinfo` checks in CI)
+can then hardcode `<thread>.latest/...` and never go stale. Figure
+scripts in particular can reference other-skill artifacts via stable
+paths like `refs/<thread>.latest/...` rather than hardcoding
+`refs/<thread>.8/...`, which silently goes stale on the next revision.
+
+The studio canary consumer (2026-05-30) ships an ~80-line bash refresh
+script (`output/refresh-latest-symlinks.sh`, idempotent, dry-run-able)
+that sweeps every project dir and `ln -sfn`s the `.latest` aliases for
+every thread it finds. Anvil does **not** bundle this script — it is a
+~one-page idiom each consumer codifies to taste (in bash, Python, or
+their make/just/task runner).
+
+### Edge cases worth noting
+
+- **Git tracks symlink targets as text.** Updating
+  `memo.latest -> memo.7` to `memo.latest -> memo.8` is a one-line
+  semantic diff, which makes version bumps self-documenting in commit
+  history.
+- **`git status` shows symlinks as modified when the target changes.**
+  This is the desired behavior — the version bump is visible.
+- **Some web servers don't follow symlinks** (Apache MultiViews,
+  restrictive S3 configs). Edge case for consumers who publish
+  artifact trees over HTTP without an explicit copy step.
+- **Cross-platform**: macOS Finder and GNU/Linux `ls` follow symlinks
+  natively; Windows shells handle them via WSL or `mklink /D`.
+
+### When to promote to a `lib/` primitive
+
+Not in v0. Per the "wait for the second consumer before generalizing"
+rule (CLAUDE.md), the `.latest` refresh logic stays consumer-side
+until a second consumer requests upstream automation. If/when that
+happens, the natural shape is
+`anvil.lib.latest_symlinks.refresh(project_dir)` called from
+`memo-revise` / `deck-revise` / similar at the end of a successful
+write — but only after the convention has been observed in the wild.
+
 ## Immutability contract
 
 A directory becomes immutable once its `_progress.json` records the
