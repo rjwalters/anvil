@@ -23,6 +23,11 @@ A **deck thread** is a single pitch artifact (typically: one round, one ask) aut
   <thread>.0/                Brief-intake output (immutable once written)
     BRIEF.md                 Generated brief (if deck-brief was used to produce it)
     _progress.json
+  <thread>.0.perspective/    Optional pre-draft external-substrate sibling (read-only)
+    notes.md                 Narrative synthesis: market positioning + gaps
+    candidates.md            Structured candidates (competitors, comparables, customer evidence, regulatory) with source URLs
+    _meta.json               { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
+    _progress.json           Phase state (phase: perspective)
   <thread>.1/                First drafted version
     deck.md                  Marp markdown slide source (slide breaks via `---`)
     speaker-notes.md         Per-slide presenter notes (parallel structure to deck.md)
@@ -92,7 +97,11 @@ Per-thread state, derived from on-disk evidence (not flags):
 
 ```
 EMPTY → BRIEF_DONE → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED
+                     ↑
+                     (optional .0.perspective/ may exist before DRAFTED; it does not gate the machine)
 ```
+
+The perspective sibling is intentionally allowed at `.0.perspective/` (before the first drafted version) AND at `.{N}.perspective/` (after a reviewer or `deck-market` cross-check critic points out a market-substrate gap). Both follow the same "N parallel critics, one reviser" rule: when present at `<thread>.{N}.perspective/`, the next `deck-revise` pass consumes it alongside `.review/`, `.narrative/`, `.market/`, `.design/`, and `.audit/`. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence of a perspective sibling does NOT block draft / review / revise — a deck thread with no perspective sibling proceeds normally. The deck-skill default critic set MUST NOT list `perspective` as required; it is opt-in input, not required output. See `commands/deck-perspective.md` for the command spec.
 
 | State | Evidence |
 |---|---|
@@ -140,7 +149,8 @@ No upper bound is enforced — if an operator sets `max_iterations: 99` with a r
 |---|---|---|---|
 | `deck` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state + recommends next command per thread) |
 | `deck-brief <thread>` | intake | `<thread>/refs/**` (transcripts, websites, founder input) | `<thread>/BRIEF.md` (and/or `<thread>.0/BRIEF.md`) |
-| `deck-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs/**`, `<thread>/assets/**`; for revisions, also latest `<thread>.{N}/` + all `<thread>.{N}.*/` siblings (revise path is preferred via `deck-revise`) | `<thread>.{N+1}/deck.md` + `speaker-notes.md` + `figures/` + `_progress.json` |
+| `deck-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/deck.md` and `.review/` / `.market/` market-substrate findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating |
+| `deck-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs/**`, `<thread>/assets/**`, AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also latest `<thread>.{N}/` + all `<thread>.{N}.*/` siblings (revise path is preferred via `deck-revise`) | `<thread>.{N+1}/deck.md` + `speaker-notes.md` + `figures/` + `_progress.json` |
 | `deck-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (uniform critic schema; also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
 | `deck-narrative <thread>` | narrative critic | latest `<thread>.{N}/deck.md` (full read, in order) | `<thread>.{N}.narrative/` (owns dims 1, 7) |
 | `deck-market <thread>` | market critic | latest `<thread>.{N}/deck.md` + market exhibits + any `figures/src/*.csv` | `<thread>.{N}.market/` (owns dims 3, 4) |
