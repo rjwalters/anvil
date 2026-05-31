@@ -33,6 +33,11 @@ def thread_state(portfolio_dir, slug, skill_state_table):
 def enumerate_versions(portfolio_dir, slug):
     """Return sorted list of integers N where <slug>.{N}/ exists."""
     pattern = re.compile(rf"^{re.escape(slug)}\.(\d+)$")
+    # The `\d+` anchor intentionally excludes consumer-maintained
+    # `<slug>.latest` symlinks (see version_layout.md, "Convenience
+    # .latest symlinks") — `.latest` is not a digit, so the symlink
+    # is invisible to this enumerator even when it resolves to a real
+    # versioned directory.
     versions = []
     for entry in os.listdir(portfolio_dir):
         m = pattern.match(entry)
@@ -44,6 +49,10 @@ def enumerate_versions(portfolio_dir, slug):
 def enumerate_siblings(portfolio_dir, slug):
     """Return {(N, tag): path} for every <slug>.{N}.<tag>/ dir."""
     pattern = re.compile(rf"^{re.escape(slug)}\.(\d+)\.([a-zA-Z0-9-]+)$")
+    # Same `\d+` exclusion as enumerate_versions: a consumer-maintained
+    # `<slug>.latest.<tag>` symlink (e.g., `.latest.review`,
+    # `.latest.design`) does not match this pattern and is therefore
+    # inert from the framework's perspective.
     siblings = {}
     for entry in os.listdir(portfolio_dir):
         m = pattern.match(entry)
