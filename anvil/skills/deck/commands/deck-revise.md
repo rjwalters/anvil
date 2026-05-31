@@ -72,9 +72,15 @@ For the decision:
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` AND at least `<thread>.{N}.review/verdict.md`. If no review exists, exit: `no review to revise against; run deck-review first`.
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` AND `deck.md` + `_revision-log.md` exist, exit (idempotent).
-3. **Iteration cap check**: read `metadata.max_iterations` from `<thread>.{N}/_progress.json` (or `<thread>/.anvil.json` override; default 4). If `N + 1 > max_iterations`, exit with `BLOCKED` notice — human review required.
+3. **Iteration cap check**: resolve the effective cap via the **paired-override validation** documented in `SKILL.md` §"State machine" → "Per-thread override contract":
+   - Read `<thread>/.anvil.json` (graceful-degradation via `_read_anvil_json`; missing/malformed → `{}`).
+   - If `.anvil.json` has both `max_iterations` (int `>= 4`) AND a non-empty `iteration_cap_rationale` (string, non-whitespace) → use the override value; record both fields into `<thread>.{N+1}/_progress.json.metadata`.
+   - If `.anvil.json` has `max_iterations` set without a valid `iteration_cap_rationale`, OR `max_iterations < 4` → fall back to default (4); record `metadata.max_iterations = 4`, `metadata.iteration_cap_rationale = null`; surface the validation warning in the BLOCKED notice if the cap is hit on this iteration.
+   - If `.anvil.json` is absent or has neither key → fall back to `metadata.max_iterations` from `<thread>.{N}/_progress.json` (typically 4); `metadata.iteration_cap_rationale = null`.
+
+   If `N + 1 > effective_max_iterations`, exit with the `BLOCKED` notice per step "BLOCKED notice" below — human review required.
 4. **Aggregate verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` AND no critical flags AND no `[blocker]`/`[major]` findings remain across any critic sibling → thread is already `READY`, exit with notice. (Operator can force-run by deleting the verdict or bumping iteration manually.)
-5. **Initialize `_progress.json`** for `<thread>.{N+1}/`: `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations`, `metadata.revised_from = N`.
+5. **Initialize `_progress.json`** for `<thread>.{N+1}/`: `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations` (effective cap from step 3), `metadata.iteration_cap_rationale` (carried from step 3 — non-null when a valid override is in effect, `null` otherwise), `metadata.revised_from = N`.
 6. **Run discover-glob → aggregate**:
    - Enumerate `<thread>.{N}.*/` directories.
    - Parse each `_summary.md` and `findings.md`.
@@ -176,7 +182,17 @@ After this command produces `<thread>.{N+1}/`, the orchestrator should:
 
 The cycle continues until:
 - Aggregated `verdict.md` reports `advance: true` (thread reaches `READY`), OR
-- `N+1 > max_iterations` (thread is `BLOCKED` for human review).
+- `N+1 > max_iterations` (thread is `BLOCKED` for human review — see the BLOCKED notice contract below).
+
+### BLOCKED notice
+
+When step 3's iteration cap check fires (`N + 1 > effective_max_iterations`), the reviser exits without writing `<thread>.{N+1}/` and prints a BLOCKED notice to stdout. The notice MUST include the discoverability pointer at the **moment the operator needs it** — the canary friction was "I didn't know the override existed at PARK time." Required lines:
+
+1. **State line**: `BLOCKED — <thread>.{N} hit the iteration cap (max_iterations=<N>). Human review required.`
+2. **Trajectory line** (when verdict data is available): brief summary of per-iteration totals and the latest critical-flag state, e.g. `Trajectory: v1=27/40, v2=29/40, v3=31/40, v4=34/40 (advance=false, 0 critical); gap to advance threshold ≥35.` This frames the operator's decision: well-conditioned (monotonic improvement, named small gap) → consider override; ill-conditioned (oscillating, persistent critical flag) → the cap is doing its job, take it to the founder.
+3. **Override pointer** (REQUIRED when no override is currently set, i.e. `metadata.iteration_cap_rationale == null`): `Override available — see anvil/skills/deck/SKILL.md §State machine ("Per-thread override contract"). Required keys in <thread>/.anvil.json: max_iterations (int ≥ 4) AND iteration_cap_rationale (non-empty string explaining why this thread deserves more passes). Without both keys the override silently falls back to the default cap of 4.`
+4. **Override-already-set surfacing** (when `metadata.iteration_cap_rationale != null`): print the rationale (full text, not truncated) so the operator sees the audit trail of *why* this thread was elevated and is hitting the elevated cap. Follow with: `This thread is already at its elevated cap. Raising further requires re-evaluating the rationale; see SKILL.md §State machine.`
+5. **Malformed-override warning** (when `<thread>/.anvil.json` declares `max_iterations` but the validation in step 3 fell back to default 4): print the warning line, e.g. `WARNING: <thread>/.anvil.json declares max_iterations=6 but iteration_cap_rationale is missing/empty — the override was ignored and the default cap of 4 applied. Add a non-empty iteration_cap_rationale to activate the override.`
 
 ## Idempotence and resumability
 
@@ -204,10 +220,13 @@ The cycle continues until:
   "metadata": {
     "iteration": <N+1>,
     "max_iterations": 4,
+    "iteration_cap_rationale": null,
     "revised_from": <N>
   }
 }
 ```
+
+When the per-thread override (`<thread>/.anvil.json`) is valid, `metadata.max_iterations` carries the elevated value and `metadata.iteration_cap_rationale` carries the operator-supplied justification string. When the override is absent or malformed (fell back to default), `iteration_cap_rationale` is `null`.
 
 
 **Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.
