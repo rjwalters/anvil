@@ -68,6 +68,20 @@ Anvil-specific scope
   words). Severity is ``warning`` (the check is a heuristic for *likely*
   overflow; the upstream-derived ``slide-content-overflow`` rule remains
   the authoritative hard-fail capacity check).
+- The ``inline-display-style-dropped`` rule is **Anvil-original** (no
+  marp-vscode upstream). It detects inline ``style="...display:(grid|flex|
+  inline-grid|inline-flex)..."`` attributes in the deck markdown source.
+  Marp renders slide content into a ``<foreignObject>`` element inside an
+  SVG and rasterizes via Chromium for the canonical ``--pdf`` output;
+  through that path, inline ``display:`` rules are silently dropped — the
+  slide compiles cleanly but multi-column layouts flatten to single-column
+  stacked output (verified by studio's ikebot.3 canary, 2026-05-30; see
+  issue #128). The reliable workaround is a frontmatter ``style: |`` block
+  defining a CSS class, then ``<div class="...">`` in the slide body —
+  class-based selectors apply via the global stylesheet, which the
+  foreignObject path does honor. Severity is ``warning`` (the static check
+  catches the source pattern but cannot verify the PDF render; the
+  ``deck-vision`` VLM critic is authoritative on actual rendered layout).
 
 Public API
 ----------
@@ -97,10 +111,13 @@ UPSTREAM_SHA: str = "3b8617431867b68f4241c453ae2c7601a4298aa8"
 #: List of rules implemented in this module. ``slide-content-overflow`` is
 #: ported from marp-vscode (see ``UPSTREAM_SHA``); ``figure-italic-supporting-
 #: line-too-long`` is Anvil-original (derived from #100 / #101 / canary
-#: regressions — see module docstring "Anvil-specific scope").
+#: regressions — see module docstring "Anvil-specific scope"). The
+#: ``inline-display-style-dropped`` rule is also Anvil-original (derived
+#: from issue #128 / studio's ikebot.3 canary — see module docstring).
 PORTED_RULES: tuple[str, ...] = (
     "slide-content-overflow",
     "figure-italic-supporting-line-too-long",
+    "inline-display-style-dropped",
 )
 
 
@@ -407,6 +424,22 @@ _FULL_LINE_ITALIC_RE = re.compile(
     r"^\s*[_*]([^_*][^_*\n]*?)[_*]\s*$"
 )
 
+
+# Detect inline ``style="...display:(grid|flex|inline-grid|inline-flex)..."``
+# (and the single-quoted variant). Used by the
+# ``inline-display-style-dropped`` rule. The pattern accepts optional
+# whitespace around the ``:`` and is case-insensitive so it catches
+# ``DISPLAY:Grid`` etc. The value is captured for the diagnostic message.
+_INLINE_DISPLAY_STYLE_DQ_RE = re.compile(
+    r"""style\s*=\s*"[^"]*?display\s*:\s*(?P<value>inline-grid|inline-flex|grid|flex)\b[^"]*"
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_INLINE_DISPLAY_STYLE_SQ_RE = re.compile(
+    r"""style\s*=\s*'[^']*?display\s*:\s*(?P<value>inline-grid|inline-flex|grid|flex)\b[^']*'
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 _FENCED_OPEN_RE = re.compile(r"^\s*(```|~~~)")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -760,6 +793,84 @@ def _check_italic_supporting_lines(
     return findings
 
 
+# inline-display-style-dropped check ------------------------------------------
+
+
+def _check_inline_display_styles(
+    slide: _Slide, suppressed: bool
+) -> list[Finding]:
+    """Detect inline ``style="...display:(grid|flex|...)..."`` attributes.
+
+    Marp renders slide content into a ``<foreignObject>`` element inside an
+    SVG and rasterizes via Chromium for ``--pdf`` output. Inline
+    ``display: grid`` / ``display: flex`` rules are silently dropped through
+    that path — the slide compiles cleanly but the layout flattens to a
+    single column in the rendered PDF (verified, issue #128). The reliable
+    workaround is a frontmatter ``style: |`` block defining a CSS class,
+    referenced from ``<div class="...">`` in the slide body.
+
+    The check is a simple regex scan over the slide body line-by-line; one
+    finding is emitted per matching line. Fenced code blocks are excluded
+    (a ``style="display:grid"`` inside a markdown code fence is documentation,
+    not a render bug).
+
+    Suppressed findings downgrade to ``info`` (same protocol as the other
+    Anvil-original rules).
+    """
+    findings: list[Finding] = []
+    body_lines = slide.body.splitlines()
+    n = len(body_lines)
+    i = 0
+    in_fence = False
+    fence_open_line = ""
+
+    while i < n:
+        line = body_lines[i]
+        stripped = line.strip()
+
+        # Track fenced code blocks (don't flag inline styles inside them).
+        if not in_fence and _FENCED_OPEN_RE.match(line):
+            in_fence = True
+            fence_open_line = stripped[:3]
+            i += 1
+            continue
+        if in_fence:
+            if stripped.startswith(fence_open_line):
+                in_fence = False
+            i += 1
+            continue
+
+        # Try double-quoted then single-quoted.
+        m = _INLINE_DISPLAY_STYLE_DQ_RE.search(line)
+        if not m:
+            m = _INLINE_DISPLAY_STYLE_SQ_RE.search(line)
+        if m:
+            value = m.group("value").lower()
+            message = (
+                f"Inline `style=\"...display:{value}...\"` is silently "
+                "dropped by Marp's foreignObject SVG render path — the "
+                "slide will compile cleanly but flatten to single-column "
+                "stacked output in the PDF (issue #128). Move the rule "
+                "into the deck frontmatter `style: |` block as a CSS class "
+                "and apply it via `<div class=\"...\">`; class-based "
+                "selectors are honored through the foreignObject path. "
+                "See `marp-renderer.md` \"Layout patterns\" for the "
+                "worked example."
+            )
+            findings.append(
+                Finding(
+                    slide=slide.index,
+                    line=slide.start_line + i,
+                    rule="inline-display-style-dropped",
+                    severity="info" if suppressed else "warning",
+                    message=message,
+                )
+            )
+        i += 1
+
+    return findings
+
+
 # Public API -------------------------------------------------------------------
 
 
@@ -777,7 +888,8 @@ def lint_source(
     result = LintResult()
     run_overflow = "slide-content-overflow" in rules
     run_italic = "figure-italic-supporting-line-too-long" in rules
-    if not (run_overflow or run_italic):
+    run_inline_display = "inline-display-style-dropped" in rules
+    if not (run_overflow or run_italic or run_inline_display):
         return result
 
     slides = _split_slides(source)
@@ -796,6 +908,19 @@ def lint_source(
             for finding in _check_italic_supporting_lines(
                 slide, geo, italic_suppressed
             ):
+                if finding.severity == "info":
+                    result.infos.append(finding)
+                else:
+                    result.warnings.append(finding)
+
+        # --- inline-display-style-dropped --------------------------------
+        # Pure regex scan; independent of the capacity model. Suppressed
+        # findings downgrade to ``info``.
+        if run_inline_display:
+            inline_suppressed = (
+                "inline-display-style-dropped" in disabled_rules
+            )
+            for finding in _check_inline_display_styles(slide, inline_suppressed):
                 if finding.severity == "info":
                     result.infos.append(finding)
                 else:
