@@ -6,7 +6,7 @@ description: Market/TAM-credibility critic for the deck skill. Verifies TAM/SAM/
 # deck-market — Market / competitor critic
 
 **Role**: market and competitor critic.
-**Reads**: latest `<thread>.{N}/deck.md` (market and competition slides + any supporting figures and `figures/src/*.csv`); `<thread>/BRIEF.md`.
+**Reads**: latest `<thread>.{N}/deck.md` (market and competition slides + any supporting figures and `figures/src/*.csv`); `<thread>/BRIEF.md`; optional `<thread>.{M}.perspective/candidates.md` for `M ≤ N` (the latest perspective sibling at or before the current version — see `anvil/lib/snippets/perspective.md`; gracefully absent on threads that have never run `deck-perspective`).
 **Writes**: `<thread>.{N}.market/` with `_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`.
 
 This critic verifies the market case the deck makes. It computes TAM/SAM/SOM arithmetic, checks bottom-up vs top-down framing, and evaluates competitor positioning. Market-math errors and top-down-only sizing are high-frequency disqualifiers at investor diligence; this critic catches them before send.
@@ -24,6 +24,7 @@ Total ownership: 10/40. Other dimensions are scored by other critics and remain 
 - **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
 - **Brief**: `<thread>/BRIEF.md` (sections "Market" and "Competition" specifically; other sections for grounding).
 - **Source data**: `<thread>.{N}/figures/src/*.csv` (if market sizing uses a chart, the source data lives here).
+- **Optional perspective sibling**: `<thread>.{M}.perspective/candidates.md` for the highest `M ≤ N` (per `anvil/lib/snippets/perspective.md`). If present, widens the competitor cross-check substrate beyond the brief. Gracefully absent on threads with no perspective sibling — no error, no finding. See step 5 "Cross-check against perspective candidates" for the discovery rule.
 - **Optional override**: `.anvil/skills/deck/rubric.overrides.md`.
 
 ## Outputs
@@ -58,10 +59,58 @@ Total ownership: 10/40. Other dimensions are scored by other critics and remain 
    - **Named competitors**: are competitors named specifically (not "legacy players" or "various startups")? Generic competition framing is a credit-reducer.
    - **Moat language**: is differentiation explained by mechanism (network effects, switching costs, regulatory moat, technology lead, distribution lock-in) or by adjective ("faster", "cheaper", "better")? Mechanism > adjective.
    - **Incumbent risk**: does the deck address how it survives an incumbent decision to enter? Most decks omit this; flag absence as a minor finding rather than score deduction unless the incumbent risk is the obvious objection.
-   - **Cross-check against brief**: every named competitor on the slide should appear in the brief's competition section. Competitors named only on the slide → flag (drafter may have invented them).
+   - **Cross-check named competitors against brief and perspective**: every named competitor on the slide should appear in the brief's competition section. If a **perspective sibling** is present at `<thread>.{N}.perspective/candidates.md` (per `anvil/lib/snippets/perspective.md`), the cross-check expands to the union of brief-named entities AND perspective candidates. Competitors named only on the slide — appearing in neither the brief nor (when present) the perspective candidates — surface as the **"unmatched competitor" finding** (severity: warning; see "Cross-check against perspective candidates" below). This warning is the evidentiary base for the **Fabricated competitive claims** critical flag (step 6): a critic that finds an unmatched competitor SHOULD also consider whether the deck makes verifiable factual claims about that competitor (named customers, disclosed revenue, specific product features) — if so, escalate to the critical flag.
+
+   ### Cross-check against perspective candidates
+
+   **Behavior when perspective sibling is present.** If `<thread>.{N}.perspective/candidates.md` exists (the perspective candidate list documented in `anvil/lib/snippets/perspective.md`), deck-market loads the candidate list and uses it to widen the cross-check substrate beyond the brief. The reference set becomes:
+
+   ```
+   reference_set = (entities named in BRIEF.md "Competition" section)
+                 ∪ (named entities in <thread>.{N}.perspective/candidates.md)
+   ```
+
+   For each named competitor in the deck's competition slide(s), check whether the name (case-insensitively, allowing common shorthand variants like "UiPath" vs "UI Path") appears in the `reference_set`. If a competitor name appears in NEITHER set, emit the unmatched-competitor finding.
+
+   **Behavior when perspective sibling is absent — graceful skip.** If no `<thread>.{N}.perspective/candidates.md` (or any older `<thread>.{M}.perspective/candidates.md` for `M ≤ N`) is on disk, deck-market gracefully skips the perspective half of the cross-check. The brief-only cross-check still runs unchanged — this is the v0 behavior preserved for backwards compatibility. **The absence of a perspective sibling is NEVER an error**: perspective is a non-gating, opt-in input (per `anvil/lib/snippets/perspective.md` "State-machine non-gating"). deck-market silently proceeds without surfacing the absence as a finding. Decks running on threads that have never run `deck-perspective` see no behavioral change from this cross-check beyond the pre-existing brief-only path.
+
+   **Discovery rule for the perspective sibling.** Walk back from the current version `N` to find the latest perspective sibling at or before `N`:
+
+   1. If `<thread>.{N}.perspective/candidates.md` exists, use it.
+   2. Else, walk back through `<thread>.{N-1}.perspective/`, `<thread>.{N-2}.perspective/`, …, `<thread>.0.perspective/` and use the highest `M ≤ N` whose `candidates.md` exists.
+   3. If none exist, perspective cross-check is skipped (graceful — no error, no finding).
+
+   This mirrors the standard sibling re-run pattern from `version_layout.md` — the latest perspective sibling at or before the current version is the canonical substrate; nothing aggregates across perspective re-runs.
+
+   **New finding type — "unmatched competitor"**:
+
+   - **Trigger**: a competitor name appears in `deck.md`'s competition slide(s) but appears in neither the brief's Competition section nor the perspective candidates (when present).
+   - **Severity**: **warning** (not critical). The standing critical flag is **Fabricated competitive claims** in step 6 — that flag fires when the deck makes a substantive factual claim about a competitor (named customer wins, disclosed metrics, product specifics) that lacks brief or perspective attestation. The unmatched-competitor warning is the **evidentiary base** that makes the critical flag triggerable: when a name appears without any external substrate, the critic should examine the surrounding claim language and decide whether to escalate.
+   - **Suggested fix**: either add the competitor to the brief / re-run `deck-perspective` to capture it, or remove the name from the deck if it was speculatively introduced.
+
+   Example finding entry for `findings.md`:
+
+   ```markdown
+   ### [WARNING] Unmatched competitor: "Acme Robotics"
+
+   - **Slide**: Slide 9 — Competition
+   - **Rationale**: "Acme Robotics" appears in the competition 2x2 (lower-left
+     quadrant: "legacy / on-prem") but does not appear in BRIEF.md's
+     Competition section, and acme-seed.1.perspective/candidates.md does not
+     list it among the named competitor candidates. The drafter may have
+     introduced this name speculatively.
+   - **Severity**: warning (evidentiary base — escalate to "Fabricated
+     competitive claims" critical flag if the deck makes verifiable factual
+     claims about Acme Robotics such as named customers or disclosed
+     revenue).
+   - **Suggested fix**: either (a) add "Acme Robotics" to the brief's
+     Competition section with a source pointer and re-run deck-market, (b)
+     re-run deck-perspective to capture the candidate, or (c) remove the
+     name from the deck if it was speculative.
+   ```
 6. **Identify critical flags**:
    - **Market-math error**: as above (recomputation diverges >10% OR top-down-only sizing presented as defensible).
-   - **Fabricated competitive claims**: if the deck names a customer of a competitor (e.g., "We won three accounts from Competitor X") and that claim isn't attested in the brief, flag.
+   - **Fabricated competitive claims**: if the deck names a customer of a competitor (e.g., "We won three accounts from Competitor X") and that claim isn't attested in the brief OR in the perspective sibling's `candidates.md` (when present), flag. An unmatched-competitor warning (from step 5's cross-check) accompanied by a verifiable factual claim about that competitor is the canonical trigger pattern; without perspective substrate, the brief is the only attestation source and the same logic applies. See "Cross-check against perspective candidates" in step 5 for the substrate-discovery rule.
 7. **Write `tam-recompute.md`** (optional but recommended):
    ```markdown
    # TAM/SAM/SOM independent recomputation
@@ -131,7 +180,7 @@ Standard.
 - **Always recompute, never trust.** If the deck says "$20B TAM" do the multiplication yourself from the cited inputs. A math error in front of a sophisticated investor is a deal-killer.
 - **Top-down is a flag, not a discussion.** "$300B market × 1%" is the most common form of pitch-deck market sizing, and it is the form most investors discount to zero. Score it accordingly.
 - **Generic competitor framing is a credit-reducer.** "We're faster than legacy players" tells the investor nothing. "We're 10x cheaper than UiPath and 3x faster than Workato because our orchestrator is event-driven not poll-based" is specific.
-- **Cross-check named competitors against the brief.** If the deck names a competitor not in the brief, that competitor may have been invented — surface as a finding.
+- **Cross-check named competitors against the brief AND the perspective sibling.** If the deck names a competitor that appears in neither the brief nor the perspective sibling's `candidates.md` (when present), that competitor may have been invented — surface as the "unmatched competitor" warning (severity: warning, NOT critical by default). The Fabricated competitive claims **critical** flag fires only when the deck also makes a substantive factual claim (named customer win, disclosed metric, product specifics) about an unmatched competitor. The unmatched-competitor warning is the evidentiary base; the critical flag is the escalation. Perspective is gracefully absent on threads that have never run `deck-perspective` — fall back to brief-only cross-check in that case (no error, no finding about the absence).
 - **Don't critique narrative, problem, traction, team, ask, or design here.** Other critics own those.
 
 
