@@ -40,6 +40,8 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
 
 Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
 
+**Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped memo commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery globs above match only digit-N suffixes, so a `.latest` symlink is invisible to the state-machine enumeration and cannot perturb anvil's derivation logic.
+
 ## State machine
 
 Per-thread state, derived from on-disk evidence (not flags):

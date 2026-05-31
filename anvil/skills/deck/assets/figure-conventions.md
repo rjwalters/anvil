@@ -263,6 +263,31 @@ script should refuse rather than generate placeholder numbers — a fabricated
 chart in a fundraising deck is the easiest critical flag to trigger in the audit.
 Extract real numbers from the brief into a CSV first; do not inline made-up data.
 
+### Cross-thread references — prefer `.latest` symlinks when the convention is in play
+
+A figure script that pulls a number from a peer thread (e.g., a deck chart
+referencing the latest investor memo's headline number, or a comparison
+chart sourcing data from a sibling pub's tables) SHOULD reference the peer
+through the optional `<thread>.latest` symlink convention rather than
+hardcoding a version number:
+
+```python
+# Prefer this — stable across revisions of the peer thread:
+SRC_PEER = Path("refs") / "bessemer.latest" / "exhibits" / "headline.csv"
+
+# Avoid this — silently goes stale the next time `bessemer` is revised:
+SRC_PEER = Path("refs") / "bessemer.8" / "exhibits" / "headline.csv"
+```
+
+The convention is documented in `anvil/lib/snippets/version_layout.md`
+("Convenience `.latest` symlinks"). The convention is consumer-maintained
+and opt-in; if the consumer has not added `.latest` symlinks to their
+project, fall back to the explicit `<thread>.{N}/` path and bump it on
+the next revision of the referencing chart. Do not have the chart script
+itself try to resolve "latest N" — that is the symlink's job, and
+duplicating the logic in chart code is what creates the staleness
+the convention exists to avoid.
+
 ## 6. Canonical script template
 
 A single minimal script demonstrating all of the above — the `apply()` shared
