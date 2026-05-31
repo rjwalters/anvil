@@ -156,4 +156,4 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 
 - `voice.md` (optional) — Author or fund voice/style guidance the drafter reads in addition to its base prompt.
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any-deal-breaker" instruction.
-- `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted.
+- Reference brief shapes: `templates/BRIEF.fresh.md.example` (new-thread case — no prior version, no migration context, idea seed only) and `templates/BRIEF.migration.md.example` (migrate-from-prior-pipeline case — carries forward a prior version body, prior critic siblings, and a named delta to land). Both are freeform prose with optional YAML frontmatter. Copy whichever shape matches the thread state into `<thread>/BRIEF.md` and edit in place.
