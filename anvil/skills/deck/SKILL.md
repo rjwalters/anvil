@@ -114,7 +114,25 @@ EMPTY → BRIEF_DONE → DRAFTED → REVIEWED → REVISED → … → READY → 
   3. **Market-math error** — TAM/SAM/SOM arithmetic that does not check out, OR top-down-only sizing presented as defensible.
   4. **Absent ask** — no specific round size, no use-of-funds breakdown, no runway-to-milestone framing.
 
-Iteration cap: default `max_iterations: 4` (terminal version is `<thread>.5/`). Configurable per-thread via `<thread>/.anvil.json` (`{ "max_iterations": <N> }`). Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+Iteration cap: default `max_iterations: 4` (terminal version is `<thread>.5/`). Configurable per-thread via `<thread>/.anvil.json`. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+
+**Per-thread override contract.** The cap exists for principled reasons — prevent infinite revision loops, force the operator to confront foundational thesis problems instead of polishing forever — so the override is deliberately friction-ful: it requires a paired rationale that documents *why* this thread deserves more passes. The canonical `.anvil.json` shape:
+
+```json
+{
+  "max_iterations": 6,
+  "iteration_cap_rationale": "Well-conditioned thread: trajectory v1→v4 monotonically improving (27→29→31→34), first 0-critical at v4, named 1-pt gap is founder-follow-up bottleneck not deck-side polish. One extra pass to land Sphere Semiconductor outcome detail."
+}
+```
+
+Validation contract (mirrors the `target_length` precedent in `anvil/lib/rubric.py::_read_anvil_json`):
+
+- `max_iterations` set with a non-empty `iteration_cap_rationale` → honor the override.
+- `max_iterations` set WITHOUT `iteration_cap_rationale` (or with an empty/whitespace-only rationale) → **treat as malformed**, fall back to the default `max_iterations: 4`, and surface a one-line warning in the drafter status output and the reviser's BLOCKED notice. The rationale is what makes the override principled; an unjustified override silently degrades to the default.
+- `max_iterations < 4` (with or without rationale) → malformed, fall back to default 4. The override may not lower the cap below the principled default; only raise it.
+- Missing `.anvil.json`, malformed JSON, or missing both keys → default behavior (cap 4, no rationale). Parse errors are tolerated, never fatal — consistent with `_read_anvil_json` graceful-degradation.
+
+No upper bound is enforced — if an operator sets `max_iterations: 99` with a rationale, the rationale itself is the audit trail. Per-version overrides (e.g., `max_iterations.overrides.v{N}`) are intentionally not supported in v0; mirrors the deferred-per-version pattern from #121 (`target_length`).
 
 ## Command dispatch
 
@@ -250,10 +268,13 @@ Each `<thread>.{N}/` (and each critic sibling) contains `_progress.json` recordi
   },
   "metadata": {
     "iteration": 1,
-    "max_iterations": 4
+    "max_iterations": 4,
+    "iteration_cap_rationale": null
   }
 }
 ```
+
+When the per-thread override (`<thread>/.anvil.json`) sets a valid `max_iterations` + `iteration_cap_rationale` pair, the drafter (and every subsequent revise) carries both fields into `metadata` so the audit trail lives in each version dir alongside the effective cap. When the override is absent (or malformed → fell back to default), `iteration_cap_rationale` is `null` and the operator can read the version dir's `_progress.json` to confirm "this thread is on the default cap."
 
 Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `deck.md` exist? does the referenced PNG exist?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
