@@ -29,6 +29,18 @@ Suggested calibration:
 - **~25% of weight** — present but inadequate; major rework needed.
 - **0** — absent or actively misleading.
 
+## Citation hooks (dim 3)
+
+Per the `memo-draft` *Evidence* contract, every **named author-year citation** and every **load-bearing quantitative claim** (dollar amounts, percentages, dates, multipliers anchoring an argument) should carry one of three hooks: (a) an inline footnote naming the source, (b) a `<thread>/refs/<key>.md` stub (which MAY be as minimal as `# TODO: source for <claim>`), or (c) an explicit in-prose hedge ("reportedly", "estimated", "roughly", "~"). The reviewer applies a **per-instance deduction** on dim 3 *Evidence quality* for unhooked load-bearing claims.
+
+- **One or two missing hooks** — single-point deduction.
+- **Pervasive absence** — multiple anchor numbers across multiple sections with no `refs/` stubs, footnotes, or in-prose hedges — two-point deduction.
+- **Hedged estimates** ("Hoffman ~$5.4K, rough order") — NOT deducted. The hedge itself is the contract.
+
+The dim 3 justification MUST cite the specific missing hooks (e.g., "Unsourced: 'Levenson et al., 2006', Hoffman price-anchor table, Apple PCC dates — no refs/ stubs, no footnotes, no hedge — -2"). Vague "needs more sources" deductions without named instances are not actionable for the reviser and SHOULD be avoided.
+
+The deduction is applied entirely via reviewer judgment reading this prose against the memo — there is no automated `refs/` enforcement in v0. The contract exists to give both drafter and reviewer a shared, named standard to score against.
+
 ## Length targets (dim 7)
 
 When `<thread>/.anvil.json` declares a `target_length` (see `SKILL.md` §Length targets), dim 7 *Scope discipline* compares the produced memo's word count against the declared range rather than judging length against an implicit default.
