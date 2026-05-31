@@ -4,6 +4,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-05-31
+
+- **Issue #147** (Epic #142 / Phase A): added the narrow `_convictions.md` advisory contract to `anvil:memo`. The reviser writes settled convictions after the changelog step; the next reviser reads them before re-litigating positions that have already survived an explicit critic challenge or an explicit reviser decision. Each conviction MUST name a body anchor (section heading or paragraph) in the current `memo.md` — a conviction whose anchor no longer exists is automatically stale. Advisory only: not scored, not gating, no state-machine impact; the reviewer does not read it. Touched four files: `anvil/skills/memo/SKILL.md` (version-dir diagram + new §Convictions ledger subsection), `anvil/skills/memo/commands/memo-revise.md` (steps 7.5 read + 9.5 write), `anvil/skills/memo/templates/BRIEF.migration.md.example` (shape demonstration), plus this WORK_LOG entry. No `anvil/lib/` extraction (Phase D), no other skills modified (Phase C), no rubric changes (separate concern per architect proposal #142).
+  - **Phase B kill switch**: if the canary does not consume `_convictions.md` within 2–4 weeks of this PR's merge, close this work entirely — delete the addition from all four touched files and document the negative result here per the PR #40 / PR #72 precedent. The single named consumer is the *next reviser at the next version*; if that consumer never reads the file, the contract has no audience. The architect's risk mitigation is exactly this falsifiability (single named consumer + bounded observation window), and the body-anchor requirement is the safeguard that keeps the ledger tied to the current artifact rather than drifting into general project memory.
+
 ### 2026-05-30
 
 - **PR #105**: feat(deck): silent Marp auto-shrink detector + Anvil's first `pyproject.toml` (closes #102)

@@ -24,6 +24,8 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
     exhibits/              Inline exhibits referenced from body
     _progress.json         Phase state for this version
     changelog.md           (revisions only) Maps prior critic notes to changes
+    _convictions.md        (revisions only, optional) Reviser-written carry-forward
+                           positions — advisory only; see §Convictions ledger below
   <thread>.1.review/       Reviewer output for version 1 (read-only)
     verdict.md             Top-level decision (advance / block) + total /40
     scoring.md             Per-dimension scores against the memo rubric
@@ -47,6 +49,22 @@ The drafter is permitted (and per `memo-draft` step 6 *Evidence* sometimes requi
 These stubs are author scratchpad — not exhibits — and live at the **thread level** (`<thread>/refs/`, not under any `<thread>.{N}/` version dir) so they survive version transitions and accumulate as research lands across revisions. The reviewer reads them only to verify their existence as evidence of the citation-hook contract being honored; their content is not scored.
 
 See `commands/memo-draft.md` §Procedure step 6 for the drafter contract and `rubric.md` §"Citation hooks (dim 3)" for the reviewer-side deduction rule.
+
+### Convictions ledger
+
+`<thread>.{N}/_convictions.md` is an **optional, advisory** file written by the reviser to carry settled positions forward across versions. It exists to solve a single observed friction: a reviser at version `N+1` re-litigating an issue that was already settled — by a critic challenge or by a prior reviser decision — at version `N` (or earlier).
+
+The contract is narrowly scoped on purpose:
+
+- **Writer**: `memo-revise` only. Written immediately after the `changelog.md` step in the reviser procedure. The drafter does not write it; reviewers do not write it; auditors do not write it.
+- **Reader**: the *next* `memo-revise` invocation only. The reviser reads the convictions from `<thread>.{N}/_convictions.md` before planning the v{N+2} revision — specifically to avoid reopening positions that have already survived an explicit critic challenge or an explicit reviser decision.
+- **What counts as a "conviction"**: a position that has either (a) survived an explicit critic challenge in a prior review/audit pass, or (b) survived an explicit reviser decision (e.g., a `Resolution: declined` row in a prior `changelog.md`). A drafter-introduced position with no prior challenge is **not** a conviction in this contract — only contested-and-held positions qualify.
+- **Body-anchor requirement**: each conviction entry MUST name a specific section heading or paragraph anchor in the current `memo.md` that the conviction attaches to (e.g., "§Risks ¶3" or "§Recommendation ¶1"). A conviction whose named anchor no longer exists in the latest `memo.md` is automatically **stale** and should be removed (or rewritten against the new structure) on the next revise pass. This anchor requirement is the load-bearing safeguard against the ledger drifting free of the artifact it is supposed to describe.
+- **Schema**: free-form prose. No JSON, no required headings, no scored fields. A single conviction entry is typically one short paragraph (anchor + position + the prior challenge it survived). See `templates/BRIEF.migration.md.example` §Convictions for a shape demonstration.
+
+**Advisory: not scored, not gating, no state-machine impact.** `_convictions.md` does not appear in the rubric (no dimension reads it; no deduction is applied for its presence or absence). It does not appear in the state machine (`READY` and `AUDITED` derivation ignore it). The reviewer does not read it. It is purely a reviser-to-next-reviser channel. Its absence is fully normal; its presence is fully optional.
+
+**Phase B kill switch.** This contract ships as Phase A of an explicitly staged rollout (Epic #142). If the canary does not consume `_convictions.md` within 2–4 weeks of merge, the file and its references are removed entirely per the PR #40 / PR #72 negative-result precedent. The single named consumer is the next reviser at the next version — if that consumer never reads the file, the contract has no audience and the work closes.
 
 **Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped memo commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery globs above match only digit-N suffixes, so a `.latest` symlink is invisible to the state-machine enumeration and cannot perturb anvil's derivation logic.
 
