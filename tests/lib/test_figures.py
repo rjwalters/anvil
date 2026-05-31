@@ -33,6 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CSS_PATH = REPO_ROOT / "anvil" / "skills" / "deck" / "assets" / "anvil-deck.css"
 MERMAID_PATH = REPO_ROOT / "anvil" / "lib" / "figures" / "mermaid-theme.json"
 MPLSTYLE_PATH = REPO_ROOT / "anvil" / "lib" / "figures" / "anvil.mplstyle"
+PALETTE_JSON_PATH = REPO_ROOT / "anvil" / "lib" / "figures" / "palette.json"
 
 
 # --- Helpers -----------------------------------------------------------------
@@ -63,6 +64,7 @@ def test_assets_exist() -> None:
     assert CSS_PATH.is_file(), f"missing palette source: {CSS_PATH}"
     assert MERMAID_PATH.is_file(), f"missing mermaid theme: {MERMAID_PATH}"
     assert MPLSTYLE_PATH.is_file(), f"missing mplstyle: {MPLSTYLE_PATH}"
+    assert PALETTE_JSON_PATH.is_file(), f"missing palette JSON mirror: {PALETTE_JSON_PATH}"
     # palette.py resolves the mplstyle relative to its own module.
     assert palette.MPLSTYLE_PATH == MPLSTYLE_PATH
 
@@ -89,6 +91,61 @@ def test_palette_constants_match_css_root(css_vars: dict[str, str]) -> None:
             f"palette drift: {css_name}={css_vars[css_name]} in CSS but "
             f"constant={constant} in palette.py"
         )
+
+
+def test_palette_json_matches_palette_py() -> None:
+    """SINGLE SOURCE OF TRUTH: each ``palette.json`` value equals ``palette.py``.
+
+    ``palette.json`` is the no-PYTHONPATH consumption path for figure scripts
+    run via bare ``python3`` in a consumer install topology — the JSON ships
+    alongside ``palette.py`` so a script can ``json.load(...)`` the palette
+    without importing ``anvil``. This test enforces the drift contract: any
+    future edit to ``palette.py`` (or ``palette.json``) without updating the
+    other fails CI.
+    """
+    data = json.loads(PALETTE_JSON_PATH.read_text())
+
+    # Scalar string constants — value-for-value match with palette.py.
+    expected_scalars = {
+        "ANVIL_NAVY": palette.ANVIL_NAVY,
+        "ANVIL_INK": palette.ANVIL_INK,
+        "ANVIL_MUTED": palette.ANVIL_MUTED,
+        "ANVIL_GREY": palette.ANVIL_GREY,
+        "ANVIL_RULE": palette.ANVIL_RULE,
+        "ANVIL_BG": palette.ANVIL_BG,
+        "ANVIL_BG_SECTION": palette.ANVIL_BG_SECTION,
+        "ANVIL_WARNING": palette.ANVIL_WARNING,
+        "ANVIL_SUCCESS": palette.ANVIL_SUCCESS,
+        "ANVIL_NAVY_TINT": palette.ANVIL_NAVY_TINT,
+    }
+    for name, py_value in expected_scalars.items():
+        assert name in data, f"{name} missing from palette.json"
+        assert data[name] == py_value, (
+            f"palette drift: {name}={data[name]!r} in palette.json but "
+            f"{py_value!r} in palette.py"
+        )
+
+    # ANVIL_RAMP is a tuple in Python, a list in JSON; compare element-wise.
+    assert "ANVIL_RAMP" in data, "ANVIL_RAMP missing from palette.json"
+    json_ramp = data["ANVIL_RAMP"]
+    py_ramp = list(palette.ANVIL_RAMP)
+    assert json_ramp == py_ramp, (
+        f"palette drift: ANVIL_RAMP={json_ramp!r} in palette.json but "
+        f"{py_ramp!r} in palette.py"
+    )
+
+
+def test_palette_json_carries_sync_note() -> None:
+    """JSON can't have comments, so the sync note lives in a ``_comment`` key.
+
+    The note points at ``palette.py`` as the canonical Python source and
+    references the drift test that enforces the contract, mirroring the
+    convention used in ``mermaid-theme.json`` (see
+    ``test_mermaid_theme_carries_sync_note``).
+    """
+    data = json.loads(PALETTE_JSON_PATH.read_text())
+    assert "_comment" in data
+    assert "palette.py" in data["_comment"]
 
 
 def test_grey_is_alias_for_muted() -> None:

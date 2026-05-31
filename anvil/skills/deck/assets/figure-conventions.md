@@ -136,6 +136,65 @@ setting colors from the tokens above prevents it.
 `:root` block and use those values — do not hard-code the shipped palette into a
 chart for a deck on a custom theme.
 
+### Bare `python3` from a thread directory: use the JSON sibling
+
+The `from anvil.lib.figures.palette import ...` snippet above assumes Anvil is
+on `sys.path` (the case in Anvil's own test suite, and in consumer repos that
+`uv pip install -e <anvil-checkout>`). **In the default consumer install
+topology — `<repo>/.anvil/lib/figures/palette.py` — bare `python3 figures/src/
+<name>.py` cannot import it**: `.anvil/` is not on `PYTHONPATH`, so the import
+raises `ModuleNotFoundError: No module named 'anvil'`.
+
+For figure scripts that will be run via bare `python3` (the canonical
+`deck-figures` invocation path), use the **JSON-read pattern** instead.
+`anvil/lib/figures/palette.json` ships alongside `palette.py` with the same
+hex constants; a drift test keeps the two in sync. Reading it needs no
+`sys.path` plumbing — just a path walk up from `__file__` to the `.anvil/`
+ancestor:
+
+```python
+import json
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+
+def _find_anvil_root(start: Path) -> Path:
+    """Walk up from ``start`` until a ``.anvil/lib/figures/palette.json`` is found.
+
+    Tolerates non-canonical thread depths — uses search-up rather than a
+    hard-coded ``parents[N]`` index, so the script works from any directory
+    underneath the consumer repo root.
+    """
+    for p in [start, *start.parents]:
+        if (p / ".anvil" / "lib" / "figures" / "palette.json").is_file():
+            return p / ".anvil"
+    raise FileNotFoundError("could not locate .anvil/ ancestor of " + str(start))
+
+
+ANVIL = _find_anvil_root(Path(__file__).resolve())
+PALETTE = json.loads((ANVIL / "lib/figures/palette.json").read_text())
+ANVIL_NAVY = PALETTE["ANVIL_NAVY"]
+ANVIL_INK = PALETTE["ANVIL_INK"]
+plt.style.use(str(ANVIL / "lib/figures/anvil.mplstyle"))
+```
+
+The `plt.style.use(...)` call gives the same on-brand defaults that
+`palette.apply()` would (navy-first `prop_cycle`, 200 DPI, transparent
+`savefig`, ink/rule axes) — the only thing it skips is the lazy matplotlib
+import wrapper. The named tokens are read out of the JSON, not imported.
+
+**Which path to use, when:**
+
+| Run via | Import path works? | Use |
+|---|---|---|
+| `pytest` from the Anvil repo (or `uv pip install -e <anvil>`) | yes | `from anvil.lib.figures.palette import ...` |
+| `python3 figures/src/<name>.py` from a consumer install | no | the JSON-read pattern above |
+| `deck-figures` on a consumer install | no (bare `python3` under the hood) | the JSON-read pattern above |
+
+When in doubt — i.e. when writing a figure script that goes into a thread
+directory — use the JSON-read pattern. It works in both topologies; the
+import pattern only works in one.
+
 ### Unicode glyphs (`→`, `←`, `—`, `−`) and per-glyph fallback
 
 A chart that labels an axis or annotates a bar with `→` (U+2192) or other
@@ -290,10 +349,17 @@ the convention exists to avoid.
 
 ## 6. Canonical script template
 
-A single minimal script demonstrating all of the above — the `apply()` shared
-style (which carries `figsize=(12, 7)`, 200 DPI, `transparent=True`, ink/rule
-axes, and the navy-first `prop_cycle`), imported palette tokens, `$`-escaping,
-and the `OUT = SRC.parent / "<name>.png"` output path:
+A single minimal script demonstrating all of the above — the on-brand shared
+style (`figsize=(12, 7)`, 200 DPI, `transparent=True`, ink/rule axes, and the
+navy-first `prop_cycle`), palette tokens, `$`-escaping, and the `OUT =
+SRC.parent / "<name>.png"` output path.
+
+**This template uses the JSON-read pattern from section 3** so it works under
+bare `python3` from a consumer install topology (`<repo>/.anvil/lib/figures/
+palette.json`). The Python-import variant (`from anvil.lib.figures.palette
+import apply, ANVIL_NAVY, ANVIL_INK; apply()`) is a one-line substitution if
+your environment has Anvil on `sys.path`; see the table in section 3 for when
+each path applies.
 
 ```python
 #!/usr/bin/env python3
@@ -302,21 +368,32 @@ and the `OUT = SRC.parent / "<name>.png"` output path:
 Reads figures/src/traction.csv (columns: quarter, arr_m).
 Writes figures/traction.png.
 """
+import json
 import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 
-# --- shared on-brand style (section 3): navy-first prop_cycle, ink/rule axes,
-#     Helvetica font, 200 DPI, transparent savefig, figsize 12x7. ---
-from anvil.lib.figures.palette import apply, ANVIL_NAVY, ANVIL_INK
-apply()
+# --- shared on-brand style (section 3): JSON-read pattern for bare python3.
+#     Walks up from __file__ until it finds a .anvil/ ancestor — tolerates
+#     non-canonical thread depths.
+def _find_anvil_root(start: Path) -> Path:
+    for p in [start, *start.parents]:
+        if (p / ".anvil" / "lib" / "figures" / "palette.json").is_file():
+            return p / ".anvil"
+    raise FileNotFoundError("could not locate .anvil/ ancestor of " + str(start))
+
+ANVIL = _find_anvil_root(Path(__file__).resolve())
+PALETTE = json.loads((ANVIL / "lib/figures/palette.json").read_text())
+ANVIL_NAVY = PALETTE["ANVIL_NAVY"]
+ANVIL_INK = PALETTE["ANVIL_INK"]
+plt.style.use(str(ANVIL / "lib/figures/anvil.mplstyle"))   # navy-first prop_cycle, 200 DPI, transparent, ink/rule axes
 
 # --- output-path discipline (section 5) ---
 SRC = Path(__file__).parent
 OUT = SRC.parent / "traction.png"
 df = pd.read_csv(SRC / "traction.csv")   # no data file -> let pandas raise, never fabricate
 
-fig, ax = plt.subplots()                 # figsize/dpi come from apply()
+fig, ax = plt.subplots()                 # figsize/dpi come from the mplstyle
 
 ax.bar(df["quarter"], df["arr_m"], color=ANVIL_NAVY)   # explicit hero series
 
@@ -328,7 +405,7 @@ for x, v in zip(df["quarter"], df["arr_m"]):
     ax.annotate(rf"\${v:.1f}M", (x, v), ha="center", va="bottom", color=ANVIL_INK)
 
 fig.tight_layout()
-# --- savefig: 200 DPI + transparent come from apply()'s style ---
+# --- savefig: 200 DPI + transparent come from the mplstyle ---
 fig.savefig(OUT)
 ```
 
