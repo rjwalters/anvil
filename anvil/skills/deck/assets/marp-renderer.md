@@ -160,6 +160,71 @@ The explicit `--html`, `--theme-set`, and `--allow-local-files` flags are
 kept on the CLI line as belt-and-suspenders so the render still does the
 right thing when the config file is missing or has been overridden.
 
+## Layout patterns
+
+Multi-column / grid slide layouts must be defined via the deck's frontmatter
+`style:` block and applied through a class, **not** through inline `style="..."`.
+
+**The foreignObject SVG render constraint (verified, issue #128).** Marp
+renders each slide's content into a `<foreignObject>` element inside an SVG,
+then rasterizes via Chromium for the canonical `--pdf` output. Through that
+path, **inline `display: grid`, `display: flex`, `display: inline-grid`, and
+`display: inline-flex` styles are silently dropped**. The slide compiles
+without errors, but the layout flattens to single-column stacked output in the
+PDF. The browser DOM behaves correctly when previewing in `marp -s`, which
+makes the trap easy to miss until the PDF is rasterized. Observed in studio's
+ikebot.3 reviser (2026-05-30), which hit this three times on diptych slides
+before recording the pattern.
+
+**Does NOT render** — inline display style is dropped:
+
+```markdown
+<!-- silently flattens to single column in the PDF render -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2em;">
+  <div>![Catalog](figures/catalog.png)</div>
+  <div>![Delivered](figures/delivered.png)</div>
+</div>
+```
+
+**Does render** — frontmatter `style:` block defines a class; the slide
+body references the class:
+
+```markdown
+---
+marp: true
+size: 16:9
+theme: anvil-deck
+html: true
+style: |
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 2em; align-items: center; }
+---
+
+## Catalog vs. delivered
+
+<div class="row">
+  <div>![Catalog](figures/catalog.png)</div>
+  <div>![Delivered](figures/delivered.png)</div>
+</div>
+```
+
+Class-based selectors apply via the global stylesheet, which the
+foreignObject path **does** honor. The same approach works for `display:
+flex`, multi-column grids, and `align-items` / `justify-content` rules — the
+constraint is on the *inline* `style="..."` attribute specifically, not on
+the CSS properties themselves.
+
+The deck skill ships an `inline-display-style-dropped` lint rule
+(`anvil/skills/deck/lib/marp_lint.py`, severity `warning`) that detects the
+broken pattern in `deck.md` source and suggests the class-based replacement.
+The rule supports the standard per-slide escape hatch:
+
+```markdown
+<!-- anvil-lint-disable: inline-display-style-dropped -->
+```
+
+For the worked two-column / figure-left + text-right idiom, see
+`slide-archetypes.md` "Figure layout idioms → Two-column."
+
 ## See also
 
 - `anvil/lib/marp/config.yml` — canonical Marp config (single source of
@@ -172,7 +237,10 @@ right thing when the config file is missing or has been overridden.
   including the `mmdc → PNG` diagram path and the required-`mmdc` preflight.
 - `anvil/skills/deck/lib/marp_lint.py` — `slide-content-overflow` lint that
   runs on the resulting markdown source (catches the figure + bullets + footer
-  pattern that mermaid auto-layout cannot save).
+  pattern that mermaid auto-layout cannot save), plus the
+  `figure-italic-supporting-line-too-long` and `inline-display-style-dropped`
+  rules (the latter catches the foreignObject-SVG inline-`display:` trap
+  documented in "Layout patterns" above).
 - `anvil/skills/deck/assets/figure-conventions.md` — matplotlib `$`-escape
   conventions, palette, DPI defaults, transparency, and output-path
   discipline (the matplotlib side of the asset pipeline; this cheat-sheet is

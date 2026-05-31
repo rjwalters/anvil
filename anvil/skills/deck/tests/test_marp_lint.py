@@ -143,6 +143,170 @@ class TestLintResultShape(unittest.TestCase):
         self.assertEqual(summary["errors_by_slide"][0]["rule"], "slide-content-overflow")
 
 
+class TestInlineDisplayGridDropped(unittest.TestCase):
+    """``<div style="display:grid;...">`` — silently dropped by Marp foreignObject SVG render."""
+
+    def test_one_warning(self) -> None:
+        result = lint_deck(_FIXTURES / "inline_display_grid_dropped.md")
+        self.assertEqual(len(result.errors), 0)
+        self.assertEqual(len(result.warnings), 1)
+        self.assertEqual(result.warnings[0].slide, 1)
+        self.assertEqual(result.warnings[0].rule, "inline-display-style-dropped")
+        self.assertEqual(result.warnings[0].severity, "warning")
+
+    def test_message_includes_detected_value(self) -> None:
+        result = lint_deck(_FIXTURES / "inline_display_grid_dropped.md")
+        msg = result.warnings[0].message
+        self.assertIn("display:grid", msg)
+        self.assertIn("foreignObject", msg)
+
+
+class TestInlineDisplayFlexDropped(unittest.TestCase):
+    """``<div style="display:flex;...">`` — silently dropped, same path."""
+
+    def test_one_warning(self) -> None:
+        result = lint_deck(_FIXTURES / "inline_display_flex_dropped.md")
+        self.assertEqual(len(result.errors), 0)
+        self.assertEqual(len(result.warnings), 1)
+        self.assertEqual(result.warnings[0].slide, 1)
+        self.assertEqual(result.warnings[0].rule, "inline-display-style-dropped")
+        self.assertIn("display:flex", result.warnings[0].message)
+
+
+class TestInlineDisplayInlineGridDropped(unittest.TestCase):
+    """``display:inline-grid`` variant — case-insensitive, no whitespace around ``:``."""
+
+    def test_one_warning(self) -> None:
+        result = lint_deck(_FIXTURES / "inline_display_inline_grid_dropped.md")
+        self.assertEqual(len(result.errors), 0)
+        self.assertEqual(len(result.warnings), 1)
+        self.assertEqual(result.warnings[0].rule, "inline-display-style-dropped")
+        self.assertIn("display:inline-grid", result.warnings[0].message)
+
+
+class TestInlineDisplaySafe(unittest.TestCase):
+    """Frontmatter ``style: |`` + ``<div class="row">`` — the workaround. No findings."""
+
+    def test_no_findings(self) -> None:
+        result = lint_deck(_FIXTURES / "inline_display_safe.md")
+        self.assertEqual(len(result.errors), 0)
+        self.assertEqual(len(result.warnings), 0)
+        self.assertEqual(len(result.infos), 0)
+
+
+class TestInlineDisplayOtherStyleSafe(unittest.TestCase):
+    """Inline ``style="color: red"`` etc. — the rule must NOT fire on non-`display:` rules."""
+
+    def test_no_findings(self) -> None:
+        result = lint_deck(_FIXTURES / "inline_display_other_style_safe.md")
+        self.assertEqual(len(result.errors), 0)
+        self.assertEqual(
+            len([f for f in result.warnings if f.rule == "inline-display-style-dropped"]),
+            0,
+        )
+
+
+class TestInlineDisplaySuppressed(unittest.TestCase):
+    """``anvil-lint-disable: inline-display-style-dropped`` downgrades the finding."""
+
+    def test_finding_downgraded_to_info(self) -> None:
+        result = lint_deck(_FIXTURES / "inline_display_suppressed.md")
+        self.assertEqual(len(result.errors), 0)
+        # No warnings from THIS rule (the lint should have downgraded).
+        self.assertEqual(
+            len([f for f in result.warnings if f.rule == "inline-display-style-dropped"]),
+            0,
+        )
+        inline_infos = [
+            f for f in result.infos if f.rule == "inline-display-style-dropped"
+        ]
+        self.assertEqual(len(inline_infos), 1)
+        self.assertEqual(inline_infos[0].severity, "info")
+
+
+class TestInlineDisplayInCodeFenceIgnored(unittest.TestCase):
+    """A ``style="display:grid"`` inside a fenced code block is documentation, not a render bug."""
+
+    def test_no_findings_in_code_fence(self) -> None:
+        source = """---
+marp: true
+size: 16:9
+---
+
+## Documentation slide
+
+Here is the broken pattern:
+
+```html
+<div style="display: grid; grid-template-columns: 1fr 1fr;">
+  <div>a</div>
+  <div>b</div>
+</div>
+```
+
+This documents the pattern but does not render it.
+"""
+        result = lint_source(source)
+        self.assertEqual(
+            len([f for f in result.warnings if f.rule == "inline-display-style-dropped"]),
+            0,
+        )
+
+
+class TestInlineDisplaySingleQuoted(unittest.TestCase):
+    """``<div style='display:grid;...'>`` — single-quoted attribute also matches."""
+
+    def test_single_quoted_fires(self) -> None:
+        source = """---
+marp: true
+---
+
+## Two-column
+
+<div style='display: grid; grid-template-columns: 1fr 1fr;'>
+  <div>a</div>
+  <div>b</div>
+</div>
+"""
+        result = lint_source(source)
+        inline = [
+            f for f in result.warnings if f.rule == "inline-display-style-dropped"
+        ]
+        self.assertEqual(len(inline), 1)
+
+
+class TestInlineDisplayCaseInsensitive(unittest.TestCase):
+    """``style="DISPLAY: Grid"`` — the regex must be case-insensitive."""
+
+    def test_uppercase_display_fires(self) -> None:
+        source = """---
+marp: true
+---
+
+## Two-column
+
+<div style="DISPLAY: Grid; grid-template-columns: 1fr 1fr;">
+  <div>a</div>
+  <div>b</div>
+</div>
+"""
+        result = lint_source(source)
+        inline = [
+            f for f in result.warnings if f.rule == "inline-display-style-dropped"
+        ]
+        self.assertEqual(len(inline), 1)
+
+
+class TestPortedRulesIncludesInlineDisplay(unittest.TestCase):
+    """``PORTED_RULES`` advertises the new rule alongside the existing two."""
+
+    def test_rule_name_in_ported_rules(self) -> None:
+        from marp_lint import PORTED_RULES  # noqa: WPS433
+        self.assertIn("inline-display-style-dropped", PORTED_RULES)
+        self.assertIn("slide-content-overflow", PORTED_RULES)
+        self.assertIn("figure-italic-supporting-line-too-long", PORTED_RULES)
+
+
 class TestMultiSlideSource(unittest.TestCase):
     """Multi-slide source: only the offending slides emit findings.
 
