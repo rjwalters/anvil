@@ -59,6 +59,57 @@ To find all critic siblings for the latest version:
 glob("<thread>.{latest_N}.*/")  minus the bare "<thread>.{latest_N}/"
 ```
 
+## Portfolio placement
+
+The discovery globs above read relative to the **portfolio directory** —
+the parent that contains `<thread>/`, `<thread>.{N}/`, and
+`<thread>.{N}.<tag>/` siblings. Anvil does **not** constrain where the
+portfolio dir lives in the consumer repo. Two common organizations:
+
+- **Filetype-first**: one portfolio per artifact type.
+
+  ```
+  output/
+    decks/<thread>/, <thread>.1/, <thread>.1.review/, …
+    memos/<thread>/, <thread>.1/, <thread>.1.review/, …
+    research/<thread>/
+  ```
+
+  Optimizes for "show me all decks" workflows. Each skill's
+  discover-glob runs inside its own portfolio (`output/decks/`,
+  `output/memos/`).
+
+- **Project-first**: one portfolio per project/venture, shared across
+  artifact types.
+
+  ```
+  output/
+    <thread>/                     Project root (doubles as portfolio for every skill)
+      <thread>/                   Anvil thread root (BRIEF.md, refs/, assets/)
+      <thread>.0/, <thread>.1/, <thread>.1.review/, …     Anvil deck/slides/pub
+      memo.1/, memo.1.review/, …                          Other skill (e.g., studio memo)
+      research/                                            Non-anvil artifacts
+  ```
+
+  Optimizes for "show me everything about project X" workflows. The
+  per-project portfolio dir IS the project dir; the per-skill
+  discover-glob runs inside it and naturally only matches that skill's
+  `<thread>.*` siblings.
+
+  The visible cost is the `<thread>/<thread>/` repetition inside the
+  project dir (the anvil thread root reuses the project slug). This is
+  intentional: the inner `<thread>/` is what discover-glob looks for,
+  so the slug must match. Mildly ugly, functional.
+
+Choose based on whether the consumer thinks about artifacts ("show me
+all decks") or about projects/ventures ("show me everything about X").
+Studios with many concurrent projects (the 2AM Logic Studio canary
+runs 15+ ventures) typically prefer project-first; single-project
+consumers typically prefer filetype-first.
+
+Either way, the rest of this snippet (directory taxonomy, naming
+rules, discovery globs, immutability) applies unchanged.
+
 ## N+1 allocation
 
 When a reviser produces the next version after consuming all `<thread>.{N}.*/`
