@@ -24,7 +24,9 @@
 #   .anvil/skills/<name>/              Canonical skill bodies (consumer override target)
 #   .anvil/CLAUDE.md                   Full Anvil guide
 #   .anvil/install-metadata.json       Manifest (version, skills, overrides)
-#   .claude/skills/anvil/<name>/SKILL.md  Thin Claude registration shim
+#   .claude/skills/anvil-<name>/SKILL.md  Thin Claude registration shim
+#                                         (depth 1: Claude Code only discovers
+#                                         SKILL.md at .claude/skills/<name>/.)
 #   CLAUDE.md                          Updated with additive <!-- BEGIN ANVIL --> block
 #
 # Anvil is forge-optional: git is not required in the target.
@@ -378,7 +380,11 @@ info "Stage 7: copy selected skills"
 for skill in "${SELECTED_SKILLS[@]}"; do
   src_skill="$ANVIL_ROOT/anvil/skills/$skill"
   dst_skill="$TARGET/.anvil/skills/$skill"
-  shim_dir="$TARGET/.claude/skills/anvil/$skill"
+  # Flatten namespace into the directory name (depth 1). Claude Code's skill
+  # discovery only finds SKILL.md at .claude/skills/<name>/SKILL.md; the prior
+  # depth-2 path .claude/skills/anvil/<skill>/SKILL.md was silently skipped,
+  # leaving slash-command users unable to invoke /anvil-*:* commands (#135).
+  shim_dir="$TARGET/.claude/skills/anvil-$skill"
   shim_file="$shim_dir/SKILL.md"
 
   # Override detection: if destination exists and differs from source by any
@@ -394,7 +400,7 @@ for skill in "${SELECTED_SKILLS[@]}"; do
         SKIPPED_OVERRIDES+=("$skill")
         # Still ensure the Claude shim exists and points at the canonical path,
         # since that file is a pointer and safe to regenerate.
-        do_action "regenerate Claude registration shim at .claude/skills/anvil/$skill/SKILL.md" \
+        do_action "regenerate Claude registration shim at .claude/skills/anvil-$skill/SKILL.md" \
           write_shim "$skill" "$shim_dir" "$shim_file"
         continue
       fi
@@ -406,7 +412,7 @@ for skill in "${SELECTED_SKILLS[@]}"; do
     replace_tree "$src_skill" "$dst_skill"
 
   # Always regenerate the thin Claude registration shim.
-  do_action "write Claude registration shim at .claude/skills/anvil/$skill/SKILL.md" \
+  do_action "write Claude registration shim at .claude/skills/anvil-$skill/SKILL.md" \
     write_shim "$skill" "$shim_dir" "$shim_file"
 
   INSTALLED_SKILLS+=("$skill")
@@ -544,5 +550,18 @@ else
   ok "Anvil v$ANVIL_VERSION installed into $TARGET"
   if [[ "$DEPS_MISSING" -gt 0 ]]; then
     warn "install complete, but $DEPS_MISSING renderer dependenc$([[ "$DEPS_MISSING" -eq 1 ]] && echo y || echo ies) missing (see above) -- deck/slides rendering will be impaired until installed"
+  fi
+  # Migration note (#135): pre-fix installs wrote shims to depth-2
+  # .claude/skills/anvil/<skill>/SKILL.md, which Claude Code's depth-1
+  # discovery contract silently skipped. The depth-1 shims at
+  # .claude/skills/anvil-<skill>/ are now the canonical install target.
+  # If the stale directory is present, recommend manual removal -- we
+  # don't auto-delete to avoid surprising consumers who may have hand-
+  # edited files in there.
+  if [[ -d "$TARGET/.claude/skills/anvil" ]]; then
+    warn "legacy shim directory detected: $TARGET/.claude/skills/anvil/"
+    echo "         These depth-2 shims are not discoverable by Claude Code (#135)."
+    echo "         Anvil now installs depth-1 shims at .claude/skills/anvil-<skill>/."
+    echo "         To clean up:  rm -rf $TARGET/.claude/skills/anvil"
   fi
 fi

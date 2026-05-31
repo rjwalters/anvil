@@ -47,7 +47,7 @@ def _assert_install_artifacts(target: Path) -> None:
     assert (target / ".anvil" / "roles").is_dir()
     assert (target / ".anvil" / "skills" / "memo" / "SKILL.md").is_file()
     assert (target / ".anvil" / "install-metadata.json").is_file()
-    assert (target / ".claude" / "skills" / "anvil" / "memo" / "SKILL.md").is_file()
+    assert (target / ".claude" / "skills" / "anvil-memo" / "SKILL.md").is_file()
     assert (target / "CLAUDE.md").is_file()
 
 
