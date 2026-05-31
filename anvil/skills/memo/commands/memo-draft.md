@@ -45,6 +45,14 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
    - **Executive summary** (3–5 sentences): the recommendation + the one-sentence ask.
    - **Thesis** (named, falsifiable): what must be true for the recommendation to hold.
    - **Evidence**: claims with sources. Inline citations are acceptable (footnote style or parenthetical); exhaustive reference list at the end is preferred for primary sources.
+
+     **Citation-hook contract.** Every **named author-year citation** (e.g., "Levenson et al., 2006") and every **specific load-bearing quantitative claim** that anchors an argument (dollar amounts, percentages, dates, multipliers) MUST carry at least one of the following hooks:
+
+     - **(a) Inline footnote** naming the source — sufficient on its own.
+     - **(b) `<thread>/refs/<key>.md` stub** — created at the thread level (not the version level — see SKILL.md §Citation stubs). A stub MAY be as minimal as a single line `# TODO: source for <claim>`; the stub's *existence* is the contract, its *completeness* is not.
+     - **(c) In-prose hedge** — order-of-magnitude or rough figures that the prose itself labels as estimates ("reportedly", "estimated", "roughly", "order of", "~") are exempt from the footnote/stub requirement but MUST be hedged in the prose itself.
+
+     The reviewer treats absent hooks for load-bearing claims (no footnote, no `refs/` stub, no in-prose hedge) as a dim 3 *Evidence quality* deduction; see `rubric.md` §"Citation hooks (dim 3)" for the per-instance deduction rule. Hedged estimates do NOT carry a deduction.
    - **Risks**: top 3–5 risks with mitigations or acknowledged residual exposure.
    - **Market & competitive framing**: sized to the artifact, not boilerplate.
    - **Financial reasoning**: unit economics, scenario math, sensitivity. Tables go in `exhibits/` and are referenced from this section.

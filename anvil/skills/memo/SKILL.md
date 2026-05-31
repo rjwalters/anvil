@@ -18,7 +18,7 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
 <portfolio>/
   <thread>/                Optional thread root with brief and reference material
     BRIEF.md               Optional structured or freeform brief (frontmatter + prose)
-    refs/                  Optional reference material (decks, transcripts, data)
+    refs/                  Optional reference material (decks, transcripts, data); also the home for drafter-written citation stubs created during draft (see memo-draft Evidence contract and §Citation stubs below)
   <thread>.1/              First drafted version (immutable once written)
     memo.md                Memo body
     exhibits/              Inline exhibits referenced from body
@@ -39,6 +39,14 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
 ```
 
 Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
+
+### Citation stubs
+
+The drafter is permitted (and per `memo-draft` step 6 *Evidence* sometimes required) to write `<thread>/refs/<key>.md` stubs during draft to satisfy the citation-hook contract. A stub MAY be as minimal as `# TODO: source for <claim>` — its *existence* is the contract, its *completeness* is not.
+
+These stubs are author scratchpad — not exhibits — and live at the **thread level** (`<thread>/refs/`, not under any `<thread>.{N}/` version dir) so they survive version transitions and accumulate as research lands across revisions. The reviewer reads them only to verify their existence as evidence of the citation-hook contract being honored; their content is not scored.
+
+See `commands/memo-draft.md` §Procedure step 6 for the drafter contract and `rubric.md` §"Citation hooks (dim 3)" for the reviewer-side deduction rule.
 
 **Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped memo commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery globs above match only digit-N suffixes, so a `.latest` symlink is invisible to the state-machine enumeration and cannot perturb anvil's derivation logic.
 
