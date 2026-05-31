@@ -52,8 +52,8 @@ The tempting shortcut is to turn math parsing off for the whole figure:
 plt.rcParams["text.parse_math"] = False    # DO NOT DO THIS
 ```
 
-This breaks the log-axis `LogFormatter`. matplotlib's own log-scale tick
-formatter emits its tick labels **as mathtext** — `$\mathdefault{10^{1}}$`,
+This breaks the log-axis `LogLocator` / `LogFormatter`. matplotlib's own
+log-scale tick formatter emits its tick labels **as mathtext** — `$\mathdefault{10^{1}}$`,
 `$\mathdefault{10^{2}}$`, and so on — to get the superscript exponents. With
 `text.parse_math = False`, those tick labels stop being interpreted as math and
 render as the literal LaTeX source string `$\mathdefault{10^{1}}$` on the axis.

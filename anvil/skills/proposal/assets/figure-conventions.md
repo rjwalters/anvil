@@ -17,6 +17,68 @@ A buildable-system proposal typically references the following. Not every piece 
 
 Many proposals ship with **no figure at all** — the topology `metricbox` table and the priced tables carry the argument. `\herofigure{}` is a no-op when empty, so a no-figure proposal compiles cleanly.
 
+## matplotlib dollar signs and mathtext
+
+The cost / link-budget chart is the one figure class the figurer renders from a
+matplotlib script (`figures/src/<name>.py`). matplotlib parses `$...$` in **every**
+text element as math mode (mathtext), so a label written as a plain Python
+string —
+
+```python
+ax.set_title("Materials $8,494 / Labor $5,000")
+```
+
+— renders as `Materials 8,494/Labor5,000`: the dollar signs are swallowed as
+math delimiters, and the text between them is set in italic math font with the
+inter-letter spacing collapsed. On a proposal cost chart this is not a cosmetic
+glitch; the `$` carries the meaning (these are dollar amounts), and dropping it
+changes what the figure says.
+
+**Fix: escape every literal `$` as `\$`** in every text element the chart
+produces — `set_xlabel`, `set_ylabel`, `set_title`, per-bar annotations, legend
+entries, and any tick labels you format yourself. Use a raw f-string so the
+backslash reaches matplotlib intact:
+
+```python
+label = rf"\${v / 1000:.1f}k"           # -> "$8.5k", literal dollar sign
+ax.set_title(rf"Materials \$8,494 / Labor \$5,000")
+ax.annotate(rf"\${row.cost:.0f}", (x, y))
+ax.set_ylabel(r"Cost (\$)")
+```
+
+The rule is per-element and per-string: a `$` anywhere in any string handed to
+matplotlib needs the escape, including inside an f-string interpolation result.
+
+### Anti-pattern: do NOT disable mathtext globally
+
+The tempting shortcut is to turn math parsing off for the whole figure:
+
+```python
+plt.rcParams["text.parse_math"] = False    # DO NOT DO THIS
+```
+
+This breaks the log-axis `LogLocator` / `LogFormatter`. matplotlib's own
+log-scale tick formatter emits its tick labels **as mathtext** —
+`$\mathdefault{10^{1}}$`, `$\mathdefault{10^{2}}$`, and so on — to get the
+superscript exponents. With `text.parse_math = False`, those tick labels stop
+being interpreted as math and render as the literal LaTeX source string
+`$\mathdefault{10^{1}}$` on the axis. So the global switch trades one rendering
+bug (swallowed `$` in your own labels) for a worse one (every log-axis tick
+printed as raw LaTeX) — and a cost / link-budget chart that spans multiple
+orders of magnitude is exactly where a log axis is most likely. Escape
+per-string with `\$` instead; it is the only approach that leaves the
+formatter's own mathtext untouched.
+
+```python
+# GOOD: targeted escape, mathtext stays available for LogLocator / LogFormatter
+ax.set_title(rf"Project total: \$13,494--17,599")
+ax.set_yscale("log")                       # tick labels render as 10¹, 10², 10³
+
+# BAD: global mathtext disabled breaks log-axis tick labels
+plt.rcParams["text.parse_math"] = False
+ax.set_yscale("log")                       # ticks render as literal $\mathdefault{10^{1}}$
+```
+
 ## Priced-table conventions (the heart of the proposal)
 
 Section 7 of `proposal.tex.j2` pre-wires three priced tables. The drafter fills them; the auditor walks them. The conventions, lifted from the Gossamer LAN worked instance:
