@@ -38,6 +38,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - Prior version's `memo.md` and `exhibits/`.
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
    - Every other `<thread>.{N}.<critic>/` sibling discovered on disk (auditor, secondary critic, etc.).
+   - `<thread>/.anvil.json` — read the optional `target_length` field per the SKILL.md §Length targets contract. Normalize as in `memo-draft.md` step 5: `words` taken directly, `pages` converted at 600 words/page, malformed/absent → no target. If a target is set, inject it into the revision-plan prompt using the exact wording: **"Target length: <min>–<max> words (~<min_pages>–<max_pages> pages at 600 words/page). Treat as a soft budget — when expanding to address reviewer notes, prefer earning the space over padding; when tightening, cut filler before substance."** The reviser does the actual expand/tighten work, so the prompt-side wording is load-bearing for reproducible behavior.
 7. **Build a revision plan**:
    - For each rubric dimension that scored below threshold (or had a critical flag), enumerate the specific changes required to lift the score.
    - For each `comments.md` entry tagged `blocker` or `major`, plan a concrete change.

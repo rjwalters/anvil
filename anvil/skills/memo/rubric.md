@@ -14,7 +14,7 @@ The rubric is tuned so that **intellectual honesty and reasoning quality (thesis
 | 4 | **Risk honesty** | 6 | Top 3–5 risks are named explicitly with mitigations or acknowledged residual exposure. Pro-forma risk sections that list only weak risks score low. |
 | 5 | **Market & competitive framing** | 4 | TAM/SAM/SOM (or equivalent), competitive landscape, and a credible "why now" — sized to the artifact, not boilerplate. |
 | 6 | **Financial reasoning** | 5 | Unit economics, capital efficiency, scenario math. Early-stage: clear sensitivity to key assumptions. Later-stage: defensible model. |
-| 7 | **Scope discipline** | 4 | The memo stays within its declared scope (no scope creep into adjacent deals, no kitchen-sink appendices that dilute the argument). Length is reasonable for the decision being made. |
+| 7 | **Scope discipline** | 4 | The memo stays within its declared scope (no scope creep into adjacent deals, no kitchen-sink appendices that dilute the argument). Length is within the declared `target_length` if set (default: reasonable for the decision being made). |
 | 8 | **Prose & structure** | 4 | Navigable headings, tight prose, no jargon-without-definition, exhibits referenced from body. Lowest weight by design — substance over style. |
 | | **Total** | **40** | Advance threshold: ≥32 |
 
@@ -28,6 +28,20 @@ Suggested calibration:
 - **~50% of weight** — partial; multiple gaps or one significant weakness.
 - **~25% of weight** — present but inadequate; major rework needed.
 - **0** — absent or actively misleading.
+
+## Length targets (dim 7)
+
+When `<thread>/.anvil.json` declares a `target_length` (see `SKILL.md` §Length targets), dim 7 *Scope discipline* compares the produced memo's word count against the declared range rather than judging length against an implicit default.
+
+- **Spec form**: `target_length: { "words": [min, max] }` is primary. `target_length: { "pages": [min, max] }` is accepted and converted at **600 words/page** (so `pages: [3, 4]` ≡ `words: [1800, 2400]`). The reviewer always compares on word count — `anvil:memo` is markdown-first and rendering is not in the review hot path.
+- **Counting**: a simple whitespace tokenization of `memo.md` is sufficient. The reviewer may strip code-fence content and YAML frontmatter before counting if they meaningfully distort the body length.
+- **Calibration**:
+  - **In range** (`min <= actual <= max`): no length-driven deduction.
+  - **Modest deviation** (within ~15% of the nearest endpoint): note in the justification, no deduction.
+  - **Meaningful deviation** (>~15% over `max` or under `min`): deduct on dim 7; call out the deviation in the justification.
+- **Justification format**: when `target_length` is set, the dim 7 justification MUST record both the declared target and the actual count (e.g., "Target 1800–2400 words; actual 2050 — in range"). When unset, dim 7 falls back to the implicit "reasonable for the decision being made" judgment with no length numbers required.
+
+The author primitive this enables is the deliberate **expand → tighten** cadence (load new content with breathing room in one revision, then tighten editorial pressure on the next). The cadence is implemented in v0 by editing `<thread>/.anvil.json` between revise calls — per-version overrides are a planned follow-on.
 
 ## Advance threshold
 

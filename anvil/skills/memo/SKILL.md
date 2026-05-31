@@ -62,6 +62,34 @@ Thresholds: ≥32/40 advances. <32/40 requires revision. Any critical flag short
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
+## Length targets
+
+A memo thread can declare an optional **target length** in `<thread>/.anvil.json`. The drafter and reviser pass this target into the LLM prompt as a soft length budget, and the reviewer uses it as the comparison anchor for rubric dim 7 (*Scope discipline*). When `target_length` is absent the skill behaves exactly as it does without the field — the reviewer falls back to the implicit "reasonable for the decision being made" judgment.
+
+The canonical `.anvil.json` shape with both knobs set:
+
+```json
+{
+  "max_iterations": 4,
+  "target_length": { "words": [1800, 2400] }
+}
+```
+
+`target_length` is an object with **exactly one** of two range keys:
+
+| Key | Shape | Meaning |
+|---|---|---|
+| `words` | `[min, max]` | Target word count for `memo.md` (primary, deterministic, no rendering required). |
+| `pages` | `[min, max]` | Target rendered page count. Converted internally at **600 words/page** (so `pages: [3, 4]` becomes `words: [1800, 2400]`). |
+
+`words` is the primary spec form. `pages` is accepted as ergonomic shorthand for authors who think in pages, but the comparison logic always operates on word count — anvil:memo is markdown-first (no native page count without rendering) and the 600-words/page conversion is the documented, stable proxy.
+
+Both `min` and `max` are integers; `min <= max`. The range is inclusive on both ends: a word count between `min` and `max` (inclusive) is on-target.
+
+**Backward compatibility.** `target_length` is purely additive. A thread with no `.anvil.json`, an `.anvil.json` missing `target_length`, or a malformed `target_length` (wrong shape, non-integer values, both `words` and `pages` set) falls back to the implicit "reasonable for the decision" behavior. Parse errors are tolerated, never fatal — this mirrors the precedent set by `_read_anvil_json` in `anvil/lib/rubric.py`.
+
+**Per-version overrides are intentionally not supported in v0.** The expand/tighten cadence that motivated this field (load new content at v9, re-tighten at v10) is handled in v0 by editing `<thread>/.anvil.json` between revise calls. Per-version overrides (`target_length.overrides.v{N}`) ship as a separate follow-on issue once we see how the thread-level field is actually used.
+
 ## Command dispatch
 
 | Command | Role | Reads | Writes |

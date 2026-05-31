@@ -34,11 +34,16 @@ The review sibling directory is **read-only once written**. Revisions consume it
 1. **Discover state**: find the highest `N` with `<thread>.{N}/memo.md`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
 3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
-4. **Read inputs**: load `<thread>.{N}/memo.md`, enumerate `exhibits/`, load `rubric.md` and any consumer override.
+4. **Read inputs**: load `<thread>.{N}/memo.md`, enumerate `exhibits/`, load `rubric.md` and any consumer override. Also read `<thread>/.anvil.json` if present and extract the optional `target_length` field per the SKILL.md §Length targets contract. Normalize to a `(min_words, max_words)` pair: `words` taken directly, `pages` converted at 600 words/page, malformed/absent → no target (dim 7 falls back to the implicit "reasonable" judgment).
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the memo.
    - Record per-dimension result in `scoring.md` as a markdown table with columns `# | Dimension | Weight | Score | Justification`.
+   - **Dim 7 (Scope discipline) length comparison**: compute the word count of `memo.md` (a simple `len(memo.md.split())` is sufficient; the reviewer may strip code-fence content and YAML frontmatter before counting if they meaningfully distort the body length). If `target_length` is set, compare the actual word count against the declared `[min, max]` range and apply the following calibration:
+     - **In range** (`min <= actual <= max`): no length-driven deduction; score on the other scope-discipline criteria (no kitchen-sink appendices, no scope creep into adjacent deals).
+     - **Modest deviation** (within ~15% of the nearest endpoint): note in the justification but do not flag — soft target.
+     - **Meaningful deviation** (>~15% over `max` or under `min`): deduct on dim 7 and call out the deviation explicitly in the justification.
+     The dim 7 justification MUST record **both the declared target and the actual count** (e.g., "Target 1800–2400 words; actual 2050 — in range" or "Target 1800–2400 words; actual 3400 — 42% over upper bound"). When `target_length` is unset, the dim 7 justification falls back to the implicit "reasonable for the decision being made" judgment as today, with no length numbers required.
 6. **Identify critical flags**: review the memo against the 4 example flags in `rubric.md` AND the open-ended "any deal-breaker a sophisticated reader would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 32) AND (no critical flags)`.
 8. **Write line-level comments**: in `comments.md`, list specific feedback keyed to memo sections — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`).
