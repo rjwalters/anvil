@@ -12,7 +12,7 @@ description: Drafter command for the memo skill. Produces a new memo version dir
 ## Inputs
 
 - **Thread slug** (positional argument): identifies the thread within the cwd portfolio.
-- **Brief** (`<thread>/BRIEF.md`): freeform prose, optionally with YAML frontmatter. Recognized frontmatter keys (all optional): `company`, `sector`, `stage`, `check_size`, `recommendation_target` (one of `invest`/`pass`/`conditional`/`undecided`). Unrecognized keys are passed through to the drafter as context.
+- **Brief** (`<thread>/BRIEF.md`): freeform prose, optionally with YAML frontmatter. Recognized frontmatter keys (all optional): `company`, `sector`, `stage`, `check_size`, `recommendation_target` (one of `invest`/`pass`/`conditional`/`undecided`). Unrecognized keys are passed through to the drafter as context. If no `BRIEF.md` is present, the user can scaffold one by copying `templates/BRIEF.fresh.md.example` (new-thread case) or `templates/BRIEF.migration.md.example` (migrate-from-prior-pipeline case) into `<thread>/BRIEF.md` and editing in place — this command does not write a brief on the user's behalf.
 - **References** (`<thread>/refs/**`): any supporting material (decks, transcripts, exported financials). Treated as read-only context.
 - **Prior version + critic siblings** (revise-from-feedback path only): in normal flow, revision is handled by `memo-revise`. `memo-draft` is the entry point for new threads. For threads where the user wants to start fresh from feedback (rare), this path is available — but `memo-revise` is preferred because it preserves the changelog mapping.
 
