@@ -35,7 +35,10 @@ For a new thread, `N+1 == 1` → output is `<thread>.1/`.
 1. **Discover thread state**: enumerate existing `<thread>.{N}/` dirs. Compute the next `N`.
 2. **Brief check**: require `<thread>/BRIEF.md` to exist with all required sections (problem, solution, stage, traction, team, market, competition, why now, ask, prior raises, assets). If missing or incomplete, error out with: `BRIEF.md missing or incomplete — run deck-brief <thread> first, or fill the required sections manually.` List which sections are missing.
 3. **Resume check**: if `<thread>.{N+1}/_progress.json` exists with `draft.state == in_progress`, treat as a crashed prior run. Delete any partial `deck.md` and re-draft. If `draft.state == done`, the version is already drafted — exit early with a notice (idempotent; this command does not overwrite a completed draft).
-4. **Initialize `_progress.json`**: write `phases.draft.state = in_progress`, `phases.draft.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations` (inherit from `<thread>/.anvil.json` if set, else 4).
+4. **Initialize `_progress.json`**: write `phases.draft.state = in_progress`, `phases.draft.started = <ISO>`, `metadata.iteration = N+1`. Read `<thread>/.anvil.json` (graceful-degradation per `_read_anvil_json`; missing/malformed → `{}`) and apply the **paired-override validation** for the iteration cap (see `SKILL.md` §"State machine" → "Per-thread override contract"):
+   - If `.anvil.json` has both `max_iterations` (int `>= 4`) AND a non-empty `iteration_cap_rationale` (string, non-whitespace) → write both into `metadata.max_iterations` and `metadata.iteration_cap_rationale`. The drafter's status line confirms the elevated cap, e.g. `... max_iterations=6 (rationale set)`.
+   - If `.anvil.json` has `max_iterations` set without a valid `iteration_cap_rationale` (missing, empty, whitespace-only), OR `max_iterations < 4` → fall back to default: `metadata.max_iterations = 4`, `metadata.iteration_cap_rationale = null`. Emit a one-line warning in the drafter's status output, e.g. `WARNING: <thread>/.anvil.json sets max_iterations=6 but iteration_cap_rationale is missing/empty — falling back to default cap of 4. See SKILL.md §State machine for the override contract.`
+   - If `.anvil.json` is absent or has neither key → default `max_iterations = 4`, `iteration_cap_rationale = null`. No warning.
 5. **Read inputs**: load `BRIEF.md`. Enumerate `refs/` and `assets/`. Load the slide-archetype reference at `anvil/skills/deck/assets/slide-archetypes.md` for canonical slide patterns.
 6. **Plan the slide order**: standard fundraising structure (target 10–15 slides). The order below is the canonical order shipped by `templates/deck.md.j2` and `templates/speaker-notes.md.j2` and is the order the narrative critic (`deck-narrative`) grades against:
    - **Slide 1**: Title — company name, one-line tagline, founder name, date.
@@ -123,10 +126,13 @@ If `.anvil/skills/deck/voice.md` exists in the consumer repo, load it and apply 
   },
   "metadata": {
     "iteration": <N>,
-    "max_iterations": 4
+    "max_iterations": 4,
+    "iteration_cap_rationale": null
   }
 }
 ```
+
+When the per-thread override (`<thread>/.anvil.json`) is valid (paired `max_iterations` + non-empty `iteration_cap_rationale`), both fields are carried into `metadata`. When the override is absent or malformed (fell back to default), `iteration_cap_rationale` is `null`.
 
 Merge rule: read existing `_progress.json`, update only `phases.draft` and `metadata`, preserve all other fields.
 

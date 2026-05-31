@@ -17,7 +17,7 @@ Brief intake is the pre-draft gate. Pitch decks fail catastrophically when the d
 - **Reference material** (`<thread>/refs/`): anything the founder provides. Transcripts of founder calls, copy from the company website, prior pitch decks (any format), spreadsheets with traction data, term sheets from prior rounds, LinkedIn exports for the team. Treated as read-only context.
 - **Optional consumer overrides**:
   - `.anvil/skills/deck/brief.template.md` — alternative brief shape if the consumer wants different sections.
-  - `<thread>/.anvil.json` with `{ "max_iterations": <N> }` to override the default iteration cap (4).
+  - `<thread>/.anvil.json` with **paired** `{ "max_iterations": <N>, "iteration_cap_rationale": "<why this thread deserves more passes>" }` to override the default iteration cap (4). Both keys are required when overriding: setting `max_iterations` without a non-empty `iteration_cap_rationale` is treated as malformed and falls back to the default cap with a warning. The override may not lower the cap below 4. See `SKILL.md` §"State machine" → "Per-thread override contract" for the full validation rules.
 
 ## Outputs
 
@@ -118,10 +118,13 @@ The contract is enforced post-hoc by `deck-audit`. The drafter is responsible fo
   },
   "metadata": {
     "iteration": 0,
-    "max_iterations": 4
+    "max_iterations": 4,
+    "iteration_cap_rationale": null
   }
 }
 ```
+
+If `<thread>/.anvil.json` declares a valid paired override (`max_iterations: <N>` + non-empty `iteration_cap_rationale`), carry both fields into `metadata`. If the override is malformed (missing rationale, empty rationale, or `max_iterations < 4`), record the effective default (`max_iterations: 4`, `iteration_cap_rationale: null`) and emit the validation warning in `intake-notes.md`.
 
 
 **Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.
