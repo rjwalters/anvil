@@ -43,6 +43,12 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - For each rubric dimension that scored below threshold (or had a critical flag), enumerate the specific changes required to lift the score.
    - For each `comments.md` entry tagged `blocker` or `major`, plan a concrete change.
    - Resolve conflicting feedback between critic siblings explicitly (e.g., reviewer says "more risks," critic says "fewer risks but deeper" — pick a synthesis and note it in the changelog).
+7.5. **Read prior convictions (before re-litigating settled issues)**: if `<thread>.{N}/_convictions.md` exists, read it before finalizing the revision plan. Each conviction names a body anchor (section heading or paragraph) in the prior `memo.md` and records a position that has already survived an explicit critic challenge or an explicit reviser decision. For each conviction:
+   - If the same position is being reopened by a critic note in the current pass, the default is to **honor the conviction**: keep the position, document the disagreement in `changelog.md` as `Resolution: declined — see prior conviction at <anchor>`, and carry the conviction forward into the v{N+1} `_convictions.md` (see step 9.5). The next reviewer pass can still override.
+   - If the conviction's named anchor no longer exists in the prior `memo.md` (or will be removed by the planned revision), the conviction is **stale**: drop it. Do not carry stale convictions forward.
+   - If no prior `_convictions.md` exists, this step is a no-op. The file is optional and advisory — its absence is normal.
+
+   See SKILL.md §Convictions ledger for the full contract (advisory only, not scored, not gating, no state-machine impact).
 8. **Produce `memo.md`** at `<thread>.{N+1}/memo.md`:
    - Address each planned change.
    - Preserve sections that scored well — do not regress on dimensions that already met the standard.
@@ -58,6 +64,13 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    ```
 
    For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next reviewer pass can override or accept the reviser's judgment.
+9.5. **Write `_convictions.md`** at `<thread>.{N+1}/_convictions.md` (optional, advisory): record positions in the just-produced v{N+1} `memo.md` that have either (a) survived an explicit critic challenge in the current or any prior pass, or (b) survived an explicit reviser decision (typically a `Resolution: declined` row in this or a prior `changelog.md`). Each entry MUST name a body anchor — a section heading or paragraph reference — in the current v{N+1} `memo.md` (e.g., "§Risks ¶3"). A conviction without a current-version anchor is automatically stale and must not be written.
+
+   Carry forward surviving entries from `<thread>.{N}/_convictions.md` (read in step 7.5) whose anchors still resolve against the v{N+1} `memo.md`, rewriting the anchor if the section was renamed. Add new entries for positions newly contested-and-held in this revision pass (look at the `Resolution: declined` rows of the changelog you just wrote — each is a candidate).
+
+   The file is free-form prose; one short paragraph per entry is the documented shape. If there are no contested-and-held positions to record (a normal outcome — many revisions produce no convictions), skip the file entirely. Absence is fully normal. See SKILL.md §Convictions ledger for the full contract; see `templates/BRIEF.migration.md.example` §Convictions for a shape example.
+
+   **Advisory only.** This file is not scored, not gating, has no state-machine impact, and is read only by the next `memo-revise` invocation. The reviewer does not read it. The auditor does not read it.
 10. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 11. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised acme-seed.1 → acme-seed.2/ (addressed 7 notes, declined 1)`).
 
