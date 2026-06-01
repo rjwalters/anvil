@@ -143,6 +143,27 @@ The author primitive this enables is the deliberate **expand → tighten** caden
 - **Single thread-level target**: declare a flat `target_length: { words: [min, max] }` and edit it between revise calls when the cadence shifts. This is the PR #122 shape and continues to work unchanged.
 - **Per-version overrides (declarative)**: declare `target_length.default` for the baseline and `target_length.overrides.v{N}` for the versions that need a different range. The drafter and reviser apply the resolution order `overrides.v{N+1}` → `default` → no target when producing v{N+1}; the reviewer reads the resolved range from `_progress.json.metadata.target_length_resolved` so dim 7 scores against the same range the artifact was authored against. See `SKILL.md` §"Length targets" for the schema, resolution order, and backward-compatibility contract.
 
+### Word count is primary; rendered page count is second-layer advisory
+
+`anvil:memo` is **markdown-first**: the word count of `memo.md` is the **primary** length measure the reviewer scores against, exactly per the calibration table above. The rendered page count of `memo.pdf` — produced by `memo-render` (Epic #158 Phase 3) when the renderer toolchain is on PATH — is a **second-layer advisory** signal the reviewer reads alongside the word count, NOT a replacement for it.
+
+The two layers are related but not identical, and they MAY disagree:
+
+- **Word count says "in range" but rendered page count says "out of range"** (e.g., 2050 words within target `[1800, 2400]` but the rendered PDF spills to 5 pages because the memo contains an oversized figure block or unusually dense citations): the reviewer judges which signal is binding for THIS memo. For most memos, word count wins — the markdown is the canonical artifact and the PDF is a derived view. For memos where the rendered length is operationally load-bearing (e.g., an LP-facing one-pager that MUST fit a hard page budget), the operator MAY treat the page-count signal as binding by declaring `target_length: { "pages": [min, max] }` at thread level — see the page-count severity escalation below.
+- **Word count says "out of range" but rendered page count says "in range"**: rare in practice (compact markdown that renders to a normal page count), but legal. The word-count deduction stands; the rendered-page signal is advisory and does NOT save the dim 7 score.
+
+The dim 7 justification SHOULD record **both** numbers when both are available (word count from `memo.md`, rendered page count from `_progress.json.render_gate.pages`), even when they agree — visibility into the two-layer relationship is the load-bearing operator signal. Example justifications:
+
+- Word and page agree (in range): "Target 1800–2400 words; actual 2050 (3 rendered pages) — in range."
+- Word in range, page out of range: "Target 1800–2400 words; actual 2050 (5 rendered pages — second-layer advisory, see `_summary.md.render_gate`) — in range on the primary signal; reviewer judges the rendered overflow as cosmetic for this memo."
+- Word out of range, page in range: "Target 1800–2400 words; actual 3400 (4 rendered pages) — 42% over upper bound; -1 dim 7." (The rendered page count is in range but does NOT save the deduction; word count is primary.)
+
+**Severity escalation via target_length spec form**: the `render_gate.gate(kind="memo")` `memo_page_fit` check (see `anvil/lib/render_gate.py`) treats `target_length.pages` as an **error** (operator declared the page range explicitly — out of range is a hard fail) and `target_length.words` as a **warning** (the page range is derived via the 600-words-per-page proxy; the word-count signal in dim 7 remains authoritative). The reviewer's `_summary.md.render_gate` block surfaces these severities verbatim from the render gate's findings — see `commands/memo-review.md` step 4c. The reviewer does NOT re-derive the severity; the gate's classification is the contract.
+
+**Render-gate findings are non-blocking for the verdict**: `_summary.md.render_gate` informs the dim 7 justification (and surfaces page-fit warnings / overfull-render advisories the operator should act on in the next revise pass) but does NOT gate `advance`. The reviewer's verdict is driven by the rubric total + the four critical-flag categories + the source-side `memo_image_refs_exist` lint as today. A memo that scores ≥32 with no critical flags is advance-eligible even when `_progress.json.render_gate.pass == false`.
+
+**Backwards-compat**: a memo without `_progress.json.render_gate` (legal pre-Phase-3 state, every legacy version dir on disk) reviews exactly as before — the reviewer falls back to word-count-only dim 7 judgment and the `_summary.md.render_gate` block is `{"ran": false, "reason": "no render_gate block in _progress.json"}`.
+
 ## Advance threshold
 
 - **≥32/40** — advance to `READY` (or to next step in the lifecycle).
