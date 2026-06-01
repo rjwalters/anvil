@@ -19,21 +19,23 @@ This command exists because aesthetic-craft venture categories (consumer product
 - **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
 - **`<thread>/BRIEF.md`**: read frontmatter for `imagery_policy` (REQUIRED gate) and `imagery_style` (optional style preset key; see `commands/imagery-style-presets.md` when shipped per Epic #130 Phase 1C / issue #133).
 - **`.anvil/config.toml`**: read `[deck.imagegen] backend` to discover the consumer-registered adapter. See `commands/deck-imagegen-adapter.md` for the adapter contract and registration mechanics.
-- **`deck.md` imagery markers**: the drafter MAY annotate a slide that needs a generative asset with an HTML comment of the form `<!-- anvil-imagegen: <prompt-id> [style=<preset>] -->` immediately above the `![alt](assets/<prompt-id>.png)` reference. `<prompt-id>` is the asset's stable filename stem; `<style>` (optional) overrides the brief-level style preset for this single slide.
+- **`deck.md` imagery markers**: the drafter MAY annotate a slide that needs a generative asset with an HTML comment of the form `<!-- anvil-imagegen: <slot> [style=<preset>] [steps=<N>] -->` immediately above the `![alt](assets/generated/<slot>.png)` reference. `<slot>` is the asset's stable filename stem; `<style>` (optional) overrides the brief-level style preset for this single slide; `<steps>` (optional) overrides the adapter's default step count. The `assets/generated/` namespace is the canonical generative-asset location per Phase 1B (see `commands/deck-draft.md` §"Respecting imagery_policy" and issue #132).
 
 ## Outputs
 
 ```
 <thread>.{N}/
   assets/
-    <prompt-id>.png           Rendered generative asset (PNG bytes from backend)
+    generated/
+      <slot>.png              Rendered generative asset (PNG bytes from backend)
+      <slot>.png-FAILED.md    Per-slot failure stub (if generation failed; prior PNG, if any, is left in place)
     _prompts.json             Prompt journal — append-only record of every dispatched generation
-  _progress.json              phases.imagegen.state = done
+  _progress.json              phases.imagegen.state = done | partial | failed | skipped
 ```
 
-The asset directory is the same `assets/` directory that holds consumer-provided imagery (logos, screenshots, team photos). Generative assets live alongside consumer-provided assets and follow the same `![alt](assets/<name>.png)` reference convention from `deck.md`. The prompt journal `_prompts.json` is the load-bearing artifact: `deck-audit` reads it to verify every generative asset is attributed; `deck-revise` reads it to avoid re-prompting the backend when re-rendering a slide that did not change.
+Generative assets live under the `assets/generated/` subdirectory (per Phase 1B's convention; see `commands/deck-draft.md` §"Respecting imagery_policy"). Consumer-provided imagery (logos, product screenshots, team photos) stays in the top-level `assets/` directory; the separation makes the auditor's job easier — anything under `generated/` is backend-produced and must appear in the journal. The prompt journal at `<thread>.{N}/assets/_prompts.json` is the load-bearing artifact: `deck-audit` reads it to verify every generative asset is attributed; `deck-revise` reads it to avoid re-prompting the backend when re-rendering a slide whose imagery contract did not change.
 
-The prompt-journal schema is defined by the Phase 2 prompt-journal primitive (Epic #130 Phase 2 / issue D) and is intentionally NOT specified in this command doc — that primitive lives at `anvil/lib/<TBD>` and is the canonical source. This command is a journal *consumer*, not a schema owner.
+The prompt-journal schema is owned by the Phase 2D prompt-journal primitive at `anvil/skills/deck/lib/prompt_journal.py` (issue #177). This command is a journal *consumer*, not a schema owner. The on-disk key is the PNG filename (e.g., `hero.png`), and the value records the final composed `prompt`, the `style` preset key, the registered `backend` identifier, and optional `steps` / `model` / `seed` per the dataclass shape.
 
 ## Preconditions
 
@@ -50,41 +52,66 @@ When any precondition fails, the command surfaces the gap with a clear remediati
 
 After a successful run:
 
-1. Every `<!-- anvil-imagegen: <prompt-id> -->` marker in `deck.md` resolves to an actual `assets/<prompt-id>.png` file.
-2. `assets/_prompts.json` records, for every dispatched generation: the prompt-id, the full prompt string sent to the backend, the style preset used, the steps parameter (if any), the backend identifier, an ISO-8601 UTC timestamp, and the bytes-length / image dimensions of the returned PNG. The schema is owned by the Phase 2 prompt-journal primitive.
-3. `_progress.json` records `phases.imagegen.state = done` with `started` / `completed` ISO-8601 UTC timestamps per `anvil/lib/snippets/progress.md`.
-4. `deck-audit` (per Epic #130 Phase 3 / issue G) can read the journal and verify every generative asset is attributed in `deck.md` (e.g., the slide carries a "concept render" caption — see Phase 3 / issue F).
+1. Every `<!-- anvil-imagegen: <slot> -->` marker in `deck.md` resolves to an actual `assets/generated/<slot>.png` file (or to a `assets/generated/<slot>.png-FAILED.md` stub when that slot's dispatch failed; both are legible to the auditor).
+2. `<thread>.{N}/assets/_prompts.json` records every successful dispatch as a per-slot entry keyed by the PNG filename. The on-disk schema is owned by the Phase 2D prompt-journal primitive at `anvil/skills/deck/lib/prompt_journal.py`: `{ "<slot>.png": { "prompt": "...", "style": "...", "backend": "...", "steps": N?, "model": "...", "seed": N? } }` with `prompt` / `style` / `backend` required and `steps` / `model` / `seed` optional.
+3. `_progress.json` records `phases.imagegen.state ∈ {"done", "partial", "failed", "skipped"}` with `started` / `completed` ISO-8601 UTC timestamps per `anvil/lib/snippets/progress.md`. Three additional counter fields (`dispatched`, `skipped_unchanged`, `failed`) summarize the run for downstream tooling.
+4. `deck-audit` (per Epic #130 Phase 3 / issue G) can read the journal and verify every generative asset under `assets/generated/` is attributed in `deck.md` (e.g., the slide carries a "concept render" caption — see Phase 3 / issue F).
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. Read `<thread>/BRIEF.md` frontmatter and `.anvil/config.toml`.
-2. **Run preconditions** (in order — short-circuit on first failure):
-   - Read `imagery_policy` from BRIEF.md frontmatter. If absent or != `generative-eligible`, surface the opt-in pointer and exit cleanly (`phases.imagegen.state = skipped`, exit 0 — this is not a failure; the deck simply isn't on the generative-imagery path).
-   - Read `[deck.imagegen] backend` from `.anvil/config.toml`. If absent, surface the adapter-contract pointer (`commands/deck-imagegen-adapter.md`) and exit failed.
-   - Enumerate `<!-- anvil-imagegen: <prompt-id> -->` markers in `deck.md`. If zero, emit a warning ("imagery_policy is generative-eligible but no imagery markers found in deck.md") and exit cleanly (`phases.imagegen.state = done`, no-op).
-3. **Load adapter**: import the dotted path from config and verify it is a callable / class instance matching the `ImageBackend` protocol. See `commands/deck-imagegen-adapter.md` for what "matching" means.
-4. **Resolve prompts**: for each marker, resolve the prompt text. The drafter is expected to have written the prompt body into `speaker-notes.md` under a "Imagery prompt" subsection for that slide, OR into a sibling `assets/<prompt-id>.prompt.md` file. The exact prompt-resolution contract is specified by the Phase 2 implementation (issue E); v0 spec only requires that prompts are NOT inferred from slide body text (anvil refuses to fabricate prompts).
-5. **Initialize `_progress.json`**: `phases.imagegen.state = in_progress`, `phases.imagegen.started = <ISO>`.
-6. **Dispatch generations**: for each `<prompt-id>`, in markdown order:
-   - Resolve the style preset (slide-level marker overrides brief-level frontmatter overrides `default`).
-   - Resolve the `steps` parameter (slide-level marker overrides brief-level frontmatter overrides `None` — backend's default).
-   - Call `adapter.generate(prompt, style, steps)`. On `BackendError`, write a stub `assets/<prompt-id>.png-FAILED.md` describing the error and the prompt, leave any prior PNG in place, and continue with the next prompt.
-   - On success: write the returned bytes to `assets/<prompt-id>.png`. Append a journal entry to `assets/_prompts.json` (the Phase 2 primitive handles read-merge-write).
-7. **Validate references**: re-walk `deck.md` and verify every `<!-- anvil-imagegen: <prompt-id> -->` marker resolves to an actual `assets/<prompt-id>.png` (or a `assets/<prompt-id>.png-FAILED.md` stub). Both are legible; a silently-absent asset is the failure mode this validation prevents.
-8. **Update `_progress.json`**: `phases.imagegen.state = done` (or `failed` if any blocker fired), `phases.imagegen.completed = <ISO>`.
-9. **Report**: one-line status (e.g., `Generated 3 assets for acme-seed.2/ (3 dispatched, 0 failed; 1.4MB written; brand-A preset; brief gate: generative-eligible)`).
+The full dispatch loop is implemented in `anvil/skills/deck/lib/imagegen.py` (`run_imagegen`); the steps below correspond to that runtime so the doc + code stay coupled. Each step is paragraph-form so an LLM agent reading the spec can follow the same logic when invoking the runtime by hand (e.g., `python -m anvil.skills.deck.lib.imagegen ...` once a thin CLI wrapper lands).
+
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the portfolio (the lookup pattern is `<thread>.{digits}/`, intentionally skipping critic siblings like `<thread>.{N}.review/`). Read `<thread>/BRIEF.md` frontmatter and prepare to read `.anvil/config.toml`.
+
+2. **Precondition 1 — opt-in gate**: parse the `BRIEF.md` YAML frontmatter and inspect `imagery_policy`. If absent OR not equal to `generative-eligible` (case-sensitive), abort with an `ImagegenError` whose message names the policy and points at `commands/deck-brief.md` § "imagery_policy". Record `phases.imagegen.state = skipped` in `_progress.json` with the policy value as the `reason`. This is documented as "clean exit" (the deck simply isn't on the generative-imagery path); the framework surfaces it as a refusal so an operator who expected dispatch sees the gap.
+
+3. **Precondition 2 — version gate**: verify `<thread>.{N}/deck.md` exists for some `N ≥ 1`. If not, abort with an `ImagegenError` pointing at `deck-draft` (the dispatcher runs after the drafter has produced markers).
+
+4. **Precondition 3 — adapter registration**: read `.anvil/config.toml` (graceful fall-through: stdlib `tomllib` ≥ 3.11 → `tomli` backport → minimal regex parser sufficient for the v0 single-key shape). Look for `[deck.imagegen] backend = "<module>:<attribute>"`. If absent, abort with an `ImagegenError` pointing at `commands/deck-imagegen-adapter.md` § "Consumer registration"; record `phases.imagegen.state = failed`. Anvil ships zero backends — the dispatcher cannot guess what the consumer wants.
+
+5. **Load adapter**: `importlib.import_module(module)` then `getattr(module, attribute)`. Three duck-typed resolutions per `commands/deck-imagegen-adapter.md`:
+   - **Class** → instantiate with zero arguments; the instance must expose `generate(prompt, style, steps) -> bytes`.
+   - **Instance / module with `generate`** → use as-is.
+   - **Plain callable** → call directly with `(prompt, style, steps)`.
+   Any other shape (a bare object without `generate`, a non-callable) aborts the run with a clear `ImagegenError`.
+
+6. **Precondition 4 — markers**: enumerate `<!-- anvil-imagegen: <slot> [style=<preset>] [steps=<N>] -->` markers in `deck.md` in markdown order. A deck with `imagery_policy: generative-eligible` but zero markers is recorded as `phases.imagegen.state = done` with an explanatory `reason` field — clean exit, no-op (the deck is on the generative path but has no imagery this iteration).
+
+7. **Load presets + journal**: parse `anvil/skills/deck/assets/imagery-style-presets.md` for prefix/suffix per preset key (case-insensitive, hyphen-equivalent-to-underscore matching). Read the prior journal at `<thread>.{N}/assets/_prompts.json` via `prompt_journal.read_journal` (Phase 2D primitive at `anvil/skills/deck/lib/prompt_journal.py`). A missing or empty journal returns `{}`; a corrupt journal is treated as missing (mirrors the `_progress.json` crash-recovery contract).
+
+8. **Resolve prompt source per slot** — refusal-on-fabrication: the drafter MUST have written the slide-specific prompt body either to a sidecar `<thread>.{N}/assets/generated/<slot>.prompt.md` (highest precedence) OR to a `## Imagery prompt: <slot>` section in `<thread>.{N}/speaker-notes.md`. If neither resolves, the slot is a per-slot failure — write a `<slot>.png-FAILED.md` stub naming the missing-prompt condition; the run continues with the next slot.
+
+9. **Compose the final prompt** per `assets/imagery-style-presets.md` § "Composition rules": `final = <prefix(K)> + ". " + P + ". " + <suffix(K)>`. The `raw` preset short-circuits to `P` (no prefix, no suffix). The deck-wide `imagery_style:` frontmatter is the default; the per-marker `style=<preset>` token overrides for that slot.
+
+10. **Idempotence check** — the load-bearing reason for the journal: if `<thread>.{N}/assets/generated/<slot>.png` already exists AND the prior journal entry for `<slot>.png` records the same `prompt`, `style`, and `steps`, the dispatcher SKIPS the backend call and records the slot as `skipped-unchanged`. `deck-revise` re-runs `deck-imagegen` after touching the deck; this check is what makes the cost zero when nothing actually changed.
+
+11. **Dispatch**: call `adapter.generate(prompt, style, steps)`. Any exception whose class name is `BackendError` (anywhere in the MRO) is caught per-slot — write a `<slot>.png-FAILED.md` stub with the exception's `str()` as the body, leave any prior PNG in place, and continue with the next slot. Other (non-BackendError) exceptions propagate; the dispatcher records `phases.imagegen.state = failed` first so the crash-recovery contract has something to read.
+
+12. **PNG signature check**: verify the returned bytes start with `\x89PNG\r\n\x1a\n`. Non-PNG bytes are treated as a per-slot `BackendError` (synthesized internally) — the stub naming the type mismatch is written and the run continues.
+
+13. **Write PNG + journal entry**: write the returned bytes to `<thread>.{N}/assets/generated/<slot>.png`. Delete any prior `<slot>.png-FAILED.md` stub (the slot succeeded this run). Update the in-memory journal dict with a new `JournalEntry(prompt=final, style=K, backend=<registered-spec>, steps=...)`.
+
+14. **Persist the journal**: write the updated journal back to `<thread>.{N}/assets/_prompts.json` via `prompt_journal.write_journal` once all slots have been processed. The primitive sorts keys alphabetically and writes `indent=2` for stable diffs.
+
+15. **Update `_progress.json`**: shallow-merge `phases.imagegen` per `anvil/lib/snippets/progress.md`. The resolved state is one of:
+    - `done` — every slot dispatched successfully (or was `skipped-unchanged`).
+    - `partial` — at least one slot failed BUT at least one succeeded.
+    - `failed` — every slot failed, OR a run-level abort fired before dispatch.
+    - `skipped` — `imagery_policy` opt-in gate refused.
+
+16. **Report**: one-line status (e.g., `deck-imagegen for acme-seed.2/ (3 dispatched, 1 failed, 2 unchanged; backend: studio.imagine)`).
 
 ## Failure modes
 
 | Failure | Surface | Exit |
 |---|---|---|
-| `imagery_policy` absent or `deterministic-only` | One-line note pointing at SKILL.md § "Asset generation" and the BRIEF.md frontmatter contract | clean (`phases.imagegen.state = skipped`) |
-| `imagery_policy: generative-eligible` but no `[deck.imagegen] backend` in `.anvil/config.toml` | One-line note pointing at `commands/deck-imagegen-adapter.md` | failed |
-| `imagery_policy: generative-eligible` but no `<!-- anvil-imagegen -->` markers in `deck.md` | Warning (deck is gated but has no imagery to generate) | clean (`phases.imagegen.state = done`, no-op) |
-| Adapter import fails (dotted path invalid, class missing `generate`) | Stack trace + pointer to `commands/deck-imagegen-adapter.md` § "Adapter contract" | failed |
-| `adapter.generate(...)` raises `BackendError` for one or more prompts | `assets/<prompt-id>.png-FAILED.md` stub per failed prompt; the command continues with the remaining prompts | partial (`phases.imagegen.state = done`, exit non-zero) |
-| Adapter returns non-PNG bytes (no PNG signature) | `assets/<prompt-id>.png-FAILED.md` stub describing the type mismatch | partial |
-| Prompt cannot be resolved (no `speaker-notes.md` entry, no `assets/<prompt-id>.prompt.md` file) | Refuse to dispatch; emit a `[blocker]` describing the missing prompt source | failed (no fabrication — anvil does not invent prompts from slide body) |
+| `imagery_policy` absent or `deterministic-only` | `ImagegenError` pointing at SKILL.md § "Asset generation" and the BRIEF.md frontmatter contract | clean (`phases.imagegen.state = skipped`) |
+| `imagery_policy: generative-eligible` but no `[deck.imagegen] backend` in `.anvil/config.toml` | `ImagegenError` pointing at `commands/deck-imagegen-adapter.md` | failed (`phases.imagegen.state = failed`) |
+| `imagery_policy: generative-eligible` but no `<!-- anvil-imagegen -->` markers in `deck.md` | Recorded as `reason` on the `imagegen` phase (deck is gated but has no imagery to generate) | clean (`phases.imagegen.state = done`, no-op) |
+| Adapter import fails (dotted path invalid, missing module, missing attribute, instance has no `generate` method) | `ImagegenError` with the full import / lookup failure and a pointer to `commands/deck-imagegen-adapter.md` § "Adapter contract" | failed |
+| `adapter.generate(...)` raises `BackendError` (or any class whose name is `BackendError` in its MRO) for one or more slots | `assets/generated/<slot>.png-FAILED.md` stub per failed slot; the dispatcher continues with the remaining slots | partial (`phases.imagegen.state = partial` when at least one slot also succeeded; `failed` when every slot failed) |
+| Adapter returns non-PNG bytes (no PNG signature) | `assets/generated/<slot>.png-FAILED.md` stub describing the type mismatch | partial / failed (same convention as `BackendError`) |
+| Prompt cannot be resolved (no `assets/generated/<slot>.prompt.md` sidecar AND no `## Imagery prompt: <slot>` section in `speaker-notes.md`) | `assets/generated/<slot>.png-FAILED.md` stub describing the missing-prompt condition; the dispatcher continues with the remaining slots | partial / failed (no fabrication — anvil does not invent prompts from slide body) |
 
 The command never retries on `BackendError`. Retry/backoff is the consumer's responsibility per the adapter contract (see `commands/deck-imagegen-adapter.md` § "Non-goals").
 
@@ -112,11 +139,31 @@ Decks without `imagery_policy: generative-eligible` are byte-identical to today'
 ```json
 {
   "phases": {
-    "imagegen": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+    "imagegen": {
+      "state": "done",
+      "started":   "<ISO>",
+      "completed": "<ISO>",
+      "dispatched": 2,
+      "skipped_unchanged": 1,
+      "failed": 0
+    }
   }
 }
 ```
 
-Merge rule: preserve all other phases. This command only touches `phases.imagegen`.
+Merge rule: preserve all other phases. This command only touches `phases.imagegen`. The `dispatched` / `skipped_unchanged` / `failed` counters are recorded by the runtime (`anvil/skills/deck/lib/imagegen.py`) so a downstream tool (e.g., the portfolio orchestrator's status report) can summarize the run without re-parsing the journal.
+
+When the opt-in gate refuses the run, the phase records a `state: "skipped"` with a `reason` field naming the offending policy value:
+
+```json
+{
+  "phases": {
+    "imagegen": {
+      "state": "skipped",
+      "reason": "BRIEF.md imagery_policy is 'deterministic-only'; deck-imagegen is opt-in via imagery_policy: generative-eligible."
+    }
+  }
+}
+```
 
 **Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.
