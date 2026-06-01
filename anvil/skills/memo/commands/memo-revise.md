@@ -91,6 +91,17 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    The file is free-form prose; one short paragraph per entry is the documented shape. If there are no contested-and-held positions to record (a normal outcome — many revisions produce no convictions), skip the file entirely. Absence is fully normal. See SKILL.md §Convictions ledger for the full contract; see `templates/BRIEF.migration.md.example` §Convictions for a shape example.
 
    **Advisory only.** This file is not scored, not gating, has no state-machine impact, and is read only by the next `memo-revise` invocation. The reviewer does not read it. The auditor does not read it.
+9.7. **Invoke `memo-render` (optional, non-blocking)**: after the revised `memo.md`, `changelog.md`, and (optional) `_convictions.md` are written, invoke `memo-render <thread>` to render the revised `memo.md` → `memo.pdf` and write the render-gate findings into `<thread>.{N+1}/_progress.json.phases.render` + `_progress.json.render_gate`. This step is the lifecycle wiring shipped by Epic #158 Phase 3 (issue #190).
+
+   **Non-blocking by design.** A missing renderer, a render-gate finding, or a hard pandoc failure does NOT abort `memo-revise`. The reviser still reports `Revised <thread>.{N} → <thread>.{N+1}/...` per step 11. The render outcome is recorded in `_progress.json` for the operator to surface and for the Phase 4 reviewer to read in `_summary.md.render_gate`.
+
+   **What this preserves.** Render is a **sub-step of `REVISED`**, NOT a new state — SKILL.md §"State machine" still derives `REVISED` from the presence of `<thread>.{N+1}/` after a prior review. A `<thread>.{N+1}/` with `phases.revise == done` but no `phases.render` block is a fully legal `REVISED` state (every memo version revised before Epic #158 / Phase 3 has this shape). This step is additive and backwards-compat.
+
+   **When to skip the call.** Two cases:
+   - If `memo-render` is not on PATH (consumer hasn't installed Anvil's Phase 3 commands yet), the reviser silently skips this step.
+   - If the consumer has explicitly disabled rendering via `<thread>/.anvil.json` `{"render": "skip"}` (a future config knob — NOT shipped in Phase 3), skip the call.
+
+   See `commands/memo-render.md` §"Failure modes" and §"Composability with `memo-draft` and `memo-revise`".
 10. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 11. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised acme-seed.1 → acme-seed.2/ (addressed 7 notes, declined 1)`).
 

@@ -82,6 +82,17 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
 7. **Create exhibits** (inline only — full figure generation belongs to `memo-figures`): any tables or simple inline data structures referenced from the body should land in `exhibits/` as `.md` or `.csv` files. Image generation is deferred to `memo-figures`.
 8. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO timestamp>`.
 9. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted acme-seed.1/ (memo.md: 1240 words, 2 exhibits)`). When `target_length` is set, also report whether the produced word count falls in-range (e.g., `... 1240 words, target 1800–2400 — under target`).
+9.5. **Invoke `memo-render` (optional, non-blocking)**: after the draft is written and `phases.draft.state == done` is recorded (step 8), invoke `memo-render <thread>` to render `memo.md` → `memo.pdf` and write the render-gate findings into `_progress.json.phases.render` + `_progress.json.render_gate`. This step is the lifecycle wiring shipped by Epic #158 Phase 3 (issue #190).
+
+   **Non-blocking by design.** A missing renderer (no pandoc on PATH, no HTML/PDF engine), a render-gate finding (placeholder hit, missing image ref, overflow warning, page-fit out of range), or even a hard pandoc failure does NOT abort `memo-draft`. The drafter still reports `Drafted <thread>.{N}/...` per step 9. The render outcome is recorded in `_progress.json.phases.render` and `_progress.json.render_gate` for the operator to surface and for the Phase 4 reviewer to read in `_summary.md.render_gate`.
+
+   **What this preserves.** Render is a **sub-step of `DRAFTED`**, NOT a new state — SKILL.md §"State machine" still derives `DRAFTED` from `phases.draft == done`. A `<thread>.{N}/` with `phases.draft == done` but no `phases.render` block is a fully legal `DRAFTED` state (every memo version drafted before Epic #158 / Phase 3 has this shape). This step is additive and backwards-compat.
+
+   **When to skip the call.** Two cases:
+   - If `memo-render` is not on PATH (consumer hasn't installed Anvil's Phase 3 commands yet), the drafter silently skips this step — no failure, no info-level note, just no render. The drafter's contract is "produce a markdown memo"; rendering is an opt-in extension.
+   - If the consumer has explicitly disabled rendering via `<thread>/.anvil.json` `{"render": "skip"}` (a future config knob — NOT shipped in Phase 3), skip the call. This is a forward-compatibility note; no config-reading is required in Phase 3.
+
+   See `commands/memo-render.md` §"Failure modes" for the full enumeration of non-blocking failure shapes and `commands/memo-render.md` §"Composability with `memo-draft` and `memo-revise`" for the design contract.
 
 ## Voice and style overrides
 
