@@ -19,6 +19,11 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
   <thread>/                Optional thread root with brief and reference material
     BRIEF.md               Optional structured or freeform brief (frontmatter + prose)
     refs/                  Optional reference material (decks, transcripts, data); also the home for drafter-written citation stubs created during draft (see memo-draft Evidence contract and §Citation stubs below)
+  <thread>.0.perspective/  Optional pre-draft external-substrate sibling (read-only)
+    notes.md               Narrative synthesis: comparable / market positioning + gaps
+    candidates.md          Structured candidates (comparables, cited research, market reports, customer evidence, regulatory) with source URLs
+    _meta.json             { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
+    _progress.json         Phase state (phase: perspective)
   <thread>.1/              First drafted version (immutable once written)
     memo.md                Memo body
     exhibits/              Inline exhibits referenced from body
@@ -100,8 +105,11 @@ Per-thread state, derived from on-disk evidence (not flags):
 
 ```
 EMPTY → DRAFTED → REVIEWED → REVISED → … → READY
-                                          ↘ AUDITED  (optional, via auditor critic sibling)
+        ↑                                  ↘ AUDITED  (optional, via auditor critic sibling)
+        (optional .0.perspective/ may exist before DRAFTED; it does not gate the machine)
 ```
+
+The perspective sibling is intentionally allowed at `.0.perspective/` (before the first drafted version) AND at `.{N}.perspective/` (after a reviewer points out a substrate gap on `<thread>.{N}/`). Both follow the same "N parallel critics, one reviser" rule: when present at `<thread>.{N}.perspective/`, the next `memo-revise` pass consumes it alongside `.review/` and any `.audit/` / `.critic/` siblings. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence of a perspective sibling does NOT block draft / review / revise — a memo thread with no perspective sibling proceeds normally. The memo-skill lifecycle (`draft → review → revise → figures`) MUST NOT list `perspective` as a required phase; it is opt-in input, not required output. See `commands/memo-perspective.md` for the command spec.
 
 | State | Evidence |
 |---|---|
@@ -192,7 +200,8 @@ Parse errors are tolerated, never fatal — this mirrors the precedent set by `_
 | Command | Role | Reads | Writes |
 |---|---|---|---|
 | `memo` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
-| `memo-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `memo-revise`) |
+| `memo-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/memo.md` and `.review/comments.md` evidence / market / comparables / risk findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating; may side-effect-write to `<thread>/refs/<key>.md` citation stubs |
+| `memo-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `memo-revise`) |
 | `memo-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `memo-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
 | `memo-figures <thread>` | figurer | latest `<thread>.{N}/memo.md` | figures/tables under `<thread>.{N}/exhibits/` |
