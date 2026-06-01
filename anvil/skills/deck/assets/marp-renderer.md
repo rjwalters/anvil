@@ -162,8 +162,11 @@ right thing when the config file is missing or has been overridden.
 
 ## Layout patterns
 
-Multi-column / grid slide layouts must be defined via the deck's frontmatter
-`style:` block and applied through a class, **not** through inline `style="..."`.
+Multi-column / grid slide layouts must be applied through a class — either one
+of the **stock classes shipped in `anvil-deck.css`** (`.row`, `.split`) or a
+consumer-defined class declared in the deck's frontmatter `style:` block.
+**Inline `style="display:grid;..."` / `style="display:flex;..."` does not
+work.**
 
 **The foreignObject SVG render constraint (verified, issue #128).** Marp
 renders each slide's content into a `<foreignObject>` element inside an SVG,
@@ -186,8 +189,9 @@ before recording the pattern.
 </div>
 ```
 
-**Does render** — frontmatter `style:` block defines a class; the slide
-body references the class:
+**Does render** — `anvil-deck.css` ships `.row` (auto-flex) and `.split`
+(50/50 grid) as stock theme classes; reference one of them directly from the
+slide body. No frontmatter `style:` block needed for the standard cases:
 
 ```markdown
 ---
@@ -195,8 +199,6 @@ marp: true
 size: 16:9
 theme: anvil-deck
 html: true
-style: |
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 2em; align-items: center; }
 ---
 
 ## Catalog vs. delivered
@@ -207,11 +209,15 @@ style: |
 </div>
 ```
 
-Class-based selectors apply via the global stylesheet, which the
-foreignObject path **does** honor. The same approach works for `display:
-flex`, multi-column grids, and `align-items` / `justify-content` rules — the
-constraint is on the *inline* `style="..."` attribute specifically, not on
-the CSS properties themselves.
+For asymmetric ratios or other layouts the two stock classes don't cover,
+fall back to a consumer-defined class in the deck's frontmatter `style:`
+block — class-based selectors (whether shipped in the theme or declared in
+frontmatter) apply via the global stylesheet, which the foreignObject path
+**does** honor. The same approach works for `display: flex`, multi-column
+grids, and `align-items` / `justify-content` rules — the constraint is on
+the *inline* `style="..."` attribute specifically, not on the CSS properties
+themselves. See `slide-archetypes.md` "Figure layout idioms → Custom
+layouts beyond `.row` / `.split`" for the worked frontmatter example.
 
 The deck skill ships an `inline-display-style-dropped` lint rule
 (`anvil/skills/deck/lib/marp_lint.py`, severity `warning`) that detects the
