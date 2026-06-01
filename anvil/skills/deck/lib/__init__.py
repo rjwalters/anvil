@@ -16,6 +16,13 @@ Public modules:
   ``deck-imagegen`` command (Epic #130 Phase 2E). Loads the consumer
   adapter from ``.anvil/config.toml``, dispatches one PNG per
   imagery-marker in ``deck.md``, and writes the prompt journal.
+- :mod:`imagegen_phrases` — Canonical allowed-attribution and
+  forbidden-documentary phrase lists for the fabrication-attribution
+  contract (Epic #130 Phase 3F/3G; issue #195 consolidation). Single
+  source of truth shared by ``deck-draft``, ``deck-revise``, and
+  ``deck-audit``; exposes ``ALLOWED_ATTRIBUTION_PHRASES``,
+  ``FORBIDDEN_DOCUMENTARY_PHRASES`` (both ``frozenset[str]``),
+  ``has_attribution_phrase(text)``, and ``find_forbidden_phrases(text)``.
 
 If a future skill needs the same primitives, the lift to
 ``anvil/lib/`` is mechanical.
