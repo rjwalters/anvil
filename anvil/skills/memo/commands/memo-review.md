@@ -61,7 +61,9 @@ The review sibling directory is **read-only once written**. Revisions consume it
      - **`UNVERIFIED`** — refs/ document is present and on-topic but does not contain the supporting passage (claim is unsupported but not contradicted); 1-point dim 3 deduction.
      - **`CONTRADICTED`** — refs/ document contains a passage that **directly contradicts** the claim (e.g., memo says "Sphere Staff Scientist tenure 15+ years" but `refs/cv.pdf` shows "Sphere Semi, Palo Alto CA, 2026-current"); 2-point dim 3 deduction AND a **critical-flag candidate** per the rubric's open-ended "any deal-breaker a sophisticated reader would catch" instruction. Reviewers SHOULD set the critical flag for any CONTRADICTED claim in a load-bearing section (team, financials, traction, technical thesis).
      - **`NOT-IN-REFS`** — the memo makes a claim, but no source-of-truth refs-document on-disk covers the claim's subject. Informational only (no deduction); records "where did this come from" visibility.
-     The reviewer is **not required to back-check every claim** — that would re-litigate the whole memo — but is required to back-check **at least one claim per refs-document type present**. When `refs/` contains no source-of-truth materials (only citation stubs, or empty), this sub-step is **inactive** and dim 3 falls back to the citation-hooks behavior alone (backward-compat with PR #140). PDFs and images are treated as presence-only in v0 — the reviewer notes the file is on-disk and the memo's claim about its subject is `UNVERIFIED` unless the operator has surfaced the relevant passage in `BRIEF.md` or a sibling `.md` companion (e.g., a `cv.md` next to `cv.pdf`).
+     The reviewer is **not required to back-check every claim** — that would re-litigate the whole memo — but is required to back-check **at least one claim per refs-document type present**. When `refs/` contains no source-of-truth materials (only citation stubs, or empty), this sub-step is **inactive** and dim 3 falls back to the citation-hooks behavior alone (backward-compat with PR #140).
+
+     **PDF refs back-check (opt-in via `pdftotext`, issue #167)**: call `anvil/skills/memo/lib/refs_pdf.py::check_pdftotext_available()`. When it returns `True`, extract each `<thread>/refs/*.pdf` to text via `extract_pdf_text(...)` and apply the same `VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS` verdict-tag rubric above against the extracted text directly — PDFs become first-class back-check sources, no sibling `.md` companion required. When extraction returns an empty string (image-based / scanned PDF), log an info-level note (`refs/<file>.pdf` produced no extractable text — likely image-based; would need OCR for back-check) and fall back to presence-only handling for that specific file — no deduction either way; this is an operator-facing visibility note. When `check_pdftotext_available()` returns `False`, PDFs and images are treated as **presence-only** (the v0 fallback shipped in PR #162) — the reviewer notes the file is on-disk and the memo's claim about its subject is `UNVERIFIED` unless the operator has surfaced the relevant passage in `BRIEF.md` or a sibling `.md` companion (e.g., a `cv.md` next to `cv.pdf`). In the `check_pdftotext_available() == False` path, the reviewer additionally records an info-level lint entry in `_summary.md.lint.refs_pdf_extraction` (see step 9) carrying the remediation install story from `refs_pdf.PDFTOTEXT_REMEDIATION` so the consumer sees how to enable the back-check on the next run. Images (`.png` / `.jpg`) remain presence-only in all paths in v0 (OCR / vision back-check is deferred per the issue body).
    - **Dim 7 (Scope discipline) length comparison**: compute the word count of `memo.md` (a simple `len(memo.md.split())` is sufficient; the reviewer may strip code-fence content and YAML frontmatter before counting if they meaningfully distort the body length). If `target_length` is set, compare the actual word count against the declared `[min, max]` range and apply the following calibration:
      - **In range** (`min <= actual <= max`): no length-driven deduction; score on the other scope-discipline criteria (no kitchen-sink appendices, no scope creep into adjacent deals).
      - **Modest deviation** (within ~15% of the nearest endpoint): note in the justification but do not flag — soft target.
@@ -70,7 +72,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
 6. **Identify critical flags**: review the memo against the 4 example flags in `rubric.md` AND the open-ended "any deal-breaker a sophisticated reader would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)`. When the pre-flight image-reference lint (step 4b) reports `errors > 0`, `advance` is forced `false` and the verdict lists `Memo image refs (lint)` under critical flags. The rubric total is reported honestly but does not save the verdict — a memo that references files that do not exist is not advance-eligible regardless of its prose quality.
 8. **Write line-level comments**: in `comments.md`, list specific feedback keyed to memo sections — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`).
-9. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 4b:
+9. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 4b, plus the `refs_pdf_extraction` block reflecting the PDF refs back-check path (step 5, issue #167):
    ```markdown
    # Review summary
 
@@ -88,6 +90,11 @@ The review sibling directory is **read-only once written**. Revisions consume it
            { "line": 41, "rule": "memo_image_refs_exist", "severity": "error", "message": "Image reference `exhibits/fig_cohort_valuation.png` does not exist at expected path `/abs/path/to/<thread>.{N}/exhibits/fig_cohort_valuation.png`, but a file with the same basename was found at the version-dir root...", "ref": "exhibits/fig_cohort_valuation.png", "resolved_path": "/abs/path/to/<thread>.{N}/exhibits/fig_cohort_valuation.png" }
          ],
          "warnings_by_path": []
+       },
+       "refs_pdf_extraction": {
+         "ran": false,
+         "reason": "pdftotext not available",
+         "remediation": "pdftotext (poppler-utils) not found on PATH — required only for the optional `anvil:memo` PDF refs back-check (issue #167). Install via `brew install poppler` (macOS) or `apt-get install poppler-utils` (Debian/Ubuntu). ..."
        }
      },
      "critical_flag": true,
@@ -98,6 +105,12 @@ The review sibling directory is **read-only once written**. Revisions consume it
    ```
    ```
    - When `lint.memo_image_refs.errors > 0`, set `critical_flag: true` and append a `critical_flag_notes` entry of type `memo_image_refs_lint` naming the affected source lines. This flag lives under the "fourth-category critical flag" bucket per `rubric.md`'s open-ended "any deal-breaker a sophisticated reader would catch" slot — a memo whose PDF renders with broken-image placeholders is not ship-ready regardless of its prose.
+   - The `lint.refs_pdf_extraction` block mirrors the `lint.memo_image_refs` shape and records the PDF refs back-check path's per-run outcome (issue #167). Shape:
+     - `ran` (`bool`): whether the PDF text extraction path ran. `True` when `refs_pdf.check_pdftotext_available()` returned `True` AND at least one `<thread>/refs/*.pdf` was present; `False` otherwise (binary absent OR no PDF refs).
+     - `reason` (`str`, only when `ran: false`): short tag — `"pdftotext not available"` when the binary is absent, or `"no PDF refs"` when the binary IS available but `<thread>/refs/` contains no `.pdf` files.
+     - `remediation` (`str`, only when `ran: false` AND `reason == "pdftotext not available"`): the verbatim `refs_pdf.PDFTOTEXT_REMEDIATION` install-story string, so the consumer sees how to enable the back-check on the next run.
+     - `per_file` (`list[dict]`, only when `ran: true`): one entry per `.pdf` ref with `path` (relative to `<thread>/refs/`), `extracted_chars` (length of the extracted text, `0` for image-based / scanned PDFs), and an optional `note` (e.g., `"image-based — likely scanned; would need OCR for back-check"`).
+   - **The `refs_pdf_extraction` block is info-level only.** It NEVER sets `critical_flag` — a missing optional binary is not a deal-breaker, and an image-only PDF is also not a deal-breaker (the deduction logic, if any, lives in the `comments.md` verdict-tag entries under dim 3, not here).
 10. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Total: `XX / 40`
     - Decision: `advance: true` or `advance: false`
