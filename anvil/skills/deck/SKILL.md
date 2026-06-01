@@ -57,6 +57,29 @@ Versioned dirs and critic siblings are **immutable once their `_progress.json` r
 
 **Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks aliasing the current version (`<thread>.latest -> <thread>.{max_N}`, `<thread>.latest.review -> <thread>.{max_N}.review`, `<thread>.latest.design -> <thread>.{max_N}.design`, `<thread>.latest.audit -> <thread>.{max_N}.audit`) so downstream tooling — figure scripts pulling numbers from a peer thread via `refs/<thread>.latest/...`, share scripts pointing at "the current deck PDF", CI gates checking `<thread>.latest/deck.pdf` — can target stable paths without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped deck commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery glob (`<thread>.{N}.*/`) matches only digit-N suffixes, so a `.latest*` entry is invisible to the reviser's critic-sibling enumeration and cannot perturb anvil's state-machine derivation.
 
+### Source-of-truth materials
+
+`<thread>/refs/` is **also** the canonical home for **author-supplied source-of-truth materials**: documents the deck's claims are evaluated against. This role coexists with the existing `refs/` (reference material) and `assets/` (consumer-provided imagery) contracts above — the existing contracts are unchanged; the source-of-truth role is **additive**. The disambiguation is by **filename + extension** (no manifest, no registry in v0).
+
+Typical source-of-truth materials for a pitch deck:
+
+- `cv.pdf` / `cv.md` — founder CV(s); load-bearing for any team / founder bio claim on Slide 10 (Team).
+- `founder-bio.md` — explicit-permission founder background prose; load-bearing for "prior role / prior exit / named hire" claims on the team slide.
+- `transcript-*.md` — founder interview transcripts; load-bearing for direct-quote claims and for the "Why now" / "Problem" framing.
+- `filing-*.pdf` — public filings, S-1s, government program announcements; load-bearing for sized public-market claims on the market or competition slides.
+- `paper-*.pdf` — research papers cited in the deck; load-bearing for technical-claim citations.
+- `email-loi-*.md` / `loi-*.md` — explicit-permission LOI / design-partner / pilot-letter excerpts; load-bearing for traction claims on Slide 8 (Traction).
+- `quote-*.md` — explicit-permission customer quote / testimonial excerpts; load-bearing for traction-narrative claims.
+- `image-*.{png,jpg}` — cleared-for-the-deck imagery (logos, product shots). These coexist with `<thread>/assets/` — `assets/` is the closed inventory the drafter may reference on slides per the existing no-fabrication contract; `refs/image-*.{png,jpg}` are reference shapes the reviewer may back-check claims against (e.g., a screenshot in `refs/` may corroborate a product-feature claim that the drafter described in prose).
+
+The list is illustrative, not exhaustive. The contract is: *"if a claim's evidentiary basis lives in a file, that file goes in `<thread>/refs/`."* Source-of-truth materials are typically named for their **content** (`cv.pdf`, `filing-s1.pdf`, `loi-bigcorp.md`); both file-roles coexist in the same directory, disambiguated by filename convention.
+
+Accepted file shapes for source-of-truth materials in v0: markdown (`.md`), plain text (`.txt`), JSON (`.json`), PDFs (`.pdf`), images (`.png`, `.jpg`, `.jpeg`). The drafter **reads text-readable files** (markdown, text, JSON) into context as authoritative. PDFs and images are treated as **presence-only signals** in v0 — the drafter is aware they exist by filename and respects the rule that claims about the subject of the file SHOULD NOT be made unless backed by content the operator has surfaced in `BRIEF.md` (PDF text extraction is deferred — see issue #167).
+
+**Brief precedence is unchanged.** The existing `deck-draft.md` no-fabrication contract ("the brief is the contract") remains authoritative for **what may appear on a slide**: only numbers, names, and assets attested in `<thread>/BRIEF.md` may land on a slide. `refs/` source-of-truth materials act as **back-check substrate** — the reviewer cross-checks brief-attested claims against the underlying source, but `refs/` does NOT extend what the drafter is allowed to put on a slide. A claim that lives in `refs/` but is not in `BRIEF.md` is still off-limits; the operator must surface it through the brief first.
+
+See `commands/deck-draft.md` §Procedure step 5 for the drafter contract (ingestion of `refs/` source-of-truth materials), `commands/deck-review.md` §Procedure step 6 for the reviewer dim 5 + dim 6 back-check sub-step, and `rubric.md` §"Refs back-check (dims 5, 6)" for the per-instance deduction rule. The contract degrades gracefully: when `refs/` contains no source-of-truth materials (only generic reference material, or empty), the back-check is inactive and dims 5 / 6 fall back to BRIEF-only cross-check (the existing PR #132 / pre-#166 behavior).
+
 ### `BRIEF.md` frontmatter reference
 
 `<thread>/BRIEF.md` may carry optional YAML frontmatter that the deck commands consume as structured context. The full schema (with required-section conventions and procedural notes) lives in `commands/deck-brief.md` §"BRIEF.md schema". The fields the framework reads:

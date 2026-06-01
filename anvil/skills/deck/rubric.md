@@ -40,6 +40,30 @@ In addition to dim 8, `deck-vision` owns six **vision-rubric dimensions** scored
 
 If a critic sibling is missing at version `N` (e.g., operator skipped `design`), the reviser leaves that dimension's aggregate as `null` in `verdict.md` and notes the gap. A deck cannot reach `READY` with any main-rubric dimension still `null` — at minimum, the general `deck-review` must fill any dimensions no specialist owns. Vision-rubric dimensions (v1–v6) are gated separately: a deck without a `deck-vision` pass is not yet validated against rendered-only defects, and the reviser surfaces this as a gap in `_revision-log.md`.
 
+## Refs back-check (dims 5, 6)
+
+`<thread>/refs/` is **also** the home for **author-supplied source-of-truth materials** (CV, founder bio, public filings, papers, transcripts, LOIs, customer quotes, images) — see SKILL.md §"Source-of-truth materials". When such materials are present, dim 5 (Traction / proof) and dim 6 (Team credibility) MUST each score a **per-instance refs back-check** in addition to the existing BRIEF cross-check the dimensions already run.
+
+The back-check is **review-owned** (both dims live in `deck-review`'s ownership block per the dimension table above) and is **additive**: the brief precedence rule from SKILL.md §"Source-of-truth materials" is unchanged — only brief-attested claims may appear on a slide, but the reviewer back-checks brief-attested claims against the underlying `refs/` source-of-truth document when one is present.
+
+The reviewer partitions `<thread>/refs/` into source-of-truth materials (named for their content — `cv.pdf`, `cv.md`, `founder-bio.md`, `transcript-foo.md`, `filing-s1.pdf`, `loi-bigcorp.md`, `quote-acme.md`) and generic reference material (decks, transcripts not named as a source-of-truth, financial spreadsheets used only as drafter context) per the SKILL.md disambiguation rule. Generic reference material is out of scope for this sub-rule. For each source-of-truth refs-document **type** present that is on-topic for dim 5 (traction-bearing — LOIs, quotes, customer letters, traction-cited filings) or dim 6 (team-bearing — CVs, founder bios, prior-outcome filings), the reviewer picks at least one load-bearing claim in `deck.md` whose evidentiary basis is the document's subject and back-checks it. The reviewer is **not** required to back-check every claim — the requirement is **at least one claim per source-of-truth refs-document type present**.
+
+The reviewer records each back-check in `comments.md` with a four-valued verdict (`VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS`) and applies a **per-instance deduction** on the bound dim (5 for traction claims, 6 for team claims):
+
+- **One `CONTRADICTED` claim** against a source-of-truth ref — **two-point** deduction on the bound dim AND a **critical-flag candidate**, escalating to one of the existing standing flags:
+  - Traction-bearing CONTRADICTED → existing **critical flag 1 (Fabricated traction)** — the underlying source-of-truth document shows the traction figure is not what the slide says.
+  - Team-bearing CONTRADICTED → existing **critical flag 2 (Fabricated team credentials)** — the underlying source-of-truth document shows the bio claim is not what the slide says.
+  No new flag is needed; the existing flags 1 and 2 are the natural escalation path. The contradiction is the canary failure mode the contract exists to catch: a factual error in a load-bearing traction or bio claim (the Bessemer 15+ years founder bio error from issue #166's body) that propagates through versions because no reviewer back-checked against the underlying source.
+- **One `UNVERIFIED` claim** against a source-of-truth ref (document is present and on-topic but does not contain the supporting passage) — **one-point** deduction on the bound dim. Not flag-eligible on its own; the gap is signaled but not deal-breaking.
+- **`NOT-IN-REFS` claims** (deck makes a claim, no source-of-truth refs-document covers its subject) — **no deduction**. Informational only; records "where did this come from" visibility for the reviser.
+- **`VERIFIED` claims** — no deduction; positively scored under the dim's full-weight calibration.
+
+The dim 5 / dim 6 justification MUST cite the specific verdict and the refs-document path (e.g., "Back-checked Slide 10 'Founder: 15+ years at Bessemer Trust' against `refs/cv.pdf`: CONTRADICTED ('Bessemer Trust 2018-2023') — -2 on dim 6 + critical flag 2 (Fabricated team credentials)"). Vague "needs refs back-check" deductions without named instances are not actionable for the reviser and SHOULD be avoided.
+
+**Backward compatibility.** When `<thread>/refs/` contains **no** source-of-truth materials (only generic reference material, or empty, or missing), this sub-rule is **inactive** and dims 5 / 6 fall back to BRIEF-only cross-check (the pre-#166 behavior). A deck thread that uses `refs/` only as drafter context (transcripts, prior decks the brief did not name as a source-of-truth) is unaffected. PDFs and images are treated as presence-only in v0 — the reviewer notes the file is on-disk and back-checks against a sibling `.md` companion (e.g., a `cv.md` next to `cv.pdf`) or `BRIEF.md`-surfaced content; PDF text extraction is deferred to issue #167.
+
+The deduction is applied entirely via reviewer judgment — there is no automated `refs/` parsing in v0. See `commands/deck-review.md` §Procedure step 6 (dim 5 / dim 6 refs back-check sub-step) for the reviewer-side procedure and `commands/deck-draft.md` §Procedure step 5 for the drafter-side ingestion contract.
+
 ## Scoring guidance
 
 For each dimension, the critic assigns an integer between 0 and the dimension's weight. A short justification accompanies each score (1–3 sentences pointing to specific slides or evidence in the deck).
