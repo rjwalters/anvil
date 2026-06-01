@@ -202,7 +202,7 @@ This figurer renders only the asset categories anvil ships:
 - **Matplotlib charts** (deterministic from script + CSV) — shipped.
 
 It does NOT:
-- **Generate imagery** (DALL-E, Midjourney, Stable Diffusion, etc.) — out of scope for v0. Generative imagery in a fundraising deck is a credibility liability; deferred to consumer extension via `commands/deck-imagegen.md` override.
+- **Generate imagery** (DALL-E, Midjourney, Stable Diffusion, etc.) — handled by the separate first-class `deck-imagegen` command (opt-in via `imagery_policy: generative-eligible` in `BRIEF.md` frontmatter; dispatches to a consumer-registered backend adapter — anvil ships zero backends). See `commands/deck-imagegen.md` and `commands/deck-imagegen-adapter.md`. The two asset paths are disjoint (`figures/` for deterministic; `assets/` for generative); `deck-figures` MUST run after `deck-imagegen` to pick up rendered PNGs in the final PDF.
 - **Fetch logos / screenshots / photos** — consumer-provided in `<thread>/assets/`. The figurer validates references but does not create these assets.
 - **Compose composite imagery** (e.g., overlay logos on a background) — out of scope. The drafter references atomic assets; composition is a design-tool job, not an authoring-pipeline job.
 
