@@ -195,6 +195,21 @@ The resolved `(min_words, max_words)` is recorded in the version dir's `_progres
 
 Parse errors are tolerated, never fatal — this mirrors the precedent set by `_read_anvil_json` in `anvil/lib/rubric.py`. A thread written for PR #122's flat shape continues to produce identical behavior under the resolution helper; no consumer needs to migrate.
 
+## Rendering
+
+Memo threads can OPTIONALLY render `memo.md` → `memo.pdf` via `memo-render`. Rendering is an **opt-in, asset-producing sub-step** of the canonical `draft → review → revise → figures` lifecycle — it does NOT add a new state, it does NOT add a required phase, and it is fully backward-compat with memo versions written before the renderer shipped.
+
+The optional-render contract:
+
+- **Sub-step of `DRAFTED` and `REVISED`, not a new state.** `_progress.json.phases.render` records whether the renderer ran for a given version directory. Absence of the `phases.render` block is **fully legal** — it means the version was never rendered (the case for every legacy memo, and for consumers who run without pandoc / weasyprint installed). The state-machine derivation in §"State machine" above is **unchanged**: `DRAFTED` is still derived from `phases.draft == done` regardless of whether render ran; `REVISED` is still derived from the presence of `<thread>.{N+1}/` after a prior review.
+- **Non-blocking on failure.** A missing renderer, a render-gate finding, or even a hard pandoc failure does NOT abort `memo-draft` or `memo-revise`. The failure is recorded in `_progress.json.phases.render` and `_progress.json.render_gate`, and the upstream command completes normally. See `commands/memo-render.md` §"Failure modes" for the full table.
+- **Markdown-first; PDF is derived.** `memo.md` is the source-of-truth. `memo.pdf` is a one-way derivation produced by `memo-render`; it is **regenerated on every render** and MUST NEVER be hand-edited. If the rendered output looks wrong, fix the markdown or the styles, never the PDF.
+- **Lifecycle wiring.** `memo-draft` and `memo-revise` call `memo-render` after their respective writing pass (drafter step 9.5; reviser step 9.7). Both calls are non-blocking. The drafter / reviser still report success even when render is unavailable or the gate finds issues; the render outcome is for the operator and the Phase 4 reviewer-side integration to surface.
+- **Composable re-run.** `memo-render <thread>` is independently re-runnable. The consumer can tweak `<consumer>/.anvil/lib/memo/styles.css` (or the framework `anvil/lib/memo/styles.css`) and re-invoke the command WITHOUT going through draft / revise. The PDF picks up the new styles; `memo.md` is untouched. See `commands/memo-render.md` §"Re-run pattern".
+- **Render gate.** The five-dimension `render_gate.gate(kind="memo")` (Phase 2 / PR #185) runs as part of every render — `memo_compile_success`, `memo_page_fit`, `memo_overfull_check`, `memo_image_refs_exist`, `memo_placeholder_scan`. Findings land in `_progress.json.render_gate.findings`. Phase 4 will wire the reviewer to surface them in `_summary.md.render_gate`; in Phase 3 the findings are recorded but not yet read by the reviewer.
+
+The full command contract — preflight, gate invocation, `_progress.json` shape, failure modes, re-run pattern — lives in `commands/memo-render.md`. The render-chain dependencies (pandoc + weasyprint / wkhtmltopdf / xelatex + optional pdfinfo) and the renderer-detection priority order are documented in `anvil/lib/memo/README.md` §"The rendering chain" and surfaced via `MEMO_RENDERER_REMEDIATION` in `anvil/lib/render.py`.
+
 ## Command dispatch
 
 | Command | Role | Reads | Writes |
@@ -204,6 +219,7 @@ Parse errors are tolerated, never fatal — this mirrors the precedent set by `_
 | `memo-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `memo-revise`) |
 | `memo-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `memo-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
+| `memo-render <thread>` | PDF renderer (optional, non-blocking) | latest `<thread>.{N}/memo.md`, `<thread>.{N}/_progress.json.metadata.target_length_resolved` | `<thread>.{N}/memo.pdf` (on success); `<thread>.{N}/_progress.json.phases.render` + `_progress.json.render_gate` always |
 | `memo-figures <thread>` | figurer | latest `<thread>.{N}/memo.md` | figures/tables under `<thread>.{N}/exhibits/` |
 
 The portfolio orchestrator is the user-facing entry point for status; the four lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
