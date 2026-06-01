@@ -189,6 +189,108 @@ correct by being well-written.
    not set them for stylistic concerns or polish issues (those live
    in comments at severity `minor` or `nit`).
 
+## Rubric–perspective interaction (opportunistic, not punitive)
+
+A perspective sibling (see `perspective.md`) is **optional input** the
+drafter MAY consume to ground claims in external substrate. When
+present, it raises the **ceiling** on dimensions that depend on external
+substrate; it does **not** lower the floor when absent. The interaction
+is **opportunistic**, not punitive — a load-bearing distinction that
+makes perspective safe to introduce without breaking the convergence
+behaviour of legacy threads that have no perspective sibling.
+
+### The rule
+
+For any rubric dimension a per-skill rubric extension names as
+**substrate-sensitive** (typically the dimensions that score "external
+evidence quality" — market sizing, related-work positioning, competitive
+differentiation, cost sourceability, evidence quality):
+
+- **When `<thread>.0.perspective/` (or the latest
+  `<thread>.{N}.perspective/`) is present AND the artifact's
+  load-bearing claims cite candidates from `candidates.md` (by anchor
+  id or by the candidate's source pointer):** the cited claims are
+  treated as **substrate-backed**, and the dimension MAY score higher
+  than it would without the perspective citation. The reviewer treats
+  a perspective candidate's structured `Source:` field as an
+  inline-footnote-equivalent hook for the surrounding claim. Scores at
+  the top of the dimension's calibrated range (4/5 or full weight)
+  become defensibly reachable on this evidence.
+- **When the perspective sibling is absent OR present-but-not-cited:**
+  the dimension scores against the legacy baseline. **No new
+  deduction** is taken for the absence — the scoring rule is identical
+  to the pre-perspective behaviour. A thread that has never run
+  `<skill>-perspective` is unaffected by this interaction.
+- **When the perspective sibling's `notes.md` "Identified gaps"
+  explicitly names a substrate area as un-covered AND the artifact
+  makes a load-bearing claim about that area without sourcing it:**
+  the standing per-instance deduction the dimension already enforces
+  (see the skill's existing citation-hook / refs / sourceability sub-
+  rules) is the natural escalation path. **No new** deduction is
+  introduced by this interaction — the perspective sibling sharpens
+  the *existing* deduction by surfacing that the drafter was told the
+  substrate was missing and made the claim anyway.
+
+### Opportunistic, not punitive (the architect's core contract)
+
+The rule is **opportunistic**: perspective can move a score **UP**,
+never **DOWN**. Two equivalent statements:
+
+1. A claim with a perspective-cited candidate scores at least as well
+   as the same claim without one (and typically scores higher,
+   substrate-backed-claim being the higher-credibility mode).
+2. Removing a perspective citation from an otherwise-identical artifact
+   does not raise its score — only lowers or holds it.
+
+The framework enforces this property through the **no-new-deduction**
+clause: per-skill rubric extensions that adopt this interaction MUST
+NOT introduce a new deduction keyed on perspective absence. They MAY
+introduce a new positive-evidence rule (cited candidate → substrate-
+backed) and MAY sharpen an existing deduction (un-cited claim against
+a known-gap → the existing deduction is applied to a more clearly-
+established miss).
+
+This contract is the reason perspective is safe to ship incrementally:
+a skill that adds a `<skill>-perspective` command and updates its
+rubric does NOT break review continuity for legacy threads in the same
+consumer repository.
+
+### Per-skill rubric extension shape
+
+A per-skill rubric that adopts the perspective interaction adds a
+subsection (typically `§"Perspective substrate (dim N)"`, sibling to
+existing per-dim sub-rules like `§"Citation hooks (dim N)"` and
+`§"Refs back-check (dim N)"`) that:
+
+1. Names the substrate-sensitive dimension(s) and what kind of claim
+   the dimension scores (market-size claim, related-work claim,
+   competitive claim, sourceability claim, …).
+2. Anchors to this snippet by reference (so the cross-skill contract
+   stays visible).
+3. States the opportunistic-not-punitive rule explicitly for the
+   skill's domain — typically: "with perspective: substrate-backed
+   claims score higher; without perspective: unchanged baseline".
+4. (Optionally) names the natural-escalation path for an existing
+   deduction when a known-gap claim is made un-hooked.
+
+The v0 adopters are `anvil:deck` (dims 3 + 4), `anvil:memo` (dim 3),
+`anvil:proposal` (dim 6 with light dim 4 reference), and `anvil:pub`
+(dim 4 — codifies the implicit litsearch rule). Other skills (`slides`,
+`installation`, `ip-uspto`, `report`) do not currently consume
+perspective and SHOULD NOT add rubric language until they ship a
+`<skill>-perspective` command.
+
+### Why this is load-bearing
+
+Per the Epic #143 architect proposal: "Adding `{skill}-perspective`
+commands without touching the rubric will produce minimal behavior
+change — drafters will skip it." A drafter that sees no scoring upside
+to running the substrate-gathering step will skip it under deadline
+pressure. The rubric interaction closes that gap by making
+perspective-cited claims **measurably better** at the rubric level
+without making perspective-absent threads **measurably worse** — the
+positive-incentive design the canary signal asks for.
+
 ## Citation-quality dimensions (optional, opt-in per skill)
 
 Skills that produce sourced artifacts may name two of their dimensions
@@ -297,3 +399,6 @@ the canonical example of an advisory overlay in use.
   lifecycle.
 - `audit.md` — the `.review/` (judgment) vs `.audit/` (tool-evidence)
   distinction with skill-by-skill mapping table.
+- `perspective.md` — the pre-draft external-substrate sibling whose
+  presence triggers the opportunistic rubric interaction documented
+  in §"Rubric–perspective interaction" above.
