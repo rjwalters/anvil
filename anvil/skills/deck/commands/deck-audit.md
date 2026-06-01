@@ -6,7 +6,7 @@ description: Fact / number / citation auditor for the deck skill. Verifies every
 # deck-audit — Fact / citation auditor
 
 **Role**: auditor.
-**Reads**: latest `<thread>.{N}/` (specifically `deck.md`, `speaker-notes.md`, `figures/src/*.csv`), `<thread>/BRIEF.md`, `<thread>/refs/**`.
+**Reads**: latest `<thread>.{N}/` (specifically `deck.md`, `speaker-notes.md`, `figures/src/*.csv`, and — when `imagery_policy: generative-eligible` — `assets/_prompts.json` via `anvil/skills/deck/lib/prompt_journal.py`), `<thread>/BRIEF.md`, `<thread>/refs/**`.
 **Writes**: `<thread>.{N}.audit/` with `_summary.md`, `findings.md`, `audit-trail.md` (line-by-line evidence), `_meta.json`, `_progress.json`.
 
 This auditor is sharper than the generic `audit` critic on other skills (e.g., `memo`): it specifically enforces the deck no-fabrication contract. A deck that ships to investors with a single unattested customer logo is a deck that loses the firm's credibility on first reference-check.
@@ -53,7 +53,11 @@ The auditor does **not own any rubric dimension directly** — it does not score
 6. **Cross-check market arithmetic**:
    - Recompute TAM/SAM/SOM from cited inputs (redundant with `deck-market`, but auditor double-checks at READY).
    - If `deck-market` raised a market-math flag and it was supposedly addressed in the latest revision, verify the fix.
-7. **Write `audit-trail.md`** — the line-by-line evidence file:
+7. **Generative-imagery audit (gated)**:
+   - Read `<thread>/BRIEF.md` frontmatter and inspect `imagery_policy` (per `commands/deck-imagegen.md` § "Preconditions").
+   - **If `imagery_policy` is absent OR not equal to `generative-eligible`**: SKIP this step entirely. No findings under this heading are emitted. Deterministic-only decks see zero behavior change from this auditor extension.
+   - **If `imagery_policy: generative-eligible`**: read `<thread>.{N}/assets/_prompts.json` (the prompt journal, Phase 2D primitive at `anvil/skills/deck/lib/prompt_journal.py`) via `read_journal(journal_path)`. A missing or empty journal is tolerated (a generative-eligible deck whose drafter has not yet placed any imagery markers is a clean no-op for this step). Then emit the three generative-imagery findings per the "Generative-imagery audit" section below.
+8. **Write `audit-trail.md`** — the line-by-line evidence file:
    ```markdown
    # Audit trail — acme-seed.2
 
@@ -89,7 +93,7 @@ The auditor does **not own any rubric dimension directly** — it does not score
    - "45% engineering / 30% GTM / 15% hires / 10% reserve" — BRIEF.md Ask section confirms ✓
    - "18 months runway to $1.5M ARR" — BRIEF.md Ask section confirms ✓
    ```
-8. **Write `findings.md`** summarizing critical / blocker / major / minor:
+9. **Write `findings.md`** summarizing critical / blocker / major / minor:
    ```
    ## Findings (audit)
 
@@ -106,7 +110,7 @@ The auditor does **not own any rubric dimension directly** — it does not score
 
    (none)
    ```
-9. **Write `_summary.md`**:
+10. **Write `_summary.md`**:
    ```markdown
    # Audit summary
 
@@ -132,8 +136,126 @@ The auditor does **not own any rubric dimension directly** — it does not score
    }
    ```
    ```
-10. **Update `_progress.json`** and `_meta.json`.
-11. **Report**: one-line status (e.g., `Audit on acme-seed.2 → acme-seed.2.audit/ (CRITICAL: 2 fabrication flags; 1 major; deck cannot ship until addressed)`).
+11. **Update `_progress.json`** and `_meta.json`.
+12. **Report**: one-line status (e.g., `Audit on acme-seed.2 → acme-seed.2.audit/ (CRITICAL: 2 fabrication flags; 1 major; deck cannot ship until addressed)`).
+
+## Generative-imagery audit
+
+This section documents the three generative-imagery findings the auditor emits **only when `<thread>/BRIEF.md` frontmatter contains `imagery_policy: generative-eligible`**. When the policy is `deterministic-only`, `consumer-provided`, or absent, the entire section is a no-op — the auditor does not load the prompt journal, does not enumerate generative assets, and does not emit any of the three findings below. Deterministic-only decks see byte-identical audit output regardless of whether this auditor version is the pre- or post-Phase-3G build.
+
+Cross-references for the runtime + journal contract:
+
+- `commands/deck-imagegen.md` — the dispatcher that writes generative PNGs and the prompt journal.
+- `anvil/skills/deck/lib/prompt_journal.py` — the `read_journal(path)` primitive the auditor uses (Phase 2D / #177). The journal is a flat dict of `{ "<slot>.png": JournalEntry(prompt, style, backend, steps?, model?, seed?) }`.
+- `commands/deck-draft.md` § "Respecting `imagery_policy`" — the per-policy drafter contract. The `generative-eligible` row restricts generative imagery to illustrative / atmospheric / abstract use and forbids generative substitutes for logos / team photos.
+- `commands/deck-revise.md` (Phase 3F / #187, parallel issue) — the drafter / reviser side of the fabrication-attribution contract. **The allowed/forbidden phrase lists in finding #1 below are the v0 source of truth shared with Phase 3F** — when Phase 3F lands, both documents reference the same allowed/forbidden set (anchored here in the auditor doc so the verifier side is canonical).
+
+### Detection inputs
+
+Before running any of the three checks, the auditor gathers:
+
+1. **The journal**: `read_journal(<thread>.{N}/assets/_prompts.json)`. Returns `{}` when missing or empty; either case means no generative imagery has been dispatched yet (the three findings are vacuous and SKIP).
+2. **The generated-assets inventory**: every Markdown image reference in `<thread>.{N}/deck.md` whose target path matches `assets/generated/<slot>.png` (per `commands/deck-draft.md` § "Respecting `imagery_policy`" — the `generative-eligible` placeholder convention). The match is on the literal `assets/generated/` prefix; references outside that subpath are NOT considered generative.
+3. **The per-slide context**: for each generated reference, the auditor reads:
+   - The Markdown `alt` text (the bracketed body of `![alt](assets/generated/<slot>.png)`).
+   - Any visible text on the same slide that captions or qualifies the image — text within ~2 lines of the image reference, before the next slide separator (`---`) or H1/H2.
+   - The slide's `speaker-notes.md` section, if any (the drafter's intent record).
+4. **The journal entry for the slot**: `journal.get("<slot>.png")` keyed by the PNG filename. A missing entry for a referenced generative slot is itself a signal — usually means `deck-imagegen` has not yet run on the current revision (the audit may be premature); the auditor emits a `[note]` finding pointing at `commands/deck-imagegen.md` rather than the three checks below.
+
+### Finding 1: `unattributed-generative-imagery` (CRITICAL)
+
+**What it catches**: an on-slide reference to `assets/generated/<slot>.png` whose alt-text AND nearby on-slide caption text contain none of the **allowed attribution phrases** — i.e., the slide presents a backend-rendered image without disclosing that it is a render.
+
+**Allowed attribution phrases** (the verifier side of Phase 3F's contract; case-insensitive substring match):
+
+- `concept render`
+- `concept-render`
+- `aspirational mockup`
+- `aspirational-mockup`
+- `illustrative scene`
+- `illustrative-scene`
+- `illustrative render`
+- `concept illustration`
+
+**Forbidden phrases** (case-insensitive substring match) — when any of these appear in the alt-text or nearby on-slide caption of a generative image reference, the finding fires regardless of whether an allowed phrase is also present (the forbidden phrase wins because it asserts a falsifiable real-world claim that the journal contradicts):
+
+- `product screenshot`
+- `actual photo`
+- `actual photograph`
+- `customer deployment`
+- `customer in production`
+- `actual user`
+- `real user`
+- `from the field`
+- `in production at`
+- `live deployment`
+
+**Detection logic**: for every Markdown image reference matching `![<alt>](assets/generated/<slot>.png)` in `deck.md` AND every corresponding HTML `<img src="assets/generated/<slot>.png" alt="<alt>">` tag:
+
+1. Combine the alt-text and the ±2-line on-slide caption window into a single search-corpus string.
+2. If the corpus contains any forbidden phrase → **fire CRITICAL**. Message: "Slide N references `assets/generated/<slot>.png` (a backend-rendered image per `_prompts.json`) but the alt-text / on-slide caption asserts `<forbidden-phrase>` — a falsifiable real-world claim contradicted by the prompt journal. Re-author the reference using `concept render` / `aspirational mockup` attribution, OR replace the generative asset with a consumer-provided asset listed in the brief Assets inventory."
+3. Else if the corpus contains NO allowed phrase → **fire CRITICAL**. Message: "Slide N references `assets/generated/<slot>.png` (a backend-rendered image per `_prompts.json`) without concept-render attribution. Add `concept render` / `aspirational mockup` / `illustrative scene` to the alt-text and (when the image is load-bearing for an investor claim) to a visible on-slide caption per `commands/deck-draft.md` § 'Respecting imagery_policy' (the generative-eligible row) and Phase 3F (#187)."
+4. Else (an allowed phrase present and no forbidden phrase) → no finding for this slot.
+
+**Why CRITICAL**: an unattributed generative image is a credibility-destroying claim — an investor doing visual diligence on a "product screenshot" that turns out to be a Stable Diffusion render is the failure mode this finding exists to prevent.
+
+**Suppression**: `<!-- anvil-audit-disable: unattributed-generative-imagery -->` on the same slide downgrades the finding to `severity: info`. The slide must justify the suppression in `speaker-notes.md` (per the lint-disable precedent in `anvil/skills/deck/lib/marp_lint.py`).
+
+### Finding 2: `prompt-claim-divergence` (MAJOR)
+
+**What it catches**: the prompt in `_prompts.json` for slot `<slot>` asserts a falsifiable real-world context ("in a Tokyo cafe", "customer using the product", "Q3 2024 quarterly review", "warehouse floor at Acme Robotics") and the corresponding slide in `deck.md` presents the rendered scene as if it depicts THAT actual context (rather than an illustrative composition that happens to be set there). The image is rendered, but the deck reads it as a documentary photo.
+
+**Detection logic**:
+
+1. For each slot in the journal: parse the `prompt` field for **falsifiable-context markers** — substrings that name a real place, a real customer, a real date, a real event, or a specific real-world deployment. The v0 heuristic uses the following marker patterns (case-insensitive substring match):
+   - `in <Proper Noun>` (e.g., "in Tokyo", "in Acme Robotics' factory") — the named location is asserted.
+   - `at <Proper Noun>` (same).
+   - `customer using` / `customer using the product` / `our customer` — claims a real customer in the image.
+   - `Q[1-4] [0-9]{4}` / month-year combinations — temporal anchor.
+   - `quarterly review` / `board meeting` / `town hall` — claims a specific named real event.
+   - `<thread>` brief's company name appearing in the prompt context — claims this is the company's own deployment / facility.
+2. For each slot with one or more markers: read the slide referencing that slot. Examine the alt-text, on-slide caption (±2-line window), and speaker-notes section for the same slide. If the deck presents the slot's location/customer/event as a real claim (markers from the slide text overlap with markers from the prompt), AND no `concept render` / `aspirational mockup` attribution disclaims the framing, **fire MAJOR**. Message: "Slide N references `assets/generated/<slot>.png`. The prompt journal records that this image asserts `<falsifiable-context>` (e.g., `<extracted-marker>`), but the slide presents the scene as a real depiction of `<deck-asserted-context>`. Either re-prompt the slot with an explicitly illustrative framing (drop the named location / customer / date), OR add explicit attribution that the scene is a concept render — not a documentary photo of `<context>`."
+3. The check intentionally does NOT fire when the prompt records a generic/abstract setting ("warm-toned editorial photography of a small kitchen") and the deck does not reach toward a falsifiable claim — that is the well-behaved case the contract permits.
+
+**Why MAJOR (not CRITICAL)**: a divergence between prompt and on-deck framing is a credibility risk but usually a recoverable one (a single attribution-line edit fixes it). The CRITICAL severity is reserved for finding #1 where the deck flatly presents a render as a real photo.
+
+**Suppression**: `<!-- anvil-audit-disable: prompt-claim-divergence -->` on the same slide downgrades the finding to `severity: info`. Use this when the marker heuristic over-fires on a prompt whose proper-noun location was used for compositional reference only (e.g., "lighting style reminiscent of Tokyo cafes at night") and the slide does not actually claim that real-world context. Document the rationale in `speaker-notes.md`.
+
+### Finding 3: `style-incoherence` (MINOR)
+
+**What it catches**: mixing `style` preset keys across the journal entries reads as patchwork. A pitch deck whose hero slide is `editorial-photography`, whose product page is `studio-product`, and whose lifestyle slide is `documentary` lacks a coherent visual register — investors notice. The auditor flags this so the operator can either narrow the style set or justify the variety in `speaker-notes.md`.
+
+**Detection logic**:
+
+1. Collect the set `S = { entry.style for entry in journal.values() }`.
+2. If `|S| <= 1` → no finding (the deck either has zero generative imagery, or every slot uses a single preset; either is coherent).
+3. If `|S| == 2` AND one of the two preset keys is `raw` → no finding (the `raw` preset is the explicit no-style-preset escape hatch documented in `assets/imagery-style-presets.md`; pairing one preset with `raw` is a documented intentional mix).
+4. Else (`|S| >= 2` with no single dominant preset) → **fire MINOR**. Message: "The prompt journal records `<count>` distinct style presets across `<journal-size>` generative slots: `<list-of-presets-with-slot-counts>`. Mixing presets across a single deck reads as patchwork. Consider narrowing to a single dominant preset (set `imagery_style: <preset>` in BRIEF.md frontmatter and re-run `deck-imagegen`) OR justify the variety in `speaker-notes.md` (e.g., a "hero shot" / "product detail" / "lifestyle context" three-style framing aligned with the deck's narrative arc)."
+
+**Why MINOR**: style coherence is a polish concern, not a credibility one. A patchwork deck still ships; an unattributed render does not.
+
+**Suppression**: `<!-- anvil-audit-disable: style-incoherence -->` anywhere in `deck.md` (the finding is deck-level, not slide-level, since the journal aggregates across slides) downgrades the finding to `severity: info`. Use when the multi-style framing is intentional and recorded in the brief's drafter notes.
+
+### Suppression convention
+
+All three findings honor the per-slide directive shape established by the marp-lint escape hatch (`anvil/skills/deck/lib/marp_lint.py` § "Escape hatch — `<!-- anvil-lint-disable: slide-content-overflow -->`"). The audit-side directive uses the `anvil-audit-disable:` prefix to distinguish it from the lint-side `anvil-lint-disable:` directive; both follow the same `<!-- anvil-<kind>-disable: <finding-name> -->` shape and the same severity-downgrade semantic (the finding is preserved in `findings.md` at `severity: info` rather than silenced).
+
+Multiple findings may be suppressed on one slide by listing them comma-separated:
+
+```html
+<!-- anvil-audit-disable: unattributed-generative-imagery, prompt-claim-divergence -->
+```
+
+Each suppression SHOULD be paired with a rationale paragraph in `speaker-notes.md` for that slide. The auditor does not enforce the rationale presence (it would be too prescriptive), but its absence is a `[note]` finding the reviewer/auditor may surface for human review.
+
+### Out of scope for v0
+
+The following are explicitly deferred to follow-up issues — listed here so the operator knows what this auditor extension does NOT cover:
+
+- **Backend-specific findings** (e.g., model-card requirements, content-policy-refusal patterns). The journal records the `backend` name and optional `model` per entry; backend-specific lint is a downstream concern.
+- **Cross-skill rollout**. The three findings are deck-only — memo, proposal, and slides do not yet have analogous "asset-generated-from-prompt" pipelines.
+- **Vision-critic on rendered PDF** (whether the actual rendered image content matches its claimed attribution). Vision-critic is explicitly deferred from Epic #130 per the issue body.
+- **Fabrication-contract drafter prompts**. Phase 3F (#187, parallel) owns the drafter / reviser side of the attribution contract; this auditor extension is the verifier side.
 
 ## When to run
 
@@ -152,5 +274,6 @@ Standard.
 - **Critical flags here block READY.** A `READY` verdict from the reviewer becomes `not READY` if audit raises a critical flag. The audit's critical-flag output trumps the aggregated review verdict.
 - **Don't critique style, design, narrative, ask, or market structure.** Audit is purely factual. Other critics own those dimensions.
 - **Do walk the chart data.** A chart that doesn't match its source CSV is the easiest fabrication to miss because it's "rendered". Diff the rendered chart against `python figures/src/<chart>.py` output.
+- **Respect the generative-imagery gate.** The three generative-imagery findings (`unattributed-generative-imagery`, `prompt-claim-divergence`, `style-incoherence`) fire ONLY when `<thread>/BRIEF.md` frontmatter contains `imagery_policy: generative-eligible`. On any other policy (or absent field), the auditor does NOT open the prompt journal and does NOT enumerate generative assets. This is the load-bearing guarantee that deterministic-only decks see zero behavior change from the Phase 3G extension.
 
 **Scorecard kind declaration**: This critic's `_meta.json` SHOULD include `"scorecard_kind": "human-verdict"` per `anvil/lib/snippets/scorecard_kind.md`. deck-audit is an auditor critic — the audit findings are meant for human consumption (or for the reviser to address narratively), not for programmatic per-dimension aggregation.
