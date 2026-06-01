@@ -23,7 +23,7 @@
 #   .anvil/roles/                      Generic role definitions (always installed)
 #   .anvil/skills/<name>/              Canonical skill bodies (consumer override target)
 #   .anvil/CLAUDE.md                   Full Anvil guide
-#   .anvil/install-metadata.json       Manifest (version, skills, overrides)
+#   .anvil/install-metadata.json       Manifest (version, skills, overrides, skill_hashes)
 #   .claude/skills/anvil-<name>/SKILL.md  Thin Claude registration shim
 #                                         (depth 1: Claude Code only discovers
 #                                         SKILL.md at .claude/skills/<name>/.)
@@ -275,6 +275,77 @@ dirs_identical() {
   diff -r -q "$a" "$b" >/dev/null 2>&1
 }
 
+# Compute a stable content hash for a directory tree. Used to record the
+# "as-installed" snapshot at install time and to compare against the current
+# destination on re-install, so the installer can tell apart:
+#   - consumer never touched the install (dst hash == recorded hash) → safe
+#     to auto-upgrade even when the dst now differs from source (source moved
+#     forward in a later release)
+#   - consumer modified the install (dst hash != recorded hash) → preserve
+#     the modifications by skipping unless --force
+#
+# Implementation: sorted list of relative file paths, each fed through
+# `shasum -a 256`, then the concatenated digests fed through one more
+# `shasum -a 256`. `shasum -a 256` is present on macOS and Linux by default;
+# no new dependencies (subprocess-only philosophy per pyproject.toml).
+dir_hash() {
+  local d="$1"
+  [[ -d "$d" ]] || { echo ""; return; }
+  ( cd "$d" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 ) \
+    | shasum -a 256 \
+    | awk '{print $1}'
+}
+
+# Read a recorded skill hash from an existing manifest. Returns the empty
+# string if the manifest, the `skill_hashes` block, or the requested skill
+# entry is absent (which is the "legacy install, no recorded hash" case the
+# Stage 7 decision matrix falls back to today's byte-diff behavior for).
+#
+# Uses pure-bash grep/sed so we don't introduce a jq dependency for a
+# single-field read. The schema is hand-emitted by `write_manifest`, so the
+# parse target is well-known:
+#   "skill_hashes": {
+#     "memo": "abc123...",
+#     "deck": "def456..."
+#   }
+#
+# We restrict the match to the `skill_hashes` block so that, e.g., a future
+# `"memo": "..."` field somewhere else in the manifest can't be misread as
+# the skill's hash. Done with awk to keep the parse robust against single-
+# line schemas.
+read_recorded_hash() {
+  local manifest="$1" skill="$2"
+  [[ -f "$manifest" ]] || { echo ""; return; }
+  # Two-pass extract, pure-bash + tr + grep + sed (no jq dependency):
+  #   1. Isolate the `skill_hashes` object body. The schema emitted by
+  #      `write_manifest` puts the whole block on one line in the form
+  #      `"skill_hashes": {"a": "...", "b": "..."}`; we match the literal
+  #      `"skill_hashes": {` opener and grep up to the matching `}`.
+  #   2. Inside that body, match `"<skill>": "<hash>"` and emit the hash.
+  #
+  # Using `tr ',' '\n'` to split entries onto separate lines before grepping
+  # keeps the parse independent of whether the JSON is one-line or pretty-
+  # printed.
+  local block
+  block="$(tr '\n' ' ' < "$manifest" \
+    | grep -oE '"skill_hashes"[[:space:]]*:[[:space:]]*\{[^}]*\}' \
+    | head -n1)" || true
+  [[ -n "$block" ]] || { echo ""; return; }
+  # `|| true` guards the no-match branch: if the manifest has a
+  # `skill_hashes` block but no entry for the queried skill (realistic
+  # partial-install scenario — e.g. memo was installed in a prior run, the
+  # current invocation queries for deck), `grep -E` returns 1, and under
+  # `set -euo pipefail` pipefail propagates it, killing the installer
+  # silently mid-Stage-7. The first pipeline above is already protected the
+  # same way; this one must mirror it.
+  printf '%s' "$block" \
+    | tr ',' '\n' \
+    | grep -E "\"$skill\"[[:space:]]*:[[:space:]]*\"[a-f0-9]+\"" \
+    | head -n1 \
+    | sed -E "s/.*\"$skill\"[[:space:]]*:[[:space:]]*\"([a-f0-9]+)\".*/\1/" \
+    || true
+}
+
 # Copy a directory tree's CONTENTS (not the wrapper dir) into dest, creating
 # dest if needed. `cp -R src/. dest` copies contents while preserving the dest
 # directory itself. All paths are passed as bash positional args (no shell
@@ -329,10 +400,16 @@ write_guide() {
 
 # Write the install manifest JSON. Substitutions happen in the bash heredoc,
 # so paths containing shell metacharacters in $anvil_source are safe.
+#
+# The `skill_hashes` block records the per-skill directory hash at install
+# time (the "as-installed" snapshot). Subsequent re-installs compare the
+# current destination against this baseline to distinguish "consumer never
+# touched the install" (auto-upgrade safe) from "consumer modified the
+# install" (preserve modifications unless --force). See issue #152.
 write_manifest() {
   local target_dir="$1" manifest_path="$2"
   local anvil_version="$3" anvil_source="$4" install_date="$5"
-  local installed_json="$6" skipped_json="$7"
+  local installed_json="$6" skipped_json="$7" hashes_json="$8"
   mkdir -p "$target_dir/.anvil"
   cat > "$manifest_path" <<MANIFEST_EOF
 {
@@ -340,7 +417,8 @@ write_manifest() {
   "anvil_source": "$anvil_source",
   "install_date": "$install_date",
   "installed_skills": $installed_json,
-  "skipped_overrides": $skipped_json
+  "skipped_overrides": $skipped_json,
+  "skill_hashes": $hashes_json
 }
 MANIFEST_EOF
 }
@@ -348,6 +426,35 @@ MANIFEST_EOF
 # Track override decisions for the manifest.
 SKIPPED_OVERRIDES=()
 INSTALLED_SKILLS=()
+# Per-skill "as-installed" content hashes. Keys are skill names, values are
+# hex digests from `dir_hash`. Recorded under `skill_hashes` in the manifest
+# so a subsequent re-install can tell apart "consumer modified the install"
+# from "source moved forward in a later release."
+#
+# Bash 3.x (the macOS default) does not have associative arrays, so we use
+# two parallel indexed arrays. The pair is emitted in order at manifest-
+# write time.
+SKILL_HASH_KEYS=()
+SKILL_HASH_VALUES=()
+
+# Append a (skill, hash) entry to the parallel-array hash table. Overwrites
+# an existing entry for `skill` if present (the recorded hash should always
+# reflect the most recent successful install for that skill).
+set_skill_hash() {
+  local skill="$1" hash="$2" i
+  for ((i = 0; i < ${#SKILL_HASH_KEYS[@]}; i++)); do
+    if [[ "${SKILL_HASH_KEYS[$i]}" == "$skill" ]]; then
+      SKILL_HASH_VALUES[$i]="$hash"
+      return
+    fi
+  done
+  SKILL_HASH_KEYS+=("$skill")
+  SKILL_HASH_VALUES+=("$hash")
+}
+
+# Manifest path is also referenced by Stage 7 (for the recorded-hash lookup)
+# and Stage 9 (for the write). Defined here so both stages share it.
+MANIFEST="$TARGET/.anvil/install-metadata.json"
 
 # ----- Stage 5: copy framework code (lib) -----------------------------------
 info "Stage 5: copy framework code (anvil/lib -> .anvil/lib)"
@@ -376,6 +483,26 @@ else
 fi
 
 # ----- Stage 7: copy each selected skill ------------------------------------
+# Override detection decision matrix (issue #152):
+#
+#   Destination state                          Action
+#   ────────────────────────────────────────── ───────────────────────────────
+#   Does not exist                             Fresh install. Record hash.
+#   Exists, byte-identical to source           Recopy idempotently. Record
+#                                              hash (overwrites stale entry).
+#   Exists, differs from source, dst hash
+#     matches recorded "as-installed" hash     Auto-upgrade (consumer hasn't
+#                                              modified). Record new hash.
+#   Exists, differs from source, dst hash
+#     does NOT match recorded hash             Consumer-modified. Skip with
+#                                              warning unless --force.
+#   Exists, differs from source, NO recorded
+#     hash in manifest (legacy install)        Fall back to today's
+#                                              behavior: skip with warning
+#                                              unless --force. Documented as
+#                                              one-time migration cost.
+#   --force passed                             Overwrite unconditionally.
+#                                              Record new hash.
 info "Stage 7: copy selected skills"
 for skill in "${SELECTED_SKILLS[@]}"; do
   src_skill="$ANVIL_ROOT/anvil/skills/$skill"
@@ -387,19 +514,45 @@ for skill in "${SELECTED_SKILLS[@]}"; do
   shim_dir="$TARGET/.claude/skills/anvil-$skill"
   shim_file="$shim_dir/SKILL.md"
 
-  # Override detection: if destination exists and differs from source by any
-  # byte, treat as consumer-modified. Skip unless --force.
+  # Override detection: if the destination exists, decide between safe
+  # auto-upgrade and consumer-modified-skip using the per-skill hash baseline
+  # recorded in the manifest at the time of the previous install. The
+  # `verdict` string is woven into the dry-run action label so operators can
+  # tell apart each per-skill decision in the preview.
+  verdict="install fresh"
   if [[ -d "$dst_skill" ]]; then
     if dirs_identical "$src_skill" "$dst_skill"; then
       note "skill '$skill' already installed and unchanged (refreshing safely)"
+      verdict="recopy (identical to source)"
+    elif [[ "$FORCE" == true ]]; then
+      warn "overwriting consumer-modified file(s) in .anvil/skills/$skill (--force)"
+      verdict="overwrite (--force)"
     else
-      if [[ "$FORCE" == true ]]; then
-        warn "overwriting consumer-modified file(s) in .anvil/skills/$skill (--force)"
+      # Compute the destination's current dir hash and compare against the
+      # recorded "as-installed" hash for this skill. We compute the dst hash
+      # even under --dry-run because the comparison is read-only.
+      recorded_hash="$(read_recorded_hash "$MANIFEST" "$skill")"
+      current_dst_hash="$(dir_hash "$dst_skill")"
+      if [[ -n "$recorded_hash" && "$recorded_hash" == "$current_dst_hash" ]]; then
+        # Consumer hasn't touched the install since the last install/upgrade.
+        # The dst differs from source only because source moved forward in a
+        # later release. Safe to auto-upgrade.
+        note "skill '$skill' is unmodified-since-install (recorded hash matches); auto-upgrading from source"
+        verdict="auto-upgrade (unmodified-since-install)"
+      elif [[ -z "$recorded_hash" ]]; then
+        # Legacy install (manifest pre-dates the hash-tracking change, or the
+        # manifest is missing entirely). Fall back to today's conservative
+        # behavior: assume consumer-modified and require --force.
+        warn "skipped: consumer-modified .anvil/skills/$skill (legacy install, no recorded hash; re-run with --force to overwrite — future installs will auto-detect)"
+        SKIPPED_OVERRIDES+=("$skill")
+        do_action "regenerate Claude registration shim at .claude/skills/anvil-$skill/SKILL.md" \
+          write_shim "$skill" "$shim_dir" "$shim_file"
+        continue
       else
+        # Recorded hash exists and differs from the current dst hash → the
+        # consumer actually modified the install. Preserve their work.
         warn "skipped: consumer-modified .anvil/skills/$skill (re-run with --force to overwrite)"
         SKIPPED_OVERRIDES+=("$skill")
-        # Still ensure the Claude shim exists and points at the canonical path,
-        # since that file is a pointer and safe to regenerate.
         do_action "regenerate Claude registration shim at .claude/skills/anvil-$skill/SKILL.md" \
           write_shim "$skill" "$shim_dir" "$shim_file"
         continue
@@ -408,7 +561,7 @@ for skill in "${SELECTED_SKILLS[@]}"; do
   fi
 
   # Copy (or recopy): wipe destination and replace with source contents.
-  do_action "install .anvil/skills/$skill from source" \
+  do_action "install .anvil/skills/$skill from source [$verdict]" \
     replace_tree "$src_skill" "$dst_skill"
 
   # Always regenerate the thin Claude registration shim.
@@ -416,6 +569,12 @@ for skill in "${SELECTED_SKILLS[@]}"; do
     write_shim "$skill" "$shim_dir" "$shim_file"
 
   INSTALLED_SKILLS+=("$skill")
+  # Record the "as-installed" hash so the next re-install can distinguish
+  # consumer-modified from unmodified. Under --dry-run no copy happens so
+  # we hash the source tree (which is what a real run WOULD install); this
+  # keeps the dry-run-honesty contract intact (the manifest is not written
+  # in dry-run mode either; see Stage 9 do_action wrapper).
+  set_skill_hash "$skill" "$(dir_hash "$src_skill")"
   # Suppress post-action confirmation under --dry-run (issue #81). The
   # INSTALLED_SKILLS array is still populated so the Stage 11 summary can
   # accurately report what a real run WOULD install (relabel branch below).
@@ -498,7 +657,8 @@ do_action "write Anvil guide to .anvil/CLAUDE.md" \
 
 # ----- Stage 9: install manifest --------------------------------------------
 info "Stage 9: write install manifest"
-MANIFEST="$TARGET/.anvil/install-metadata.json"
+# MANIFEST is defined earlier (above Stage 5) because Stage 7 also reads it
+# for the recorded-hash lookup.
 
 # Build JSON arrays for installed skills and skipped overrides.
 json_array_from_list() {
@@ -511,12 +671,41 @@ json_array_from_list() {
   printf ']'
 }
 
+# Build the `skill_hashes` JSON object from the parallel-array hash table.
+# Order matches the order skills were processed in Stage 7. Empty hash table
+# emits `{}`.
+#
+# Preservation rule (issue #152): the hash table at this point contains only
+# the entries set by Stage 7 — newly-installed skills. Skills that were
+# skipped (consumer-modified) need their PREVIOUSLY-RECORDED hash carried
+# forward into the new manifest, or the next re-install would see "no
+# recorded hash" and fall back to the legacy-install warning indefinitely.
+# That carry-forward happens here so the merge is reflected in the final
+# JSON.
+for skipped in ${SKIPPED_OVERRIDES[@]+"${SKIPPED_OVERRIDES[@]}"}; do
+  prior="$(read_recorded_hash "$MANIFEST" "$skipped")"
+  if [[ -n "$prior" ]]; then
+    set_skill_hash "$skipped" "$prior"
+  fi
+done
+
+json_object_from_skill_hashes() {
+  local first=true i
+  printf '{'
+  for ((i = 0; i < ${#SKILL_HASH_KEYS[@]}; i++)); do
+    if $first; then first=false; else printf ', '; fi
+    printf '"%s": "%s"' "${SKILL_HASH_KEYS[$i]}" "${SKILL_HASH_VALUES[$i]}"
+  done
+  printf '}'
+}
+
 INSTALLED_JSON="$(json_array_from_list ${INSTALLED_SKILLS[@]+"${INSTALLED_SKILLS[@]}"})"
 SKIPPED_JSON="$(json_array_from_list ${SKIPPED_OVERRIDES[@]+"${SKIPPED_OVERRIDES[@]}"})"
+HASHES_JSON="$(json_object_from_skill_hashes)"
 
 do_action "write $MANIFEST" \
   write_manifest "$TARGET" "$MANIFEST" "$ANVIL_VERSION" "$ANVIL_ROOT" "$INSTALL_DATE" \
-                 "$INSTALLED_JSON" "$SKIPPED_JSON"
+                 "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON"
 
 # ----- Stage 10: renderer dependency check ----------------------------------
 # Report which renderer binaries are present so a fresh install does not claim
