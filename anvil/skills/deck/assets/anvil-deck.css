@@ -282,3 +282,48 @@ section.section h1 {
   font-size: 64px;
   margin: 0;
 }
+
+/* --- Stock layout classes ----------------------------------------------- */
+
+/* Multi-column slide layouts shipped as theme baseline so consumers can write
+ * `<div class="row">` directly in deck.md without pasting a frontmatter
+ * `style: |` block into every deck.
+ *
+ * Both selectors are scoped to `section` (mirroring the section.title / section.ask
+ * pattern above) to keep the rules slide-local and prevent collision with any
+ * consumer who happens to use `.row` outside a deck context.
+ *
+ * The foreignObject SVG render path that Marp uses for `--pdf` output silently
+ * drops *inline* `display: grid` / `display: flex` styles (verified, issue #128).
+ * Class-based selectors applied via the global stylesheet — like the two below
+ * — DO survive the foreignObject path, which is why these ship as theme-level
+ * classes rather than as a documented inline-style pattern.
+ *
+ * For custom layouts beyond `.row` / `.split`, consumers should continue to
+ * use the frontmatter `style: |` block pattern documented in
+ * `slide-archetypes.md` "Figure layout idioms → Custom layouts beyond
+ * .row / .split". */
+
+/* `.row` — flex container, gap-aware. Children flex naturally; pour any number
+ * of columns and they distribute evenly. Covers the diptych (two-image) and
+ * triptych (three-image) cases without separate arity modifiers. */
+section .row {
+  display: flex;
+  gap: 2em;
+  align-items: center;
+}
+
+section .row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* `.split` — explicit 50/50 grid. Use when the consumer wants a hard 50/50
+ * split (e.g. figure-left + bullet-right) and `.row`'s flex auto-distribution
+ * is undesirable. */
+section .split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2em;
+  align-items: center;
+}

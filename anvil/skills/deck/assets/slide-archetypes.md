@@ -219,11 +219,15 @@ The thresholds are configurable through the existing `Geometry` override on `lin
 
 ### Two-column (figure-left / text-right)
 
-When the figure and the text both carry distinct, non-redundant content (e.g. an architecture diagram on the left with a numbered build sequence on the right).
+When the figure and the text both carry distinct, non-redundant content (e.g. an architecture diagram on the left with a numbered build sequence on the right), or when a slide carries two side-by-side figures (diptych: catalog vs delivered, before vs after).
 
-> **Do not use inline `style="display:grid;..."` or `style="display:flex;..."`.** Marp renders slide content into a `<foreignObject>` element inside an SVG and rasterizes via Chromium for PDF. Inline `display: grid` / `display: flex` styles are **silently dropped** through the foreignObject → SVG → rasterizer path — the slide compiles cleanly but flattens to a single column in the rendered PDF (verified, issue #128). The `marp_lint` rule `inline-display-style-dropped` (severity `warning`) catches the source pattern. The reliable workaround is a frontmatter `style:` block defining a CSS class, then referencing that class from `<div class="...">`. See `marp-renderer.md` "Layout patterns" for the renderer-side explanation.
+> **Do not use inline `style="display:grid;..."` or `style="display:flex;..."`.** Marp renders slide content into a `<foreignObject>` element inside an SVG and rasterizes via Chromium for PDF. Inline `display: grid` / `display: flex` styles are **silently dropped** through the foreignObject → SVG → rasterizer path — the slide compiles cleanly but flattens to a single column in the rendered PDF (verified, issue #128). The `marp_lint` rule `inline-display-style-dropped` (severity `warning`) catches the source pattern. See `marp-renderer.md` "Layout patterns" for the renderer-side explanation.
 
-Define the class once in the deck frontmatter and reference it from the slide body — `html: true` and the frontmatter `style:` block are both honored by Marp's PDF render:
+**`anvil-deck.css` ships `.row` and `.split` as stock classes** so consumers can write `<div class="row">` directly in the slide body. No frontmatter `style: |` block needed for the standard cases — class-based selectors apply via the global stylesheet, which the foreignObject path **does** honor.
+
+#### `.row` — auto-distributing flex (default for two and three columns)
+
+Use `.row` for the common case: pour two or three columns and let them flex evenly. Works for diptych (two figures), triptych (three figures), or figure + bullet text.
 
 ```markdown
 ---
@@ -231,8 +235,6 @@ marp: true
 size: 16:9
 theme: anvil-deck
 html: true
-style: |
-  .row { display: grid; grid-template-columns: 1.2fr 1fr; gap: 2em; align-items: center; }
 ---
 
 ## Solution
@@ -251,9 +253,53 @@ style: |
 </div>
 ```
 
-The class-based selector applies via the global stylesheet, which the foreignObject path **does** honor. The consumer defines the `.row` class once in the per-deck frontmatter `style:` block; a shared Marpit two-column macro in `anvil/lib/` is a deliberate follow-up, not part of this layout.
+#### `.split` — explicit 50/50 grid
 
-**Caveat (escape-hatch territory):** the static overflow lint models **vertical capacity only**. It has no concept of side-by-side columns, charges a standalone full-width image the full image cost regardless of CSS grid/flex, and does **not** detect the Marpit `w:NN%` width hint. So a two-column slide with a full-width figure inside a column **will be flagged by the static lint** even though it renders fine. If you use two-column, suppress the static rule on that one slide with a per-slide directive and rely on the `deck-vision` VLM critic to catch real rendered overflow:
+Use `.split` when the consumer wants a hard 50/50 column split and `.row`'s flex auto-distribution is undesirable (e.g. figure-left + bullet-right where the bullet column must not narrow even if the figure intrinsic width is smaller). Same markup shape as `.row`; only the class name changes.
+
+```markdown
+<div class="split">
+
+![Catalog](figures/catalog.png)
+
+![Delivered](figures/delivered.png)
+
+</div>
+```
+
+#### Custom layouts beyond `.row` / `.split`
+
+For layouts the two stock classes don't cover (asymmetric ratios like 1.2fr/1fr, three rows of two, etc.), fall back to the frontmatter `style: |` block pattern — define a CSS class once in the per-deck frontmatter and reference it from the slide body:
+
+```markdown
+---
+marp: true
+size: 16:9
+theme: anvil-deck
+html: true
+style: |
+  .wide-left { display: grid; grid-template-columns: 1.2fr 1fr; gap: 2em; align-items: center; }
+---
+
+## Solution
+
+<div class="wide-left">
+
+![Architecture](figures/solution.png)
+
+<div>
+
+- Capture: shared identity layer
+- Sync: conflict-free replication
+- Serve: analytics SDK
+
+</div>
+</div>
+```
+
+The class-based selector still applies via the global stylesheet (the frontmatter `style:` block compiles to one); the foreignObject path honors it for the same reason it honors `.row` and `.split`.
+
+**Caveat (escape-hatch territory):** the static overflow lint models **vertical capacity only**. It has no concept of side-by-side columns, charges a standalone full-width image the full image cost regardless of CSS grid/flex, and does **not** detect the Marpit `w:NN%` width hint. So a two-column slide with a full-width figure inside a column **will be flagged by the static lint** even though it renders fine. If you use `.row` / `.split` / a custom multi-column class, suppress the static rule on that one slide with a per-slide directive and rely on the `deck-vision` VLM critic to catch real rendered overflow:
 
 ```markdown
 <!-- anvil-lint-disable: slide-content-overflow -->
