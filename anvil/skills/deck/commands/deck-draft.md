@@ -145,15 +145,55 @@ This is the current implicit behavior for hand-curated decks where the founder h
 
 The no-fabrication contract is unchanged by `generative-eligible`: numbers, names, traction claims, and logos remain bound to the brief. Generative imagery is permitted only for illustrative use that does not encode a factual claim.
 
+##### Fabrication-attribution contract (generative-eligible only)
+
+When `imagery_policy: generative-eligible` is in effect, every reference to a generated asset under `assets/generated/<slot>.png` MUST carry **fabrication attribution** — language that names the imagery as synthesized rather than documentary. This rule is what makes shipped decks safe: an investor seeing a hero image in a fundraising deck reasonably reads it as "this is what the founder is building"; without attribution, an aspirational render reads as a fabricated product claim. The contract is a **prompt-level constraint on the drafter agent** — runtime audit enforcement lands in Phase 3G (`deck-audit` extension, parallel issue #188).
+
+**This contract activates ONLY when `imagery_policy: generative-eligible` is the effective policy.** Decks under `deterministic-only` (the default) or `consumer-provided` policies are unaffected: there is no generative asset to attribute. Backwards compatibility is preserved by construction.
+
+**Allowed attribution language** (use one of these phrases — pick the register that fits the slide):
+
+- `concept render` — the canonical default. Use for hero shots, product mockups, lifestyle imagery on slides that pitch an aspirational state.
+- `aspirational mockup` — use when the imagery depicts an explicit future state (e.g., the product as it will look at v2, a hypothetical customer environment).
+- `illustrative scene` — use for atmospheric / mood imagery where no specific product is depicted (e.g., a factory-floor backdrop on the problem slide).
+
+The drafter MAY substitute synonyms only if they preserve the "this is synthesized imagery, not a documentary photograph" framing (e.g., `concept illustration`, `mockup`, `illustrative render`). The drafter MUST NOT loosen the framing to imply documentary truth.
+
+**FORBIDDEN language** (these phrases imply documentary truth and MUST NOT appear in alt-text, on-slide captions, or speaker-notes describing a generated asset):
+
+- `product screenshot` — implies the depicted UI/product exists and was captured from a running system.
+- `actual photo` / `real photograph` — implies camera-captured documentary imagery.
+- `customer deployment` — implies a named customer is running the product as shown.
+- `actual user` / `real user` — implies the depicted person is a verified customer.
+- `from the field` / `taken on-site` / `captured at <location>` — implies documentary provenance.
+- `customer environment` / `production deployment` — implies a deployed system was photographed.
+
+When in doubt, the drafter MUST err toward attribution: a slide labelled "concept render" that turns out to be a real photograph costs nothing; a real-photo claim that turns out to be a render is a credibility liability and a Phase 3G critical-flag candidate.
+
+**Alt-text discipline.** Every `![alt](assets/generated/<slot>.png)` Markdown image reference (and any equivalent `<img src="assets/generated/<slot>.png" ...>` HTML tag) MUST include attribution language in the alt-text. The alt-text is the machine-readable surface the `deck-audit` extension (Phase 3G) will check. Examples:
+
+- Allowed: `![Concept render — factory floor at mid-shift, editorial-photography register](assets/generated/hero.png)`
+- Allowed: `![Aspirational mockup of the v2 dashboard, dark theme](assets/generated/dashboard-mock.png)`
+- Allowed: `![Illustrative scene — atmospheric problem-slide backdrop](assets/generated/problem-bg.png)`
+- Forbidden: `![Acme factory floor](assets/generated/hero.png)` — no attribution; reads as documentary.
+- Forbidden: `![Product screenshot](assets/generated/dashboard-mock.png)` — uses a FORBIDDEN phrase.
+- Forbidden: `![](assets/generated/hero.png)` — empty alt-text; auditor cannot verify attribution.
+
+**On-slide visible-attribution rule.** When generated imagery is **load-bearing for a claim** the slide is making — hero shot supporting a product-viability claim, lifestyle imagery supporting a market-readiness claim, customer-environment mockup supporting a deployment claim — the attribution belongs on the slide **visibly**, not just in alt-text. A small italic caption beneath the image (`*Concept render*` or `*Aspirational mockup*`) is sufficient. The threshold is "would an investor reasonably mistake this image for documentary evidence supporting the slide's claim?"; when the answer is yes, on-slide attribution is required. Atmospheric / decorative imagery (a problem-slide backdrop with no specific claim) may rely on alt-text only.
+
+The drafter records the on-slide-attribution decision per slot in `speaker-notes.md` under "Drafter notes" so the reviser and auditor can see why a given generated slide does or does not carry visible attribution. Example: `Drafter notes — generative slot assets/generated/hero.png: load-bearing for Slide 4 product claim; on-slide caption "*Concept render*" added per fabrication-attribution contract.`
+
+The fabrication-attribution contract is documented in `SKILL.md` § "Asset generation" and cross-references the Phase 3G `deck-audit` extension (#188) that will mechanically enforce these allowed/forbidden lists.
+
 ### Recap (allowed-vs-forbidden cheat sheet)
 
 | Policy | Matplotlib / mermaid (`figures/`) | Assets in inventory (`assets/`, attested) | Assets NOT in inventory | Non-existent placeholder paths |
 |---|---|---|---|---|
 | `deterministic-only` (default) | Allowed | Allowed | Forbidden | Forbidden |
 | `consumer-provided` | Allowed | Allowed | Forbidden | Forbidden |
-| `generative-eligible` | Allowed | Allowed | Forbidden | Allowed under `assets/generated/` (illustrative only; never for logos / team photos) |
+| `generative-eligible` | Allowed | Allowed | Forbidden | Allowed under `assets/generated/` (illustrative only; never for logos / team photos; attribution-required per §"Fabrication-attribution contract") |
 
-Note: per the issue-#132 scope, this section is **prose-spec only**. Runtime parsing of `imagery_policy` from `BRIEF.md` frontmatter and enforcement of the per-policy gates is Phase 2 of Epic #130 (Issues D/E). The drafter agent is responsible for honoring the contract above today; mechanical enforcement lands later.
+Note: per the issue-#132 scope, this section is **prose-spec only**. Runtime parsing of `imagery_policy` from `BRIEF.md` frontmatter and enforcement of the per-policy gates is Phase 2 of Epic #130 (Issues D/E). The drafter agent is responsible for honoring the contract above today; mechanical enforcement lands later. The fabrication-attribution contract for `generative-eligible` (allowed phrases like `concept render`, `aspirational mockup`, `illustrative scene`; forbidden phrases like `product screenshot`, `actual photo`, `customer deployment`) is similarly drafter-honored today; runtime audit enforcement lands in Phase 3G (#188).
 
 ## Voice and style overrides
 
