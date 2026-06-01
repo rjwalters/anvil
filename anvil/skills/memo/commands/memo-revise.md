@@ -33,12 +33,32 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` and `memo.md` + `changelog.md` exist, the revision is complete — exit early with a notice.
 3. **Iteration cap check**: read `metadata.max_iterations` from `<thread>.{N}/_progress.json` (or `<thread>/.anvil.json` override; default 4). If `N + 1 > max_iterations`, exit with a `BLOCKED` notice — human review required.
 4. **Verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` and there are no critical flags, exit with a notice: the thread is `READY`, no revision needed. (Operator can force-run by deleting the verdict or bumping the iteration manually, but the default is to refuse to revise an already-passing version.)
-5. **Initialize `_progress.json`**: write `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations`.
+5. **Initialize `_progress.json`**: write `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations`. Also resolve `target_length` for v{N+1} per step 6 and record `metadata.target_length_resolved` with provenance — the resolution must happen before the revision-plan prompt is built so the resolved range is in scope for both the prompt injection and the `_progress.json` provenance write.
 6. **Read inputs**:
    - Prior version's `memo.md` and `exhibits/`.
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
    - Every other `<thread>.{N}.<critic>/` sibling discovered on disk (auditor, secondary critic, etc.).
-   - `<thread>/.anvil.json` — read the optional `target_length` field per the SKILL.md §Length targets contract. Normalize as in `memo-draft.md` step 5: `words` taken directly, `pages` converted at 600 words/page, malformed/absent → no target. If a target is set, inject it into the revision-plan prompt using the exact wording: **"Target length: <min>–<max> words (~<min_pages>–<max_pages> pages at 600 words/page). Treat as a soft budget — when expanding to address reviewer notes, prefer earning the space over padding; when tightening, cut filler before substance."** The reviser does the actual expand/tighten work, so the prompt-side wording is load-bearing for reproducible behavior.
+   - `<thread>/.anvil.json` — read the optional `target_length` field per the SKILL.md §Length targets contract and apply the resolution order to the version about to be produced (`N+1`):
+     1. If `target_length.overrides.v{N+1}` is set and well-formed, use that range. Source: `"overrides.v{N+1}"`.
+     2. Else if `target_length.default` is set and well-formed, use that range. Source: `"default"`.
+     3. Else if the top-level `target_length` is the legacy flat shape (`words` or `pages` key directly), use that range. Source: `"legacy_flat"`.
+     4. Else, no target. Source: `"none"`.
+
+     Normalize the resolved range as in `memo-draft.md` step 5: `words` taken directly, `pages` converted at 600 words/page, malformed/both-keys-set/`min > max`/absent → no target. A `target_length` with both flat (`words`/`pages`) and extended (`default`/`overrides`) keys at the top level is malformed — source `"none"`, no target.
+
+     Write the resolved range and its source into `_progress.json.metadata.target_length_resolved` as part of step 5 — shape:
+
+     ```json
+     "target_length_resolved": {
+       "min_words": 2000,
+       "max_words": 2800,
+       "source": "overrides.v10"
+     }
+     ```
+
+     When the source is `"none"`, write `{"source": "none"}` (omit `min_words`/`max_words`) or omit the field entirely; consumers tolerate both shapes.
+
+     If a target is set, inject it into the revision-plan prompt using the exact wording: **"Target length: <min>–<max> words (~<min_pages>–<max_pages> pages at 600 words/page). Treat as a soft budget — when expanding to address reviewer notes, prefer earning the space over padding; when tightening, cut filler before substance."** The reviser does the actual expand/tighten work, so the prompt-side wording is load-bearing for reproducible behavior.
 7. **Build a revision plan**:
    - For each rubric dimension that scored below threshold (or had a critical flag), enumerate the specific changes required to lift the score.
    - For each `comments.md` entry tagged `blocker` or `major`, plan a concrete change.
@@ -106,9 +126,14 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   "metadata": {
     "iteration": <N+1>,
     "max_iterations": 4,
-    "revised_from": <N>
+    "revised_from": <N>,
+    "target_length_resolved": {
+      "min_words": 2000,
+      "max_words": 2800,
+      "source": "overrides.v10"
+    }
   }
 }
 ```
 
-`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
+`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. `metadata.target_length_resolved` is the resolved target this revision was authored against, with `source` provenance — see step 6 for the resolution rules and the four documented source values (`"overrides.v{N+1}"`, `"default"`, `"legacy_flat"`, `"none"`). The reviewer reads this field rather than re-resolving from `<thread>/.anvil.json`, preventing drift if the JSON is edited between revise and review. The field is optional — its absence is tolerated for legacy version dirs (reviewer falls back to re-resolution). Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
