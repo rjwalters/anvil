@@ -38,6 +38,11 @@ A **proposal thread** is a single proposal for one buildable system, authored ac
     BRIEF.md               Optional structured or freeform brief (frontmatter + prose)
     refs/                  Optional reference material (site plans, datasheets, vendor quotes)
     .anvil.json            Optional per-thread overrides: max_iterations, customer_kind
+  <thread>.0.perspective/  Optional pre-draft external-substrate sibling (read-only)
+    notes.md               Narrative synthesis: sourceability summary + gaps
+    candidates.md          Structured candidates (comparable projects, vendor quotes, regulatory & compliance, deliverability evidence) with source URLs / refs pointers
+    _meta.json             { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
+    _progress.json         Phase state (phase: perspective)
   <thread>.1/              First drafted version (immutable once written)
     proposal.tex           Proposal body (XeLaTeX; uses templates/anvil-proposal.cls)
     anvil-proposal.cls     Class file, copied alongside so the version dir compiles standalone
@@ -95,7 +100,11 @@ Per-thread state, derived from on-disk evidence (not flags):
 ```
 EMPTY → DRAFTED → REVIEWED+AUDITED → REVISED → … → READY → AUDITED → figures
                        ↘ (either critic alone is insufficient — both required to leave DRAFTED) ↗
+   ↑
+   (optional .0.perspective/ may exist before DRAFTED; it does not gate the machine)
 ```
+
+The perspective sibling is intentionally allowed at `.0.perspective/` (before the first drafted version) AND at `.{N}.perspective/` (after a reviewer or `proposal-audit` extended-sourceability finding points out a substrate gap). Both follow the same "N parallel critics, one reviser" rule: when present at `<thread>.{N}.perspective/`, the next `proposal-revise` pass consumes it alongside `.review/` and `.audit/`. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence of a perspective sibling does NOT block draft / review / audit / revise — a proposal thread with no perspective sibling proceeds normally. The proposal-skill required critic set (`review + audit`, both REQUIRED) MUST NOT list `perspective` as required; it is opt-in input, not required output. See `commands/proposal-perspective.md` for the command spec.
 
 | State | Evidence |
 |---|---|
@@ -119,7 +128,8 @@ EMPTY → DRAFTED → REVIEWED+AUDITED → REVISED → … → READY → AUDITED
 | Command | Role | Reads | Writes |
 |---|---|---|---|
 | `proposal` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
-| `proposal-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `proposal-revise`) |
+| `proposal-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/proposal.tex` and `.review/` / `.audit/` sourceability findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating |
+| `proposal-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `proposal-revise`) |
 | `proposal-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `proposal-audit <thread>` | auditor (REQUIRED by default) | latest `<thread>.{N}/` (BOM, specs, link budgets), `<thread>/refs/` | `<thread>.{N}.audit/` |
 | `proposal-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings (both `.review/` and `.audit/` required) | `<thread>.{N+1}/` with `changelog.md` |
