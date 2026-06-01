@@ -18,6 +18,81 @@ The rubric is tuned so that **rigor + evidence + citation hygiene (6 + 6 + 5 = 1
 | 8 | **Citation hygiene** | 5 | Every non-trivial claim has a citation; cited papers actually support the surrounding claim (audit phase verifies — this dimension catches the unsourced-claim half); bibliography entries are complete and consistent (author, title, venue, year all present). |
 | | **Total** | **40** | Advance threshold: ≥32 |
 
+## Perspective substrate (dim 4)
+
+Per `anvil/lib/snippets/rubric.md` §"Rubric–perspective interaction",
+the pub-side perspective sibling — historically named `litsearch` (see
+`commands/pub-litsearch.md`) and the load-bearing precedent that the
+framework primitive `anvil/lib/snippets/perspective.md` generalizes —
+participates in **dim 4 *Related-work positioning*** as
+**opportunistic substrate**.
+
+This subsection codifies the **pre-existing implicit rule** that
+litsearch has always served (a related-work section grounded in the
+litsearch sibling's annotated bibliography fragment scores higher
+than one grounded in drafter recall alone) and anchors that rule to
+the framework-wide perspective interaction contract. No behavioral
+change is intended for existing pub threads; the subsection makes the
+rule **visible at the rubric surface** so consumers of other anvil
+skills see the canonical pattern alongside the per-skill adopters
+(deck dims 3 + 4, memo dim 3, proposal dims 4 + 6).
+
+The rule:
+
+- **With litsearch (or perspective) + cited candidates**: a related-
+  work paragraph that cites entries from `candidates.bib`
+  (synonymously `candidates.md` for non-academic substrate) — the
+  closest 1–3 papers per cluster, with explicit "extends /
+  contradicts / complements" framing per
+  `commands/pub-litsearch.md` §"`notes.md` structure" — is treated
+  as **substrate-backed**. Dim 4 may score at the **top of the
+  calibrated range** on the evidence of substrate-grounded
+  positioning. The reviewer notes the substrate backing in the dim 4
+  justification (e.g., "Dim 4 = 5/5: §2 Related Work cites the
+  closest-prior-work cluster from `candidates.bib` with explicit
+  extends / contradicts framing; substrate-backed per litsearch
+  sibling").
+- **Without a litsearch / perspective sibling** (legacy pub threads):
+  dim 4 scores against the legacy baseline alone. **No new
+  deduction** is taken for perspective absence. A paper authored
+  without a litsearch step continues to score on the pre-perspective
+  rules — "honest and accurate placement against prior art" judged
+  from the related-work prose alone. The reviewer continues to flag
+  ignored close prior work per the §"Critical flags" *Close prior
+  work ignored* rule below; that flag is independent of perspective
+  presence.
+- **With litsearch + a "known gap"**: when the litsearch sibling's
+  `notes.md` "Identified gaps" names a related-work area as
+  un-covered AND the paper's related-work section omits that area or
+  treats it superficially, the existing dim 4 weakness (related-work
+  positioning gap) is applied to a more-clearly-established miss —
+  the litsearch sibling sharpens the diagnosis rather than introducing
+  a new deduction. The reviewer cites both signals in the dim 4
+  justification.
+
+The rule is **opportunistic, not punitive** per the framework
+contract: perspective can move dim 4 **up**, never **down**. Removing
+the litsearch sibling from an otherwise-identical paper holds or
+lowers the dim 4 score; it never raises it. The litsearch sibling is
+non-gating per `anvil/lib/snippets/perspective.md` (it has always
+been so per `commands/pub-litsearch.md` §"Why this is a separate
+role"), so no paper fails dim 4 solely on litsearch absence.
+
+**Litsearch is the load-bearing precedent.** The litsearch role
+predates the perspective primitive — it shipped before
+`anvil/lib/snippets/perspective.md` codified the cross-skill shape
+(see `perspective.md` §"Naming: perspective, not research" for why
+the framework primitive uses the name "perspective" instead of
+"litsearch"). The two are the same shape; this subsection treats them
+interchangeably for the dim 4 interaction. A future `pub-perspective`
+wrapper is **explicitly deferred** per the canary signal — litsearch
+already serves the load-bearing case.
+
+See `commands/pub-litsearch.md` for the substrate-gathering contract,
+`anvil/lib/snippets/perspective.md` for the cross-skill framework
+primitive, and `anvil/lib/snippets/rubric.md` §"Rubric–perspective
+interaction" for the opportunistic-not-punitive design rule.
+
 ## Scoring guidance
 
 For each dimension, the reviewer assigns an integer between 0 and the dimension's weight. A short justification (1–3 sentences) accompanies each score, pointing to specific evidence in the paper.

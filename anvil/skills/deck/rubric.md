@@ -40,6 +40,80 @@ In addition to dim 8, `deck-vision` owns six **vision-rubric dimensions** scored
 
 If a critic sibling is missing at version `N` (e.g., operator skipped `design`), the reviser leaves that dimension's aggregate as `null` in `verdict.md` and notes the gap. A deck cannot reach `READY` with any main-rubric dimension still `null` — at minimum, the general `deck-review` must fill any dimensions no specialist owns. Vision-rubric dimensions (v1–v6) are gated separately: a deck without a `deck-vision` pass is not yet validated against rendered-only defects, and the reviser surfaces this as a gap in `_revision-log.md`.
 
+## Perspective substrate (dims 3, 4)
+
+Per `anvil/lib/snippets/rubric.md` §"Rubric–perspective interaction", a
+perspective sibling (`<thread>.0.perspective/` or the latest
+`<thread>.{N}.perspective/`) is **opportunistic substrate** for dims
+3 (Market size credibility) and 4 (Solution differentiation): when
+present and cited, scores at the **top of the calibrated range** become
+defensibly reachable; when absent, **no new deduction is taken** —
+the dimensions score against the legacy baseline.
+
+The rule applies to two market-credibility-shaped failure modes the
+canary surfaces:
+
+- **Market size credibility (dim 3)** — bottom-up TAM/SAM/SOM logic
+  becomes **harder to score at 4/5 or full weight without** a
+  perspective sibling. A market-size claim that cites a perspective
+  candidate (a vendor sizing report, a comparable company's last
+  funding round, a regulator's published market data, a published
+  analyst note) is treated as **substrate-backed** by `deck-market` —
+  the candidate's `Source:` field is the inline-hook-equivalent for
+  the sizing claim, and the dimension scores higher than it would for
+  the same claim made without the source pointer. Conversely, a deck
+  WITHOUT a perspective sibling that lands a credible bottom-up sizing
+  case on the strength of brief + prior knowledge alone is NOT
+  penalised — it scores against the pre-perspective baseline. Top-down
+  framing remains a near-automatic disqualifier regardless of
+  perspective presence (see the dimension definition).
+- **Solution differentiation (dim 4)** — competitive-positioning
+  claims (named competitors, moat language, "why they can't follow")
+  become **easier to score higher** when the perspective sibling
+  carries competitor candidates that the deck's differentiation
+  language matches against. A named competitor that appears in
+  `candidates.md` (with a source pointer to the competitor's product
+  page, pricing page, customer case study, or public benchmark) is the
+  substrate base `deck-market` reads to validate the differentiation
+  framing. This is the **positive-evidence side** of the existing
+  "unmatched competitor" warning documented in the dim 4 cell above:
+  matched competitors score the dimension up; unmatched competitors
+  fire the existing warning (no scoring change to this rule).
+
+Per the framework contract, the rule is **opportunistic, not
+punitive**:
+
+- **With perspective + cited candidates**: dims 3 and 4 may score
+  **higher** than the legacy baseline. The reviewer / critic SHOULD
+  note in the justification that the higher score reflects
+  substrate-backed claims (e.g., "Dim 3 = 5/5: sizing cites
+  `candidates.md#mckinsey-fiber-2024` with bottom-up build-up;
+  substrate-backed per perspective sibling").
+- **Without perspective** (legacy threads): dims 3 and 4 score against
+  the pre-perspective baseline. No new deduction is applied. Top-down
+  TAM still scores low; unmatched competitors still fire the existing
+  warning. The rubric is silent on perspective absence.
+- **With perspective + a "known gap"**: when the perspective sibling's
+  `notes.md` "Identified gaps" names a substrate area as un-covered
+  AND `deck.md` makes a load-bearing claim about that area without
+  hooking it (no candidate citation, no brief-attested data), the
+  existing dim 3 / dim 4 weaknesses (top-down sizing without bottom-up
+  validation, unhooked differentiation language) are applied to a
+  more-clearly-established miss — the perspective sibling sharpens the
+  diagnosis rather than introducing a new deduction.
+
+The cross-check is **specialist-owned**: `deck-market` owns both
+dim 3 and dim 4 per the dimension table above, so the perspective
+interaction lives in that critic's hot path (see
+`commands/deck-market.md` for the per-candidate validation steps).
+`deck-review` is the fallback when `deck-market` is skipped.
+
+**Backward compatibility.** Threads without a perspective sibling
+(legacy decks; threads run with the pre-#149 deck skill) score dims 3
+and 4 identically to the pre-perspective behaviour. The perspective
+interaction is non-gating per `anvil/lib/snippets/perspective.md`; no
+review can fail on perspective absence alone.
+
 ## Refs back-check (dims 5, 6)
 
 `<thread>/refs/` is **also** the home for **author-supplied source-of-truth materials** (CV, founder bio, public filings, papers, transcripts, LOIs, customer quotes, images) — see SKILL.md §"Source-of-truth materials". When such materials are present, dim 5 (Traction / proof) and dim 6 (Team credibility) MUST each score a **per-instance refs back-check** in addition to the existing BRIEF cross-check the dimensions already run.

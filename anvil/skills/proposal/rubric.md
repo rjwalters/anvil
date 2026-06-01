@@ -27,6 +27,103 @@ The proposal's `customer_kind` frontmatter key (`external` | `internal`, default
 
 All other dimensions are scored identically regardless of `customer_kind`.
 
+## Perspective substrate (dim 6 + dim 4)
+
+Per `anvil/lib/snippets/rubric.md` §"Rubric–perspective interaction",
+a perspective sibling (`<thread>.0.perspective/` or the latest
+`<thread>.{N}.perspective/`) is **opportunistic substrate** for
+dim 6 *Cost credibility* (primary) and dim 4 *Scope completeness*
+(light touch), sibling to the §"Refs back-check (dim 6 + dim 4)"
+sub-rule below. The two treatments are coherent and additive — this
+subsection states the framework-anchored contract; the refs back-
+check enforces the on-disk per-claim verification.
+
+**Why dim 6 is the primary anchor.** Proposal-side perspective
+substrate is dominated by **vendor-quote candidates** (datasheets,
+list prices, planning-range references) and **comparable-project
+candidates** (prior fiber jobs with sourced costs, comparable BOM
+shapes, sourced labor rates). Both feed sourceability — the
+verifiability of priced lines — which is exactly the broadened scope
+of dim 6 *Cost credibility* per the §"Refs back-check" extension
+below. Per issue #180 / PR #156, `proposal-audit` step 7 already
+reads the perspective sibling's `candidates.md` as additional
+sourceability substrate (per `commands/proposal-audit.md`); this
+subsection codifies that wiring in the rubric.
+
+**Why dim 4 is the light-touch secondary.** Proposal perspective
+candidates also include **regulatory / permitting context** and
+**comparable-project scope inventories** that bear on scope
+completeness (what is and is not in scope, what permits are required,
+what inclusions / exclusions a comparable project carries). The
+reviewer's dim 4 *Scope completeness* scoring acknowledges
+perspective presence the same way it acknowledges refs/ source-of-
+truth materials in the §"Refs back-check" extension: gesture without
+duplication. The per-claim back-check lives on dim 6 (audit-owned);
+dim 4 (review-owned) notes substrate presence and acknowledges audit
+ownership.
+
+The rule:
+
+- **With perspective + cited candidates** (dim 6): a priced BOM line
+  or labor estimate that cites a perspective candidate (e.g., a
+  vendor-quote candidate with a `Source:` URL to the vendor's price
+  page, a comparable-project candidate with a `Source:` pointer to a
+  sourced public job) is treated as **substrate-backed**. The
+  candidate's `Source:` field is the sourceability anchor for the
+  line, and dim 6 may score at the **top of the calibrated range**
+  on the evidence of substrate-grounded pricing. The audit notes the
+  perspective backing in the dim 6 justification (e.g., "Dim 6 = 5/5:
+  $X SFP-LR pricing sources `candidates.md#vendor-acme-sfp-lr-2024`
+  with vendor list-price URL; substrate-backed per perspective
+  sibling").
+- **With perspective + cited candidates** (dim 4): a scope-bearing
+  claim (regulatory permit, comparable-project inclusion / exclusion,
+  jurisdictional code reference) that cites a perspective candidate
+  is treated as scope-substrate-backed. Dim 4 acknowledges the
+  substrate presence in the justification without duplicating the
+  audit-side per-claim verification (e.g., "Dim 4 = 5/5: permit
+  inventory cites `candidates.md#palazzo-permits-2024` with sourced
+  Las Vegas Clark County code references; audit owns the per-permit
+  verification").
+- **Without perspective** (legacy proposal threads): dims 4 and 6
+  score against the legacy baseline alone — §"Refs back-check (dim 6
+  + dim 4)" applies unchanged. **No new deduction** is taken for
+  perspective absence. A proposal authored before the perspective
+  primitive landed continues to score on the pre-perspective rules.
+- **With perspective + a "known gap"**: when the perspective
+  sibling's `notes.md` "Identified gaps" names a substrate area as
+  un-covered AND `proposal.tex` makes a priced claim (dim 6) or a
+  scope-bearing claim (dim 4) about that area without sourcing it,
+  the existing dim 6 / dim 4 deductions are applied to a more-
+  clearly-established miss — the perspective sibling sharpens an
+  existing deduction rather than introducing a new one. The audit
+  cites both signals in the dim 6 justification (e.g., "Unsourceable:
+  $X labor estimate — no vendor quote, no comparable-project rate in
+  refs/, AND perspective sibling's notes.md flagged labor sourcing
+  as a substrate gap — -2 on dim 6 + critical-flag candidate per
+  flag 2 (Cost estimate not credible / not sourceable)").
+
+The rule is **opportunistic, not punitive** per the framework
+contract: perspective can move dims 4 and 6 **up**, never **down**.
+Removing a perspective citation from an otherwise-identical proposal
+holds or lowers the score; it never raises it. Perspective is non-
+gating per `anvil/lib/snippets/perspective.md`, so no proposal can
+fail dims 4 or 6 solely on perspective absence.
+
+**Anchor-resolution discipline (anti-laundering).** When the drafter
+cites a perspective anchor in `proposal.tex` (e.g., the LaTeX comment
+convention `% perspective: #vendor-acme-sfp-lr-2024`), the audit
+MUST resolve the anchor to the candidate entry and verify the
+candidate's own `Source:` pointer — perspective is **substrate**, not
+a citation laundering layer that bypasses the no-fabrication rule.
+This contract lives in `commands/proposal-audit.md` per the audit's
+anchor-resolution step; the rubric makes it visible by reference.
+
+See `commands/proposal-perspective.md` for the substrate-gathering
+contract, `commands/proposal-audit.md` for the audit-side wiring
+into the BOM sourceability check, and `SKILL.md` §"State machine"
+for the optional-sibling framing.
+
 ## Refs back-check (dim 6 + dim 4)
 
 `<thread>/refs/` is the home for **author-supplied source-of-truth materials** (vendor quotes, datasheets, SOW templates, CVs, comparables, site plans) — see SKILL.md §"Source-of-truth materials". `proposal-audit` has always treated `refs/` as the sourceability substrate for **cost claims** (BOM lines back-checked against vendor quotes and planning-range sources — see `commands/proposal-audit.md` step 7). This sub-rule **extends** the existing sourceability walk to **non-cost claims** whose evidentiary basis lives in `refs/`: scope claims, deliverability ("workshop"-capability) claims, comparable-project claims.
