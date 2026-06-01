@@ -265,6 +265,12 @@ Pitch decks are asset-dense. Anvil ships **deterministic asset paths** by defaul
 
 This matches the README's "opinionated defaults, override liberally" principle: ship deterministic asset paths by default; let the founder opt in to generative imagery when the venture category warrants it, with framework-enforced fabrication-attribution and prompt-journal safety contracts.
 
+### Fabrication-attribution contract (generative-eligible only)
+
+When a thread opts into `imagery_policy: generative-eligible`, every reference to a generated asset under `assets/generated/<slot>.png` is bound to a **fabrication-attribution contract**: the alt-text MUST carry attribution language (`concept render`, `aspirational mockup`, `illustrative scene`), the FORBIDDEN documentary-truth phrases (`product screenshot`, `actual photo`, `customer deployment`, `actual user`, `from the field`, `customer environment`, `production deployment`) MUST NOT appear, and load-bearing slides additionally require visible on-slide attribution. This rule is what lets a generative-imagery deck ship safely — an investor reading a hero shot sees "concept render" and updates the credibility frame accordingly, instead of inferring that the depicted product / customer / deployment is documentary truth.
+
+The contract is **drafter-side prompt-level** today (per `commands/deck-draft.md` §"Fabrication-attribution contract" and `commands/deck-revise.md` §step 8): the drafter inserts attribution at slide-emit time and the reviser preserves it across revisions. Runtime audit enforcement — mechanically checking allowed/forbidden phrase lists, flagging missing alt-text on `assets/generated/<slot>.png` references, and surfacing on-slide-attribution gaps for load-bearing imagery — lands in Phase 3G of Epic #130 (`deck-audit` extension; issue #188, parallel to the drafter-prompt work in #187). Decks on `deterministic-only` (the default) or `consumer-provided` policies are unaffected by the contract; there is no generated asset to attribute. See `commands/deck-draft.md` §"Fabrication-attribution contract" for the full allowed/forbidden language lists and the on-slide visibility threshold.
+
 ## Output format
 
 **Source format: Marp markdown.** Per the framework-level pin in `CLAUDE.md` (Conventions), anvil-shipped presentation skills use **Markdown + Marp** as the canonical renderer. Beamer LaTeX is available only as a consumer-side override for hard-constraint cases (e.g., conference proceedings requiring LaTeX submission).
