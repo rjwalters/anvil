@@ -41,6 +41,25 @@ The dim 3 justification MUST cite the specific missing hooks (e.g., "Unsourced: 
 
 The deduction is applied entirely via reviewer judgment reading this prose against the memo — there is no automated `refs/` enforcement in v0. The contract exists to give both drafter and reviewer a shared, named standard to score against.
 
+## Refs back-check (dim 3)
+
+`<thread>/refs/` is **also** the home for **author-supplied source-of-truth materials** (CV, public filings, papers, transcripts, emails, images) — see SKILL.md §"Source-of-truth materials". When such materials are present, dim 3 *Evidence quality* MUST also score a **per-instance refs back-check** in addition to the §"Citation hooks (dim 3)" rule above. The two sub-rules are **independent** and **additive**: a memo can lose points on both the citation-hook rule (unhooked load-bearing claim) and the refs back-check (claim contradicted by an on-disk source).
+
+The reviewer partitions `<thread>/refs/` into source-of-truth materials (named for their content — `cv.pdf`, `transcript-foo.md`, `filing-s1.pdf`) and citation stubs (named for citation keys, carrying `# TODO: source for <claim>`) per the SKILL.md disambiguation rule. Citation stubs are out of scope for this sub-rule. For each source-of-truth refs-document **type** present (one CV, one filing, one transcript, etc.), the reviewer picks at least one biographical or factual claim in `memo.md` whose evidentiary basis is the document's subject and back-checks it. The reviewer is **not** required to back-check every claim — the requirement is **at least one claim per refs-document type present**.
+
+The reviewer records each back-check in `comments.md` with a four-valued verdict (`VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS`) and applies a **per-instance deduction**:
+
+- **One `CONTRADICTED` claim** against a source-of-truth ref — **two-point** dim 3 deduction AND a **critical-flag candidate**. The contradiction is the canary failure mode the contract exists to catch: a factual error in a load-bearing claim (team bio, traction figure, filing-cited number) that propagates through versions because no reviewer back-checked against the underlying source. Reviewers SHOULD raise the critical flag for any CONTRADICTED claim in a load-bearing section (team, financials, traction, technical thesis) — see §"Critical flags" below.
+- **One `UNVERIFIED` claim** against a source-of-truth ref (document is present and on-topic but does not contain the supporting passage) — **one-point** dim 3 deduction. Not flag-eligible on its own; the gap is signaled but not deal-breaking.
+- **`NOT-IN-REFS` claims** (memo makes a claim, no source-of-truth refs-document covers its subject) — **no deduction**. Informational only; records "where did this come from" visibility for the reviser.
+- **`VERIFIED` claims** — no deduction; positively scored under dim 3's full-weight calibration.
+
+The dim 3 justification MUST cite the specific verdict and the refs-document path (e.g., "Back-checked 'Robb Walters: 15+ year Sphere Staff Scientist tenure' against `refs/cv.pdf`: CONTRADICTED ('Sphere Semi, Palo Alto CA, 2026-current') — -2 + critical flag"). Vague "needs refs back-check" deductions without named instances are not actionable for the reviser and SHOULD be avoided — same standard as §"Citation hooks (dim 3)".
+
+**Backward compatibility.** When `<thread>/refs/` contains **no** source-of-truth materials (only citation stubs, or empty, or missing), this sub-rule is **inactive** and dim 3 falls back to the §"Citation hooks (dim 3)" behavior alone. This preserves the PR #140 semantic: a thread that only uses `refs/` for drafter-written citation stubs is unaffected. PDFs and images are treated as presence-only in v0 — the reviewer notes the file is on-disk and back-checks against a sibling `.md` companion (e.g., a `cv.md` next to `cv.pdf`) or `BRIEF.md`-surfaced content; PDF text extraction is deferred.
+
+The deduction is applied entirely via reviewer judgment — there is no automated `refs/` parsing in v0. See `commands/memo-review.md` §Procedure step 5 (dim 3 refs back-check sub-step) for the reviewer-side procedure and `commands/memo-draft.md` §Procedure step 3 for the drafter-side ingestion contract.
+
 ## Length targets (dim 7)
 
 When `<thread>/.anvil.json` declares a `target_length` (see `SKILL.md` §Length targets), dim 7 *Scope discipline* compares the produced memo's word count against the declared range rather than judging length against an implicit default.
