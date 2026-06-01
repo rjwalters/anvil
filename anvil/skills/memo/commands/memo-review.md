@@ -25,7 +25,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
   verdict.md       Top-level decision + total /40 + critical flags + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Line-level comments keyed to memo.md headings or excerpts
-  _summary.md      Machine-readable scorecard + pre-flight lint block (see step 9)
+  _summary.md      Machine-readable scorecard + pre-flight lint block + render-gate block (see step 9)
   _meta.json       { critic, role, scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
@@ -45,6 +45,13 @@ The review sibling directory is **read-only once written**. Revisions consume it
    - **Escape hatch**: `<!-- anvil-lint-disable: memo_image_refs_exist -->` placed on the same line as a ref, or on the immediately preceding line, downgrades that finding from `error` to `info` so the lint records that the ref is intentionally absent (e.g., `memo-figures` will generate it later) without blocking advance.
    - The lint is **review-phase only** — the drafter and reviser do not invoke it. The drafter is intentionally allowed to produce a stale-path memo so the reviser sees the failure mode (precedent: deck-review step 5b, per the curator addendum on issue #31 / AC6).
    - Cache the `LintResult` for the `_summary.md` write below; cache `lint.errors > 0` as `lint_critical_flag` for the verdict logic at step 7.
+4c. **Read render-gate findings (non-blocking, graceful-degrade)** — Epic #158 Phase 4 / issue #196:
+   - Read `<thread>.{N}/_progress.json.render_gate` (the top-level block written by `memo-render` per `commands/memo-render.md` step 6 + the `GateResult.to_json()` shape from `anvil/lib/render_gate.py`). The block carries `{gate, pdf_path, log_path, pages, page_cap, overfull_boxes, compile, placeholders, findings, pass, reasons}`. Each entry in `findings` is `{gate, severity, message, location}` where `gate` is one of `memo_compile_success` / `memo_page_fit` / `memo_overfull_check` / `memo_image_refs_exist` / `memo_placeholder_scan`.
+   - **Graceful-degrade when absent**: if `_progress.json` is missing entirely, or `_progress.json.render_gate` is missing (the memo was never rendered — legal pre-Phase-3 state, every memo version drafted before Epic #158 has this shape, AND the current state when `memo-render` is unavailable on PATH or the consumer has not installed Anvil's Phase 3 commands), record a single info-level note in the cached `render_gate_block` (`{"ran": false, "reason": "no render_gate block in _progress.json"}`) and skip silently. The reviewer's dim 7 judgment falls back to word-count-only per `rubric.md` §"Length targets" — same behavior as before this phase shipped. This is the load-bearing backwards-compat contract.
+   - **Non-blocking**: render-gate findings DO NOT abort the review, DO NOT set the verdict's `lint_critical_flag`, and DO NOT force `advance: false`. They are surfaced in `_summary.md.render_gate` for the operator to see and for the dim 7 justification to reference, but the verdict at step 7 is driven by the rubric total + the four critical-flag categories + the source-side `memo_image_refs_exist` lint (step 4b). Per `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory": word count remains the primary measure; the rendered page count is a second-layer advisory the reviewer reads alongside it.
+   - **Severity model surfaced verbatim**: the render gate classifies `memo_page_fit` findings as `error` when the operator declared `target_length.pages` (an explicit page-range contract) and `warning` when they declared `target_length.words` (the page-range is derived via the 600-words-per-page proxy; dim 7 word-count is authoritative). The reviewer does NOT re-derive the severity; the gate's classification is the contract. The `_summary.md.render_gate.findings_by_dimension` block surfaces the severities verbatim from `render_gate.findings`.
+   - **Mirror of the deck-side shape**: this step mirrors the deck-side `_summary.md.lint` block that `deck-review` already produces (see `commands/deck-review.md` step 5b + step 9 — pre-flight `marp_lint` findings surfaced in `_summary.md.lint.errors_by_slide` + `lint.warnings_by_slide`). The memo block is named `render_gate` (not `lint`) so it stays distinct from the existing memo-side `lint` block (`memo_image_refs` + `refs_pdf_extraction`) that step 4b owns.
+   - Cache the parsed block as `render_gate_block` for the `_summary.md` write at step 9. The dim 7 scoring at step 5 SHOULD read `render_gate_block.pages` (when present and non-null) for the rendered-page-count second-layer signal documented in `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory".
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the memo.
@@ -69,10 +76,12 @@ The review sibling directory is **read-only once written**. Revisions consume it
      - **Modest deviation** (within ~15% of the nearest endpoint): note in the justification but do not flag — soft target.
      - **Meaningful deviation** (>~15% over `max` or under `min`): deduct on dim 7 and call out the deviation explicitly in the justification.
      The dim 7 justification MUST record **both the declared target and the actual count** (e.g., "Target 1800–2400 words; actual 2050 — in range" or "Target 1800–2400 words; actual 3400 — 42% over upper bound"). When the resolved source is `"overrides.v{N}"`, append the provenance to the declared-target clause so the reader can see which override fired (e.g., "Target 2000–2800 words (from overrides.v10); actual 2389 — in range"). When the source is `"default"` or `"legacy_flat"`, the provenance parenthetical MAY be omitted — those sources match the implicit "thread-level default" reading and adding the tag adds noise without information. When `target_length` is unset (source `"none"`), the dim 7 justification falls back to the implicit "reasonable for the decision being made" judgment as today, with no length numbers required.
+
+     **Rendered page count as second-layer advisory** (Phase 4 / issue #196): when `render_gate_block` (cached at step 4c) is present AND `render_gate_block.pages` is non-null, append the rendered page count to the dim 7 justification alongside the word count (e.g., "Target 1800–2400 words; actual 2050 (3 rendered pages) — in range"). Per `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory", the word count is the primary measure and the rendered page count is a second-layer advisory signal — the two MAY disagree, and when they do the reviewer judges which is binding (word count wins for the typical markdown-first memo; rendered page count is binding only when the operator declared `target_length.pages` explicitly). When the word count is in range but the rendered page count is out of range (e.g., 2050 words within `[1800, 2400]` but 5 rendered pages because of an oversized figure), record both numbers and note the rendered overflow as advisory in the dim 7 justification (e.g., "Target 1800–2400 words; actual 2050 (5 rendered pages — second-layer advisory, see `_summary.md.render_gate`) — in range on the primary signal"). When `render_gate_block.ran == false` (no render_gate block on disk — legal pre-Phase-3 or pre-render state), the rendered-page parenthetical is omitted and dim 7 falls back to word-count-only judgment.
 6. **Identify critical flags**: review the memo against the 4 example flags in `rubric.md` AND the open-ended "any deal-breaker a sophisticated reader would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)`. When the pre-flight image-reference lint (step 4b) reports `errors > 0`, `advance` is forced `false` and the verdict lists `Memo image refs (lint)` under critical flags. The rubric total is reported honestly but does not save the verdict — a memo that references files that do not exist is not advance-eligible regardless of its prose quality.
 8. **Write line-level comments**: in `comments.md`, list specific feedback keyed to memo sections — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`).
-9. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 4b, plus the `refs_pdf_extraction` block reflecting the PDF refs back-check path (step 5, issue #167):
+9. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 4b, the `refs_pdf_extraction` block reflects the PDF refs back-check path (step 5, issue #167), and the `render_gate` block reflects the cached `render_gate_block` from step 4c (Phase 4 / issue #196):
    ```markdown
    # Review summary
 
@@ -97,6 +106,30 @@ The review sibling directory is **read-only once written**. Revisions consume it
          "remediation": "pdftotext (poppler-utils) not found on PATH — required only for the optional `anvil:memo` PDF refs back-check (issue #167). Install via `brew install poppler` (macOS) or `apt-get install poppler-utils` (Debian/Ubuntu). ..."
        }
      },
+     "render_gate": {
+       "ran": true,
+       "pages": 5,
+       "page_cap": null,
+       "compile_status": "ok",
+       "pass": false,
+       "errors": 0,
+       "warnings": 1,
+       "infos": 0,
+       "findings_by_dimension": {
+         "memo_compile_success": [],
+         "memo_page_fit": [
+           { "severity": "warning", "message": "rendered 5 pages outside derived range [3, 4] (from target_length.words=[1800, 2400] @ 600 wpp). Word-count proxy in dim 7 remains authoritative; this is an advisory second-layer warning.", "location": "/abs/path/to/<thread>.{N}/memo.pdf:pages=5" }
+         ],
+         "memo_overfull_check": [],
+         "memo_image_refs_exist": [],
+         "memo_placeholder_scan": []
+       },
+       "reasons": [
+         "memo_compile_success: pandoc exited 0; PDF produced.",
+         "memo_page_fit: rendered 5 pages outside derived range [3, 4] (from target_length.words=[1800, 2400] @ 600 wpp). Word-count proxy in dim 7 remains authoritative; this is an advisory second-layer warning.",
+         "memo_overfull_check: overflow check ran with no stderr warnings detected."
+       ]
+     },
      "critical_flag": true,
      "critical_flag_notes": [
        { "type": "memo_image_refs_lint", "ref_lines": [41], "justification": "Pre-flight image-reference lint flagged 1 missing ref. See lint.memo_image_refs.errors_by_path for the per-ref breakdown and suggested fixes." }
@@ -111,6 +144,18 @@ The review sibling directory is **read-only once written**. Revisions consume it
      - `remediation` (`str`, only when `ran: false` AND `reason == "pdftotext not available"`): the verbatim `refs_pdf.PDFTOTEXT_REMEDIATION` install-story string, so the consumer sees how to enable the back-check on the next run.
      - `per_file` (`list[dict]`, only when `ran: true`): one entry per `.pdf` ref with `path` (relative to `<thread>/refs/`), `extracted_chars` (length of the extracted text, `0` for image-based / scanned PDFs), and an optional `note` (e.g., `"image-based — likely scanned; would need OCR for back-check"`).
    - **The `refs_pdf_extraction` block is info-level only.** It NEVER sets `critical_flag` — a missing optional binary is not a deal-breaker, and an image-only PDF is also not a deal-breaker (the deduction logic, if any, lives in the `comments.md` verdict-tag entries under dim 3, not here).
+   - The top-level `render_gate` block (Phase 4 / issue #196) mirrors the deck-side `_summary.md.lint` block shape (`commands/deck-review.md` step 9 — pre-flight `marp_lint` findings surfaced for the reviser). The memo block is the post-render analog: each finding is one entry of the `GateResult.findings` list emitted by `render_gate.gate(kind="memo")` from PR #185, written to `_progress.json.render_gate` by `memo-render` (PR #193) and read here at step 4c. Shape:
+     - `ran` (`bool`): whether `_progress.json.render_gate` was present and parseable. `True` when the memo was rendered by `memo-render`; `False` otherwise (legal pre-Phase-3 state, or `memo-render` not on PATH, or `memo-render` skipped via consumer config).
+     - `reason` (`str`, only when `ran: false`): short tag — `"no render_gate block in _progress.json"` (the common pre-Phase-3 / unrendered case).
+     - `pages` (`int | null`, only when `ran: true`): the rendered PDF page count from `pdfinfo`. `null` when `pdfinfo` was absent on PATH and the gate could not introspect; otherwise the integer page count of `memo.pdf`.
+     - `page_cap` (`int | null`, only when `ran: true`): the page cap passed to the gate (memo gate uses target_length-derived range, not page_cap — typically `null`).
+     - `compile_status` (`str`, only when `ran: true`): one of `"ok"` / `"failed"` / `"unavailable"` / `"skipped"` per `anvil/lib/render_gate.py`'s `COMPILE_*` constants.
+     - `pass` (`bool`, only when `ran: true`): the gate's overall pass/fail signal. `False` when any of the five memo dimensions has an error finding.
+     - `errors` / `warnings` / `infos` (`int`, only when `ran: true`): counts of findings by severity, aggregated across all five memo gate dimensions.
+     - `findings_by_dimension` (`dict[str, list[dict]]`, only when `ran: true`): findings keyed by gate dimension name (`memo_compile_success` / `memo_page_fit` / `memo_overfull_check` / `memo_image_refs_exist` / `memo_placeholder_scan`). Each entry is `{severity, message, location}` per `GateFinding.to_dict()`. The severities are surfaced verbatim from the gate; the reviewer does NOT re-derive them (the gate's classification — `memo_page_fit` error when `target_length.pages` is declared, warning when `target_length.words` is declared — is the contract per step 4c).
+     - `reasons` (`list[str]`, only when `ran: true`): the verbatim `reasons` list from `GateResult.to_json()`, one informational reason per gate dimension that ran.
+   - **The `render_gate` block is non-blocking and info-level for the verdict.** It NEVER sets `critical_flag` and NEVER forces `advance: false`. Render-gate findings surface for the operator and inform the dim 7 justification per `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory", but the verdict logic at step 7 (`advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)`) does NOT consume render-gate findings. A memo that scores ≥32 with no critical flags is advance-eligible even when `render_gate.pass == false` — word count remains the primary length signal and the rendered page count is advisory.
+   - **The `memo_image_refs_exist` finding in `render_gate.findings_by_dimension`** is the post-render catch (refs that exist on disk but pandoc's resolver flagged, or symlink / case edge cases), distinct from the source-side `lint.memo_image_refs` block at step 4b. Both blocks are emitted (one per-step). When the source-side lint at step 4b already flagged a broken ref (the common case), the post-render gate's finding for the same ref is informational redundancy — the operator already has the actionable signal from `lint.memo_image_refs.errors_by_path`. The post-render block's purpose is the edge-case catch (pandoc resolver disagreed with the heuristic).
 10. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Total: `XX / 40`
     - Decision: `advance: true` or `advance: false`
