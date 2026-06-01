@@ -66,7 +66,13 @@ The contract is narrowly scoped on purpose:
 
 **Phase B kill switch.** This contract ships as Phase A of an explicitly staged rollout (Epic #142). If the canary does not consume `_convictions.md` within 2–4 weeks of merge, the file and its references are removed entirely per the PR #40 / PR #72 negative-result precedent. The single named consumer is the next reviser at the next version — if that consumer never reads the file, the contract has no audience and the work closes.
 
-**Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped memo commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery globs above match only digit-N suffixes, so a `.latest` symlink is invisible to the state-machine enumeration and cannot perturb anvil's derivation logic.
+**Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`, etc.) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Resolution semantics for the memo lifecycle commands:
+
+- **`memo-revise` does not follow `.latest`.** It enumerates numbered `<thread>.{N}/` directories and picks the highest N (see `commands/memo-revise.md` step 1). A `.latest` symlink in the portfolio dir is inert — the digit-N anchor in `enumerate_versions` (see `anvil/lib/snippets/thread_state.md`) ignores it.
+- **`memo-revise` does not update `.latest`.** After writing `<thread>.{N+1}/`, the symlink (if present) still points at the prior N until the consumer's own script (or hand-`ln`) re-points it. Anvil-shipped memo commands do not write, require, or read `.latest` symlinks in v0; maintenance is consumer-side.
+- **`memo-review` and the `memo` portfolio orchestrator do not dereference `.latest`.** They enumerate the same digit-N directories as the reviser. A `.latest` symlink does not perturb state-machine derivation (`enumerate_versions` / `enumerate_siblings` regex-exclude it; see `anvil/lib/snippets/thread_state.md`).
+
+The symlinks are therefore **purely advisory** — supported in the sense that nothing anvil does will remove or break them, but not produced or consumed by the framework. If consumers want anvil:memo to auto-update `<thread>.latest` after each revise, file a follow-on issue.
 
 ## State machine
 

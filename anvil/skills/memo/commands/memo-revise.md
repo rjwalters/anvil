@@ -90,6 +90,7 @@ After this command produces `<thread>.{N+1}/`, the orchestrator should run `memo
 - **Do not regress.** If a section scored 5/6 in the prior review, the next version should keep it at ≥5/6. The `changelog.md` is the audit trail proving you did not lose ground while addressing other dimensions.
 - **Critical flags trump everything.** If any critic sibling raised a critical flag, the revision MUST address it — failing to do so is a worse outcome than declining a stylistic suggestion.
 - **Declined notes are a feature, not a bug.** Sometimes the reviewer is wrong. Document the disagreement in `changelog.md` so the next reviewer can re-evaluate with full context.
+- **`.latest` symlinks are not touched.** If the portfolio uses the optional `<thread>.latest` symlink convention (see SKILL.md §"Optional `.latest` convenience symlinks" and `anvil/lib/snippets/version_layout.md`), this reviser neither reads nor updates it. Symlink maintenance is consumer-side.
 
 ## `_progress.json` snippet (revised version dir)
 
