@@ -43,6 +43,70 @@ The deduction is applied entirely via reviewer judgment reading this prose again
 
 **Perspective sibling as substrate evidence.** When a `<thread>.0.perspective/` (or latest `<thread>.{N}.perspective/`) sibling exists, the reviewer treats its presence as **positive evidence that the drafter had verified external substrate available** when authoring the memo. Specifically: a load-bearing claim that cites a candidate from `candidates.md` (by anchor id, e.g., `#acme-series-a-2024`, or by the underlying `refs/<file>` pointer the candidate names) is treated as carrying an inline-footnote-equivalent hook — i.e., the citation-hook deduction does NOT apply to that claim. The perspective candidate's source pointer (URL, refs file, citation pointer) is the load-bearing artifact; the candidate's structured `Source:` field is the hook. Conversely, an unhooked load-bearing claim about a substrate area the perspective sibling's `notes.md` "Identified gaps" explicitly flagged as un-covered is a **stronger** signal of a real deduction — the drafter was told the substrate was missing and made the claim anyway. The reviewer also reads `_meta.json.search_params.stubs_filled` to identify which `refs/<key>.md` stubs the perspective role resolved (per `commands/memo-perspective.md` §"Side-effect: filling refs/ citation stubs"); a stub the perspective sibling filled is no longer a "needs hook" instance. Absence of a perspective sibling is the legacy case — the reviewer applies the citation-hook rule above unchanged (perspective is non-gating per `anvil/lib/snippets/perspective.md`, so no deduction is taken for its absence). See `commands/memo-perspective.md` for the substrate-gathering contract and `SKILL.md` §"State machine" for the optional-sibling framing.
 
+## Perspective substrate (dim 3)
+
+Per `anvil/lib/snippets/rubric.md` §"Rubric–perspective interaction",
+the perspective sibling participates in dim 3 *Evidence quality*
+scoring as **opportunistic substrate**, sibling to the §"Citation
+hooks (dim 3)" and §"Refs back-check (dim 3)" sub-rules above and
+below. This subsection codifies the perspective interaction as a
+**named, first-class sub-rule** distinct from the citation-hook
+extension paragraph in the §"Citation hooks (dim 3)" subsection
+(which the perspective interaction is integrated into); the two
+treatments are coherent and additive — this subsection states the
+framework-anchored contract, the §"Citation hooks" paragraph encodes
+the per-instance hook-equivalence rule.
+
+The rule:
+
+- **With perspective + cited candidates**: a load-bearing claim that
+  cites a candidate from `candidates.md` (by anchor id or by the
+  underlying `refs/<file>` pointer the candidate names) is treated as
+  **substrate-backed**. The candidate's structured `Source:` field
+  (URL, refs file path, citation pointer) is the
+  inline-footnote-equivalent hook for the surrounding claim, so the
+  §"Citation hooks (dim 3)" per-instance deduction does NOT apply to
+  that claim, and the dimension may score at the **top of the
+  calibrated range** (full weight or ~75%) on the evidence of
+  substrate-grounded reasoning. The reviewer notes the substrate
+  backing in the dim 3 justification (e.g., "Dim 3 = 6/6: financial
+  thesis cites `candidates.md#hoffman-2024-press-release` with bottom-
+  up unit-economics build-up; substrate-backed per perspective
+  sibling").
+- **Without perspective** (legacy memo threads): dim 3 scores against
+  the legacy baseline alone — §"Citation hooks (dim 3)" and §"Refs
+  back-check (dim 3)" apply unchanged. **No new deduction** is taken
+  for perspective absence. A memo authored before the perspective
+  primitive landed continues to score on the pre-perspective rules.
+- **With perspective + a "known gap"**: when the perspective sibling's
+  `notes.md` "Identified gaps" names a substrate area as un-covered
+  AND `memo.md` makes a load-bearing claim about that area without
+  one of the three hooks (footnote, `refs/<key>.md` stub, in-prose
+  hedge), the existing §"Citation hooks (dim 3)" per-instance
+  deduction is the natural escalation path — the perspective sibling
+  sharpens an existing deduction rather than introducing a new one.
+  The reviewer cites both signals in the justification (e.g.,
+  "Unsourced: 'Levenson et al., 2006' — no refs/ stub, no footnote,
+  no hedge AND perspective sibling's notes.md flagged the literature
+  area as a substrate gap — -2").
+- **Stub-filling side-effect**: the reviewer reads
+  `_meta.json.search_params.stubs_filled` to identify which
+  `refs/<key>.md` citation stubs the perspective role resolved (per
+  `commands/memo-perspective.md` §"Side-effect: filling refs/
+  citation stubs"); a stub the perspective sibling filled is no
+  longer a "needs hook" instance under §"Citation hooks (dim 3)".
+
+The rule is **opportunistic, not punitive** per the framework
+contract: perspective can move dim 3 **up**, never **down**. Removing
+a perspective citation from an otherwise-identical memo holds or
+lowers the score; it never raises it. Perspective is non-gating per
+`anvil/lib/snippets/perspective.md`, so no memo can fail dim 3
+solely on perspective absence.
+
+See `commands/memo-perspective.md` for the substrate-gathering
+contract and `SKILL.md` §"State machine" for the optional-sibling
+framing.
+
 ## Refs back-check (dim 3)
 
 `<thread>/refs/` is **also** the home for **author-supplied source-of-truth materials** (CV, public filings, papers, transcripts, emails, images) — see SKILL.md §"Source-of-truth materials". When such materials are present, dim 3 *Evidence quality* MUST also score a **per-instance refs back-check** in addition to the §"Citation hooks (dim 3)" rule above. The two sub-rules are **independent** and **additive**: a memo can lose points on both the citation-hook rule (unhooked load-bearing claim) and the refs back-check (claim contradicted by an on-disk source).
