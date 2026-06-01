@@ -51,9 +51,12 @@ When `<thread>/.anvil.json` declares a `target_length` (see `SKILL.md` §Length 
   - **In range** (`min <= actual <= max`): no length-driven deduction.
   - **Modest deviation** (within ~15% of the nearest endpoint): note in the justification, no deduction.
   - **Meaningful deviation** (>~15% over `max` or under `min`): deduct on dim 7; call out the deviation in the justification.
-- **Justification format**: when `target_length` is set, the dim 7 justification MUST record both the declared target and the actual count (e.g., "Target 1800–2400 words; actual 2050 — in range"). When unset, dim 7 falls back to the implicit "reasonable for the decision being made" judgment with no length numbers required.
+- **Justification format**: when `target_length` is set, the dim 7 justification MUST record both the declared target and the actual count (e.g., "Target 1800–2400 words; actual 2050 — in range"). When the resolved source is `"overrides.v{N}"`, the provenance is appended to the declared-target clause so the reader can see which override fired (e.g., "Target 2000–2800 words (from overrides.v10); actual 2389 — in range"). When the source is `"default"` or `"legacy_flat"`, the provenance parenthetical MAY be omitted. When unset, dim 7 falls back to the implicit "reasonable for the decision being made" judgment with no length numbers required.
 
-The author primitive this enables is the deliberate **expand → tighten** cadence (load new content with breathing room in one revision, then tighten editorial pressure on the next). The cadence is implemented in v0 by editing `<thread>/.anvil.json` between revise calls — per-version overrides are a planned follow-on.
+The author primitive this enables is the deliberate **expand → tighten** cadence (load new content with breathing room in one revision, then tighten editorial pressure on the next). Two cadence shapes are supported:
+
+- **Single thread-level target**: declare a flat `target_length: { words: [min, max] }` and edit it between revise calls when the cadence shifts. This is the PR #122 shape and continues to work unchanged.
+- **Per-version overrides (declarative)**: declare `target_length.default` for the baseline and `target_length.overrides.v{N}` for the versions that need a different range. The drafter and reviser apply the resolution order `overrides.v{N+1}` → `default` → no target when producing v{N+1}; the reviewer reads the resolved range from `_progress.json.metadata.target_length_resolved` so dim 7 scores against the same range the artifact was authored against. See `SKILL.md` §"Length targets" for the schema, resolution order, and backward-compatibility contract.
 
 ## Advance threshold
 
