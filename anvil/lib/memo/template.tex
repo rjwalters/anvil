@@ -1,0 +1,91 @@
+%% anvil/lib/memo/template.tex
+%%
+%% Pandoc xelatex template — fallback memo PDF renderer when neither
+%% weasyprint nor wkhtmltopdf is on PATH. Consumed via:
+%%
+%%   pandoc memo.md \
+%%     --template anvil/lib/memo/template.tex \
+%%     --pdf-engine=xelatex \
+%%     --metadata title="..." \
+%%     --metadata author="..." \
+%%     --metadata date="..." \
+%%     -o memo.pdf
+%%
+%% This template is DELIBERATELY MINIMAL. The HTML chain
+%% (pandoc → styles.css → weasyprint OR wkhtmltopdf) is the canonical
+%% memo render path; this xelatex fallback exists so the chain has a
+%% last-resort engine in environments where the HTML-to-PDF binaries are
+%% unavailable but TeX Live is. The two outputs are not pixel-identical
+%% by design — the HTML chain owns the canonical typography.
+%%
+%% Maintainer policy mirrors styles.css: aesthetic-tuning PRs against the
+%% default template are closed. Consumers who want custom LaTeX class,
+%% headers, or fonts SHOULD override at
+%% <consumer>/.anvil/lib/memo/template.tex after install.
+
+\documentclass[11pt,letterpaper]{article}
+
+% --- Geometry: 0.75in margins, matching styles.css ----------------------
+\usepackage[margin=0.75in]{geometry}
+
+% --- Fonts: fontspec lets us request system Helvetica/Arial via xelatex --
+% TeX Live's default Computer Modern is acceptable when fontspec is
+% absent; consumers who want a specific font override the template.
+\usepackage{fontspec}
+\setmainfont{Helvetica}[
+  ItalicFont = Helvetica,
+  BoldFont = Helvetica Bold,
+  BoldItalicFont = Helvetica Bold,
+]
+
+% --- Page numbering: footer page X of Y, matching @page rule in CSS -----
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage\ / \pageref{LastPage}}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\usepackage{lastpage}
+
+% --- Hyperref: clickable links and PDF metadata -------------------------
+\usepackage{hyperref}
+\hypersetup{
+  pdftitle={$if(title)$$title$$else$Untitled Memo$endif$},
+  pdfauthor={$if(author)$$author$$endif$},
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=black,
+  citecolor=black,
+}
+
+% --- Pandoc-supplied preamble blocks ------------------------------------
+$if(highlighting-macros)$
+$highlighting-macros$
+$endif$
+
+$for(header-includes)$
+$header-includes$
+$endfor$
+
+% --- Title block --------------------------------------------------------
+$if(title)$
+\title{$title$}
+$endif$
+$if(author)$
+\author{$author$}
+$endif$
+$if(date)$
+\date{$date$}
+$else$
+\date{}
+$endif$
+
+\begin{document}
+
+$if(title)$
+\maketitle
+$endif$
+
+$body$
+
+\end{document}
