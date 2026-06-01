@@ -34,11 +34,30 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
 1. **Discover thread state**: enumerate existing `<thread>.{N}/` dirs. Compute the next `N`.
 2. **Resume check**: if `<thread>.{N+1}/_progress.json` exists with `draft.state == in_progress`, treat as a crashed prior run. Delete any partial `memo.md` and re-draft. If `draft.state == done`, the version is already drafted — exit early with a notice (this command is idempotent: it does not overwrite a completed draft).
 3. **Read inputs**: load `BRIEF.md` (if present) and enumerate `refs/`. If revising from feedback, also load the prior version's `memo.md` and concatenate all critic siblings' `verdict.md` + `scoring.md` + `comments.md`.
-4. **Initialize `_progress.json`**: write `phases.draft.state = in_progress`, `phases.draft.started = <ISO timestamp>`, `metadata.iteration = N+1`, `metadata.max_iterations` (inherit from `<thread>/.anvil.json` if set, else 4).
-5. **Read `target_length`**: if `<thread>/.anvil.json` exists, read the optional `target_length` field per the SKILL.md §Length targets contract. Normalize to a `(min_words, max_words)` pair:
+4. **Initialize `_progress.json`**: write `phases.draft.state = in_progress`, `phases.draft.started = <ISO timestamp>`, `metadata.iteration = N+1`, `metadata.max_iterations` (inherit from `<thread>/.anvil.json` if set, else 4). Also resolve and record `metadata.target_length_resolved` per step 5 — the resolution must happen before the prompt is built so the resolved range is in scope for both the prompt injection and the `_progress.json` provenance write.
+5. **Resolve `target_length` for v{N+1}**: if `<thread>/.anvil.json` exists, read the optional `target_length` field per the SKILL.md §Length targets contract and apply the resolution order to the version about to be produced (`N+1`):
+   1. If `target_length.overrides.v{N+1}` is set and well-formed, use that range. Source: `"overrides.v{N+1}"`.
+   2. Else if `target_length.default` is set and well-formed, use that range. Source: `"default"`.
+   3. Else if the top-level `target_length` is the legacy flat shape (`words` or `pages` key directly), use that range. Source: `"legacy_flat"`.
+   4. Else, no target. Source: `"none"`.
+
+   Normalize the resolved range to a `(min_words, max_words)` pair:
    - `{ "words": [W_min, W_max] }` → `(W_min, W_max)` directly.
    - `{ "pages": [P_min, P_max] }` → `(P_min * 600, P_max * 600)` using the documented 600-words/page conversion.
-   - Missing, malformed, or both-keys-set → no target (fall back to current implicit behavior).
+   - Missing, malformed, both-keys-set, or `min > max` → no target (fall back to current implicit behavior). A `target_length` with both flat (`words`/`pages`) and extended (`default`/`overrides`) keys at the top level is malformed — source `"none"`, no target.
+
+   Write the resolved range and its source into `_progress.json.metadata.target_length_resolved` as part of step 4 — shape:
+
+   ```json
+   "target_length_resolved": {
+     "min_words": 2000,
+     "max_words": 2800,
+     "source": "overrides.v10"
+   }
+   ```
+
+   When the source is `"none"`, write `{"source": "none"}` (omit `min_words`/`max_words`) or omit the field entirely; consumers tolerate both shapes.
+
    If a target is set, inject it into the drafting prompt as a soft target using the exact wording: **"Target length: <min>–<max> words (~<min_pages>–<max_pages> pages at 600 words/page). Treat as a soft budget — material that earns its space may exceed; pad-prose that fills space MUST be cut."** Where the absent `pages` form is set, derive the page approximation from the word range (`min_pages = round(min_words/600)`, `max_pages = round(max_words/600)`). Where no target is set, omit this line from the prompt entirely.
 6. **Draft the memo**: produce `memo.md` with:
    - **Header**: thread slug, date, iteration, author (model identifier).
@@ -84,9 +103,16 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   },
   "metadata": {
     "iteration": <N>,
-    "max_iterations": 4
+    "max_iterations": 4,
+    "target_length_resolved": {
+      "min_words": 1800,
+      "max_words": 2400,
+      "source": "default"
+    }
   }
 }
 ```
+
+`metadata.target_length_resolved` is the resolved target this draft was authored against, with `source` provenance — see step 5 for the resolution rules and the four documented source values (`"overrides.v{N}"`, `"default"`, `"legacy_flat"`, `"none"`). The reviewer reads this field rather than re-resolving from `<thread>/.anvil.json`, preventing drift if the JSON is edited between draft and review. The field is optional — its absence is tolerated for legacy version dirs (reviewer falls back to re-resolution).
 
 Merge rule (shallow): read existing `_progress.json` if present, update only `phases.draft` and `metadata`, preserve all other fields. Use the read-merge-write recipe in `anvil/lib/snippets/progress.md`; use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.

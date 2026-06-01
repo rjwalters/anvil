@@ -100,7 +100,9 @@ Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<
 
 A memo thread can declare an optional **target length** in `<thread>/.anvil.json`. The drafter and reviser pass this target into the LLM prompt as a soft length budget, and the reviewer uses it as the comparison anchor for rubric dim 7 (*Scope discipline*). When `target_length` is absent the skill behaves exactly as it does without the field — the reviewer falls back to the implicit "reasonable for the decision being made" judgment.
 
-The canonical `.anvil.json` shape with both knobs set:
+`target_length` accepts **two schema shapes** — both produce the same `(min_words, max_words)` resolved target. Authors pick whichever shape fits their authoring cadence:
+
+### Flat shape (legacy, simple thread-level target)
 
 ```json
 {
@@ -109,7 +111,30 @@ The canonical `.anvil.json` shape with both knobs set:
 }
 ```
 
-`target_length` is an object with **exactly one** of two range keys:
+The flat shape applies to every version of the thread. This is the shape PR #122 shipped and continues to work unchanged — no migration required.
+
+### Extended shape (per-version overrides)
+
+```json
+{
+  "max_iterations": 12,
+  "target_length": {
+    "default": { "words": [1800, 2400] },
+    "overrides": {
+      "v9":  { "pages":  [5, 7] },
+      "v10": { "words": [2000, 2800] }
+    }
+  }
+}
+```
+
+`default` is the fallback used when no override matches the current version. `overrides` is a map from version key (`v{N}` where `N` is the positive integer matching the version dir suffix — e.g., `v9` matches `<thread>.9/`) to a `{ words: [min, max] }` or `{ pages: [min, max] }` range. Each override fully replaces `default` for its version — no partial-merge semantics; if you want a different range, write the full range.
+
+Either `default` or `overrides` may be omitted. A thread that declares only `default` behaves identically to the legacy flat shape; a thread that declares only `overrides` falls back to no target for versions not in the override map.
+
+### Range shape (both flat and extended forms)
+
+Inside any `default` block, override value, or legacy flat `target_length`, the range is an object with **exactly one** of two keys:
 
 | Key | Shape | Meaning |
 |---|---|---|
@@ -120,9 +145,27 @@ The canonical `.anvil.json` shape with both knobs set:
 
 Both `min` and `max` are integers; `min <= max`. The range is inclusive on both ends: a word count between `min` and `max` (inclusive) is on-target.
 
-**Backward compatibility.** `target_length` is purely additive. A thread with no `.anvil.json`, an `.anvil.json` missing `target_length`, or a malformed `target_length` (wrong shape, non-integer values, both `words` and `pages` set) falls back to the implicit "reasonable for the decision" behavior. Parse errors are tolerated, never fatal — this mirrors the precedent set by `_read_anvil_json` in `anvil/lib/rubric.py`.
+### Resolution order
 
-**Per-version overrides are intentionally not supported in v0.** The expand/tighten cadence that motivated this field (load new content at v9, re-tighten at v10) is handled in v0 by editing `<thread>/.anvil.json` between revise calls. Per-version overrides (`target_length.overrides.v{N}`) ship as a separate follow-on issue once we see how the thread-level field is actually used.
+When `memo-draft` or `memo-revise` is about to produce version `N+1`, or when `memo-review` is about to review version `N`, the resolution helper applies the following order with the target version number as input:
+
+1. If `target_length.overrides.v{N}` is set (and well-formed), use that range.
+2. Else if `target_length.default` is set (and well-formed), use that range.
+3. Else (the legacy flat shape), use the top-level `target_length` directly.
+4. Else, no target — fall back to the implicit "reasonable for the decision being made" behavior.
+
+The resolved `(min_words, max_words)` is recorded in the version dir's `_progress.json.metadata.target_length_resolved` with a `source` field naming which branch fired (`"overrides.v{N}"`, `"default"`, `"legacy_flat"`, or `"none"`). The drafter and reviser write this field when initializing the version dir; the reviewer reads it rather than re-resolving — this prevents drift between the target the artifact was authored against and the target it is scored against. See `commands/memo-draft.md` step 4, `commands/memo-revise.md` step 5, and `commands/memo-review.md` step 4 for the per-command plumbing.
+
+### Backward compatibility
+
+`target_length` and the new `overrides` block are purely additive. A thread with no `.anvil.json`, an `.anvil.json` missing `target_length`, or a malformed `target_length` falls back to the implicit "reasonable for the decision" behavior. Specifically the following are treated as malformed (no target set, no exception raised):
+
+- A `target_length` with both flat keys (`words`/`pages`) AND extended keys (`default`/`overrides`) — ambiguous shape, fall back to no target.
+- A range with both `words` and `pages` set, or with non-integer values, or with `min > max`.
+- An `overrides` value that is not a dict, or an override key that does not match `v{positive integer}`.
+- An override value that is itself malformed by the rules above.
+
+Parse errors are tolerated, never fatal — this mirrors the precedent set by `_read_anvil_json` in `anvil/lib/rubric.py`. A thread written for PR #122's flat shape continues to produce identical behavior under the resolution helper; no consumer needs to migrate.
 
 ## Command dispatch
 
