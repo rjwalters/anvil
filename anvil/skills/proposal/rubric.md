@@ -27,6 +27,32 @@ The proposal's `customer_kind` frontmatter key (`external` | `internal`, default
 
 All other dimensions are scored identically regardless of `customer_kind`.
 
+## Refs back-check (dim 6 + dim 4)
+
+`<thread>/refs/` is the home for **author-supplied source-of-truth materials** (vendor quotes, datasheets, SOW templates, CVs, comparables, site plans) — see SKILL.md §"Source-of-truth materials". `proposal-audit` has always treated `refs/` as the sourceability substrate for **cost claims** (BOM lines back-checked against vendor quotes and planning-range sources — see `commands/proposal-audit.md` step 7). This sub-rule **extends** the existing sourceability walk to **non-cost claims** whose evidentiary basis lives in `refs/`: scope claims, deliverability ("workshop"-capability) claims, comparable-project claims.
+
+**The back-check is primarily audit-owned (dim 6 deduction).** The deduction lives in **dim 6 (Cost credibility)**, whose scope is broadened from "verifiable sourceability of prices" to **"verifiable sourceability of all load-bearing claims"** (the cost-credibility dim already owns sourceability — extending it to non-cost claims keeps the rubric stable while formalizing the broader contract). The audit owns this dim per the existing rubric-table assignment; no ownership change.
+
+**Dim 4 (Scope completeness) has a light reviewer-side touch.** `proposal-review` step 4 instructs the reviewer to **note the presence** of `refs/` source-of-truth materials when scoring dim 4 — the audit handles the per-claim back-check; the reviewer gestures rather than duplicates. The dim 4 justification SHOULD acknowledge audit ownership when source-of-truth materials are present (e.g., "Scope completeness scored as written; `refs/sow-bigcorp.md` is on-disk for audit-side scope back-check"). No dim 4 deduction is applied for refs back-check verdicts — the deduction lives in the audit's dim 6 sub-rule.
+
+The auditor partitions `<thread>/refs/` into source-of-truth materials (named for their content — `quote-acme.pdf`, `datasheet-sfp-lr.pdf`, `sow-template.md`, `cv-lead.md`, `comparables/prior-fiber.md`, `site-plan-palazzo.pdf`) and generic reference material (rough notes, draft sketches not named as a source-of-truth) per the SKILL.md disambiguation rule. Generic reference material is out of scope for this sub-rule. For each source-of-truth refs-document **type** present that is on-topic for a non-cost claim, the auditor picks at least one load-bearing claim in `proposal.tex` whose evidentiary basis is the document's subject and back-checks it. The auditor is **not** required to back-check every claim — the requirement is **at least one claim per source-of-truth refs-document type present**.
+
+The auditor records each back-check in `findings.md` with a four-valued verdict (`VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS`) and applies a **per-instance deduction** on dim 6:
+
+- **One `CONTRADICTED` claim** against a source-of-truth ref — **two-point** dim 6 deduction AND a **critical-flag candidate**, escalating to one of the existing standing flags:
+  - Cost-bearing CONTRADICTED → existing **critical flag 2 (Cost estimate not credible / not sourceable)** — the underlying source-of-truth document shows the cost figure or its basis is not what the proposal says.
+  - Scope / deliverability / comparable CONTRADICTED that creates an internal inconsistency (the proposal contradicts its own evidentiary base) → existing **critical flag 4 (Internal inconsistency)** — the proposal disagrees with the source it cites.
+  No new flag is needed; the existing flags 2 and 4 are the natural escalation path.
+- **One `UNVERIFIED` claim** against a source-of-truth ref (document is present and on-topic but does not contain the supporting passage) — **one-point** dim 6 deduction. Not flag-eligible on its own; the gap is signaled but not deal-breaking.
+- **`NOT-IN-REFS` claims** (proposal makes a claim, no source-of-truth refs-document covers its subject) — **no deduction**. Informational only; records "where did this come from" visibility for the reviser.
+- **`VERIFIED` claims** — no deduction; positively scored under dim 6's full-weight calibration.
+
+The dim 6 audit-side justification (in the audit's `verdict.md` and `findings.md`) MUST cite the specific verdict and the refs-document path (e.g., "Back-checked §5 'fiber-splicing performed in-house' against `refs/cv-lead.md`: CONTRADICTED ('no fiber-splicing certification') — -2 on dim 6 + critical flag 4 (Internal inconsistency)"). Vague "needs refs back-check" deductions without named instances are not actionable for the reviser and SHOULD be avoided.
+
+**Backward compatibility.** When `<thread>/refs/` contains **no** source-of-truth materials (only generic reference material, or empty, or missing), this sub-rule is **inactive** and the audit falls back to the existing cost-only sourceability behavior alone (the pre-#166 behavior). A proposal thread that uses `refs/` only as drafter context (rough notes, draft sketches) is unaffected. PDFs and images are treated as presence-only in v0 — the auditor notes the file is on-disk and back-checks against a sibling `.md` companion (e.g., a `cv-lead.md` next to `cv-lead.pdf`) or `BRIEF.md`-surfaced content; PDF text extraction is deferred to issue #167.
+
+The deduction is applied entirely via auditor judgment — there is no automated `refs/` parsing in v0. See `commands/proposal-audit.md` §Procedure step 7 (refs back-check sub-step for non-cost claims) for the auditor-side procedure, `commands/proposal-review.md` §Procedure step 4 for the light reviewer-side mention, and `commands/proposal-draft.md` §Procedure step 3 for the drafter-side ingestion contract.
+
 ## Scoring guidance
 
 For each dimension, the reviewer assigns an integer between 0 and the dimension's weight. A short justification accompanies each score (1–3 sentences pointing to specific evidence in `proposal.tex`).

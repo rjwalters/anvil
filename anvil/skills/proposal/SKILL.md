@@ -63,6 +63,31 @@ A **proposal thread** is a single proposal for one buildable system, authored ac
 
 Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
 
+### Source-of-truth materials
+
+`<thread>/refs/` is the canonical home for **author-supplied source-of-truth materials**: documents the proposal's claims are evaluated against. `proposal-audit` has always treated `refs/` as **the sourceability substrate for cost claims** (BOM lines back-checked against vendor quotes, datasheets, planning-range sources — see `commands/proposal-audit.md` step 5/6). The §"Source-of-truth materials" contract documented here is **additive**: it extends `refs/` from "sourceability for prices only" to **"sourceability for all load-bearing claims"** — scope, deliverability ("workshop"-capability claims), comparable-project claims — that the auditor (and the reviewer) can back-check against on-disk source-of-truth documents. The disambiguation between source-of-truth materials and generic reference material is by **filename + extension** (no manifest, no registry in v0).
+
+Typical source-of-truth materials for a buildable-system proposal:
+
+- `quote-<vendor>.pdf` / `quote-<vendor>.md` — vendor price quotes; load-bearing for cost-credibility claims (dim 6). Already audit-side load-bearing today; the back-check formalizes the existing behavior.
+- `datasheet-<part>.pdf` — component datasheets; load-bearing for spec / link-budget / power-budget claims (dim 2 + dim 6). Already audit-side load-bearing.
+- `sow-template.md` / `sow-<client>.md` — statement-of-work templates or executed SOWs; load-bearing for scope-completeness claims (dim 4) and deliverability claims (dim 5).
+- `comparables/<project>.md` — prior-project case files (Gossamer LAN canon: prior fiber-network installs the proposal calls back to as evidence of deliverability); load-bearing for deliverability claims (dim 5) and comparable-cost claims (dim 6).
+- `vendor-quotes/<vendor>.{pdf,md}` — directory of vendor quotes (subdirectory convention for multi-vendor BOMs); each entry load-bearing for the priced line it sources.
+- `cv-<lead>.pdf` / `cv-<lead>.md` — CVs of named project leads (electrician, fiber-splicing tech, project manager); load-bearing for deliverability ("we have the tools/skills/staff" — dim 5).
+- `site-plan-*.pdf` — site plans and topology references; load-bearing for design-correctness (dim 2) and constraint-satisfaction (dim 3) claims.
+- `prior/<vN>.{pdf,md}` — prior versions of this proposal (e.g., a pre-anvil LaTeX proposal migrating in); load-bearing for "what's changed across the revision arc."
+
+The list is illustrative, not exhaustive. The contract is: *"if a claim's evidentiary basis lives in a file, that file goes in `<thread>/refs/`."* Source-of-truth materials are typically named for their **content** (`quote-acme.pdf`, `datasheet-sfp-lr.pdf`, `sow-bigcorp.md`); both file-roles coexist in the same directory, disambiguated by filename convention.
+
+Accepted file shapes for source-of-truth materials in v0: markdown (`.md`), plain text (`.txt`), JSON (`.json`), PDFs (`.pdf`), images (`.png`, `.jpg`, `.jpeg`). The drafter **reads text-readable files** (markdown, text, JSON) into context as authoritative. PDFs and images are treated as **presence-only signals** in v0 — the drafter is aware they exist by filename and respects the rule that claims about the subject of the file SHOULD NOT be made unless backed by content the operator has surfaced in `BRIEF.md` (PDF text extraction is deferred — see issue #167).
+
+**The back-check is primarily audit-owned.** The proposal rubric splits **review** (subjective quality — `kind: judgment`) from **audit** (verifiable correctness — `kind: tool_evidence`); the refs back-check fits naturally in the audit's existing sourceability walk. `proposal-audit` extends its per-priced-line sourceability check (already documented in step 5/6) to **non-cost claims** (scope, deliverability, comparables) using the same four-valued verdict schedule (`VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS`). The deduction lives in the audit's dim 6 (Cost credibility) sub-rule — extended to cover all load-bearing on-disk sourceability, not just prices. The CONTRADICTED escalation path uses the existing **critical flag 2 (Cost not credible/sourceable)** for cost-bearing contradictions and **critical flag 4 (Internal inconsistency)** for scope / spec contradictions; no new flag is needed.
+
+**The reviewer gestures, does not duplicate.** `proposal-review` MUST note when `refs/` source-of-truth materials are present (step 4 in the reviewer command) and gesture toward audit-owned back-check rather than re-walking the BOM. The reviewer's dim 4 (Scope completeness) justification SHOULD acknowledge that audit handles the back-check; the deduction itself lives in the audit's dim 6 sub-rule, not in any review dim. This split keeps the work from being duplicated and preserves the principled review-vs-audit boundary documented in `anvil/lib/snippets/audit.md`.
+
+See `commands/proposal-draft.md` §Procedure step 3 for the drafter contract (ingestion of `refs/` source-of-truth materials), `commands/proposal-audit.md` §Procedure (extended sourceability walk for non-cost claims) for the primary back-check, `commands/proposal-review.md` §Procedure step 4 for the light reviewer mention, and `rubric.md` §"Refs back-check (dim 6 + dim 4)" for the per-instance deduction rule. The contract degrades gracefully: when `refs/` contains no source-of-truth materials (only generic reference material, or empty), the back-check is inactive and dim 6 falls back to the existing cost-only sourceability behavior alone (backward-compat with the pre-#166 behavior).
+
 ## State machine
 
 Per-thread state, derived from on-disk evidence (not flags):
