@@ -320,6 +320,123 @@ def check_auto_shrink_deps_available() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Memo render chain preflight (pandoc + weasyprint / wkhtmltopdf / xelatex)
+# ---------------------------------------------------------------------------
+
+# Remediation message surfaced when one or more engines in the anvil:memo
+# markdown → PDF chain are absent. The chain is documented in
+# ``anvil/lib/memo/README.md``: pandoc is the common front-end, and the
+# HTML-to-PDF leg prefers ``weasyprint``, falls back to ``wkhtmltopdf``, then
+# to ``xelatex`` as the engine-of-last-resort. The remediation string covers
+# all four binaries in one actionable block rather than emitting four
+# sequential errors.
+#
+# Mirrors the #65 (mmdc), #85 (pdfjam), and #102 (auto-shrink) preflight
+# pattern: this module's ``check_*_available`` family is the single place
+# skills look up "is this third-party tool installed?". The remediation
+# string is the install story; callers print it into the skip-record / a
+# render command's ``[blocker]`` finding when the corresponding check fails.
+MEMO_RENDERER_REMEDIATION = (
+    "anvil:memo PDF rendering requires pandoc plus one of weasyprint, "
+    "wkhtmltopdf, or xelatex (see anvil/lib/memo/README.md for the chain "
+    "rationale). Install pandoc via `brew install pandoc` (macOS) or "
+    "`apt-get install pandoc` (Debian/Ubuntu); it is the common front-end. "
+    "Then install ONE of the HTML-to-PDF engines:\n"
+    "  - weasyprint (preferred — best CSS paged-media fidelity): "
+    "`pip install weasyprint` (also requires cairo + pango; "
+    "`brew install cairo pango gdk-pixbuf libffi` on macOS, "
+    "`apt-get install libpango-1.0-0 libpangoft2-1.0-0` on Debian/Ubuntu);\n"
+    "  - wkhtmltopdf (fallback — standalone binary, no Python): "
+    "`brew install --cask wkhtmltopdf` (macOS) or "
+    "`apt-get install wkhtmltopdf` (Debian/Ubuntu);\n"
+    "  - xelatex (last resort — TeX Live engine): "
+    "`brew install --cask mactex-no-gui` (macOS) or "
+    "`apt-get install texlive-xetex texlive-fonts-recommended` "
+    "(Debian/Ubuntu)."
+)
+
+
+def check_pandoc_available() -> bool:
+    """Return ``True`` if the ``pandoc`` binary is on PATH.
+
+    This is the preflight guard the (future) memo-render command runs before
+    invoking the markdown → HTML / markdown → PDF chain documented in
+    ``anvil/lib/memo/README.md``. Pandoc is the common front-end for all three
+    chain branches (weasyprint, wkhtmltopdf, xelatex) so this check is
+    required regardless of which HTML-to-PDF engine is also available.
+
+    Mirrors the ``check_mmdc_available`` (#65), ``check_pdfjam_available``
+    (#85), and ``check_auto_shrink_deps_available`` (#102) precedents: a
+    pure ``shutil.which`` test that is unit-testable with a monkeypatched
+    ``shutil.which`` and requires no real pandoc install at test time.
+
+    Note: this function only checks PATH presence. It does NOT validate the
+    pandoc version, available output formats, or that any specific filter
+    is installed. Phase 3's memo-render command runs the real pandoc
+    invocation and surfaces any version-incompatibility errors at that time.
+
+    See also :data:`MEMO_RENDERER_REMEDIATION` for the install story
+    callers should surface when this returns ``False``.
+    """
+    return shutil.which("pandoc") is not None
+
+
+def check_weasyprint_available() -> bool:
+    """Return ``True`` if the ``weasyprint`` binary is on PATH.
+
+    ``weasyprint`` is the PREFERRED HTML-to-PDF engine for the anvil:memo
+    render chain (see ``anvil/lib/memo/README.md``). It supports the full CSS
+    paged-media spec used in ``anvil/lib/memo/styles.css`` (the ``@page``
+    rule with ``counter(page) / counter(pages)`` page numbering) without
+    CLI-flag translation.
+
+    Subprocess-only by design: the framework intentionally calls weasyprint
+    as a CLI binary (``weasyprint input.html output.pdf``) rather than
+    importing it as a Python module. This keeps the install story uniform
+    across engines (HTML chain = one binary per engine) and matches the
+    rest of ``render.py`` (no Python wheels in the dependency surface).
+
+    Mirrors the ``check_mmdc_available`` (#65) preflight pattern: a pure
+    ``shutil.which`` test that is unit-testable with a monkeypatched
+    ``shutil.which`` and requires no real weasyprint install at test time.
+
+    See also :data:`MEMO_RENDERER_REMEDIATION` for the install story
+    callers should surface when both this and ``check_wkhtmltopdf_available``
+    return ``False``.
+    """
+    return shutil.which("weasyprint") is not None
+
+
+def check_wkhtmltopdf_available() -> bool:
+    """Return ``True`` if the ``wkhtmltopdf`` binary is on PATH.
+
+    ``wkhtmltopdf`` is the FALLBACK HTML-to-PDF engine for the anvil:memo
+    render chain (see ``anvil/lib/memo/README.md``). It is a standalone
+    binary with no Python dependency, useful in environments where the
+    weasyprint native deps (cairo, pango) are unavailable but a single-binary
+    install is acceptable.
+
+    NOTE: wkhtmltopdf's paged-media support is a partial subset of CSS3
+    paged-media. Some of the ``@page`` rules in ``anvil/lib/memo/styles.css``
+    (notably the ``@bottom-center { content: counter(page) ... }`` page
+    footer) are not honored by wkhtmltopdf and must be passed via its
+    ``--footer-center`` / ``--header-*`` CLI flags instead. Phase 3's
+    memo-render command will own that translation. This availability check
+    does NOT distinguish the two paths — it only confirms the binary is on
+    PATH; the engine-selection logic decides which translation to apply.
+
+    Mirrors the ``check_mmdc_available`` (#65) preflight pattern: a pure
+    ``shutil.which`` test that is unit-testable with a monkeypatched
+    ``shutil.which`` and requires no real wkhtmltopdf install at test time.
+
+    See also :data:`MEMO_RENDERER_REMEDIATION` for the install story
+    callers should surface when both this and ``check_weasyprint_available``
+    return ``False``.
+    """
+    return shutil.which("wkhtmltopdf") is not None
+
+
+# ---------------------------------------------------------------------------
 # PDF → per-page PNGs
 # ---------------------------------------------------------------------------
 
@@ -522,12 +639,16 @@ def render_matplotlib_figures(figures_dir: Path) -> List[Path]:
 __all__ = [
     "AUTO_SHRINK_REMEDIATION",
     "DEFAULT_MARP_CONFIG",
+    "MEMO_RENDERER_REMEDIATION",
     "MMDC_REMEDIATION",
     "PDFJAM_REMEDIATION",
     "RenderError",
     "check_auto_shrink_deps_available",
     "check_mmdc_available",
+    "check_pandoc_available",
     "check_pdfjam_available",
+    "check_weasyprint_available",
+    "check_wkhtmltopdf_available",
     "require_mmdc",
     "require_pdfjam",
     "render_marp_to_pdf",
