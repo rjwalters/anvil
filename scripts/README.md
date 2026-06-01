@@ -39,7 +39,8 @@ that coexists with Loom in the same consumer repo.
    Code's skill-discovery contract).
 8. CLAUDE.md additive merge using `<!-- BEGIN ANVIL --> / <!-- END ANVIL -->` markers (mirrors
    Loom's `<!-- BEGIN LOOM ORCHESTRATION -->` pattern so the two installers coexist).
-9. Write `.anvil/install-metadata.json` (version, install date, installed skills, skipped overrides).
+9. Write `.anvil/install-metadata.json` (version, install date, installed skills, skipped overrides,
+   per-skill `skill_hashes` baseline for next re-install).
 10. Print summary.
 
 ### Install layout convention (resolved per issue #1)
@@ -63,10 +64,31 @@ Running the installer twice produces a byte-identical `CLAUDE.md`.
 
 ### Override semantics
 
-Consumer edits to `.anvil/skills/<name>/` are detected by byte-diff against the source
-`anvil/skills/<name>/`. By default the installer skips modified skills with a warning and
-records them in `install-metadata.json` under `skipped_overrides`. Re-run with `--force` to
-overwrite.
+Consumer edits to `.anvil/skills/<name>/` are detected by comparing the current destination
+against a per-skill content hash recorded **at the time of the previous install** in
+`install-metadata.json` under `skill_hashes`. The hash (SHA-256 over the directory contents,
+shelled out to `shasum -a 256`) pins the "as-installed" snapshot, so re-installs can tell
+apart two cases that look identical to a naive source-vs-destination diff:
+
+| Re-install case | Detection | Default behavior |
+|---|---|---|
+| Destination missing | n/a | Fresh install; record hash. |
+| Destination byte-identical to source | byte-diff against source | Recopy idempotently; record hash. |
+| Destination differs from source, **matches recorded hash** | dest hash vs. `skill_hashes[<name>]` | Auto-upgrade (consumer didn't modify); record new hash. |
+| Destination differs from source, differs from recorded hash | dest hash vs. `skill_hashes[<name>]` | Skip with warning; record skill in `skipped_overrides`; carry the existing recorded hash forward. |
+| Destination differs from source, **no recorded hash** (legacy install) | manifest predates this feature, or manifest absent | Skip with warning. Re-run with `--force` once to overwrite; the subsequent install records a hash and never hits this branch again. |
+| `--force` passed | n/a | Overwrite unconditionally; record new hash. |
+
+The `--dry-run` action line carries a per-skill verdict suffix
+(`[install fresh]`, `[recopy (identical to source)]`, `[auto-upgrade (unmodified-since-install)]`,
+`[overwrite (--force)]`) so the operator can tell which branch each skill would take.
+
+**One-time migration cost for legacy installs**: manifests written before this change have
+no `skill_hashes` block. The first re-install after upgrading the installer will treat every
+existing skill destination as consumer-modified (the conservative fallback) and require
+`--force` to advance — even if the consumer never touched the skill. After that single
+`--force` (or after a fresh install of any new skill), the manifest carries `skill_hashes`
+and subsequent installs auto-distinguish modified from unmodified.
 
 Claude resolves `anvil-<name>` via the registration shim at `.claude/skills/anvil-<name>/`,
 which points at the canonical `.anvil/skills/<name>/` path. The single location is both the
