@@ -151,22 +151,22 @@ When `imagery_policy: generative-eligible` is in effect, every reference to a ge
 
 **This contract activates ONLY when `imagery_policy: generative-eligible` is the effective policy.** Decks under `deterministic-only` (the default) or `consumer-provided` policies are unaffected: there is no generative asset to attribute. Backwards compatibility is preserved by construction.
 
-**Allowed attribution language** (use one of these phrases — pick the register that fits the slide):
+**Allowed attribution language** (use one of these phrases — pick the register that fits the slide). The **canonical source of truth** for this vocabulary is the `ALLOWED_ATTRIBUTION_PHRASES` frozenset in `anvil/skills/deck/lib/imagegen_phrases.py`; the auditor (Phase 3G / #188) reads the same set. The inline list below is the drafter-facing summary — when in doubt the module is authoritative.
 
 - `concept render` — the canonical default. Use for hero shots, product mockups, lifestyle imagery on slides that pitch an aspirational state.
 - `aspirational mockup` — use when the imagery depicts an explicit future state (e.g., the product as it will look at v2, a hypothetical customer environment).
 - `illustrative scene` — use for atmospheric / mood imagery where no specific product is depicted (e.g., a factory-floor backdrop on the problem slide).
 
-The drafter MAY substitute synonyms only if they preserve the "this is synthesized imagery, not a documentary photograph" framing (e.g., `concept illustration`, `mockup`, `illustrative render`). The drafter MUST NOT loosen the framing to imply documentary truth.
+The drafter MAY substitute the additional synonyms enumerated in `ALLOWED_ATTRIBUTION_PHRASES` (`concept illustration`, `illustrative render`, plus the hyphenated variants `concept-render`, `aspirational-mockup`, `illustrative-scene`) — these preserve the "this is synthesized imagery, not a documentary photograph" framing. The drafter MUST NOT loosen the framing to imply documentary truth; any new attribution synonym belongs in the canonical module before it is used in a deck.
 
-**FORBIDDEN language** (these phrases imply documentary truth and MUST NOT appear in alt-text, on-slide captions, or speaker-notes describing a generated asset):
+**FORBIDDEN language** (these phrases imply documentary truth and MUST NOT appear in alt-text, on-slide captions, or speaker-notes describing a generated asset). The **canonical source of truth** is the `FORBIDDEN_DOCUMENTARY_PHRASES` frozenset in `anvil/skills/deck/lib/imagegen_phrases.py`; the auditor reads the same set. Drafter-facing summary:
 
 - `product screenshot` — implies the depicted UI/product exists and was captured from a running system.
-- `actual photo` / `real photograph` — implies camera-captured documentary imagery.
-- `customer deployment` — implies a named customer is running the product as shown.
+- `actual photo` / `actual photograph` / `real photograph` — implies camera-captured documentary imagery.
+- `customer deployment` / `customer environment` / `customer in production` — implies a named customer is running the product as shown.
 - `actual user` / `real user` — implies the depicted person is a verified customer.
-- `from the field` / `taken on-site` / `captured at <location>` — implies documentary provenance.
-- `customer environment` / `production deployment` — implies a deployed system was photographed.
+- `from the field` / `taken on-site` / `captured at <location>` / `in production at` — implies documentary provenance.
+- `live deployment` / `production deployment` — implies a deployed system was photographed.
 
 When in doubt, the drafter MUST err toward attribution: a slide labelled "concept render" that turns out to be a real photograph costs nothing; a real-photo claim that turns out to be a render is a credibility liability and a Phase 3G critical-flag candidate.
 
@@ -193,7 +193,7 @@ The fabrication-attribution contract is documented in `SKILL.md` § "Asset gener
 | `consumer-provided` | Allowed | Allowed | Forbidden | Forbidden |
 | `generative-eligible` | Allowed | Allowed | Forbidden | Allowed under `assets/generated/` (illustrative only; never for logos / team photos; attribution-required per §"Fabrication-attribution contract") |
 
-Note: per the issue-#132 scope, this section is **prose-spec only**. Runtime parsing of `imagery_policy` from `BRIEF.md` frontmatter and enforcement of the per-policy gates is Phase 2 of Epic #130 (Issues D/E). The drafter agent is responsible for honoring the contract above today; mechanical enforcement lands later. The fabrication-attribution contract for `generative-eligible` (allowed phrases like `concept render`, `aspirational mockup`, `illustrative scene`; forbidden phrases like `product screenshot`, `actual photo`, `customer deployment`) is similarly drafter-honored today; runtime audit enforcement lands in Phase 3G (#188).
+Note: per the issue-#132 scope, this section is **prose-spec only**. Runtime parsing of `imagery_policy` from `BRIEF.md` frontmatter and enforcement of the per-policy gates is Phase 2 of Epic #130 (Issues D/E). The drafter agent is responsible for honoring the contract above today; mechanical enforcement lands later. The fabrication-attribution contract for `generative-eligible` (allowed phrases like `concept render`, `aspirational mockup`, `illustrative scene`; forbidden phrases like `product screenshot`, `actual photo`, `customer deployment`) is similarly drafter-honored today, with the canonical phrase lists living in `anvil/skills/deck/lib/imagegen_phrases.py` (`ALLOWED_ATTRIBUTION_PHRASES` and `FORBIDDEN_DOCUMENTARY_PHRASES`); runtime audit enforcement lands in Phase 3G (#188).
 
 ## Voice and style overrides
 

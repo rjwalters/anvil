@@ -166,7 +166,7 @@ Before running any of the three checks, the auditor gathers:
 
 **What it catches**: an on-slide reference to `assets/generated/<slot>.png` whose alt-text AND nearby on-slide caption text contain none of the **allowed attribution phrases** — i.e., the slide presents a backend-rendered image without disclosing that it is a render.
 
-**Allowed attribution phrases** (the verifier side of Phase 3F's contract; case-insensitive substring match):
+**Allowed attribution phrases** (the verifier side of Phase 3F's contract; case-insensitive substring match). The **canonical source of truth** is the `ALLOWED_ATTRIBUTION_PHRASES` frozenset in `anvil/skills/deck/lib/imagegen_phrases.py` (helper: `has_attribution_phrase(text)`). The list below mirrors the module; additions land in the module first:
 
 - `concept render`
 - `concept-render`
@@ -177,7 +177,7 @@ Before running any of the three checks, the auditor gathers:
 - `illustrative render`
 - `concept illustration`
 
-**Forbidden phrases** (case-insensitive substring match) — when any of these appear in the alt-text or nearby on-slide caption of a generative image reference, the finding fires regardless of whether an allowed phrase is also present (the forbidden phrase wins because it asserts a falsifiable real-world claim that the journal contradicts):
+**Forbidden phrases** (case-insensitive substring match) — when any of these appear in the alt-text or nearby on-slide caption of a generative image reference, the finding fires regardless of whether an allowed phrase is also present (the forbidden phrase wins because it asserts a falsifiable real-world claim that the journal contradicts). The **canonical source of truth** is the `FORBIDDEN_DOCUMENTARY_PHRASES` frozenset in `anvil/skills/deck/lib/imagegen_phrases.py` (helper: `find_forbidden_phrases(text)`). The list below mirrors the module — note that the module also enumerates the additional phrases the Phase 3F drafter contract enforces (`real photograph`, `customer environment`, `taken on-site`, `captured at`, `production deployment`); the auditor accepts the full union:
 
 - `product screenshot`
 - `actual photo`
