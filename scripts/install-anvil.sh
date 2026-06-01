@@ -331,11 +331,19 @@ read_recorded_hash() {
     | grep -oE '"skill_hashes"[[:space:]]*:[[:space:]]*\{[^}]*\}' \
     | head -n1)" || true
   [[ -n "$block" ]] || { echo ""; return; }
+  # `|| true` guards the no-match branch: if the manifest has a
+  # `skill_hashes` block but no entry for the queried skill (realistic
+  # partial-install scenario — e.g. memo was installed in a prior run, the
+  # current invocation queries for deck), `grep -E` returns 1, and under
+  # `set -euo pipefail` pipefail propagates it, killing the installer
+  # silently mid-Stage-7. The first pipeline above is already protected the
+  # same way; this one must mirror it.
   printf '%s' "$block" \
     | tr ',' '\n' \
     | grep -E "\"$skill\"[[:space:]]*:[[:space:]]*\"[a-f0-9]+\"" \
     | head -n1 \
-    | sed -E "s/.*\"$skill\"[[:space:]]*:[[:space:]]*\"([a-f0-9]+)\".*/\1/"
+    | sed -E "s/.*\"$skill\"[[:space:]]*:[[:space:]]*\"([a-f0-9]+)\".*/\1/" \
+    || true
 }
 
 # Copy a directory tree's CONTENTS (not the wrapper dir) into dest, creating

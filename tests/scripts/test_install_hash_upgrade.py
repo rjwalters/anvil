@@ -493,3 +493,119 @@ def test_canary_three_invocation_reproducer(tmp_path: Path) -> None:
         "deck hash was dropped from skill_hashes despite being skipped, not "
         f"deleted; manifest:\n{manifest}"
     )
+
+
+def test_partial_manifest_does_not_abort_silently(tmp_path: Path) -> None:
+    """Manifest with ``skill_hashes`` block but no entry for the queried skill
+    does not silently abort the installer (regression test for #163 review bug).
+
+    Reproducer for the bug found in PR #163 review:
+
+      * fresh-install memo + deck → manifest has hashes for both
+      * hand-edit the manifest to remove the ``deck`` entry from
+        ``skill_hashes`` (simulates a partial-install scenario: e.g.
+        someone hand-merged manifests, or a future schema migration
+        dropped some entries)
+      * mutate the upstream deck source so dst diverges from source
+      * re-run installer for ``--skills=deck``
+
+    Pre-fix, this sequence hit a ``set -euo pipefail`` trap inside
+    ``read_recorded_hash``: the second pipeline's terminal ``grep -E`` returns
+    1 when the queried skill is not in the ``skill_hashes`` block, pipefail
+    propagated it, and the installer died silently mid-Stage-7 with exit code
+    1 and zero stderr. Stage 8/9/10/11 never ran, and the manifest was never
+    rewritten.
+
+    Post-fix, the helper returns the empty string for the missing entry,
+    Stage 7 falls into the legacy-install fallback branch (warn + skip
+    unless ``--force``), and the installer completes cleanly through
+    Stage 11. The other 7 tests in this file don't exercise this code
+    path because they either (a) install only one skill (so the
+    no-match branch isn't reached) or (b) always end up with a
+    skill_hashes entry that matches the queried skill.
+    """
+
+    target = tmp_path / "partial-manifest-target"
+    target.mkdir()
+
+    # Step 1: fresh install both memo and deck. Manifest now records hashes
+    # for both.
+    first = _run("-y", "--skills=memo,deck", str(target))
+    assert first.returncode == 0, first.stderr
+
+    manifest_path = target / ".anvil" / "install-metadata.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert "deck" in manifest["skill_hashes"]
+    assert "memo" in manifest["skill_hashes"]
+
+    # Step 2: hand-edit the manifest to remove the deck entry from
+    # skill_hashes while keeping the deck dst dir intact. This is the exact
+    # shape the bug requires: skill_hashes block present, but no entry for
+    # the skill the next invocation will query for.
+    manifest["skill_hashes"].pop("deck")
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+    # Sanity check: the manifest still has a skill_hashes block (the bug
+    # only triggers when the block is present but the queried key is
+    # missing; a fully-absent block hits the first pipeline's `|| true`
+    # guard and the early `[[ -n "$block" ]]` short-circuit).
+    manifest_after = json.loads(manifest_path.read_text())
+    assert "skill_hashes" in manifest_after
+    assert "deck" not in manifest_after["skill_hashes"]
+    assert "memo" in manifest_after["skill_hashes"]
+
+    # Step 3: mutate the upstream deck source so dst diverges from source.
+    # This forces Stage 7 past the `dirs_identical` early-return and into
+    # the override-detection branch that calls `read_recorded_hash`.
+    fake_anvil = _copy_anvil_checkout(tmp_path / "fake-anvil")
+    src_deck_md = fake_anvil / "anvil" / "skills" / "deck" / "SKILL.md"
+    src_deck_md.write_text(src_deck_md.read_text() + "\n<!-- upstream edit -->\n")
+
+    # Step 4: re-run installer for deck only. Pre-fix this exited with
+    # code 1 and zero stderr halfway through Stage 7. Post-fix it must
+    # complete cleanly through Stage 11.
+    second = _run_from_fake_anvil(fake_anvil, "-y", "--skills=deck", str(target))
+    assert second.returncode == 0, (
+        "installer aborted on partial-manifest scenario (regression for "
+        f"#163 review bug):\n--- stdout ---\n{second.stdout}\n"
+        f"--- stderr ---\n{second.stderr}"
+    )
+
+    combined = second.stdout + second.stderr
+
+    # Stage 7 reached the legacy-install fallback (no recorded hash → skip
+    # with the diagnostic qualifier). This is the correct branch for the
+    # "manifest has skill_hashes but no entry for this skill" case.
+    assert "skipped: consumer-modified .anvil/skills/deck" in combined, (
+        "partial-manifest path did not skip deck as consumer-modified:\n"
+        f"{combined}"
+    )
+    assert "legacy install, no recorded hash" in combined, (
+        "partial-manifest path did not emit the legacy-install diagnostic "
+        f"qualifier (the absence-of-entry should route through the same "
+        f"branch as absence-of-block):\n{combined}"
+    )
+
+    # Stage 8/9/10/11 must have run. Stage 11 is the headline marker: a
+    # silent abort under pipefail prints no Stage 11 banner at all.
+    assert "Stage 11: summary" in combined, (
+        "Stage 11 never ran — installer aborted before reaching the "
+        f"summary (silent-abort symptom of the #163 bug):\n{combined}"
+    )
+
+    # Stage 9 ran, so the manifest was rewritten. Deck must be in
+    # skipped_overrides, and the deck hash must NOT have reappeared (we
+    # never had a baseline to carry forward).
+    final_manifest = _read_manifest(target)
+    assert "deck" in final_manifest["skipped_overrides"]
+    assert "deck" not in final_manifest.get("skill_hashes", {}), (
+        "deck hash reappeared in skill_hashes despite never being recorded "
+        f"(no baseline to carry forward); manifest:\n{final_manifest}"
+    )
+    # The deck dst content must be untouched (skip-on-modified semantics
+    # held even though the helper would have crashed without the fix).
+    deck_md = target / ".anvil" / "skills" / "deck" / "SKILL.md"
+    assert "upstream edit" not in deck_md.read_text(), (
+        "deck dst received the upstream edit despite being flagged as "
+        "consumer-modified — Stage 7 wrote the wrong branch."
+    )
