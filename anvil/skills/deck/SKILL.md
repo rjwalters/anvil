@@ -57,6 +57,25 @@ Versioned dirs and critic siblings are **immutable once their `_progress.json` r
 
 **Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks aliasing the current version (`<thread>.latest -> <thread>.{max_N}`, `<thread>.latest.review -> <thread>.{max_N}.review`, `<thread>.latest.design -> <thread>.{max_N}.design`, `<thread>.latest.audit -> <thread>.{max_N}.audit`) so downstream tooling — figure scripts pulling numbers from a peer thread via `refs/<thread>.latest/...`, share scripts pointing at "the current deck PDF", CI gates checking `<thread>.latest/deck.pdf` — can target stable paths without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped deck commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery glob (`<thread>.{N}.*/`) matches only digit-N suffixes, so a `.latest*` entry is invisible to the reviser's critic-sibling enumeration and cannot perturb anvil's state-machine derivation.
 
+### `BRIEF.md` frontmatter reference
+
+`<thread>/BRIEF.md` may carry optional YAML frontmatter that the deck commands consume as structured context. The full schema (with required-section conventions and procedural notes) lives in `commands/deck-brief.md` §"BRIEF.md schema". The fields the framework reads:
+
+| Field | Type | Default | Consumed by | Notes |
+|---|---|---|---|---|
+| `company` | string | — | informational | Used in slide-1 title fallback. |
+| `sector` | string | — | informational | Recorded in `_progress.json` metadata when present. |
+| `stage` | enum | — | `deck-review` (rubric tuning) | One of `pre-seed | seed | series-a | series-b | growth | partnership | board-update`. |
+| `round_target` | string | — | informational | Drafter copies into the ask slide unless overridden by brief prose. |
+| `target_close` | string | — | informational | |
+| `target_investors` | list of strings | — | informational | |
+| `imagery_policy` | enum | `deterministic-only` | `deck-draft`, `deck-imagegen` (#131) | One of `generative-eligible | consumer-provided | deterministic-only`. See `commands/deck-brief.md` §"imagery_policy" and `commands/deck-draft.md` §"Respecting imagery_policy" for the per-value drafter behavior. Missing field → `deterministic-only` (existing implicit behavior preserved; decks authored before this field was introduced continue to draft unchanged). |
+| `imagery_style` | string (preset key) | — | `deck-imagegen` (#131) | Optional preset key (e.g., `editorial-photography`). Style preset library lands in Phase 1C of Epic #130 (issue #133). Only meaningful when `imagery_policy == generative-eligible`. |
+
+`imagery_policy` is the **opt-in mechanism** for generative imagery (Epic #130). The default is intentionally `deterministic-only` — anvil ships deterministic asset paths only, and existing decks unaffected. Operators opt in per-thread by setting the field in `BRIEF.md` frontmatter; the closed enum prevents typo-driven silent fallbacks (an unrecognized value warns and falls back to `deterministic-only` per `commands/deck-draft.md` §"Resolution rule"). Runtime parsing + enforcement of this field is implemented in Phase 2 of Epic #130 (Issues D/E); the documentation here is the spec the drafter follows today.
+
+Per-slide Marp directives (`<!-- _class: ... -->`, `<!-- _style: ... -->`) are slide-level overrides for the rendered output (see Marp documentation) and are unrelated to the BRIEF.md frontmatter above. They appear inside `<thread>.{N}/deck.md`, not in `BRIEF.md`.
+
 ### Sibling-critic convention
 
 Deck is the **reference implementation** for the layered scorecard pattern documented in `anvil/lib/snippets/scorecard_kind.md`:
