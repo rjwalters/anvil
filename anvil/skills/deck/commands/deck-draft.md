@@ -106,6 +106,55 @@ For a new thread, `N+1 == 1` → output is `<thread>.1/`.
 11. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO>`.
 12. **Report**: print the path and a one-line status (e.g., `Drafted acme-seed.1/ (deck.md: 12 slides, speaker-notes.md: 12 sections, 4 figures specified)`).
 
+## Respecting `imagery_policy`
+
+The drafter reads `imagery_policy` from `<thread>/BRIEF.md` frontmatter (see `commands/deck-brief.md` §"BRIEF.md schema") and gates its slide-emit behavior accordingly. The field is a closed enum with three values; an absent or unrecognized field is treated as `deterministic-only`.
+
+**Resolution rule** (read once at the start of the draft, applied for the whole pass):
+
+1. Parse the frontmatter of `<thread>/BRIEF.md`. If the YAML block is absent or malformed, treat as `imagery_policy: deterministic-only` (no warning — this is the safe default).
+2. If `imagery_policy` is missing from a present frontmatter block, treat as `deterministic-only` (no warning — absence is the documented backwards-compatible behavior).
+3. If `imagery_policy` is set to a value that is NOT one of `generative-eligible | consumer-provided | deterministic-only`, fall back to `deterministic-only` and emit a one-line warning in the drafter's status output: `WARNING: <thread>/BRIEF.md sets imagery_policy=<value> which is not one of generative-eligible|consumer-provided|deterministic-only — falling back to deterministic-only. See commands/deck-brief.md §imagery_policy for the closed enum.`
+4. Record the effective policy in `speaker-notes.md` under a "Drafter notes" entry on Slide 1, e.g. `Drafter notes — effective imagery_policy: deterministic-only (default; field absent from BRIEF.md).` This gives the auditor a single source for the policy under which the deck was produced.
+
+### Per-policy behavior
+
+The policy controls **only image-asset references** (the `![alt](path/to/image.<ext>)` Markdown idiom and any HTML `<img>` tag in the source). It does not restrict matplotlib + mermaid figure-source emission under `figures/src/` — those are deterministic and always permitted regardless of policy. Architecture diagrams, flowcharts, and data charts continue to be specified via `.mmd` / `.py` / `.csv` sources written into `figures/src/` and rendered by `deck-figures`; this path is untouched by `imagery_policy`.
+
+#### `imagery_policy: deterministic-only` (default)
+
+- **Allowed**: matplotlib chart references (`figures/<name>.png` where `figures/src/<name>.py` + `<name>.csv` exist in the same version dir), mermaid diagram references (`figures/<name>.png` where `figures/src/<name>.mmd` exists), and any image whose target path already exists on disk under `<thread>/assets/` AND is listed in the brief's "Assets available" inventory.
+- **Forbidden**: image references whose target path does not yet exist on disk (no placeholders for generated imagery); references to files under `<thread>/assets/` that are NOT in the brief's "Assets available" inventory; raw HTML `<img>` tags pointing at non-existent files.
+- **If the brief would otherwise call for a hero image / product mockup / lifestyle shot**: the drafter MUST either (a) substitute a matplotlib or mermaid figure that conveys the same information, (b) drop the visual entirely and lean on typography, or (c) leave a `[TODO: hero image — currently no consumer-provided asset; consider raising imagery_policy to consumer-provided or generative-eligible]` text marker in `deck.md`. The drafter MUST NOT emit a Markdown image reference whose target does not exist.
+
+This is the existing implicit behavior — decks with no frontmatter field continue to draft exactly as they did before this field was introduced.
+
+#### `imagery_policy: consumer-provided`
+
+- **Allowed**: every reference allowed under `deterministic-only`, PLUS any image whose target path already exists under `<thread>/assets/` AND is listed in the brief's "Assets available" inventory. The asset-inventory contract from the no-fabrication contract above remains the closed set.
+- **Forbidden**: image references whose target path does not exist on disk at draft time (no placeholders for assets the founder "will provide later"); references to assets not in the inventory.
+- **If a planned slide needs an asset not in the inventory**: the drafter follows the standard no-fabrication path — mark a stub (`[TODO: product screenshot — not yet in assets/]`) or drop the slide. The drafter MUST NOT invent a path under `assets/` and reference a non-existent file.
+
+This is the current implicit behavior for hand-curated decks where the founder has supplied all imagery; declaring it explicitly makes the contract visible to auditors and downstream tooling.
+
+#### `imagery_policy: generative-eligible`
+
+- **Allowed**: every reference allowed under `consumer-provided`, PLUS image references to *placeholder paths* the drafter expects `deck-imagegen` to materialize. The convention for placeholder paths is `assets/generated/<slot-name>.png` (e.g., `assets/generated/hero.png`, `assets/generated/competition-2x2-bg.png`); the drafter writes the reference into `deck.md` and records the intended slot semantics in `speaker-notes.md` under "Drafter notes" so `deck-imagegen` (Phase 2 / #131) can produce assets that match the deck's narrative needs.
+- **Forbidden**: placeholder paths that escape the `assets/generated/` namespace (no `../`, no absolute paths, no other subdirectories); generative placeholders for traction logos, customer logos, team photos, or any other asset class that carries factual claims about real-world entities — the no-fabrication contract still binds. Logos and team photos must come from `consumer-provided` inventory; generative imagery is restricted to illustrative / atmospheric / abstract use only.
+- **If a planned slide needs a generated asset**: the drafter writes the placeholder reference into `deck.md`, records the slot semantics + prompt-relevant context in `speaker-notes.md` (e.g., `Drafter notes — generative slot assets/generated/hero.png: editorial-photography register, factory floor, mid-shift, no people, no recognizable brands. Per BRIEF.md imagery_style: editorial-photography.`), and proceeds. `deck-figures` does NOT render the placeholder; `deck-imagegen` (Phase 2) is the producer. If `deck-imagegen` has not been run, `deck-figures` / `marp` will surface the broken reference at render time — this is intentional, and the operator's signal to either run `deck-imagegen` or downgrade `imagery_policy` for this thread.
+
+The no-fabrication contract is unchanged by `generative-eligible`: numbers, names, traction claims, and logos remain bound to the brief. Generative imagery is permitted only for illustrative use that does not encode a factual claim.
+
+### Recap (allowed-vs-forbidden cheat sheet)
+
+| Policy | Matplotlib / mermaid (`figures/`) | Assets in inventory (`assets/`, attested) | Assets NOT in inventory | Non-existent placeholder paths |
+|---|---|---|---|---|
+| `deterministic-only` (default) | Allowed | Allowed | Forbidden | Forbidden |
+| `consumer-provided` | Allowed | Allowed | Forbidden | Forbidden |
+| `generative-eligible` | Allowed | Allowed | Forbidden | Allowed under `assets/generated/` (illustrative only; never for logos / team photos) |
+
+Note: per the issue-#132 scope, this section is **prose-spec only**. Runtime parsing of `imagery_policy` from `BRIEF.md` frontmatter and enforcement of the per-policy gates is Phase 2 of Epic #130 (Issues D/E). The drafter agent is responsible for honoring the contract above today; mechanical enforcement lands later.
+
 ## Voice and style overrides
 
 If `.anvil/skills/deck/voice.md` exists in the consumer repo, load it and apply during drafting. This is how a fund or founder customizes voice without forking the skill.
