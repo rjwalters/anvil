@@ -42,8 +42,24 @@ stage: "seed"  # one of: pre-seed | seed | series-a | series-b | growth | partne
 round_target: "$3M"
 target_close: "2026-Q3"
 target_investors: ["industrial automation seed funds", "deep-tech generalists"]
+imagery_policy: deterministic-only  # one of: generative-eligible | consumer-provided | deterministic-only
+imagery_style: editorial-photography  # OPTIONAL preset key (style preset library lands in Phase 1C / #133)
 ---
 ```
+
+#### `imagery_policy` (optional, default `deterministic-only`)
+
+Declares which classes of imagery the drafter is allowed to emit. The drafter respects this field when planning slides (see `deck-draft.md` §"Respecting imagery_policy"); subsequent commands (e.g., `deck-imagegen`, #131) read it to gate generative-asset production. The three values:
+
+- **`generative-eligible`** — drafter may emit slides that reference imagery the consumer does not yet have on disk (a placeholder path is recorded in `deck.md`, and `deck-imagegen` produces the asset when run). Use this when the deck thread is set up for the generative-imagery pipeline.
+- **`consumer-provided`** — drafter expects every image asset to already exist under `<thread>/assets/` (and to appear in the brief's "Assets available" inventory). This is the current implicit behavior for hand-curated decks where the founder has supplied all imagery.
+- **`deterministic-only`** — drafter MUST NOT reference any image asset that doesn't already exist on disk. Only matplotlib charts and mermaid diagrams (which are regenerable from `figures/src/`) may appear on slides. This is the safest setting and the **default** when the field is absent — existing decks continue to behave exactly as they did before this field was introduced.
+
+When the field is omitted entirely from the frontmatter, the brief is treated as `imagery_policy: deterministic-only`. The intake does NOT prompt the founder for a policy value during brief generation; the operator sets the policy by editing `BRIEF.md` after intake (or by hand-writing the frontmatter when the brief is hand-authored).
+
+#### `imagery_style` (optional)
+
+Preset key naming the visual register the generative pipeline should target (e.g., `editorial-photography`, `technical-illustration`). Defined in Phase 1C of Epic #130 (issue #133 — style preset library). Only meaningful when `imagery_policy == generative-eligible`; ignored otherwise. Absent in v0 of this field — operators who set it before #133 ships should treat the value as advisory documentation only.
 
 Required sections:
 
