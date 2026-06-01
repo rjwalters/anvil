@@ -182,6 +182,18 @@ See `rubric.md` for the 8-dimension /40 scoring schema, the ≥32 advance thresh
 
 **None.** Memo lifecycle is exactly `draft → review → revise → figures`. No pre-draft research phase, no separate audit phase in v0 (fact-check is rolled into the reviewer's "Evidence quality" dimension; an `auditor` sibling critic can be added later by an installing repo without changing this skill's contract).
 
+## Pre-flight lints (review-phase)
+
+A pre-flight lint runs as part of `memo-review` (step 4b) before the LLM-judgment pass. The lint is **review-phase only** — the drafter and reviser do not invoke it; the drafter is intentionally allowed to produce the failure mode so the reviser sees it, mirroring the deck-review step 5b precedent (issue #31 / AC6).
+
+| Lint | Module | Rule | What it catches |
+|---|---|---|---|
+| `memo_image_refs_exist` | `anvil/skills/memo/lib/memo_image_refs.py` | `memo_image_refs_exist` | Every markdown `![alt](path)` and HTML `<img src="...">` reference in `memo.md` resolves to an existing file relative to the version directory. URL refs and absolute filesystem paths are skipped. Suppression directive: `<!-- anvil-lint-disable: memo_image_refs_exist -->` on the same line as a ref or on the line immediately above. The canary mode is the `cp -r .../old/exhibits .../new/` footgun (issue #146) — when a missing ref names a subdirectory and a same-basename file exists at the version-dir root, the diagnostic surfaces this shape explicitly. |
+
+When the lint reports `errors > 0`, `memo-review` forces `advance: false` and lists `Memo image refs (lint)` under the verdict's critical flags. The lint result is written to the review sibling's `_summary.md` under a `lint.memo_image_refs` block; see `commands/memo-review.md` step 9 for the JSON shape.
+
+**Skill-local first.** This lib lives under `anvil/skills/memo/lib/` per the CLAUDE.md "skill-local first, lib promotion later" pattern. Promotion to `anvil/lib/` is a follow-on once `anvil:pub` and `anvil:report` (the likely second consumers — both also reference inline figures) exhibit the same pattern.
+
 ## Defaults and overrides
 
 This skill ships with opinionated defaults. Consumers are expected to override liberally via `.anvil/skills/memo/` in their own repo:
