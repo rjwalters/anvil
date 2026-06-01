@@ -58,6 +58,16 @@ anvil/lib/
   marp/                        Marp renderer pin shared by deck + slides (#32).
     config.yml                 Canonical Marp config consumed via
                                 `marp --config-file <path>` by both skills.
+  memo/                        anvil:memo PDF render-chain substrate
+                                (Epic #158 Phase 1). Pinned default styles +
+                                pandoc HTML / xelatex templates consumed by
+                                the (future) memo-render command.
+    styles.css                 Pinned default theme (Helvetica/Arial, 11pt,
+                                0.75in margins, @page footer page numbers).
+    template.html              Pandoc HTML template (loads $title$,
+                                $author$, $date$; references styles.css).
+    template.tex               xelatex fallback template (minimal).
+    README.md                  Override discipline + "why pinned" doc block.
   review_schema.py             Pydantic models for the unified `_review.json`
                                 payload (the machine-readable canonicalization
                                 of the markdown snippets above). (#26)
