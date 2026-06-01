@@ -15,6 +15,36 @@ four properties:
 4. **Placeholders** — scans source files for ``TODO`` / ``[TBD]`` /
    ``(figure)`` / missing-include patterns, with per-skill extras.
 
+Memo mode (``kind="memo"``)
+---------------------------
+
+When invoked with ``kind="memo"``, the gate routes through a separate
+five-dimension flow tailored to the ``anvil:memo`` markdown → PDF
+rendering pipeline shipped by Epic #158. The five memo checks are:
+
+1. ``memo_compile_success`` — pandoc exited 0, the PDF exists, and the
+   page count is positive.
+2. ``memo_page_fit`` — rendered page count vs ``target_length.pages``
+   (error) or the 600-wpp-converted ``target_length.words`` range
+   (warning). Not run when ``target_length`` is absent.
+3. ``memo_overfull_check`` — pandoc / weasyprint / wkhtmltopdf stderr
+   warnings about lines that don't break cleanly (warning severity;
+   graceful-degrades when the renderer emits no such warnings).
+4. ``memo_image_refs_exist`` — delegates to
+   ``anvil/skills/memo/lib/memo_image_refs.py::lint_memo_image_refs``
+   (PR #160) and aggregates findings. Source-side lint already runs at
+   review phase; render-gate adds the post-render catch.
+5. ``memo_placeholder_scan`` — adapts ``DEFAULT_PLACEHOLDER_PATTERNS``
+   for markdown comment syntax (``<!-- TODO -->``, ``[TBD]``,
+   ``_TKTKTK_``). Suppression via
+   ``<!-- anvil-lint-disable: memo_placeholder_scan -->``.
+
+The memo path also owns ``_render_memo_source`` (the pandoc → weasyprint
+OR wkhtmltopdf OR xelatex chain) with engine preflight via the
+``check_*_available`` family in ``anvil/lib/render.py`` (added in #168).
+Phase 3's ``memo-render`` command wires this into the skill; this module
+is the shippable lib primitive without command changes.
+
 Result composition mirrors ``marp_lint.LintResult``: a JSON-serializable
 ``GateResult`` that captures every finding, plus a typed ``Review``
 (``kind=Kind.TOOL_EVIDENCE``) so the gate plugs into the existing
@@ -107,6 +137,71 @@ COMPILE_UNAVAILABLE = "unavailable"
 # Pandoc has no ``Overfull`` semantics — when the engine is pandoc, the
 # overfull-box check is a documented no-op (recorded in reasons).
 PANDOC_ENGINE = "pandoc"
+
+
+# -----------------------------------------------------------------------------
+# Memo-mode constants (kind="memo")
+# -----------------------------------------------------------------------------
+
+# Dimension names for the memo gate. The ``memo_`` prefix keeps them
+# distinguishable from the LaTeX-side dimensions so downstream consumers
+# can route on the specific failure without ambiguity.
+DIM_MEMO_COMPILE = "memo_compile_success"
+DIM_MEMO_PAGE_FIT = "memo_page_fit"
+DIM_MEMO_OVERFULL = "memo_overfull_check"
+DIM_MEMO_IMAGE_REFS = "memo_image_refs_exist"
+DIM_MEMO_PLACEHOLDERS = "memo_placeholder_scan"
+
+# Engine names for the memo render chain. Selection priority per architect
+# Q1 (Epic #158): weasyprint > wkhtmltopdf > xelatex. Pandoc is the common
+# front-end for all three branches.
+MEMO_ENGINE_WEASYPRINT = "weasyprint"
+MEMO_ENGINE_WKHTMLTOPDF = "wkhtmltopdf"
+MEMO_ENGINE_XELATEX = "xelatex"
+
+# Words-per-page proxy used to convert ``target_length.words`` into a
+# rendered-page-count range when ``target_length.pages`` is not declared
+# explicitly. Mirrors the constant documented in
+# ``anvil/skills/memo/SKILL.md`` §"Length targets" and used by the rubric.
+MEMO_WORDS_PER_PAGE = 600
+
+# Default placeholder patterns for the memo gate. Adapted from
+# ``DEFAULT_PLACEHOLDER_PATTERNS`` for markdown comment syntax and the
+# memo-author idioms (``_TKTKTK_`` is the canary's "to come" marker —
+# pronounced "tee-kay"). The ``<!--`` / ``-->`` delimiters are not
+# matched literally so a TODO outside an HTML comment also fires.
+DEFAULT_MEMO_PLACEHOLDER_PATTERNS: tuple[str, ...] = (
+    r"<!--\s*TODO[^>]*-->",
+    r"<!--\s*TBD[^>]*-->",
+    r"<!--\s*FIXME[^>]*-->",
+    r"\bTODO\b",
+    r"\[TBD\]",
+    r"\[TKTKTK\]",
+    r"_TKTKTK_",
+    r"\bTKTKTK\b",
+    r"\(figure\)",
+)
+
+# Memo-side lint-disable directive (mirrors marp_lint and memo_image_refs).
+# Per-line suppression: same line OR the line directly above.
+_MEMO_LINT_DISABLE_RE = re.compile(
+    r"<!--\s*anvil-lint-disable:\s*(?P<rules>[a-zA-Z0-9_,\-\s]+?)\s*-->",
+)
+
+# weasyprint / wkhtmltopdf surface line-wrap warnings on stderr. The
+# patterns below are intentionally loose: any stderr line containing
+# "overflow" / "doesn't fit" / "exceeds" / "line is too long" is recorded
+# as a memo_overfull warning. Renderers that emit none of these patterns
+# (a clean run) produce zero findings — the check graceful-degrades.
+_MEMO_OVERFULL_PATTERNS: tuple[str, ...] = (
+    r"(?i)overflow(?:s|ed|ing)?\b",
+    r"(?i)doesn'?t fit",
+    r"(?i)exceeds? (?:the )?(?:page|column|box|line)",
+    r"(?i)line (?:is )?too (?:long|wide)",
+    r"(?i)content does not fit",
+    r"(?i)cannot break",
+)
+_MEMO_OVERFULL_RES = tuple(re.compile(p) for p in _MEMO_OVERFULL_PATTERNS)
 
 # Regex for ``Overfull \hbox (12.3pt too wide) ...`` and the vbox / too-high
 # variant. The amount group is captured as a float string. We also capture
@@ -208,7 +303,21 @@ class GateResult:
         flags: list[CriticalFlag] = []
         if not self.failed_gates:
             return flags
-        for dim in [DIM_PAGE_FIT, DIM_OVERFULL, DIM_COMPILE, DIM_PLACEHOLDERS]:
+        # Stable emission order: LaTeX dimensions first, memo dimensions
+        # second. Within each block the order matches the documented gate
+        # check order so the JSON shape is reproducible.
+        ordered_dims = [
+            DIM_PAGE_FIT,
+            DIM_OVERFULL,
+            DIM_COMPILE,
+            DIM_PLACEHOLDERS,
+            DIM_MEMO_COMPILE,
+            DIM_MEMO_PAGE_FIT,
+            DIM_MEMO_OVERFULL,
+            DIM_MEMO_IMAGE_REFS,
+            DIM_MEMO_PLACEHOLDERS,
+        ]
+        for dim in ordered_dims:
             if dim not in self.failed_gates:
                 continue
             justification = "; ".join(
@@ -396,8 +505,12 @@ def _extract_engine_errors(log_text: str, max_lines: int = 10) -> list[str]:
 
 
 def gate(
-    pdf_path: Path,
+    pdf_path: Optional[Path] = None,
     *,
+    kind: str = "latex",
+    version_dir: Optional[Path] = None,
+    out_pdf: Optional[Path] = None,
+    target_length: Optional[dict] = None,
     log_path: Optional[Path] = None,
     source_paths: Optional[list[Path]] = None,
     page_cap: Optional[int] = None,
@@ -408,10 +521,26 @@ def gate(
     compile_status: Optional[str] = None,
     compile_exit_code: Optional[int] = None,
 ) -> GateResult:
-    """Run the four-dimension render gate over a compiled PDF.
+    """Run the render gate over a compiled artifact.
 
-    Parameters
-    ----------
+    Dispatches by ``kind``:
+
+    - ``kind="latex"`` (default): the four-dimension LaTeX-side gate. The
+      historical signature (``pdf_path`` + ``log_path`` + ``source_paths``
+      + ``page_cap`` + ``overfull_threshold_pt`` + ``placeholder_patterns``
+      + ``pdfinfo_path`` + ``engine`` + ``compile_status`` +
+      ``compile_exit_code``) is preserved verbatim.
+    - ``kind="memo"``: the five-dimension memo gate (Epic #158 / Phase 2).
+      Requires ``version_dir``; ``out_pdf`` defaults to
+      ``<version_dir>/memo.pdf``. ``target_length`` is the resolved
+      ``{"words": [min, max]}`` or ``{"pages": [min, max]}`` dict (per
+      ``SKILL.md`` §Length targets). Routes through
+      :func:`_gate_memo` which invokes :func:`_render_memo_source` for
+      pandoc + the preferred HTML/PDF engine, then runs the five
+      memo-specific checks. See module docstring for the full check list.
+
+    Parameters (kind="latex")
+    -------------------------
     pdf_path:
         Path to the compiled PDF. May or may not exist; a missing PDF
         skips the PDF-dependent checks gracefully.
@@ -449,6 +578,28 @@ def gate(
     All four checks run independently — no short-circuit. ``passed``
     reflects the AND of the gates that did NOT skip.
     """
+    if kind == "memo":
+        if version_dir is None:
+            raise ValueError(
+                "gate(kind='memo') requires version_dir (the "
+                "<thread>.{N}/ directory containing memo.md)."
+            )
+        return _gate_memo(
+            version_dir=Path(version_dir),
+            out_pdf=Path(out_pdf) if out_pdf is not None else None,
+            target_length=target_length,
+            placeholder_patterns=placeholder_patterns,
+            pdfinfo_path=pdfinfo_path,
+        )
+    if kind != "latex":
+        raise ValueError(
+            f"gate(kind={kind!r}): unsupported kind. "
+            "Expected 'latex' (default) or 'memo'."
+        )
+    if pdf_path is None:
+        raise ValueError(
+            "gate(kind='latex') requires pdf_path (the compiled PDF)."
+        )
     pdf_path = Path(pdf_path)
     log_p = Path(log_path) if log_path is not None else None
     sources = [Path(s) for s in (source_paths or [])]
@@ -647,6 +798,627 @@ def gate(
 
 
 # -----------------------------------------------------------------------------
+# Memo-mode internals (kind="memo")
+# -----------------------------------------------------------------------------
+
+
+def _select_memo_engine() -> Optional[str]:
+    """Return the preferred memo HTML/PDF engine that is available on PATH.
+
+    Priority per architect Q1 (Epic #158): ``weasyprint`` > ``wkhtmltopdf``
+    > ``xelatex``. Returns ``None`` when none are available — callers
+    surface ``MEMO_RENDERER_REMEDIATION`` in that case.
+
+    Indirected through :mod:`anvil.lib.render` so monkeypatched
+    ``check_*_available`` functions in tests take effect uniformly.
+    """
+    # Lazy import to avoid a circular dep at module load time and to let
+    # tests monkeypatch the checks on the render module.
+    from anvil.lib import render as _render
+
+    if _render.check_weasyprint_available():
+        return MEMO_ENGINE_WEASYPRINT
+    if _render.check_wkhtmltopdf_available():
+        return MEMO_ENGINE_WKHTMLTOPDF
+    if shutil.which(MEMO_ENGINE_XELATEX) is not None:
+        return MEMO_ENGINE_XELATEX
+    return None
+
+
+def _render_memo_source(
+    version_dir: Path,
+    out_pdf: Path,
+) -> tuple[str, int, str, str]:
+    """Run pandoc → (weasyprint OR wkhtmltopdf OR xelatex) over
+    ``version_dir/memo.md`` and write ``out_pdf``.
+
+    This is the memo-side analog of :func:`compile_and_gate`'s LaTeX
+    invocation: a single deterministic shell-out that the gate then
+    inspects. The chain matches the documented pin in
+    ``anvil/lib/memo/README.md``: pandoc is the common front-end; the
+    HTML-to-PDF leg prefers weasyprint, falls back to wkhtmltopdf, falls
+    back to xelatex as the engine-of-last-resort.
+
+    Parameters
+    ----------
+    version_dir:
+        ``<thread>.{N}/`` directory containing ``memo.md``.
+    out_pdf:
+        Output PDF path. Parent directory must exist.
+
+    Returns
+    -------
+    A 4-tuple of ``(compile_status, exit_code, engine_used, stderr)``:
+
+    - ``compile_status``: one of :data:`COMPILE_OK`,
+      :data:`COMPILE_FAILED`, :data:`COMPILE_UNAVAILABLE`,
+      :data:`COMPILE_SKIPPED`.
+    - ``exit_code``: subprocess exit code, or ``-1`` when the engine
+      raised before producing one.
+    - ``engine_used``: the engine name (``"weasyprint"``,
+      ``"wkhtmltopdf"``, ``"xelatex"``, or ``""`` when no engine ran).
+    - ``stderr``: captured stderr text from the pandoc invocation
+      (used by the overfull-check pass; empty when nothing ran).
+
+    Does NOT raise on engine absence. Returns
+    ``(COMPILE_UNAVAILABLE, -1, "", "")`` instead so the caller can
+    surface :data:`MEMO_RENDERER_REMEDIATION` without an exception
+    handler. This matches the graceful-degrade contract called out in
+    architect Q7 (Epic #158).
+    """
+    # Lazy import — see :func:`_select_memo_engine`.
+    from anvil.lib import render as _render
+
+    memo_md = version_dir / "memo.md"
+    if not memo_md.is_file():
+        # Missing source — surrogate "failed" outcome so the compile gate
+        # fires for the right reason without a Python exception.
+        return (COMPILE_FAILED, -1, "", f"memo.md not found at {memo_md}")
+
+    if not _render.check_pandoc_available():
+        return (COMPILE_UNAVAILABLE, -1, "", "")
+
+    engine = _select_memo_engine()
+    if engine is None:
+        return (COMPILE_UNAVAILABLE, -1, "", "")
+
+    # Construct the pandoc command. The HTML chain uses --pdf-engine; the
+    # xelatex chain uses the same flag (pandoc dispatches internally).
+    cmd = [
+        "pandoc",
+        str(memo_md),
+        "-o",
+        str(out_pdf),
+        f"--pdf-engine={engine}",
+    ]
+    # Pin the framework template + stylesheet for the HTML chain. The
+    # xelatex chain pins template.tex via the same --template flag pandoc
+    # honors for both output paths.
+    memo_lib = Path(_render.__file__).parent / "memo"
+    if engine in (MEMO_ENGINE_WEASYPRINT, MEMO_ENGINE_WKHTMLTOPDF):
+        html_template = memo_lib / "template.html"
+        styles_css = memo_lib / "styles.css"
+        if html_template.exists():
+            cmd.extend(["--template", str(html_template)])
+        if styles_css.exists():
+            cmd.extend(["--css", str(styles_css)])
+        cmd.append("--standalone")
+    else:  # xelatex
+        tex_template = memo_lib / "template.tex"
+        if tex_template.exists():
+            cmd.extend(["--template", str(tex_template)])
+    # --fail-if-warnings rolls unresolved template variables into the
+    # compile gate (per Epic #158 §"Out of v0 gate scope") so the
+    # placeholder + image checks don't have to re-derive them.
+    cmd.append("--fail-if-warnings")
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, FileNotFoundError) as exc:
+        return (COMPILE_FAILED, -1, engine, str(exc))
+
+    status = COMPILE_OK if proc.returncode == 0 else COMPILE_FAILED
+    return (status, proc.returncode, engine, proc.stderr or "")
+
+
+def _parse_memo_overfull(stderr_text: str) -> list[dict]:
+    """Return overfull-style warnings parsed from a memo renderer's stderr.
+
+    Each hit: ``{kind, line, raw}``. ``kind`` is always ``"overflow"``;
+    the memo gate does not distinguish hbox/vbox the way LaTeX does
+    (weasyprint and wkhtmltopdf surface a single "doesn't fit" / "line
+    too long" warning class). ``line`` is the stderr line number (1-based)
+    so a reviewer can search the captured log.
+
+    Empty list when no patterns match — the check graceful-degrades for
+    renderers that emit no such warnings (the common case on a clean
+    memo). See :data:`_MEMO_OVERFULL_PATTERNS` for the recognized set.
+    """
+    if not stderr_text:
+        return []
+    hits: list[dict] = []
+    for lineno, line in enumerate(stderr_text.splitlines(), start=1):
+        for regex in _MEMO_OVERFULL_RES:
+            if regex.search(line):
+                hits.append(
+                    {
+                        "kind": "overflow",
+                        "line": lineno,
+                        "raw": line.strip(),
+                    }
+                )
+                break  # one finding per stderr line
+    return hits
+
+
+def _collect_memo_disabled_lines(
+    source: str, rule: str = DIM_MEMO_PLACEHOLDERS
+) -> set[int]:
+    """Return source-line numbers (1-based) on which ``rule`` is suppressed.
+
+    Mirrors ``memo_image_refs._collect_disabled_lines`` so the placeholder
+    scan honors the same ``<!-- anvil-lint-disable: ... -->`` directive
+    shape: same-line OR the line immediately above. Comma-separated rule
+    lists are honored.
+    """
+    disabled: set[int] = set()
+    lines = source.splitlines()
+    for i, line in enumerate(lines):
+        for m in _MEMO_LINT_DISABLE_RE.finditer(line):
+            rules = {r.strip() for r in m.group("rules").split(",") if r.strip()}
+            if rule not in rules:
+                continue
+            disabled.add(i + 1)
+            tail = line[m.end():].strip()
+            head = line[: m.start()].strip()
+            if tail or head:
+                # Inline directive — only same-line suppression.
+                continue
+            # Standalone directive line — suppress the next non-blank,
+            # non-directive line.
+            for j in range(i + 1, len(lines)):
+                next_line = lines[j]
+                if not next_line.strip():
+                    continue
+                if _MEMO_LINT_DISABLE_RE.search(next_line):
+                    continue
+                disabled.add(j + 1)
+                break
+    return disabled
+
+
+def _scan_memo_placeholders(
+    source: str,
+    patterns: tuple[str, ...],
+) -> tuple[list[dict], list[dict]]:
+    """Scan a memo source for placeholder patterns.
+
+    Returns ``(active_hits, suppressed_hits)``:
+
+    - ``active_hits``: not suppressed by ``<!-- anvil-lint-disable:
+      memo_placeholder_scan -->`` — fire as errors.
+    - ``suppressed_hits``: matched a pattern but on a disabled line —
+      recorded as info-severity findings (mirrors memo_image_refs).
+
+    Each hit: ``{pattern, line, match}``. Suppression and pattern
+    semantics match :func:`_collect_memo_disabled_lines` and the
+    ``re.compile`` defaults.
+    """
+    if not patterns:
+        return ([], [])
+    compiled = [(p, re.compile(p)) for p in patterns]
+    disabled = _collect_memo_disabled_lines(source)
+    active: list[dict] = []
+    suppressed: list[dict] = []
+    for lineno, line in enumerate(source.splitlines(), start=1):
+        # The lint-disable directive itself contains a placeholder-looking
+        # comment; skip lines whose only content is a directive so the
+        # scan does not flag its own escape hatch.
+        stripped = line.strip()
+        if stripped.startswith("<!--") and stripped.endswith("-->"):
+            if _MEMO_LINT_DISABLE_RE.fullmatch(stripped):
+                continue
+        for pattern_str, regex in compiled:
+            m = regex.search(line)
+            if not m:
+                continue
+            hit = {
+                "pattern": pattern_str,
+                "line": lineno,
+                "match": m.group(0),
+            }
+            if lineno in disabled:
+                suppressed.append(hit)
+            else:
+                active.append(hit)
+    return active, suppressed
+
+
+def _resolve_target_length(
+    target_length: Optional[dict],
+) -> tuple[Optional[tuple[int, int]], Optional[tuple[int, int]], str]:
+    """Resolve ``target_length`` into ``(page_range, word_range, source)``.
+
+    The ``target_length`` shape mirrors what the drafter writes into
+    ``_progress.json.metadata.target_length_resolved`` (per
+    ``commands/memo-draft.md`` step 5):
+
+    - ``{"words": [min, max]}`` — word-count range; the gate computes a
+      page-count range via the 600-wpp proxy.
+    - ``{"pages": [min, max]}`` — page-count range; the gate uses it
+      directly. ``source`` is ``"pages"`` so the gate fires errors
+      (vs warnings) per architect Q3.
+    - ``None`` or malformed — returns ``(None, None, "none")``; the
+      page-fit check is skipped.
+
+    Returns
+    -------
+    A 3-tuple:
+
+    - ``page_range``: ``(min_pages, max_pages)`` or ``None``.
+    - ``word_range``: ``(min_words, max_words)`` or ``None`` (only set
+      when ``words`` is the declared shape).
+    - ``source``: one of ``"pages"``, ``"words"``, ``"none"``.
+    """
+    if not isinstance(target_length, dict):
+        return (None, None, "none")
+    pages = target_length.get("pages")
+    words = target_length.get("words")
+    # Reject both-keys-set per the malformed-shape contract documented in
+    # SKILL.md §Length targets.
+    if pages is not None and words is not None:
+        return (None, None, "none")
+    if pages is not None:
+        if (
+            isinstance(pages, (list, tuple))
+            and len(pages) == 2
+            and all(isinstance(p, int) and p > 0 for p in pages)
+            and pages[0] <= pages[1]
+        ):
+            return ((int(pages[0]), int(pages[1])), None, "pages")
+        return (None, None, "none")
+    if words is not None:
+        if (
+            isinstance(words, (list, tuple))
+            and len(words) == 2
+            and all(isinstance(w, int) and w > 0 for w in words)
+            and words[0] <= words[1]
+        ):
+            min_w, max_w = int(words[0]), int(words[1])
+            # 600-wpp proxy → page range. Round to int; the gate's
+            # comparison is inclusive both sides so a memo word-count
+            # that converts to exactly N pages should pass an [N, N+k]
+            # range.
+            min_pages = max(1, min_w // MEMO_WORDS_PER_PAGE)
+            max_pages = max(1, (max_w + MEMO_WORDS_PER_PAGE - 1) // MEMO_WORDS_PER_PAGE)
+            return ((min_pages, max_pages), (min_w, max_w), "words")
+    return (None, None, "none")
+
+
+def _gate_memo(
+    *,
+    version_dir: Path,
+    out_pdf: Optional[Path],
+    target_length: Optional[dict],
+    placeholder_patterns: Optional[tuple[str, ...]],
+    pdfinfo_path: Optional[str],
+) -> GateResult:
+    """Five-dimension memo render-gate (kind="memo").
+
+    See the module docstring for the dimension list and severity model.
+    The function is structured to mirror the LaTeX gate's "all checks run
+    independently, no short-circuit" contract.
+    """
+    if out_pdf is None:
+        out_pdf = version_dir / "memo.pdf"
+    out_pdf = Path(out_pdf)
+
+    findings: list[GateFinding] = []
+    reasons: list[str] = []
+    failed: set[str] = set()
+
+    # --- Step 1: invoke the renderer ---------------------------------------
+    compile_status, exit_code, engine_used, stderr_text = _render_memo_source(
+        version_dir, out_pdf
+    )
+
+    # --- Check 1: memo_compile_success -------------------------------------
+    compile_exit_code: Optional[int] = exit_code if exit_code != -1 else None
+    pdf_pages: Optional[int] = None
+    if compile_status == COMPILE_UNAVAILABLE:
+        # Engine missing — graceful-degrade per architect Q7. Recorded as
+        # an info-level reason; the gate does NOT fail the compile dim
+        # because we cannot prove the artifact is broken.
+        # Lazy import to keep render decoupled from gate at module load.
+        from anvil.lib.render import MEMO_RENDERER_REMEDIATION
+
+        reasons.append(
+            f"{DIM_MEMO_COMPILE}: pandoc and/or HTML-to-PDF engine not on "
+            f"PATH; memo render skipped. {MEMO_RENDERER_REMEDIATION}"
+        )
+    elif compile_status == COMPILE_FAILED:
+        failed.add(DIM_MEMO_COMPILE)
+        msg = (
+            f"{DIM_MEMO_COMPILE}: pandoc exited "
+            f"{exit_code if exit_code != -1 else 'non-zero'}"
+            f"{' (engine=' + engine_used + ')' if engine_used else ''}."
+        )
+        reasons.append(msg)
+        findings.append(
+            GateFinding(
+                gate=DIM_MEMO_COMPILE,
+                severity="error",
+                message=(
+                    f"Memo render failed (exit {exit_code}); engine="
+                    f"{engine_used or 'unknown'}. stderr: "
+                    f"{stderr_text.strip()[:500] or '(empty)'}"
+                ),
+                location=str(out_pdf),
+            )
+        )
+    elif compile_status == COMPILE_OK:
+        # PDF should now exist; double-check + page count.
+        if not out_pdf.exists():
+            failed.add(DIM_MEMO_COMPILE)
+            msg = (
+                f"{DIM_MEMO_COMPILE}: pandoc exited 0 but output PDF was "
+                f"not produced at {out_pdf}."
+            )
+            reasons.append(msg)
+            findings.append(
+                GateFinding(
+                    gate=DIM_MEMO_COMPILE,
+                    severity="error",
+                    message=f"Expected PDF not found at {out_pdf} after pandoc exit 0.",
+                    location=str(out_pdf),
+                )
+            )
+        else:
+            pdf_pages = _count_pages_with_pdfinfo(
+                out_pdf, pdfinfo_path=pdfinfo_path
+            )
+            if pdf_pages is not None and pdf_pages <= 0:
+                failed.add(DIM_MEMO_COMPILE)
+                msg = f"{DIM_MEMO_COMPILE}: PDF reports {pdf_pages} pages."
+                reasons.append(msg)
+                findings.append(
+                    GateFinding(
+                        gate=DIM_MEMO_COMPILE,
+                        severity="error",
+                        message=f"Rendered PDF has {pdf_pages} pages (expected > 0).",
+                        location=str(out_pdf),
+                    )
+                )
+            elif pdf_pages is None and _which_pdfinfo(pdfinfo_path) is None:
+                # pdfinfo missing — informational reason only; compile dim
+                # does NOT fail (the PDF exists, we just can't introspect it).
+                reasons.append(
+                    f"{DIM_MEMO_COMPILE}: pdfinfo not on PATH; page-count "
+                    "check skipped (PDF was produced successfully)."
+                )
+
+    # --- Check 2: memo_page_fit --------------------------------------------
+    page_range, word_range, target_source = _resolve_target_length(target_length)
+    if page_range is None:
+        if target_source == "none":
+            reasons.append(
+                f"{DIM_MEMO_PAGE_FIT}: page-fit check skipped (no "
+                "target_length declared)."
+            )
+    elif pdf_pages is None:
+        reasons.append(
+            f"{DIM_MEMO_PAGE_FIT}: page-fit check skipped (page count "
+            "unavailable — see compile dim)."
+        )
+    else:
+        min_pages, max_pages = page_range
+        if min_pages <= pdf_pages <= max_pages:
+            # In range — informational reason.
+            reasons.append(
+                f"{DIM_MEMO_PAGE_FIT}: rendered {pdf_pages} pages within "
+                f"target [{min_pages}, {max_pages}] (source={target_source})."
+            )
+        else:
+            # Out of range. Severity = error if source="pages" (the
+            # author declared the page range explicitly); warning if
+            # source="words" (the page range is derived via the
+            # 600-wpp proxy and dim 7 word-count is authoritative).
+            severity = "error" if target_source == "pages" else "warning"
+            failed.add(DIM_MEMO_PAGE_FIT)
+            if target_source == "words" and word_range is not None:
+                msg = (
+                    f"{DIM_MEMO_PAGE_FIT}: rendered {pdf_pages} pages "
+                    f"outside derived range [{min_pages}, {max_pages}] "
+                    f"(from target_length.words=[{word_range[0]}, "
+                    f"{word_range[1]}] @ {MEMO_WORDS_PER_PAGE} wpp). "
+                    "Word-count proxy in dim 7 remains authoritative; "
+                    "this is an advisory second-layer warning."
+                )
+            else:
+                msg = (
+                    f"{DIM_MEMO_PAGE_FIT}: rendered {pdf_pages} pages "
+                    f"outside declared range [{min_pages}, {max_pages}]."
+                )
+            reasons.append(msg)
+            findings.append(
+                GateFinding(
+                    gate=DIM_MEMO_PAGE_FIT,
+                    severity=severity,
+                    message=msg.split(": ", 1)[1],
+                    location=f"{out_pdf}:pages={pdf_pages}",
+                )
+            )
+
+    # --- Check 3: memo_overfull_check --------------------------------------
+    if not stderr_text:
+        # Renderer emitted no stderr — graceful-degrade (the common case
+        # on a clean memo). Record as an info reason so the operator
+        # sees the check ran.
+        reasons.append(
+            f"{DIM_MEMO_OVERFULL}: overflow check ran with no stderr "
+            "warnings detected."
+        )
+    else:
+        overfull_hits = _parse_memo_overfull(stderr_text)
+        if overfull_hits:
+            # Warnings (not errors) per architect Q3.
+            reasons.append(
+                f"{DIM_MEMO_OVERFULL}: {len(overfull_hits)} overflow-style "
+                "warning(s) in renderer stderr."
+            )
+            for hit in overfull_hits:
+                findings.append(
+                    GateFinding(
+                        gate=DIM_MEMO_OVERFULL,
+                        severity="warning",
+                        message=(
+                            f"Renderer warning: {hit['raw'][:200]}"
+                        ),
+                        location=f"stderr:L{hit['line']}",
+                    )
+                )
+
+    # --- Check 4: memo_image_refs_exist ------------------------------------
+    # Calls into PR #160's lint module (anvil/skills/memo/lib/memo_image_refs.py).
+    # The source-side lint runs at review phase; this is the post-render
+    # catch (refs that exist but pandoc's resolver flagged, or symlink /
+    # case edge cases). Lazy import keeps the lib lookup off the module
+    # load path and makes test-side mocking straightforward.
+    try:
+        from anvil.skills.memo.lib import memo_image_refs as _img_refs
+
+        lint_result = _img_refs.lint_memo_image_refs(version_dir)
+        if lint_result.errors:
+            failed.add(DIM_MEMO_IMAGE_REFS)
+            reasons.append(
+                f"{DIM_MEMO_IMAGE_REFS}: {len(lint_result.errors)} broken "
+                "image reference(s) detected (post-render)."
+            )
+            for err in lint_result.errors:
+                findings.append(
+                    GateFinding(
+                        gate=DIM_MEMO_IMAGE_REFS,
+                        severity="error",
+                        message=err.message,
+                        location=f"{version_dir / 'memo.md'}:L{err.line}",
+                    )
+                )
+        # Surface suppressed (info) hits too so the reviewer sees what
+        # was disabled, mirroring marp_lint's pattern.
+        for info in lint_result.infos:
+            findings.append(
+                GateFinding(
+                    gate=DIM_MEMO_IMAGE_REFS,
+                    severity="info",
+                    message=info.message,
+                    location=f"{version_dir / 'memo.md'}:L{info.line}",
+                )
+            )
+    except ImportError:
+        # Skill-local lint module is not on the import path (e.g., the
+        # caller is running anvil/lib/ standalone). Record an info
+        # reason; the gate dim does NOT fail because the absence of the
+        # check is not evidence of a broken artifact.
+        reasons.append(
+            f"{DIM_MEMO_IMAGE_REFS}: image-ref lint module not "
+            "importable; check skipped."
+        )
+
+    # --- Check 5: memo_placeholder_scan ------------------------------------
+    memo_md = version_dir / "memo.md"
+    if not memo_md.is_file():
+        reasons.append(
+            f"{DIM_MEMO_PLACEHOLDERS}: memo.md not found; placeholder "
+            "scan skipped."
+        )
+    else:
+        memo_patterns = (
+            placeholder_patterns
+            if placeholder_patterns is not None
+            else DEFAULT_MEMO_PLACEHOLDER_PATTERNS
+        )
+        memo_source = memo_md.read_text(encoding="utf-8", errors="replace")
+        active_hits, suppressed_hits = _scan_memo_placeholders(
+            memo_source, memo_patterns
+        )
+        if active_hits:
+            failed.add(DIM_MEMO_PLACEHOLDERS)
+            reasons.append(
+                f"{DIM_MEMO_PLACEHOLDERS}: {len(active_hits)} placeholder "
+                "hit(s) in memo.md."
+            )
+            for hit in active_hits:
+                findings.append(
+                    GateFinding(
+                        gate=DIM_MEMO_PLACEHOLDERS,
+                        severity="error",
+                        message=(
+                            f"Placeholder pattern {hit['pattern']!r} matched "
+                            f"{hit['match']!r}."
+                        ),
+                        location=f"{memo_md}:L{hit['line']}",
+                    )
+                )
+        # Suppressed → info findings for reviewer visibility.
+        for hit in suppressed_hits:
+            findings.append(
+                GateFinding(
+                    gate=DIM_MEMO_PLACEHOLDERS,
+                    severity="info",
+                    message=(
+                        f"Placeholder pattern {hit['pattern']!r} matched "
+                        f"{hit['match']!r} (suppressed)."
+                    ),
+                    location=f"{memo_md}:L{hit['line']}",
+                )
+            )
+
+    # Build the GateResult. Keep the existing JSON shape (LaTeX-style
+    # fields stay) and let the dim names disambiguate downstream
+    # consumers. ``overfull_boxes`` is reused for the memo overflow hits
+    # so the to_json shape is uniform across kinds.
+    overfull_list: list[dict] = []
+    for f in findings:
+        if f.gate == DIM_MEMO_OVERFULL:
+            # Lift back to the dict shape used in the JSON block.
+            overfull_list.append({"kind": "overflow", "raw": f.message})
+    placeholder_list: list[dict] = []
+    for f in findings:
+        if f.gate == DIM_MEMO_PLACEHOLDERS and f.severity == "error":
+            placeholder_list.append(
+                {
+                    "pattern": None,
+                    "path": str(memo_md),
+                    "line": int(f.location.rsplit(":L", 1)[1])
+                    if f.location and ":L" in f.location
+                    else None,
+                    "match": f.message,
+                }
+            )
+
+    return GateResult(
+        pdf_path=str(out_pdf),
+        log_path=None,
+        pages=pdf_pages,
+        page_cap=page_range[1] if page_range is not None else None,
+        overfull_boxes=overfull_list,
+        overfull_threshold_pt=0.0,  # not meaningful for memo
+        compile_status=compile_status,
+        compile_exit_code=compile_exit_code,
+        placeholders=placeholder_list,
+        findings=findings,
+        passed=not failed,
+        reasons=reasons,
+        failed_gates=failed,
+    )
+
+
+# -----------------------------------------------------------------------------
 # Public API: compile_and_gate()
 # -----------------------------------------------------------------------------
 
@@ -778,15 +1550,25 @@ def compile_and_gate(
 
 __all__ = [
     "DEFAULT_PLACEHOLDER_PATTERNS",
+    "DEFAULT_MEMO_PLACEHOLDER_PATTERNS",
     "GATE_NAME",
     "DIM_PAGE_FIT",
     "DIM_OVERFULL",
     "DIM_COMPILE",
     "DIM_PLACEHOLDERS",
+    "DIM_MEMO_COMPILE",
+    "DIM_MEMO_PAGE_FIT",
+    "DIM_MEMO_OVERFULL",
+    "DIM_MEMO_IMAGE_REFS",
+    "DIM_MEMO_PLACEHOLDERS",
     "COMPILE_OK",
     "COMPILE_FAILED",
     "COMPILE_SKIPPED",
     "COMPILE_UNAVAILABLE",
+    "MEMO_ENGINE_WEASYPRINT",
+    "MEMO_ENGINE_WKHTMLTOPDF",
+    "MEMO_ENGINE_XELATEX",
+    "MEMO_WORDS_PER_PAGE",
     "GateFinding",
     "GateResult",
     "gate",
