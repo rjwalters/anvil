@@ -50,6 +50,26 @@ These stubs are author scratchpad — not exhibits — and live at the **thread 
 
 See `commands/memo-draft.md` §Procedure step 6 for the drafter contract and `rubric.md` §"Citation hooks (dim 3)" for the reviewer-side deduction rule.
 
+### Source-of-truth materials
+
+`<thread>/refs/` is **also** the canonical home for **author-supplied source-of-truth materials**: documents the memo's claims are evaluated against. This role coexists with the citation-stub role above — both file shapes live in the same directory, disambiguated by **filename + extension** (no manifest, no registry in v0).
+
+Typical source-of-truth materials:
+
+- `cv.pdf` / `cv.md` — founder CV(s); load-bearing for any team / founder-market-fit section.
+- `transcript-*.md` — founder interview transcripts; load-bearing for direct-quote claims and for tone.
+- `filing-*.pdf` — public filings, S-1s, government program announcements; load-bearing for sized public claims.
+- `paper-*.pdf` — research papers cited in the memo; load-bearing for technical-claim citations.
+- `email-*.md` — explicit-permission email or letter excerpts (LOIs, design-partner intent); load-bearing for traction claims.
+- `image-*.{png,jpg}` — cleared-for-the-memo imagery (logos, product shots).
+- `prior/<vN>.{pdf,md}` — prior versions of this memo (e.g., a pre-anvil LaTeX memo migrating in); load-bearing for "what's changed across the revision arc."
+
+The list is illustrative, not exhaustive. The contract is: *"if a claim's evidentiary basis lives in a file, that file goes in `<thread>/refs/`."* Source-of-truth materials are typically named for their **content** (`cv.pdf`, `filing-s1.pdf`); citation stubs (above) are typically named for their **citation key** (`<key>.md`) and carry a `# TODO: source for <claim>` placeholder. The disambiguation is left to filename convention — a markdown file matching the TODO-stub shape is a stub; a markdown file named for its content (`cv.md`, `transcript-foo.md`, `email-loi-bigcorp.md`) is a source-of-truth material.
+
+Accepted file shapes for source-of-truth materials in v0: markdown (`.md`), plain text (`.txt`), JSON (`.json`), PDFs (`.pdf`), images (`.png`, `.jpg`, `.jpeg`). The drafter **reads text-readable files** (markdown, text, JSON) into context as authoritative. PDFs and images are treated as **presence-only signals** in v0 — the drafter is aware they exist by filename and respects the rule that claims about the subject of the file SHOULD NOT be made unless backed by content the drafter can verify (PDF text extraction is deferred — see issue body "Out of scope").
+
+See `commands/memo-draft.md` §Procedure step 3 for the drafter contract (ingestion of `refs/` source-of-truth materials), `commands/memo-review.md` §Procedure step 5 for the reviewer back-check sub-step, and `rubric.md` §"Refs back-check (dim 3)" for the per-instance deduction rule. The contract degrades gracefully: when `refs/` contains no source-of-truth materials (only citation stubs, or empty), the back-check is inactive and dim 3 falls back to the citation-hook behavior alone.
+
 ### Convictions ledger
 
 `<thread>.{N}/_convictions.md` is an **optional, advisory** file written by the reviser to carry settled positions forward across versions. It exists to solve a single observed friction: a reviser at version `N+1` re-litigating an issue that was already settled — by a critic challenge or by a prior reviser decision — at version `N` (or earlier).
