@@ -108,16 +108,41 @@ def test_no_shipped_command_writes_or_requires_latest_symlinks():
     The convention is consumer-maintained in v0. If a shipped command
     starts writing ``.latest`` symlinks, the convention contract
     silently widens — block on the test.
+
+    Per issue #153, command markdown MAY contain a documentation-only
+    cross-reference that explicitly disclaims interaction (e.g., "the
+    reviser neither reads nor updates ``.latest``"). Such lines are
+    allow-listed by sentinel substring — they document the convention's
+    non-interaction guarantee, they do not invoke it.
     """
+    # Sentinel substrings that mark a line as a documentation-only,
+    # non-interaction-disclaiming cross-reference. Adding a new line that
+    # actually writes or requires .latest will NOT match these sentinels
+    # and will trip the assertion below.
+    DISCLAIMER_SENTINELS = (
+        "neither reads nor updates",
+        "not touched",
+        "does not read",
+        "does not write",
+        "does not update",
+        "does not follow",
+        "do not dereference",
+        "consumer-side",
+    )
+
     matches: list[tuple[Path, str]] = []
     for command_md in SKILLS.rglob("commands/*.md"):
         body = command_md.read_text(encoding="utf-8")
         for line in body.splitlines():
-            if ".latest" in line:
-                matches.append((command_md, line))
+            if ".latest" not in line:
+                continue
+            if any(sentinel in line for sentinel in DISCLAIMER_SENTINELS):
+                continue
+            matches.append((command_md, line))
     assert not matches, (
-        "Shipped command markdown must not reference .latest "
-        "(consumer-maintained convention only). Offenders:\n"
+        "Shipped command markdown must not reference .latest unless the "
+        "line is a documentation-only disclaimer of non-interaction "
+        "(see DISCLAIMER_SENTINELS in this test; issue #153). Offenders:\n"
         + "\n".join(f"  {p}: {ln.strip()}" for p, ln in matches)
     )
 
