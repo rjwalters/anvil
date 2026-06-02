@@ -78,7 +78,7 @@ The "v0 starts at `<thread>.1/`" convention matches `anvil/skills/memo/SKILL.md`
     - **Source-brief discovery + ingestion (sub-issue 5f, issue #211).** Before writing, call `_discover_source_brief(source_tex)` which scans the legacy thread for an operator-authored `brief.md` and returns the earliest non-empty candidate under the "earliest-brief wins" rule (see §"Notes for the agent" below). When a source brief is found: (a) the verbatim body is preserved alongside the source `.tex` at `refs/prior-pipeline/v0/<relative>/brief.md`; (b) the body is ingested into the generated `BRIEF.md` between the TODO header and the canonical-template reference block, fenced with `<!-- BEGIN: ingested from <relative-path> -->` / `<!-- END: ingested source brief -->` so the operator can grep and excise after merging; (c) the `MigrationResult.source_brief_path` field records the absolute path of the ingested source; (d) the `<thread>.1/changelog.md` gains an `- Ingested source brief from <preserved-refs-path> (earliest-brief-wins rule).` line. When no candidate is found (or all candidates are whitespace-only), behavior is identical to the v0 stub-only path.
     - The shape of the canonical `BRIEF.migration.md.example` template appended below as a reference block — so the operator sees the section structure of a finished migration brief while editing.
 15. **Write `.anvil.json`** (acceptance criterion 8). Emit the legacy flat shape: `{ "max_iterations": 4 }` (+ optional `"target_length": { "words": [min, max] }` when `--target-length` was provided). Matches the SKILL.md §"Length targets" "Flat shape (legacy)" documentation.
-16. **Write `_progress.json`** (acceptance criterion 3). Initialize the version dir's `_progress.json` with `phases.draft = { state: "done", started: <ISO>, completed: <ISO> }`, `metadata.iteration = 1`, `metadata.max_iterations = 4`, and an additional `metadata.migrated_from = "<source.tex>"` field for provenance. This shape derives `DRAFTED` state per SKILL.md §"State machine".
+16. **Write `_progress.json`** (acceptance criterion 3). Initialize the version dir's `_progress.json` with `phases.draft = { state: "done", started: <ISO>, completed: <ISO> }`, `metadata.iteration = 1`, `metadata.max_iterations = 4`, and an additional `metadata.migrated_from = "<source.tex>"` field for provenance. **Sub-issue 5i (#214)**: when the by-design zero-figures marker is present OR no figures were referenced (no-marker case), `metadata.figure_policy` is conditionally emitted as `"by-design"` or `"pending"` per §"figure_policy classification"; when figures are present and no marker was seen the field is omitted entirely. This shape derives `DRAFTED` state per SKILL.md §"State machine".
 17. **Seed `refs/` stubs from BRIEF.md §Sources** (issue #203). Auto-invoke `seed_refs_from_brief(thread_root, force=False)` to walk the BRIEF.md `## Sources` section and write one `<thread>/refs/<key>.md` stub per entry. **Soft-fail by contract**: a §Sources parse anomaly or unexpected exception from the helper is recorded as a note and does NOT regress the migration's success contract. The seed-result counts (stubs written, stubs skipped) are folded into the changelog summary lines and the returned `MigrationResult.refs_seeded` / `refs_skipped` fields. See `commands/memo-migrate-refs.md` for the standalone re-run path. **The `refs/` seeding is idempotent**: because the migration itself just created the `refs/` directory, the auto-invoke's `force=False` produces a clean seed; subsequent operator-initiated re-runs (e.g., after editing BRIEF.md §Sources to add a new entry) safely skip existing stubs.
 18. **Write `changelog.md`**. Single-block record: "Migrated from `<source>` via `anvil:memo-migrate` on `<ISO>`" + a line naming where the refs were preserved + a line summarizing the figure-conversion outcome + a line summarizing the §Sources seeding outcome (e.g., "Seeded N refs/ stub(s) from BRIEF.md §Sources"). This file is *informational* — it does not feed the rubric, it does not gate any state transition.
 19. **Report**. Print a one-line summary identifying the produced thread and any soft-fail notes (e.g., `pdftoppm not on PATH — skipped figure conversion`, `No ## Sources section in BRIEF.md — refs/ seeding skipped`).
@@ -115,6 +115,33 @@ This is a deliberate departure from the `draft → review → revise` commands' 
 - **BRIEF.md is a STUB.** The operator MUST fill in the `TODO` fields before the first `memo-revise` pass. The migration tool cannot infer company / sector / stage / check-size / recommendation-target from the source LaTeX.
 - **The output thread re-enters the standard lifecycle.** `memo-review <thread>` works against the migrated `<thread>.1/` exactly as it does against a freshly-drafted thread; the migration provenance (`metadata.migrated_from`) is the only mark that distinguishes a migrated thread from a clean one.
 - **Refs preservation is permanent.** Do NOT delete `<thread>/refs/prior-pipeline/v0/` — it is the canonical record of "what was the prior pipeline's output that this thread was migrated from?", and the BRIEF.md `Source material — read order` section cites into it.
+
+## figure_policy classification
+
+Sub-issue 5i (issue #214) codifies the rule the migration tool uses to distinguish a thread that is intentionally figure-less (text-only memo by design — bibliotype, citation-clear) from one that just accidentally has no figures. At migration time both states look identical (no `\includegraphics` references + no/empty `figures/` dir), so the reviewer cannot tell whether to penalize the absence of figures on the rubric.
+
+**Marker convention.** Operators declare intent at the source by writing a literal LaTeX comment on its own line at (or near) the top of `memo.tex`:
+
+```latex
+% anvil:zero-figures-by-design
+```
+
+The marker is detected on the **raw `tex_source` before `_strip_preamble`** so it works whether the operator places it in the preamble or just after `\begin{document}`. Match is case-sensitive on the literal phrase with a trailing word boundary — `% anvil:zero-figures-by-design-FOO` (suffix typo) does NOT match.
+
+**Three-state output.** The migration tool emits `metadata.figure_policy` on `<thread>.1/_progress.json` according to the marker × figures cross-product:
+
+| Marker present? | Figures referenced? | `figure_policy` value | Operator-visible signal |
+|---|---|---|---|
+| Yes | No | `"by-design"` | Changelog: `figure_policy=by-design recorded from % anvil:zero-figures-by-design marker.` |
+| Yes | Yes | `"by-design"` + warning note | Changelog: same `by-design` line. Notes: `marker present but N figure(s) referenced — verify intent`. |
+| No | No | `"pending"` | Changelog: `figure_policy=pending recorded (no figures discovered, no by-design marker). Operator should confirm intent before READY.` |
+| No | Yes | field omitted | No changelog line (figures speak for themselves). |
+
+The `"pending"` value is the audit signal: it tells the reviewer + operator "the absence of figures might be unintended; confirm before flagging the thread `READY`." The marker-with-figures inconsistency case is recorded as a `MigrationResult.notes` warning so a marker-content mismatch deserves a human review.
+
+**Deferred to a follow-on.** The reviewer-side rubric integration (deciding whether `memo-review` penalizes the absence of figures based on `figure_policy`) is **out of scope** for the v0 detector. The likely shape: when `metadata.figure_policy == "by-design"`, the figures dimension's "no figures" finding is suppressed or routed to a `note` instead of a `concern`; when `"pending"` or absent, today's behavior is unchanged. File the rubric change as a separate issue.
+
+**Worked example** (canary). Studio's bibliotype and citation-clear threads are both intentionally figure-less; both look identical at migration time to an accidentally-figure-less thread. With the marker placed at the top of each `memo.tex`, the migration records `figure_policy="by-design"` and the reviewer (once integrated) treats the absence of figures as designed rather than as a rubric concern.
 
 ## Source brief discovery
 
