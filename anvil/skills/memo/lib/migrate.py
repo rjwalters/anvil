@@ -1736,10 +1736,12 @@ def migrate_thread(
     # Existing _copy_refs preservation behavior is unchanged — orphan PDFs
     # still land at refs/prior-pipeline/v0/figures/.
     orphan_figures: List[str] = []
+    figures_dir_empty: bool = False
     source_figures_dir = source_tex.parent / "figures"
     if source_figures_dir.is_dir():
         referenced_basenames = {basename for _, basename in figure_refs}
-        for pdf_path in sorted(source_figures_dir.glob("*.pdf")):
+        pdf_candidates = sorted(source_figures_dir.glob("*.pdf"))
+        for pdf_path in pdf_candidates:
             if pdf_path.stem not in referenced_basenames:
                 # Record relative to the source figures/ dir so the
                 # operator can grep and locate it directly.
@@ -1752,6 +1754,17 @@ def migrate_thread(
                 f"refs/prior-pipeline/v0/figures/; operator decides "
                 f"whether to embed in v1 or drop."
             )
+        # Sub-issue 5h (issue #213): when the directory exists but
+        # contains zero *.pdf candidates (genuinely empty OR populated
+        # only by non-PDF files), the silent no-op would collapse two
+        # operator-meaningful states ("no figures dir at all" vs
+        # "directory present but empty"). Surface the exists-but-empty
+        # state as a note so the operator can confirm whether the
+        # upstream figure pipeline ran. The no-figures-dir case is
+        # intentionally left silent (genuinely figure-less thread).
+        if not pdf_candidates:
+            figures_dir_empty = True
+            notes.append("figures/ exists but is empty")
 
     # --- Step 9: BRIEF.md (stub).
     #
@@ -1901,6 +1914,17 @@ def migrate_thread(
             f"{', '.join(orphan_figures)}. "
             f"Preserved at refs/prior-pipeline/v0/figures/; not converted "
             f"to PNG (no markdown ref points at them)."
+        )
+
+    # Sub-issue 5h (issue #213): record the exists-but-empty figures/
+    # state on the changelog so the audit trail captures it beyond the
+    # ephemeral MigrationResult.notes list. Mirrors the orphan-figure /
+    # packed-cell / metricbox detector precedents above.
+    if figures_dir_empty:
+        changelog_lines.append(
+            "- Detected empty source figures/ directory; no PDFs to "
+            "convert. Operator should confirm whether figure pipeline "
+            "ran before migration."
         )
 
     # Packed-cell detector summary (#209). When the detector fired we

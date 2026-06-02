@@ -1571,6 +1571,208 @@ class TestOrphanFigureDetection(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Empty figures/ directory guard (issue #213, sub-issue 5h)
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyFiguresDir(unittest.TestCase):
+    """Sub-issue 5h (#213): when the source thread carries a sibling
+    ``figures/`` directory but the directory contains zero ``*.pdf``
+    candidates, ``migrate_thread`` emits an "exists but is empty" note
+    plus a one-line changelog entry.
+
+    Report-only and orthogonal to the orphan-figure detector (those two
+    branches are mutually exclusive: orphans require ``*.pdf`` to exist,
+    the empty-dir guard fires when none do). The no-``figures/``-dir
+    case is intentionally preserved as silent — it indicates a genuinely
+    figure-less thread, not the operator-meaningful "directory present
+    but empty" signal.
+    """
+
+    _EMPTY_NOTE = "figures/ exists but is empty"
+
+    def _run_with_figures_files(
+        self,
+        tmp_path: Path,
+        thread_name: str,
+        figures_files: list,
+    ) -> MigrationResult:
+        """Build a fixture: source ``.tex`` with no figure refs and a
+        sibling ``figures/`` directory populated by ``figures_files``
+        (each entry is a filename written with a single byte of
+        placeholder content).
+
+        Empty ``figures_files`` means the directory is created but
+        contains zero files (the byte-empty case).
+        """
+        src_dir = tmp_path / "legacy" / thread_name
+        src_dir.mkdir(parents=True)
+        src_tex = src_dir / "memo.tex"
+        _write_minimal_tex(src_tex, "Body with no figure refs")
+        figures = src_dir / "figures"
+        figures.mkdir()
+        for name in figures_files:
+            (figures / name).write_bytes(b"placeholder")
+        portfolio = tmp_path / "portfolio"
+        portfolio.mkdir()
+
+        with mock.patch(
+            "anvil.skills.memo.lib.migrate.shutil.which",
+            side_effect=_fake_which_factory({"pandoc": True}),
+        ), mock.patch(
+            "anvil.skills.memo.lib.migrate.subprocess.run",
+            side_effect=_fake_subprocess_factory(
+                pandoc_stdout="Body with no figure refs\n"
+            ),
+        ):
+            return migrate_thread(
+                source_tex=src_tex,
+                portfolio_dir=portfolio,
+            )
+
+    def test_empty_dir_note_when_byte_empty(self) -> None:
+        """AC1: byte-empty figures/ → note appended to MigrationResult.notes."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_figures_files(
+                Path(td),
+                "empty-byte-empty",
+                figures_files=[],
+            )
+            self.assertIn(self._EMPTY_NOTE, result.notes)
+            # The orphan-figure detector must NOT fire here (no PDFs to
+            # be orphaned). The two branches are mutually exclusive.
+            self.assertEqual(result.orphan_figures, [])
+
+    def test_empty_dir_note_when_only_non_pdf_files(self) -> None:
+        """AC2: figures/README.txt present, no *.pdf → note still fires."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_figures_files(
+                Path(td),
+                "empty-non-pdf-only",
+                figures_files=["README.txt", "notes.md", "scratch.png"],
+            )
+            self.assertIn(self._EMPTY_NOTE, result.notes)
+            self.assertEqual(result.orphan_figures, [])
+
+    def test_no_empty_dir_note_when_no_figures_dir(self) -> None:
+        """AC3: no sibling figures/ at all → silent success, no note.
+
+        Preserves the existing soft-fail contract documented by
+        ``test_orphan_figures_empty_when_no_figures_dir`` upstream.
+        """
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            src_dir = tmp_path / "legacy" / "no-figures-dir"
+            src_dir.mkdir(parents=True)
+            src_tex = src_dir / "memo.tex"
+            _write_minimal_tex(src_tex, "Body with no figures")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            with mock.patch(
+                "anvil.skills.memo.lib.migrate.shutil.which",
+                side_effect=_fake_which_factory({"pandoc": True}),
+            ), mock.patch(
+                "anvil.skills.memo.lib.migrate.subprocess.run",
+                side_effect=_fake_subprocess_factory(
+                    pandoc_stdout="Body with no figures\n"
+                ),
+            ):
+                result = migrate_thread(
+                    source_tex=src_tex,
+                    portfolio_dir=portfolio,
+                )
+
+            for note in result.notes:
+                self.assertNotIn("figures/ exists but is empty", note)
+
+    def test_no_empty_dir_note_when_figures_referenced(self) -> None:
+        """AC4: figures/ has referenced PDFs → no empty-dir note (orphan
+        path is the operator-meaningful state, not this one)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            # Re-use the orphan helper from TestOrphanFigureDetection: it
+            # builds a fixture where figures/fig1.pdf is referenced.
+            helper = TestOrphanFigureDetection()
+            result = helper._run_with_figures(
+                tmp_path,
+                "figures-referenced",
+                figure_files=["fig1.pdf"],
+                referenced=["fig1"],
+            )
+            for note in result.notes:
+                self.assertNotIn("figures/ exists but is empty", note)
+            # Sanity: orphan list is empty (all referenced).
+            self.assertEqual(result.orphan_figures, [])
+
+    def test_empty_dir_changelog_entry(self) -> None:
+        """AC5: changelog.md carries the Detected-empty-figures line when
+        the empty-dir note fires (mirrors orphan-figure changelog
+        precedent at migrate.py lines 1894-1904)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_figures_files(
+                Path(td),
+                "empty-changelog",
+                figures_files=[],
+            )
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn(
+                "Detected empty source figures/ directory", changelog
+            )
+            self.assertIn(
+                "Operator should confirm whether figure pipeline ran",
+                changelog,
+            )
+
+    def test_no_empty_dir_changelog_when_no_figures_dir(self) -> None:
+        """Sanity: when figures/ is absent, the changelog carries no
+        empty-dir line (preserving the silent-success path)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            src_dir = tmp_path / "legacy" / "no-figures-changelog"
+            src_dir.mkdir(parents=True)
+            src_tex = src_dir / "memo.tex"
+            _write_minimal_tex(src_tex, "Body with no figures")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            with mock.patch(
+                "anvil.skills.memo.lib.migrate.shutil.which",
+                side_effect=_fake_which_factory({"pandoc": True}),
+            ), mock.patch(
+                "anvil.skills.memo.lib.migrate.subprocess.run",
+                side_effect=_fake_subprocess_factory(
+                    pandoc_stdout="Body with no figures\n"
+                ),
+            ):
+                result = migrate_thread(
+                    source_tex=src_tex,
+                    portfolio_dir=portfolio,
+                )
+
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+            self.assertNotIn(
+                "Detected empty source figures/ directory", changelog
+            )
+
+
+# ---------------------------------------------------------------------------
 # Metricbox detector (issue #212, sub-issue 5g)
 # ---------------------------------------------------------------------------
 
