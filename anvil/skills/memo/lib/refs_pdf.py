@@ -11,8 +11,8 @@ This module ships the **opt-in** PDF text extraction path:
 - ``check_pdftotext_available()`` — pure binary-presence preflight that the
   drafter and reviewer call before attempting a PDF text back-check.
 - ``extract_pdf_text(pdf_path)`` — shells out to ``pdftotext <path> -`` and
-  returns the extracted text on success. Raises ``RenderError`` (from
-  ``anvil.lib.render`` for cross-framework exception consistency) when the
+  returns the extracted text on success. Raises a skill-local ``RenderError``
+  (mirrored from ``anvil.lib.render`` — see design note 5 below) when the
   binary is absent or returns non-zero.
 - ``PDFTOTEXT_REMEDIATION`` — install-story string surfaced to operators when
   the binary is absent. Mirrors the ``MMDC_REMEDIATION`` / ``PDFJAM_REMEDIATION``
@@ -49,11 +49,22 @@ Design notes
    log an info-level entry and fall back to presence-only handling for that
    specific file; no rubric deduction.
 
-5. **Uses ``RenderError`` from ``anvil.lib.render``.** Reuses the existing
-   exception so caller exception handling stays consistent with the
-   subprocess-renderer family. The ``check_*_available()`` family in
-   ``anvil/lib/render.py`` (#65 mmdc, #85 pdfjam, #102 auto-shrink) is the
-   precedent.
+5. **Skill-local ``RenderError`` mirror.** Defines its own ``RenderError``
+   (a thin ``RuntimeError`` subclass) instead of importing from
+   ``anvil.lib.render``. Rationale: consumer installs land the framework at
+   ``.anvil/`` (dot-prefixed) with no top-level ``anvil/`` package on
+   ``sys.path``, so ``from anvil.lib.render import RenderError`` dangles the
+   moment any thread reaches ``memo-review`` step 5 (issue #199). Inlining
+   the exception here also keeps this module skill-local-pure (zero
+   ``anvil.*`` runtime imports) per the CLAUDE.md "skill-local first, lib
+   promotion later" pattern — the sibling ``memo_image_refs.py`` is the
+   model. The ``check_*_available()`` family in ``anvil/lib/render.py`` (#65
+   mmdc, #85 pdfjam, #102 auto-shrink) remains the precedent for the
+   ``PDFTOTEXT_REMEDIATION`` install-story shape. If a second consumer
+   surfaces (e.g., ``anvil:report`` / ``anvil:pub`` grow analogous PDF
+   back-checks), promote this module — and the ``RenderError`` mirror —
+   into ``anvil/lib/memo/`` per the established #10 / #26 / #69 / #102
+   promotion pattern.
 """
 
 from __future__ import annotations
@@ -62,7 +73,19 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from anvil.lib.render import RenderError
+
+class RenderError(RuntimeError):
+    """A subprocess invocation failed or a required binary is missing.
+
+    Skill-local mirror of :class:`anvil.lib.render.RenderError`. Kept
+    skill-local per the CLAUDE.md "skill-local first, lib promotion later"
+    pattern: the memo skill is the only consumer today, and consumer
+    installs land at ``.anvil/`` with no top-level ``anvil/`` package on
+    ``sys.path`` — importing from ``anvil.lib.render`` would dangle every
+    consumer install (issue #199). Promote to ``anvil/lib/memo/`` if and
+    when a second consumer (``anvil:report`` / ``anvil:pub`` / similar)
+    grows the same PDF back-check shape.
+    """
 
 
 # Remediation message surfaced when ``pdftotext`` is absent and the memo
@@ -168,6 +191,7 @@ def extract_pdf_text(pdf_path: Path) -> str:
 
 __all__ = [
     "PDFTOTEXT_REMEDIATION",
+    "RenderError",
     "check_pdftotext_available",
     "extract_pdf_text",
 ]
