@@ -169,6 +169,10 @@ class MigrationResult:
     # Step 13 (issue #203) — refs/ seeding from BRIEF.md §Sources.
     refs_seeded: List[Path] = field(default_factory=list)
     refs_skipped: List[Tuple[Path, str]] = field(default_factory=list)
+    # Sub-issue 5e (issue #210) — figures/*.pdf NOT referenced by any
+    # \includegraphics in the source .tex. Report-only: operator decides
+    # whether to embed, drop, or treat as authoring bug.
+    orphan_figures: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1212,6 +1216,29 @@ def migrate_thread(
                         converted_pdfs.append(cand)
                     break
 
+    # --- Step 8b: orphan-figure detection (sub-issue 5e, issue #210).
+    # Report-only: enumerate figures/*.pdf in the source tree and surface
+    # any that are NOT referenced by \includegraphics in the source .tex.
+    # Existing _copy_refs preservation behavior is unchanged — orphan PDFs
+    # still land at refs/prior-pipeline/v0/figures/.
+    orphan_figures: List[str] = []
+    source_figures_dir = source_tex.parent / "figures"
+    if source_figures_dir.is_dir():
+        referenced_basenames = {basename for _, basename in figure_refs}
+        for pdf_path in sorted(source_figures_dir.glob("*.pdf")):
+            if pdf_path.stem not in referenced_basenames:
+                # Record relative to the source figures/ dir so the
+                # operator can grep and locate it directly.
+                orphan_figures.append(f"figures/{pdf_path.name}")
+        if orphan_figures:
+            notes.append(
+                f"{len(orphan_figures)} orphan figure(s) in source "
+                f"figures/ NOT referenced by \\includegraphics: "
+                f"{', '.join(orphan_figures)}. Preserved at "
+                f"refs/prior-pipeline/v0/figures/; operator decides "
+                f"whether to embed in v1 or drop."
+            )
+
     # --- Step 9: BRIEF.md (stub).
     brief_md = thread_root / "BRIEF.md"
     template_body = _load_brief_template(skill_root)
@@ -1273,6 +1300,17 @@ def migrate_thread(
                 f"- Converted {len(exhibits)} of {len(figure_refs)} figure "
                 "ref(s) from PDF to PNG via pdftoppm at 150 DPI."
             )
+    if orphan_figures:
+        # Sub-issue 5e (issue #210): surface PDFs in source figures/ that
+        # were never \includegraphics'd. Preservation is unchanged; only
+        # reporting is new.
+        changelog_lines.append(
+            f"- Detected {len(orphan_figures)} orphan figure(s) in source "
+            f"figures/ never referenced by \\includegraphics: "
+            f"{', '.join(orphan_figures)}. "
+            f"Preserved at refs/prior-pipeline/v0/figures/; not converted "
+            f"to PNG (no markdown ref points at them)."
+        )
 
     # --- Step 13: refs/ seeding from BRIEF.md §Sources (issue #203).
     # Soft-fail: a §Sources parse error or missing-BRIEF must not regress
@@ -1323,6 +1361,7 @@ def migrate_thread(
         notes=notes,
         refs_seeded=refs_seeded,
         refs_skipped=refs_skipped,
+        orphan_figures=orphan_figures,
     )
 
 
