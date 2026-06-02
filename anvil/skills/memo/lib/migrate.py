@@ -401,6 +401,109 @@ def _pair_footnotes(md_source: str) -> str:
     return md_source.rstrip() + "\n\n" + placeholder_block + "\n"
 
 
+# Long-cell threshold (chars). Typical line-item cells run 10-40 chars; a
+# 200-char threshold is well above legitimate prose-in-a-cell but well
+# below a packed multi-row P&L (the heirloom-horticulture canary cell was
+# ~600 chars). See issue #209 §"In v0 (must)" item 2.
+_PACKED_CELL_LONG_THRESHOLD = 200
+
+# Minimum number of ``$-$`` glyph occurrences within a single cell to fire
+# the multi-glyph heuristic. Single ``$-$`` is legitimate (currency range
+# or math em-dash); two or more is a strong signal of line-break glyphs
+# serving as visual row separators in a packed cell. See issue #209
+# §"In v0 (must)" item 2.
+_PACKED_CELL_GLYPH_THRESHOLD = 2
+
+
+def _detect_packed_table_cells(md_source: str) -> List[str]:
+    """Detect packed single-cell markdown tables (sub-issue 5b, #209).
+
+    When the source LaTeX packs an entire financial layout into a single
+    ``tabularx`` cell (e.g. heirloom-horticulture's biweekly $149 P&L
+    packed into one cell with ``$-$`` line-break glyphs), pandoc converts
+    it cell-for-cell — the resulting markdown table has one cell with a
+    wall of text, illegible to readers and reviewers.
+
+    This is the **detect-only** v0 (per issue #202 §5b explicit deferral:
+    auto-unfolding is operator-judgement, false-positive risk on a regex
+    splitter is unbounded — ``$-$`` glyphs are also legitimate
+    currency-range syntax like ``$3M-$5M ARR``). We surface warnings to
+    ``MigrationResult.notes`` and the operator unfolds during the first
+    ``memo-revise`` pass.
+
+    Two detection signals (OR — either triggers a warning):
+
+    1. **Long-cell heuristic**: single markdown table cell exceeding
+       :data:`_PACKED_CELL_LONG_THRESHOLD` characters (excludes the
+       leading/trailing ``|`` and surrounding whitespace).
+    2. **Multi-glyph heuristic**: single cell containing
+       :data:`_PACKED_CELL_GLYPH_THRESHOLD` or more occurrences of
+       ``$-$`` or ``\\$-\\$`` (escaped form). Single ``$-$`` does NOT
+       fire — that is the documented false-positive guard for currency
+       ranges and em-dashes inside math.
+
+    Returns a list of warning strings (empty when no packed cells were
+    detected). Each warning includes the offending cell's first ~60
+    characters so operators can grep ``memo.md`` to locate the table
+    quickly — load-bearing for triage per issue #209.
+
+    Mirrors the shape of :func:`_pair_footnotes`: takes the post-pandoc,
+    post-sentinel-substitution markdown body and returns a value rather
+    than mutating in place. Pure stdlib; called between Step 5
+    (``_pair_footnotes``) and Step 6 (write ``memo.md``) in
+    :func:`migrate_thread`.
+    """
+    warnings: List[str] = []
+
+    # Markdown table rows look like ``| cell | cell | cell |``. We walk
+    # line-by-line; rows are lines that start and end with ``|`` after
+    # stripping. We deliberately skip the alignment separator row
+    # (``|---|---|``) to avoid flagging dash glyphs there. We do NOT
+    # attempt to disambiguate header rows — a packed cell in a header is
+    # just as worth flagging as one in a body row.
+    for line in md_source.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or not stripped.endswith("|"):
+            continue
+        # Strip the leading / trailing pipes, then split on the
+        # remaining ``|`` separators. Markdown table cells do not
+        # contain unescaped pipes by convention; pandoc emits ``\|`` for
+        # any literal pipe in source, so a plain split is sufficient
+        # for the detection heuristics.
+        inner = stripped[1:-1]
+        cells = [c.strip() for c in inner.split("|")]
+        # Alignment row: all cells match the ``:?-+:?`` shape. Skip.
+        if cells and all(
+            re.fullmatch(r":?-+:?", cell) for cell in cells if cell
+        ):
+            continue
+        for cell in cells:
+            if not cell:
+                continue
+            n_chars = len(cell)
+            # Count both literal ``$-$`` and escaped ``\$-\$`` forms;
+            # pandoc may emit either depending on the source escape
+            # state.
+            n_glyphs = cell.count("$-$") + cell.count(r"\$-\$")
+            long_fire = n_chars > _PACKED_CELL_LONG_THRESHOLD
+            glyph_fire = n_glyphs >= _PACKED_CELL_GLYPH_THRESHOLD
+            if not (long_fire or glyph_fire):
+                continue
+            # Cell preview (~60 chars). Trailing ellipsis when truncated.
+            preview = cell[:60]
+            if len(cell) > 60:
+                preview = preview + "..."
+            warnings.append(
+                f"Packed tabularx cell detected at memo.md table "
+                f'(cell preview: "{preview}"): '
+                f"{n_chars} chars, {n_glyphs} '$-$' glyphs. "
+                "Likely needs manual unfold into a multi-row table "
+                "during first memo-revise pass. See "
+                "refs/prior-pipeline/v0/memo.tex for source layout."
+            )
+    return warnings
+
+
 # ---------------------------------------------------------------------------
 # BRIEF.md §Sources parser + refs/ seeding (issue #203)
 # ---------------------------------------------------------------------------
@@ -1164,6 +1267,18 @@ def migrate_thread(
     # --- Step 5: pair orphan footnotes (5d v0-if-cheap).
     md_body = _pair_footnotes(md_body)
 
+    # --- Step 5b: detect packed tabularx cells (#209, detect-only).
+    # Runs AFTER _pair_footnotes and BEFORE memo.md is written, so the
+    # detector sees the same body the operator will see in memo.md
+    # (post-pandoc, post-sentinel-substitution — ``~`` not the
+    # ANVILTILDESENTINEL, ``€`` not the EUR sentinel). Detect-only:
+    # warnings are appended to ``notes`` and surfaced in the changelog;
+    # the migration still produces a valid DRAFTED-state thread per
+    # the soft-degrade pattern. Operator unfolds during the first
+    # ``memo-revise`` pass.
+    packed_cell_warnings = _detect_packed_table_cells(md_body)
+    notes.extend(packed_cell_warnings)
+
     # --- Step 6: write memo.md.
     memo_md = version_dir / "memo.md"
     memo_md.write_text(md_body.lstrip("\n"), encoding="utf-8")
@@ -1310,6 +1425,15 @@ def migrate_thread(
             f"{', '.join(orphan_figures)}. "
             f"Preserved at refs/prior-pipeline/v0/figures/; not converted "
             f"to PNG (no markdown ref points at them)."
+        )
+
+    # Packed-cell detector summary (#209). When the detector fired we
+    # record a single thread-level line so the audit trail captures the
+    # warning beyond the ephemeral MigrationResult.notes list.
+    if packed_cell_warnings:
+        changelog_lines.append(
+            f"- Detected {len(packed_cell_warnings)} packed table "
+            "cell(s); see notes for unfold guidance."
         )
 
     # --- Step 13: refs/ seeding from BRIEF.md §Sources (issue #203).
