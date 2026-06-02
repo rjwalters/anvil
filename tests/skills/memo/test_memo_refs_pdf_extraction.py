@@ -10,8 +10,9 @@ This file covers the **opt-in** PDF text extraction path added in #167:
   1. ``check_pdftotext_available()`` returns ``True`` / ``False`` based on
      ``shutil.which("pdftotext")`` (monkeypatched — no real binary at test
      time).
-  2. ``extract_pdf_text(...)`` raises ``RenderError`` (with the
-     ``PDFTOTEXT_REMEDIATION`` message) when the binary is absent.
+  2. ``extract_pdf_text(...)`` raises ``RenderError`` (the skill-local
+     mirror, with the ``PDFTOTEXT_REMEDIATION`` message) when the binary
+     is absent.
   3. ``extract_pdf_text(...)`` raises ``FileNotFoundError`` for a
      non-existent path.
   4. ``extract_pdf_text(...)`` returns the captured stdout on a successful
@@ -53,9 +54,9 @@ _REPO_ROOT = _HERE.parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from anvil.lib.render import RenderError  # noqa: E402
 from anvil.skills.memo.lib.refs_pdf import (  # noqa: E402
     PDFTOTEXT_REMEDIATION,
+    RenderError,
     check_pdftotext_available,
     extract_pdf_text,
 )
@@ -401,11 +402,58 @@ class TestDocCoverage(unittest.TestCase):
         self.assertIn("def check_pdftotext_available", body)
         self.assertIn("def extract_pdf_text", body)
 
-    def test_refs_pdf_module_uses_render_error(self) -> None:
-        """The module MUST reuse ``RenderError`` from
-        ``anvil.lib.render`` for cross-framework exception consistency."""
+    def test_refs_pdf_module_defines_local_render_error(self) -> None:
+        """The module MUST define a skill-local ``RenderError`` mirror and
+        MUST NOT import it from ``anvil.lib.render`` at runtime.
+
+        Rationale (issue #199): consumer installs land the framework at
+        ``.anvil/`` with no top-level ``anvil/`` package on ``sys.path``,
+        so a runtime ``from anvil.lib.render import RenderError`` dangles
+        on every consumer install. The skill-local mirror preserves the
+        documented exception semantics for in-skill callers while keeping
+        ``refs_pdf.py`` skill-local-pure (zero ``anvil.*`` runtime imports)
+        per the CLAUDE.md "skill-local first, lib promotion later" pattern.
+
+        The substring assertions target ONLY the executable portion of
+        the module (i.e., everything after the leading module docstring).
+        The docstring is allowed to reference ``anvil.lib.render`` for
+        historical context — what must NOT appear is an actual runtime
+        import statement.
+        """
         body = _read(REFS_PDF_PY)
-        self.assertIn("from anvil.lib.render import RenderError", body)
+        # The module defines its own RenderError.
+        self.assertIn("class RenderError(RuntimeError)", body)
+
+        # Slice past the leading module docstring so the runtime-import
+        # assertions only inspect executable lines. The docstring
+        # legitimately discusses ``anvil.lib.render`` in design-note 5.
+        first_triple = body.find('"""')
+        self.assertEqual(
+            first_triple,
+            0,
+            "refs_pdf.py does not start with a docstring",
+        )
+        second_triple = body.find('"""', first_triple + 3)
+        self.assertGreater(
+            second_triple,
+            first_triple,
+            "refs_pdf.py docstring is unterminated",
+        )
+        executable = body[second_triple + 3 :]
+
+        # No ``anvil.*`` runtime imports at all in the executable
+        # portion — match the skill-local-pure shape of the sibling
+        # ``memo_image_refs.py``.
+        self.assertNotIn("from anvil.", executable)
+        self.assertNotIn("import anvil", executable)
+
+    def test_refs_pdf_module_exports_render_error(self) -> None:
+        """``__all__`` must include ``RenderError`` so in-skill callers
+        can ``from .refs_pdf import RenderError`` to catch the exception
+        symmetrically with how they import the helper functions."""
+        from anvil.skills.memo.lib import refs_pdf
+
+        self.assertIn("RenderError", refs_pdf.__all__)
 
 
 if __name__ == "__main__":  # pragma: no cover
