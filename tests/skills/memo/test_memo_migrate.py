@@ -41,6 +41,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from typing import Sequence
 from unittest import mock
 
 # Ensure repo root is importable. This file lives at
@@ -2671,6 +2672,293 @@ class TestSourceBriefIngestionRobustness(unittest.TestCase):
             self.assertIn("# Heading 1", body)
             self.assertIn("## Heading 2 with **bold** and *italics*", body)
             self.assertIn("- bullet 1", body)
+
+
+# ---------------------------------------------------------------------------
+# figure_policy classification (sub-issue 5i, issue #214)
+# ---------------------------------------------------------------------------
+
+
+class TestZeroFiguresMarkerDetector(unittest.TestCase):
+    """Sub-issue 5i (#214): direct unit tests for the marker regex.
+
+    The detector contract:
+
+    - Match the literal LaTeX comment ``% anvil:zero-figures-by-design``
+      at start-of-line (modulo leading whitespace), case-sensitive.
+    - Require a space between ``%`` and the marker text — no-space
+      comments do NOT match (operators follow the LaTeX convention).
+    - Require a trailing word boundary — suffix variants
+      (``-FOO``) do NOT collide with the canonical marker.
+    """
+
+    def setUp(self) -> None:
+        from anvil.skills.memo.lib.migrate import _detect_zero_figures_marker
+        self._detect = _detect_zero_figures_marker
+
+    def test_marker_matches_at_line_start(self) -> None:
+        tex = "% anvil:zero-figures-by-design\n\\section{Body}\n"
+        self.assertTrue(self._detect(tex))
+
+    def test_marker_matches_with_leading_whitespace(self) -> None:
+        tex = "  % anvil:zero-figures-by-design\n\\section{Body}\n"
+        self.assertTrue(self._detect(tex))
+
+    def test_marker_matches_when_embedded_in_document(self) -> None:
+        # Found anywhere on a comment line, not just the very first line.
+        tex = (
+            "\\documentclass{article}\n"
+            "\\begin{document}\n"
+            "% anvil:zero-figures-by-design\n"
+            "Body text\n"
+            "\\end{document}\n"
+        )
+        self.assertTrue(self._detect(tex))
+
+    def test_marker_no_space_after_percent_does_not_match(self) -> None:
+        # The operator-facing convention requires `% anvil:...` (space
+        # after the comment marker). Without the space the regex does
+        # not match — keeps the detector conservative.
+        tex = "%anvil:zero-figures-by-design\nBody\n"
+        self.assertFalse(self._detect(tex))
+
+    def test_marker_suffix_does_not_match(self) -> None:
+        # Trailing word-boundary guard: `-FOO` suffix is a different
+        # marker (would-be future variant), not the canonical one.
+        tex = "% anvil:zero-figures-by-design-FOO\nBody\n"
+        self.assertFalse(self._detect(tex))
+
+    def test_marker_absent_returns_false(self) -> None:
+        tex = "\\section{Body}\nNo marker here.\n"
+        self.assertFalse(self._detect(tex))
+
+    def test_marker_case_sensitive(self) -> None:
+        # Case-sensitive — the canonical marker is all-lowercase.
+        tex = "% Anvil:Zero-Figures-By-Design\nBody\n"
+        self.assertFalse(self._detect(tex))
+
+    def test_marker_with_extra_whitespace_after_percent(self) -> None:
+        # Multiple spaces after `%` are tolerated (re `\s+`).
+        tex = "%   anvil:zero-figures-by-design\nBody\n"
+        self.assertTrue(self._detect(tex))
+
+
+class TestFigurePolicyClassification(unittest.TestCase):
+    """Sub-issue 5i (#214): _progress.json.metadata.figure_policy emission
+    follows the four-state (marker × figures) cross-product:
+
+    - marker + no figures    -> "by-design"
+    - marker + figures       -> "by-design" + MigrationResult.notes warning
+    - no marker + no figures -> "pending"
+    - no marker + figures    -> field omitted (no annotation needed)
+    """
+
+    def _run_migration(
+        self,
+        tmp_path: Path,
+        slug: str,
+        tex_body: str,
+        pandoc_md: str,
+        *,
+        include_figures_dir: bool = False,
+        figure_files: Sequence[str] = (),
+    ) -> MigrationResult:
+        src_dir = tmp_path / "legacy" / slug
+        src_dir.mkdir(parents=True)
+        src_tex = src_dir / "memo.tex"
+        # Write the raw LaTeX directly so the marker (which may be a
+        # full-line comment before \begin{document}) lands exactly where
+        # the operator put it.
+        src_tex.write_text(tex_body, encoding="utf-8")
+        if include_figures_dir:
+            figures = src_dir / "figures"
+            figures.mkdir()
+            for name in figure_files:
+                (figures / name).write_bytes(b"%PDF-fake")
+        portfolio = tmp_path / "portfolio"
+        portfolio.mkdir()
+
+        with mock.patch(
+            "anvil.skills.memo.lib.migrate.shutil.which",
+            side_effect=_fake_which_factory({"pandoc": True}),
+        ), mock.patch(
+            "anvil.skills.memo.lib.migrate.subprocess.run",
+            side_effect=_fake_subprocess_factory(pandoc_stdout=pandoc_md),
+        ):
+            return migrate_thread(
+                source_tex=src_tex,
+                portfolio_dir=portfolio,
+            )
+
+    def _read_progress_metadata(self, result: MigrationResult) -> dict:
+        return json.loads(
+            (result.version_dir / "_progress.json").read_text(
+                encoding="utf-8"
+            )
+        )["metadata"]
+
+    # --- marker present + no figures → "by-design"
+    def test_marker_no_figures_records_by_design(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            tex = (
+                "% anvil:zero-figures-by-design\n"
+                "\\documentclass{article}\n"
+                "\\begin{document}\n"
+                "Citation-clear body, text only.\n"
+                "\\end{document}\n"
+            )
+            result = self._run_migration(
+                tmp_path,
+                "by-design-no-figures",
+                tex_body=tex,
+                pandoc_md="Citation-clear body, text only.\n",
+            )
+
+            metadata = self._read_progress_metadata(result)
+            self.assertEqual(metadata.get("figure_policy"), "by-design")
+
+            # No marker-with-figures warning because there are no figures.
+            for note in result.notes:
+                self.assertNotIn(
+                    "marker present but", note
+                )
+
+            # Changelog records the by-design line.
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("figure_policy=by-design recorded", changelog)
+            self.assertIn(
+                "% anvil:zero-figures-by-design", changelog
+            )
+
+    # --- marker present + figures referenced
+    # → "by-design" + warning note
+    def test_marker_with_figures_records_by_design_and_warns(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            tex = (
+                "% anvil:zero-figures-by-design\n"
+                "\\documentclass{article}\n"
+                "\\begin{document}\n"
+                "Body.\n"
+                "\\includegraphics{figures/fig1.pdf}\n"
+                "\\end{document}\n"
+            )
+            # pandoc would emit ![](figures/fig1.pdf) which the migrate
+            # tool rewrites to exhibits/fig1.png. Simulate that pandoc
+            # output here.
+            pandoc_md = "Body.\n\n![](figures/fig1.pdf)\n"
+            result = self._run_migration(
+                tmp_path,
+                "marker-with-figures",
+                tex_body=tex,
+                pandoc_md=pandoc_md,
+                include_figures_dir=True,
+                figure_files=["fig1.pdf"],
+            )
+
+            metadata = self._read_progress_metadata(result)
+            self.assertEqual(metadata.get("figure_policy"), "by-design")
+
+            # The marker-content mismatch warning fires.
+            marker_warnings = [
+                n for n in result.notes
+                if "marker present but" in n
+            ]
+            self.assertEqual(len(marker_warnings), 1)
+            warning = marker_warnings[0]
+            self.assertIn("1 figure(s) referenced", warning)
+            self.assertIn("verify intent", warning)
+            self.assertIn("figure_policy=by-design recorded", warning)
+
+            # Changelog still records the by-design line.
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("figure_policy=by-design recorded", changelog)
+
+    # --- no marker + no figures → "pending"
+    def test_no_marker_no_figures_records_pending(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            tex = (
+                "\\documentclass{article}\n"
+                "\\begin{document}\n"
+                "Body with no figures and no marker.\n"
+                "\\end{document}\n"
+            )
+            result = self._run_migration(
+                tmp_path,
+                "pending-no-marker",
+                tex_body=tex,
+                pandoc_md="Body with no figures and no marker.\n",
+            )
+
+            metadata = self._read_progress_metadata(result)
+            self.assertEqual(metadata.get("figure_policy"), "pending")
+
+            # Changelog records the pending line — operator should
+            # confirm intent before READY.
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("figure_policy=pending recorded", changelog)
+            self.assertIn(
+                "Operator should confirm intent before READY", changelog
+            )
+
+            # No marker-with-figures warning (no marker, no figures).
+            for note in result.notes:
+                self.assertNotIn(
+                    "marker present but", note
+                )
+
+    # --- no marker + figures referenced → field omitted
+    def test_no_marker_with_figures_omits_field(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            tex = (
+                "\\documentclass{article}\n"
+                "\\begin{document}\n"
+                "Body with figures.\n"
+                "\\includegraphics{figures/fig1.pdf}\n"
+                "\\end{document}\n"
+            )
+            pandoc_md = "Body with figures.\n\n![](figures/fig1.pdf)\n"
+            result = self._run_migration(
+                tmp_path,
+                "omitted-no-marker",
+                tex_body=tex,
+                pandoc_md=pandoc_md,
+                include_figures_dir=True,
+                figure_files=["fig1.pdf"],
+            )
+
+            metadata = self._read_progress_metadata(result)
+            # Field is OMITTED entirely (not present as None / null).
+            self.assertNotIn("figure_policy", metadata)
+
+            # No changelog line for figure_policy in this case.
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+            self.assertNotIn("figure_policy=", changelog)
+
+            # No marker-with-figures warning either.
+            for note in result.notes:
+                self.assertNotIn(
+                    "marker present but", note
+                )
 
 
 if __name__ == "__main__":
