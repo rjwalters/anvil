@@ -51,8 +51,16 @@ the memo skill's operator-initiated polish-pass audit trail — see
 `"polish"` when invoked with `--polish "<reason>"`, and
 `revise_force_reason` is `null` (or absent) by default and the verbatim
 operator reason string under `--polish`; both fields are audit-trail
-only, not scored, not gating, and not state-machine inputs). The merge
-rule preserves any extension fields the caller does not touch.
+only, not scored, not gating, and not state-machine inputs;
+`metadata.figure_policy` for the memo skill's migration-time figure-intent
+recording — see `anvil/skills/memo/commands/memo-migrate.md`
+§"figure_policy classification" — where `"by-design"` records an
+operator-intentional figure-less thread (sourced from a
+`% anvil:zero-figures-by-design` LaTeX comment in the legacy source),
+`"pending"` records the absence of figures with no marker (signals
+reviewer the absence may be unintended), and the field is omitted
+entirely when figures are present and no policy decision is needed). The
+merge rule preserves any extension fields the caller does not touch.
 
 ## Phase states
 

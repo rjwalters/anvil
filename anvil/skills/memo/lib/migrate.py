@@ -286,6 +286,57 @@ def _strip_preamble(tex_source: str) -> str:
     return tex_source
 
 
+# ---------------------------------------------------------------------------
+# Sub-issue 5i (issue #214) — by-design zero-figures marker detector.
+# ---------------------------------------------------------------------------
+#
+# Pattern: literal LaTeX comment ``% anvil:zero-figures-by-design`` at
+# start-of-line (modulo leading whitespace). Operators write this marker
+# by hand at the top of ``memo.tex`` to declare "this thread is
+# intentionally figure-less" — distinguishing a designed text-only memo
+# (citation-clear, bibliotype) from an accidentally-figure-less one.
+#
+# The detector runs on the *raw* ``tex_source`` BEFORE ``_strip_preamble``
+# and BEFORE ``_substitute_known_patterns`` so a marker in the preamble
+# region is still found. Match is case-sensitive on the literal phrase
+# and uses a trailing word-boundary so ``-FOO`` suffixes (typos / future
+# variants) do not collide with the canonical marker.
+_ZERO_FIGURES_MARKER_RE = re.compile(
+    # End anchor: end-of-line OR whitespace. Disallow a trailing ``-``
+    # so future variants (``-strict`` etc.) do not silently collide
+    # with the canonical marker. ``\b`` is insufficient here because
+    # ``-`` is a non-word character and ``\b`` matches between the
+    # final ``n`` of ``design`` and ``-``.
+    r"^\s*%\s+anvil:zero-figures-by-design(?=$|[ \t\r\n])",
+    re.MULTILINE,
+)
+
+
+def _detect_zero_figures_marker(tex_source: str) -> bool:
+    """Return ``True`` iff the by-design zero-figures marker is present.
+
+    The contract (sub-issue 5i, issue #214):
+
+    - Match the literal LaTeX comment ``% anvil:zero-figures-by-design``
+      at start-of-line modulo leading whitespace, case-sensitive.
+    - Require a space (or whitespace) between ``%`` and the marker text
+      — ``%anvil:zero-figures-by-design`` (no space) does NOT match.
+      Operators write the marker by hand per the documented convention,
+      so we do not need to support no-space LaTeX comments.
+    - Require a trailing word boundary so ``-FOO`` suffixes do not
+      collide with the canonical marker (e.g., a future
+      ``% anvil:zero-figures-by-design-strict`` variant would be a
+      separate detector, not a silent superset of this one).
+
+    Pure function — takes raw LaTeX source, returns ``True``/``False``.
+    Called from :func:`migrate_thread` between Step 4
+    (``_rewrite_includegraphics`` populates ``figure_refs``) and Step 11
+    (``_progress.json`` write) so the classification can read both the
+    marker and the discovered figure refs.
+    """
+    return _ZERO_FIGURES_MARKER_RE.search(tex_source) is not None
+
+
 def _substitute_known_patterns(tex_source: str) -> str:
     """Pre-substitute LaTeX patterns pandoc gets wrong or drops silently.
 
@@ -1636,6 +1687,12 @@ def migrate_thread(
 
     # --- Step 1: read + preprocess the LaTeX source.
     tex_source = source_tex.read_text(encoding="utf-8", errors="replace")
+    # Sub-issue 5i (issue #214): detect the by-design zero-figures marker
+    # on the RAW source BEFORE _strip_preamble — operators are expected to
+    # write the marker at the top of memo.tex (preamble or just after
+    # \begin{document}), so the detector must run before the preamble is
+    # dropped.
+    zero_figures_marker_present = _detect_zero_figures_marker(tex_source)
     tex_source = _strip_preamble(tex_source)
     tex_source = _substitute_known_patterns(tex_source)
 
@@ -1846,8 +1903,44 @@ def migrate_thread(
         encoding="utf-8",
     )
 
+    # --- Step 10b: figure_policy classification (sub-issue 5i, issue #214).
+    # Three-state output co-located with the figure-discovery code path:
+    #   marker  + no figures    -> "by-design"
+    #   marker  + figures       -> "by-design" + MigrationResult.notes warning
+    #                              (operator-friendly marker-content mismatch
+    #                              flag — verify intent)
+    #   no marker + no figures  -> "pending" (signals reviewer the absence
+    #                              may be unintended)
+    #   no marker + figures     -> None (omitted from _progress.json.metadata
+    #                              — figures speak for themselves)
+    # The recorded value is consumed downstream by the reviewer-side rubric
+    # (deferred to a follow-on per issue #214 "Out of scope"); for now it
+    # is the audit-trail signal that the absence-of-figures decision was
+    # an intentional one.
+    figure_policy: Optional[str] = None
+    if zero_figures_marker_present:
+        figure_policy = "by-design"
+        if figure_refs:
+            notes.append(
+                "% anvil:zero-figures-by-design marker present but "
+                f"{len(figure_refs)} figure(s) referenced — verify intent "
+                "(figure_policy=by-design recorded)."
+            )
+    elif not figure_refs:
+        figure_policy = "pending"
+
     # --- Step 11: _progress.json (DRAFTED state derived from draft == done).
     iso_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    progress_metadata = {
+        "iteration": 1,
+        "max_iterations": _DEFAULT_MAX_ITERATIONS,
+        "migrated_from": str(source_tex),
+    }
+    # Conditional emission — matches the shape of metadata.score_history
+    # (additive, absent when not applicable). When figure_policy is None
+    # (figures present and no marker), the field is omitted entirely.
+    if figure_policy is not None:
+        progress_metadata["figure_policy"] = figure_policy
     progress_payload = {
         "version": 1,
         "thread": thread_slug,
@@ -1858,11 +1951,7 @@ def migrate_thread(
                 "completed": iso_now,
             },
         },
-        "metadata": {
-            "iteration": 1,
-            "max_iterations": _DEFAULT_MAX_ITERATIONS,
-            "migrated_from": str(source_tex),
-        },
+        "metadata": progress_metadata,
     }
     progress_path = version_dir / "_progress.json"
     progress_path.write_text(
@@ -1921,6 +2010,22 @@ def migrate_thread(
         changelog_lines.append(
             f"- Detected {len(metricbox_warnings)} 4-column key/value "
             "metricbox table(s); see notes for reshape guidance."
+        )
+
+    # Sub-issue 5i (issue #214): figure_policy summary line. Emitted only
+    # when figure_policy was set (i.e., marker present OR no-figures-no-
+    # marker case). When figures were present and no marker was seen the
+    # field is omitted from _progress.json AND no changelog line is added
+    # (the figures themselves are the policy signal).
+    if figure_policy == "by-design":
+        changelog_lines.append(
+            "- figure_policy=by-design recorded from "
+            "`% anvil:zero-figures-by-design` marker."
+        )
+    elif figure_policy == "pending":
+        changelog_lines.append(
+            "- figure_policy=pending recorded (no figures discovered, no "
+            "by-design marker). Operator should confirm intent before READY."
         )
 
     # Sub-issue 5f (issue #211): when a source brief was ingested,
