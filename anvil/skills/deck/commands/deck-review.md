@@ -66,6 +66,15 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
    - **Graceful-skip on missing deps**: the detector needs `Pillow` and `numpy`, which are OPTIONAL Anvil extras (install via `uv pip install -e .[auto_shrink]`). The detector's first step calls `anvil.lib.render.check_auto_shrink_deps_available()`; if it returns `False`, the detector returns `AutoShrinkResult(skipped=True, reason=AUTO_SHRINK_REMEDIATION)` without raising. Record the skip as a `severity="info"` lint entry — the rest of `deck-review` proceeds normally. (Same pattern as the `mmdc` preflight #65 and the `pdfjam` preflight #85.)
    - **Graceful-skip on missing PDF**: if `deck.pdf` does not yet exist (the user hasn't run `deck-figures`), the detector returns `AutoShrinkResult(skipped=True, reason="deck.pdf not found at ...")`. Record as an info-level skip; do not block.
    - Cache the `AutoShrinkResult` for the `_summary.md` and `findings.md` writes below. Errors from this lint OR into `lint_critical_flag` alongside the `marp_lint` errors — `lint_critical_flag = (marp_lint.errors > 0) or (auto_shrink.errors > 0)`. Per the curator's design (#102 D3), the two checks are *complementary*: `marp_lint` catches the source-side overflow before render; this detector catches the post-render auto-shrink that source-side checks structurally can't see.
+5d. **Run deck↔memo parity lint (Phase A, warning-only)** — issue #200:
+   - Invoke `anvil/skills/deck/lib/parity_lint.py`'s `lint_deck_memo_parity(<thread>.{N}/, <sibling memo version dir or None>)`. This is a Python-stdlib heuristic check (no third-party deps) that extracts hard-claim tokens — money (`$XXK/M/B`, decimal prices), percentages (including en-dash ranges), quarters/FY tags, named months + year, ALL-CAPS acronyms (length 2-6), and unit-bearing integers — from both `deck.md` and the sibling `memo.md` body, then compares the two token sets and flags any token present in one body but absent from the other.
+   - **Sibling-memo-version discovery is the caller's (this command's) responsibility in v0**. Convention: at the portfolio root that contains `<thread>.{N}/deck.md`, look for sibling memo version dirs matching `<thread>.{M}/memo.md` and pick the highest `M`. If no sibling memo version exists (single-pipeline thread — most non-Studio consumers, and Studio threads where only the deck has shipped), pass `memo_version_dir=None`. Centralizing the discovery in `anvil/lib/parity.py` is part of the promotion plan once the memo-side mirror lands.
+   - **Graceful-skip when no memo sibling**: `lint_deck_memo_parity(deck_dir, None)` (or with a sibling dir that lacks `memo.md`) returns `LintResult(skipped=True, reason="no memo sibling found at portfolio root; parity check inactive", memo_sibling=None)` with zero findings. `deck-review` proceeds normally — the rest of the review/verdict logic is byte-identical to a thread without the parity lint enabled. The skip is RECORDED in `_summary.md.lint.deck_memo_parity` (`ran: false`, `memo_sibling: null`, `reason: "..."`) and as a single info-level entry in `findings.md` § Parity-lint findings, so the operator sees WHY the check did not fire — same skip-reason convention as `auto_shrink` (step 5c).
+   - The call returns a `LintResult` with `warnings: list[Finding]`, `infos: list[Finding]`, `skipped: bool`, `reason: str | None`, and `memo_sibling: str | None`. Each `Finding` has `line` (1-based source line in whichever body the token appeared), `rule="deck_memo_parity"`, `severity="warning"` (or `"info"` if suppressed), `message` (a human-readable diagnostic naming the canary anchor), `token` (the normalized token surface form), and `side` (`"only_in_memo"` or `"only_in_deck"`).
+   - **v0 ships at `warning` severity only** (Phase A). Parity findings do NOT contribute to `lint_critical_flag` and do NOT force `advance: false` — the `errors` list on the result is always empty in v0. Verdict aggregation (step 12) is byte-identical to a thread without this lint enabled. Phase B promotion to `error` severity (and therefore `advance: false`-gating) is a separate decision deferred 2–4 weeks after Phase A merge, based on canary consumption signal. This Phase A / Phase B contract mirrors the `_convictions.md` kill-switch precedent documented in `anvil/skills/memo/SKILL.md` §"Convictions ledger".
+   - **Escape hatch**: `<!-- anvil-lint-disable: deck_memo_parity -->` placed on the same line as a deliberately-deck-only or deliberately-memo-only claim (or on the line directly above) downgrades that finding from `warning` to `info`. Use case: the memo says "we considered FTC enforcement" but the deck deliberately omits it for narrative density — the operator marks the claim and the lint stops complaining. Comma-separated rule lists (`<!-- anvil-lint-disable: deck_memo_parity, slide-content-overflow -->`) are honored.
+   - **Canary anchor**: the load-bearing failure mode this lint catches is Citation Clear memo.4 ↔ deck.3, where the reviser introduced an insurer benchmark "~50–60% completion" into memo.4 that deck.3 lacked and no anvil primitive detected the drift (issue #200). The lint's first warning on the citation-clear thread on Phase A ship is the regression anchor.
+   - Cache the `LintResult` for the `_summary.md` and `findings.md` writes below. **Do NOT OR this lint's findings into `lint_critical_flag`** — Phase A is observational only.
 6. **Score owned dimensions**:
    - **Dim 2 — Problem clarity** (0–5): Does the problem slide convey what hurts, for whom, how much, in <30 seconds? Cite specific slide language. Vague problems, self-evident problems, or problems explained only via solution score low.
    - **Dim 5 — Traction / proof** (0–5): Does the traction slide show real evidence at the stage's level? Are projections clearly labeled as projections? Cross-check every number against `BRIEF.md` — any number on the slide not in the brief is a `Fabricated traction` critical flag.
@@ -136,6 +145,19 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
          ],
          "per_class_medians": { "content": 0.12 },
          "skipped_classes": { "title": "only 1 page(s) in class 'title' — minimum 3 required for a peer-median comparison.", "ask": "only 1 page(s) in class 'ask' — minimum 3 required for a peer-median comparison." }
+       },
+       "deck_memo_parity": {
+         "ran": true,
+         "memo_sibling": "/abs/path/to/citation-clear.4",
+         "reason": null,
+         "warnings": 1,
+         "infos": 0,
+         "only_in_memo": ["50-60%"],
+         "only_in_deck": [],
+         "warnings_by_token": [
+           { "line": 7, "rule": "deck_memo_parity", "severity": "warning", "message": "Hard claim `50-60%` appears in memo (line 7) but not in the sibling deck...", "token": "50-60%", "side": "only_in_memo" }
+         ],
+         "infos_by_token": []
        }
      },
      "critical_flag": false,
@@ -143,6 +165,8 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
    }
    ```
    ```
+   - The `deck_memo_parity` block is populated from the cached `LintResult` returned by step 5d. When the lint skipped (no memo sibling discoverable), the block shape is `{ "ran": false, "memo_sibling": null, "reason": "no memo sibling found at portfolio root; parity check inactive", "warnings": 0, "infos": 0, "only_in_memo": [], "only_in_deck": [], "warnings_by_token": [], "infos_by_token": [] }`. The `ran: false` skip path MUST be recorded — the operator should see WHY the parity check did not fire (same skip-reason convention as `auto_shrink`).
+   - **`deck_memo_parity` findings do NOT contribute to `critical_flag` in v0** (Phase A ships warning-only). The block is observational: it surfaces drift in `findings.md` and the operator's revision priorities, but the `critical_flag` boolean is computed exactly as before (`marp_lint.errors > 0` OR `auto_shrink.errors > 0`). Phase B promotion to error severity (and therefore `advance: false`-gating) is a separate decision deferred per issue #200's Phase A / Phase B contract.
    - When `lint.errors > 0` (sum of source-side `errors` AND `auto_shrink.errors`), set `critical_flag: true` and append entries to `critical_flag_notes`:
      - source-side overflow: `{ "type": "slide_overflow_lint", "slide_refs": ["Slide 4", "Slide 7"], "justification": "Pre-flight overflow lint flagged N slides..." }`.
      - auto-shrink: `{ "type": "auto_shrink_fit_compression", "slide_refs": ["Slide 9"], "justification": "Marp silent auto-shrink detected on N slide(s) — rendered PNG bbox shows slide content occupies <50% of peer-class median height. See lint.auto_shrink.findings for the per-slide breakdown." }`.
@@ -197,7 +221,38 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
     Per-class medians: { content: 0.12 }
     Skipped classes (too few peers): { title: "only 1 page", ask: "only 1 page" }
     ```
+
+    A third lint block (issue #200, Phase A) sits under its own subsection. The parity lint is **always present** (subsection emitted even when the lint skipped) so the operator sees WHY the check did or did not fire. v0 ships warning-only — entries surface drift but do NOT block advance:
+
+    ```
+    ## Parity-lint findings (deck↔memo, optional)
+
+    Each entry comes from the deck↔memo parity lint (step 5d). v0 (Phase A) ships at **warning severity** — entries surface drift in shared hard claims (money, percentages, dates / quarters / FY, named months + year, ALL-CAPS acronyms, unit-bearing integers) but do NOT contribute to `lint_critical_flag` and do NOT block advance. Phase B promotion to error severity is a separate decision after 2–4 weeks of canary consumption signal.
+
+    1. **[warning]** only_in_memo (memo line 7): Hard claim `50-60%` appears in memo but not in the sibling deck. Either reconcile on next `deck-revise`, document the deliberate omission with `<!-- anvil-lint-disable: deck_memo_parity -->`, or accept the divergence (warning only in v0). Canary: Citation Clear memo.4 introduced a `~50–60% completion` insurer benchmark absent from deck.3 — exactly this shape.
+    ```
+
+    Or, when the parity check was skipped (no memo sibling discoverable at the portfolio root):
+
+    ```
+    ## Parity-lint findings (deck↔memo, optional)
+
+    _Skipped: no memo sibling found at portfolio root; parity check inactive._
+
+    Memo sibling discovered: null
+    ```
+
+    Or, when the parity check ran cleanly (no divergences):
+
+    ```
+    ## Parity-lint findings (deck↔memo, optional)
+
+    _No parity-lint findings._
+
+    Memo sibling discovered: /abs/path/to/<thread>.{M}/
+    ```
 12. **Aggregate verdict** (this reviewer is the canonical verdict author):
+    - **The `deck_memo_parity` lint (step 5d) does NOT participate in this aggregation in v0.** Parity findings ship at `warning` severity (Phase A); they surface in `findings.md` § Parity-lint findings and MAY appear under "Top revision priorities" in `verdict.md`, but they are NOT counted in `lint_critical_flag` and they do NOT force `advance: false`. Phase B promotion to error severity (and therefore inclusion in the critical-flag aggregation) is a separate decision deferred per issue #200's Phase A / Phase B contract. The aggregation logic below is byte-identical to a thread with the parity lint disabled.
     - Glob `<thread>.{N}.*/_summary.md` (siblings + self). Parse each.
     - For each rubric dimension, compute the aggregate score as the mean of non-null critic scores. Round to one decimal for display; sum for total.
     - For critical flag, take logical OR of all critic flags **including both pre-flight lints** (source-side `marp_lint` from step 5b AND post-render `auto_shrink_detector` from step 5c). If this `_summary.md`'s own `lint.errors > 0` OR `lint.auto_shrink.errors > 0`, the aggregated critical flag is true regardless of any other critic.
