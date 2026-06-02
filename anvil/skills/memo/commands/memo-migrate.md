@@ -116,6 +116,111 @@ This is a deliberate departure from the `draft → review → revise` commands' 
 - **The output thread re-enters the standard lifecycle.** `memo-review <thread>` works against the migrated `<thread>.1/` exactly as it does against a freshly-drafted thread; the migration provenance (`metadata.migrated_from`) is the only mark that distinguishes a migrated thread from a clean one.
 - **Refs preservation is permanent.** Do NOT delete `<thread>/refs/prior-pipeline/v0/` — it is the canonical record of "what was the prior pipeline's output that this thread was migrated from?", and the BRIEF.md `Source material — read order` section cites into it.
 
+## Detectors and operator response
+
+`memo-migrate` ships six **detect-only** mechanical gates that scan the LaTeX source and the pandoc-emitted markdown for cohort-surfaced friction patterns. None of them auto-fix the offending content — auto-rewrites carry an unbounded false-positive surface on legitimate financial prose (a single `$-$` is a currency range; a 4-col tabular may be a comparison matrix). Instead each detector surfaces a warning via the `MigrationResult.notes` channel + a one-line `<thread>.1/changelog.md` entry so the operator can triage during the first `memo-revise` pass.
+
+The six detectors form one cluster:
+
+| Sub-issue | Issue | PR | Detector | Documented below |
+|---|---|---|---|---|
+| 5b | #209 | #218 | Packed single-cell `tabularx` | This section |
+| 5e | #210 | #217 | Orphan figures (`figures/*.pdf` not referenced) | This section |
+| 5f | #211 | #220 | Source-brief discovery + ingestion | §"Source brief discovery" below |
+| 5g | #212 | #219 | 4-column key/value metricbox | This section |
+| 5h | #213 | #221 | Empty source `figures/` directory | This section |
+| 5i | #214 | #222 | `figure_policy` classification | §"figure_policy classification" below |
+
+The four subsections below cover 5b / 5e / 5g / 5h; the two deeper helpers (5f source-brief discovery, 5i `figure_policy` classification) have their own deep-dive sections later in this doc and are linked from the table above. The shared field structure mirrors §"figure_policy classification": **what it detects**, **warning shape**, **operator response**, **known limitations**, **source PR + issue**. Operators triaging a migration should grep `<thread>.1/changelog.md` for `- Detected` lines first; each line maps 1:1 to one of the six detectors here.
+
+### Packed single-cell table layouts (sub-issue 5b)
+
+**What it detects.** A markdown table cell whose content vastly exceeds typical line-item shape — implemented by `_detect_packed_table_cells` in `anvil/skills/memo/lib/migrate.py`. Two heuristics OR-together: a single cell exceeding 200 characters, OR a single cell containing ≥2 occurrences of `$-$` / `\$-\$` glyphs (which the source LaTeX uses as in-cell line-break separators). The canary fixture is heirloom-horticulture's biweekly $149 P&L packed into one `tabularx` cell with `$-$` line breaks (~600 chars) that pandoc converted cell-for-cell into an illegible wall of text.
+
+**Warning shape.** Per-cell `MigrationResult.notes` entry:
+
+```
+Packed tabularx cell detected at memo.md table (cell preview: "<first 60 chars>..."): N chars, M '$-$' glyphs. Likely needs manual unfold into a multi-row table during first memo-revise pass. See refs/prior-pipeline/v0/memo.tex for source layout.
+```
+
+Thread-level changelog summary line:
+
+```
+- Detected N packed table cell(s); see notes for unfold guidance.
+```
+
+**Operator response.** During the first `memo-revise` pass, unfold the offending cell into a multi-row markdown table. The cell preview in the warning is the grep key — search `memo.md` for the leading ~60 chars to locate the table quickly, then cross-reference `refs/prior-pipeline/v0/memo.tex` for the source layout the operator likely intended.
+
+**Known limitations.** Detect-only by design (per issue #202 §5b explicit deferral): auto-splitting on `$-$` is unsafe because the glyph is also legitimate currency-range syntax (`$3M-$5M ARR`) and math em-dash. The single-`$-$` case is intentionally excluded from the multi-glyph heuristic to suppress that false-positive class; the long-cell heuristic catches purely-prose-packed cells that don't use glyph separators. Header rows are not disambiguated from body rows — a packed cell in either fires the warning.
+
+**Source.** PR #218 (helper `_detect_packed_table_cells`), issue #209.
+
+### Orphan figures (sub-issue 5e)
+
+**What it detects.** Files matching `figures/*.pdf` in the source thread that are NOT referenced by any `\includegraphics` in the source `.tex`. Implemented as a step-8b set-diff in `anvil/skills/memo/lib/migrate.py::migrate_thread`: the migration collects `referenced_basenames` from the `_rewrite_includegraphics` pass over the post-pandoc markdown, globs `source.tex.parent / "figures" / *.pdf`, and surfaces each PDF whose stem is not in the referenced set. Preservation behavior is unchanged — orphan PDFs still land at `refs/prior-pipeline/v0/figures/` for audit trail.
+
+**Warning shape.** Single `MigrationResult.notes` entry summarizing all orphans:
+
+```
+N orphan figure(s) in source figures/ NOT referenced by \includegraphics: figures/<name1>.pdf, figures/<name2>.pdf, .... Preserved at refs/prior-pipeline/v0/figures/; operator decides whether to embed in v1 or drop.
+```
+
+Thread-level changelog summary line:
+
+```
+- Detected N orphan figure(s) in source figures/ never referenced by \includegraphics: figures/<...>. Preserved at refs/prior-pipeline/v0/figures/; not converted to PNG (no markdown ref points at them).
+```
+
+**Operator response.** Per orphan, confirm intent during the first `memo-revise` pass: either (a) add a markdown image ref to embed it in `memo.md` (and re-run figure conversion by hand against the preserved PDF), or (b) accept that the orphan was authoring debris — it stays archived in `refs/prior-pipeline/v0/figures/` for audit but never appears in the rendered memo. There is no auto-fix because the answer is operator-judgement: the source-pipeline workflow sometimes intentionally archived alternates.
+
+**Known limitations.** Detection is by basename match between the markdown image refs and `figures/*.pdf` stems; a `\includegraphics{figures/fig1}` (no `.pdf` extension) and a `figures/fig1.pdf` on disk pair correctly because the rewriter computes `Path(src).stem`. Non-PDF files in `figures/` (`.png`, `.svg`) are ignored — the detector is PDF-specific because the legacy pipeline output PDFs.
+
+**Source.** PR #217 (step-8b set-diff in `migrate_thread`), issue #210.
+
+### 4-column key/value metricbox (sub-issue 5g)
+
+**What it detects.** A markdown table block with **exactly 4 columns** whose body rows match a label/value/label/value pattern — implemented by `_detect_metricbox_tables` in `anvil/skills/memo/lib/migrate.py`. Per-body-row, columns 1 and 3 must satisfy `_is_metricbox_label_cell` (≤2 words, capitalized OR trailing colon, bold-marker tolerant) AND columns 2 and 4 must NOT (the false-positive guard). The block must have ≥2 body rows. The canary pattern is a `Revenue | $1.2M | Cost | $800K` metricbox that pandoc converts to a generic 4-col markdown table, losing the key/value semantic.
+
+**Warning shape.** Per-table `MigrationResult.notes` entry:
+
+```
+4-column key/value metricbox detected at memo.md table (first-row preview: "<col1> | <col2> | <col3> | <col4>"): N body rows match label/value/label/value pattern. Consider reshaping to definition-list style (**label**: value, one per line) or a 2-column metric/value table during first memo-revise pass. See refs/prior-pipeline/v0/memo.tex for source layout.
+```
+
+Thread-level changelog summary line:
+
+```
+- Detected N 4-column key/value metricbox table(s); see notes for reshape guidance.
+```
+
+**Operator response.** During the first `memo-revise` pass, reshape the offending table into either a definition-list style (`**Revenue**: $1.2M`, one per line) or a 2-column `Metric | Value` table. The first-row preview in the warning is the grep key — search `memo.md` for the four pipe-separated cells to locate the table.
+
+**Known limitations.** The col-2/col-4 NOT-label guard suppresses financial-quarter tables (`Q1 2026 | $1.2M | Q2 2026 | $1.5M`) — `$1.2M` starts with `$` which is not an uppercase letter, so the cell does not satisfy the label heuristic and the row is correctly skipped. **However**, tables whose value cells are *also* short-and-capitalized in a label-satisfying way (e.g., `Status: | OK | Phase: | DONE`) will false-fire and produce a warning; this is the documented limitation cited in PR #219. The operator simply ignores the warning in that case. Ragged-width row blocks (rare — pandoc normalizes) are silently skipped. Tables with ≠4 columns are never inspected.
+
+**Source.** PR #219 (helper `_detect_metricbox_tables`), issue #212.
+
+### Empty source `figures/` directory (sub-issue 5h)
+
+**What it detects.** A `figures/` directory present alongside `memo.tex` that contains zero `*.pdf` candidates — implemented as a guard in the step-8b figures walk in `anvil/skills/memo/lib/migrate.py::migrate_thread`. The detector fires when `source.tex.parent / "figures"` exists AND `sorted(...glob("*.pdf"))` is empty (i.e., the directory was created but never populated, or contains only non-PDF stragglers). The no-figures-dir case is intentionally silent — that's a genuinely figure-less thread, not the same signal.
+
+**Warning shape.** Single `MigrationResult.notes` entry:
+
+```
+figures/ exists but is empty
+```
+
+Thread-level changelog summary line:
+
+```
+- Detected empty source figures/ directory; no PDFs to convert. Operator should confirm whether figure pipeline ran before migration.
+```
+
+**Operator response.** Confirm whether the legacy figure pipeline (e.g., a `make figures` step in the upstream LaTeX workflow) was run before the source `.tex` was handed to the migration. If the empty `figures/` is intentional (the operator already knows the thread is figure-less by design), either delete the empty directory from the source archive OR add the `% anvil:zero-figures-by-design` marker to `memo.tex` so the §"figure_policy classification" detector records the intent. If the empty directory was an oversight (figures never built), re-run the upstream pipeline and re-run `memo-migrate` against the now-populated source.
+
+**Known limitations.** Non-PDF files in `figures/` (a stray `.png`, a `.gitkeep` marker, README) do NOT defeat the empty-pdfs check — the glob is `*.pdf`-specific, so a directory with only non-PDF files still fires. This is the intended behavior (the migration's figure pipeline is PDF-only) but is worth noting if the operator placed a `.gitkeep`-style marker in `figures/` to preserve directory layout. The no-figures-dir case is silent (no warning, no changelog line) because that state composes correctly with the §"figure_policy classification" detector: marker + no figures = `by-design`, no marker + no figures = `pending`.
+
+**Source.** PR #221 (step-8b empty-figures guard in `migrate_thread`), issue #213.
+
 ## figure_policy classification
 
 Sub-issue 5i (issue #214) codifies the rule the migration tool uses to distinguish a thread that is intentionally figure-less (text-only memo by design — bibliotype, citation-clear) from one that just accidentally has no figures. At migration time both states look identical (no `\includegraphics` references + no/empty `figures/` dir), so the reviewer cannot tell whether to penalize the absence of figures on the rubric.
