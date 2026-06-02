@@ -35,6 +35,7 @@ Runs under either ``python -m unittest discover tests/skills/memo/`` or
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -942,6 +943,346 @@ class TestChangelog(unittest.TestCase):
             self.assertIn("Migrated from", changelog)
             self.assertIn("anvil:memo-migrate", changelog)
             self.assertIn("refs/prior-pipeline/v0/memo.tex", changelog)
+
+
+# ---------------------------------------------------------------------------
+# Packed tabularx cell detector (issue #209, sub-issue 5b)
+# ---------------------------------------------------------------------------
+
+
+class TestPackedTableCellDetector(unittest.TestCase):
+    """Issue #209: detect-only warnings for packed single-cell tabularx layouts.
+
+    The detector fires on two heuristics (OR):
+
+    - **Long-cell**: any single cell exceeds 200 chars.
+    - **Multi-glyph**: any single cell contains 2+ ``$-$`` glyphs
+      (single ``$-$`` is the false-positive guard for currency ranges).
+
+    Detector runs post-pandoc, post-sentinel-substitution (Step 5b in
+    ``migrate_thread`` — between ``_pair_footnotes`` and writing
+    ``memo.md``), so it sees the same body the operator sees.
+    """
+
+    def _run_with_pandoc_md(
+        self, tmp_path: Path, slug: str, pandoc_md: str
+    ) -> MigrationResult:
+        src_dir = tmp_path / "legacy" / slug
+        src_dir.mkdir(parents=True)
+        src_tex = src_dir / "memo.tex"
+        _write_minimal_tex(src_tex, "Body")
+        portfolio = tmp_path / "portfolio"
+        portfolio.mkdir(exist_ok=True)
+
+        with mock.patch(
+            "anvil.skills.memo.lib.migrate.shutil.which",
+            side_effect=_fake_which_factory({"pandoc": True}),
+        ), mock.patch(
+            "anvil.skills.memo.lib.migrate.subprocess.run",
+            side_effect=_fake_subprocess_factory(pandoc_stdout=pandoc_md),
+        ):
+            return migrate_thread(
+                source_tex=src_tex,
+                portfolio_dir=portfolio,
+            )
+
+    def test_ac1_detector_fires_on_heirloom_horticulture_shape(self) -> None:
+        """AC1: a packed P&L with 2+ ``$-$`` glyphs in one cell triggers a warning."""
+        import tempfile
+
+        # Mimic the canary shape: a single tabularx cell with seven line
+        # items joined by ``$-$`` line-break glyphs. Pandoc emits this as
+        # a one-row, one-cell table after the optional header row.
+        packed_cell = (
+            "Revenue $150 $-$ COGS $40 $-$ Gross $110 $-$ Labor $35 "
+            "$-$ Overhead $20 $-$ EBITDA $55 $-$ Net $40"
+        )
+        pandoc_md = (
+            "Body intro.\n"
+            "\n"
+            "| Biweekly P&L |\n"
+            "|---|\n"
+            f"| {packed_cell} |\n"
+            "\n"
+            "Closing prose.\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "heirloom-horticulture", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(len(packed), 1)
+        # The warning text exposes the glyph count (multi-glyph signal).
+        self.assertIn("'$-$' glyphs", packed[0])
+        # And the signal must be 2+ (the multi-glyph heuristic — single
+        # is the false-positive guard).
+        match = re.search(r"(\d+) '\$-\$' glyphs", packed[0])
+        self.assertIsNotNone(match)
+        self.assertGreaterEqual(int(match.group(1)), 2)
+
+    def test_ac2_detector_fires_on_long_cell(self) -> None:
+        """AC2: a single cell >200 chars (no ``$-$`` glyphs) fires the long-cell signal."""
+        import tempfile
+
+        # 250 chars of prose, no ``$-$`` glyphs.
+        long_cell = "A" * 250
+        pandoc_md = (
+            "| Header |\n"
+            "|---|\n"
+            f"| {long_cell} |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "long-cell-thread", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(len(packed), 1)
+        # Long-cell signal: the char count in the warning is >200.
+        match = re.search(r"(\d+) chars", packed[0])
+        self.assertIsNotNone(match)
+        self.assertGreater(int(match.group(1)), 200)
+
+    def test_ac3_no_false_positive_on_normal_table(self) -> None:
+        """AC3: a normal 3x4 table (cells <50 chars, zero ``$-$``) does NOT fire."""
+        import tempfile
+
+        pandoc_md = (
+            "| Col A | Col B | Col C |\n"
+            "|---|---|---|\n"
+            "| Apple | Red | Sweet |\n"
+            "| Lemon | Yellow | Sour |\n"
+            "| Lime | Green | Tart |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "normal-table-thread", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(packed, [])
+
+    def test_ac4_no_false_positive_on_single_dollar_glyph(self) -> None:
+        """AC4: a cell with exactly one ``$-$`` glyph (under 200 chars) does NOT fire.
+
+        This is the documented false-positive guard. Currency ranges
+        (``$3M-$5M ARR``) and math em-dashes (``$a - b$``) legitimately
+        contain a single ``$-$`` pattern; only two or more is the packed
+        signal.
+        """
+        import tempfile
+
+        # A short cell with exactly one ``$-$`` glyph.
+        pandoc_md = (
+            "| Metric | Value |\n"
+            "|---|---|\n"
+            "| ARR range | $3M $-$ $5M target |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "currency-range-thread", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(packed, [])
+
+    def test_ac5_changelog_records_detection(self) -> None:
+        """AC5: changelog.md contains the packed-cell summary line."""
+        import tempfile
+
+        long_cell = "B" * 250
+        pandoc_md = (
+            "| Header |\n"
+            "|---|\n"
+            f"| {long_cell} |\n"
+            f"| {long_cell} |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "changelog-record-thread", pandoc_md
+            )
+            changelog = (result.version_dir / "changelog.md").read_text(
+                encoding="utf-8"
+            )
+        # Format: "- Detected {K} packed table cell(s); see notes for
+        # unfold guidance.".
+        self.assertIn("Detected 2 packed table cell(s)", changelog)
+        self.assertIn("see notes for unfold guidance", changelog)
+
+    def test_ac5_changelog_silent_when_no_detection(self) -> None:
+        """AC5 (negative): changelog does NOT mention packed cells when none detected."""
+        import tempfile
+
+        pandoc_md = "Plain body, no tables.\n"
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "no-tables-thread", pandoc_md
+            )
+            changelog = (result.version_dir / "changelog.md").read_text(
+                encoding="utf-8"
+            )
+        self.assertNotIn("packed table cell", changelog)
+
+    def test_ac6_cell_preview_in_warning(self) -> None:
+        """AC6: the notes entry includes the first ~60 chars of the offending cell."""
+        import tempfile
+
+        # A distinguishable prefix so the preview is grep-able.
+        prefix = "DISTINCT_PREFIX_TOKEN_FOR_GREP "
+        long_cell = prefix + ("z" * 250)
+        pandoc_md = (
+            "| Header |\n"
+            "|---|\n"
+            f"| {long_cell} |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "preview-thread", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(len(packed), 1)
+        # The preview prefix is present (operator can grep memo.md to
+        # locate the offending cell).
+        self.assertIn(prefix.strip(), packed[0])
+        # And the preview is truncated with an ellipsis when the cell
+        # exceeds the preview length (the long_cell here certainly does).
+        self.assertIn("...", packed[0])
+
+    def test_ac7_detector_runs_post_pandoc_post_sentinel(self) -> None:
+        """AC7: detector sees ``~`` (not ANVILTILDESENTINEL) and ``€`` (not EURSENTINEL).
+
+        The detector must run AFTER ``_post_substitute_sentinels`` so it
+        sees the same body the operator sees in memo.md. This means a
+        cell whose content was originally ``\\textasciitilde`` in the
+        source — which round-trips to a literal ``~`` post-substitution
+        — is observed as ``~`` by the detector, not the sentinel.
+        """
+        import tempfile
+
+        # Build a packed cell where, after sentinel substitution, the
+        # body contains literal ``~`` chars (the post-substitution form).
+        # The detector must see ``~`` directly; if it ran BEFORE
+        # substitution it would see the sentinel instead.
+        packed_cell = (
+            "Hedge ~$50K $-$ Hedge ~$60K $-$ Hedge ~$70K "
+            "$-$ Hedge ~$80K $-$ Hedge ~$90K"
+        )
+        pandoc_md = (
+            "| Hedged P&L |\n"
+            "|---|\n"
+            f"| {packed_cell} |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "post-sentinel-thread", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(len(packed), 1)
+        # The preview contains a literal ``~`` (not the sentinel string).
+        self.assertIn("~$", packed[0])
+        self.assertNotIn("ANVILTILDESENTINEL", packed[0])
+
+    def test_ac8_migration_succeeds_when_detector_fires(self) -> None:
+        """AC8: detect-only is non-fatal. The migration still produces a DRAFTED thread."""
+        import tempfile
+
+        long_cell = "C" * 250
+        pandoc_md = (
+            "| Header |\n"
+            "|---|\n"
+            f"| {long_cell} |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "non-fatal-thread", pandoc_md
+            )
+            # The migration produced every documented output (matches the
+            # AC3 output-layout assertions in TestOutputLayout).
+            self.assertTrue(result.memo_md.exists())
+            self.assertTrue(result.brief_md.exists())
+            self.assertTrue(result.anvil_json.exists())
+            self.assertTrue((result.version_dir / "_progress.json").exists())
+            self.assertTrue((result.version_dir / "changelog.md").exists())
+            # DRAFTED state (phases.draft.state == "done") is intact.
+            progress = json.loads(
+                (result.version_dir / "_progress.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(progress["phases"]["draft"]["state"], "done")
+        # And the warning is in notes (the soft-degrade pattern).
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(len(packed), 1)
+
+    def test_alignment_row_is_not_flagged(self) -> None:
+        """Sanity: the ``|---|---|`` alignment separator is never flagged.
+
+        Pandoc-emitted markdown tables include an alignment row of pure
+        dashes between header and body. That row is not a packed cell
+        — it must be excluded from detection.
+        """
+        import tempfile
+
+        # An alignment row with many dashes (>200 char column would only
+        # happen on a malformed table — this just confirms we skip it).
+        pandoc_md = (
+            "| H1 | H2 |\n"
+            "|---|---|\n"
+            "| A | B |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "alignment-row-thread", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(packed, [])
+
+    def test_escaped_dollar_dash_glyph_form_is_detected(self) -> None:
+        """The escaped ``\\$-\\$`` form is counted alongside literal ``$-$``.
+
+        Pandoc may emit either the literal or the escaped form depending
+        on the LaTeX-escape state of the source. Both are line-break
+        glyphs in a packed cell.
+        """
+        import tempfile
+
+        # A cell with two escaped ``\$-\$`` glyphs (and no literal form).
+        # The cell is under 200 chars, so only the glyph-heuristic fires.
+        pandoc_md = (
+            "| Header |\n"
+            "|---|\n"
+            "| A \\$-\\$ B \\$-\\$ C \\$-\\$ D |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "escaped-glyph-thread", pandoc_md
+            )
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        self.assertEqual(len(packed), 1)
 
 
 # ---------------------------------------------------------------------------
