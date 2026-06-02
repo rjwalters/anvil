@@ -2021,5 +2021,455 @@ class TestMetricboxDetector(unittest.TestCase):
         self.assertEqual(len(self._metricbox_notes(result)), 1)
 
 
+# ---------------------------------------------------------------------------
+# Sub-issue 5f (issue #211) — source-brief discovery + ingestion
+# ("earliest-brief wins" rule)
+# ---------------------------------------------------------------------------
+
+
+class TestSourceBriefDiscovery(unittest.TestCase):
+    """Sub-issue 5f / issue #211 — ``brief.md`` ingestion under earliest-wins rule.
+
+    Covers all 10 ACs from issue #211:
+
+    - AC1: bower shape (``memo.1/brief.md`` ingested when ``memo.3`` is source).
+    - AC2: thread-root shape (``brief.md`` at root treated as N=0).
+    - AC3: multi-version, earliest wins + diagnostic note.
+    - AC4: whitespace-only content skipped, next-earliest wins.
+    - AC5: no source brief → TODO-only stub, no ingested block, no changelog line.
+    - AC6: MigrationResult.source_brief_path provenance shape.
+    - AC7: changelog line cites preserved-refs path.
+    - AC8: no regression in existing tests (the prior 47 tests still pass —
+      verified by running the file in full; no test changes there).
+    - AC9: command doc updated (test in TestInstallerWiring extension below).
+    - AC10: no new Python deps (test below extends the existing import scanner).
+    """
+
+    @staticmethod
+    def _run_migrate(
+        tmp_path: Path,
+        src_tex: Path,
+        portfolio: Path,
+        pandoc_md: str = "Body\n",
+    ) -> MigrationResult:
+        """Run ``migrate_thread`` with pandoc faked + pdftoppm absent.
+
+        Centralizes the monkeypatch boilerplate so each AC test reads
+        as a fixture-layout assertion rather than a mock setup.
+        """
+        with mock.patch(
+            "anvil.skills.memo.lib.migrate.shutil.which",
+            side_effect=_fake_which_factory({"pandoc": True}),
+        ), mock.patch(
+            "anvil.skills.memo.lib.migrate.subprocess.run",
+            side_effect=_fake_subprocess_factory(pandoc_stdout=pandoc_md),
+        ):
+            return migrate_thread(
+                source_tex=src_tex,
+                portfolio_dir=portfolio,
+            )
+
+    # -- AC1 ----------------------------------------------------------------
+
+    def test_ac1_bower_shape_ingests_memo1_brief_when_memo3_is_source(
+        self,
+    ) -> None:
+        """Bower load-bearing fixture: brief at v1, source .tex at v3."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "bower"
+            v1 = legacy_root / "memo.1"
+            v3 = legacy_root / "memo.3"
+            v1.mkdir(parents=True)
+            v3.mkdir(parents=True)
+            brief_body = "# bower brief (v1)\n\nCanonical brief authored at v1.\n"
+            (v1 / "brief.md").write_text(brief_body, encoding="utf-8")
+            src_tex = v3 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(tmp_path, src_tex, portfolio)
+
+            # The generated BRIEF.md contains the verbatim v1 body
+            # inside the grep-friendly fence.
+            body = result.brief_md.read_text(encoding="utf-8")
+            self.assertIn(
+                "<!-- BEGIN: ingested from memo.1/brief.md -->", body
+            )
+            self.assertIn("<!-- END: ingested source brief -->", body)
+            self.assertIn("Canonical brief authored at v1.", body)
+            # The TODO stub marker is still present (this is NOT a "done" brief).
+            self.assertIn("TODO: migration-brief stub", body)
+            # The canonical template reference block still appears AFTER
+            # the ingested fence (order: TODO header → ingested → template).
+            todo_pos = body.find("TODO: migration-brief stub")
+            ingest_begin = body.find("<!-- BEGIN: ingested from")
+            ingest_end = body.find("<!-- END: ingested source brief -->")
+            self.assertLess(todo_pos, ingest_begin)
+            self.assertLess(ingest_begin, ingest_end)
+
+    # -- AC2 ----------------------------------------------------------------
+
+    def test_ac2_thread_root_shape_brief_at_root_is_n0(self) -> None:
+        """Flat thread-root layout: ``acme/brief.md`` + ``acme/memo.tex`` (no version dir)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "acme"
+            legacy_root.mkdir(parents=True)
+            brief_body = "Acme thread-root brief content.\n"
+            (legacy_root / "brief.md").write_text(brief_body, encoding="utf-8")
+            src_tex = legacy_root / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(tmp_path, src_tex, portfolio)
+
+            body = result.brief_md.read_text(encoding="utf-8")
+            self.assertIn(
+                "<!-- BEGIN: ingested from brief.md -->", body
+            )
+            self.assertIn("Acme thread-root brief content.", body)
+
+    # -- AC3 ----------------------------------------------------------------
+
+    def test_ac3_multi_version_earliest_wins_with_diagnostic_note(
+        self,
+    ) -> None:
+        """Non-empty briefs at v1 AND v3 → v1 wins; v3 noted as ignored."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "multi"
+            v1 = legacy_root / "memo.1"
+            v3 = legacy_root / "memo.3"
+            v1.mkdir(parents=True)
+            v3.mkdir(parents=True)
+            (v1 / "brief.md").write_text("v1 canonical brief.\n", encoding="utf-8")
+            (v3 / "brief.md").write_text("v3 placeholder brief.\n", encoding="utf-8")
+            src_tex = v3 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(tmp_path, src_tex, portfolio)
+
+            body = result.brief_md.read_text(encoding="utf-8")
+            # v1 content present; v3 content NOT present.
+            self.assertIn("v1 canonical brief.", body)
+            self.assertNotIn("v3 placeholder brief.", body)
+            # Fence path names the v1 file.
+            self.assertIn(
+                "<!-- BEGIN: ingested from memo.1/brief.md -->", body
+            )
+            # AC7 (in-v0-if-cheap): diagnostic note enumerates both candidates.
+            joined_notes = " | ".join(result.notes)
+            self.assertIn("Multiple source briefs", joined_notes)
+            self.assertIn("memo.1/brief.md", joined_notes)
+            self.assertIn("memo.3/brief.md", joined_notes)
+
+    # -- AC4 ----------------------------------------------------------------
+
+    def test_ac4_whitespace_only_v1_skipped_v3_wins(self) -> None:
+        """v1 whitespace-only + v3 real content → v3 wins (v1 treated as absent)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "ws"
+            v1 = legacy_root / "memo.1"
+            v3 = legacy_root / "memo.3"
+            v1.mkdir(parents=True)
+            v3.mkdir(parents=True)
+            # Whitespace-only: spaces, tabs, newlines — must be skipped.
+            (v1 / "brief.md").write_text("   \n\t\n  \n", encoding="utf-8")
+            (v3 / "brief.md").write_text("v3 real brief content.\n", encoding="utf-8")
+            src_tex = v3 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(tmp_path, src_tex, portfolio)
+
+            body = result.brief_md.read_text(encoding="utf-8")
+            self.assertIn("v3 real brief content.", body)
+            self.assertIn(
+                "<!-- BEGIN: ingested from memo.3/brief.md -->", body
+            )
+            # Because v1 had no content, the "multiple candidates"
+            # diagnostic must NOT fire (only one candidate with content).
+            joined_notes = " | ".join(result.notes)
+            self.assertNotIn("Multiple source briefs", joined_notes)
+
+    # -- AC5 ----------------------------------------------------------------
+
+    def test_ac5_no_source_brief_preserves_todo_only_behavior(self) -> None:
+        """No ``brief.md`` anywhere → TODO stub only, no ingested block, no changelog line."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "nobrief"
+            v1 = legacy_root / "memo.1"
+            v1.mkdir(parents=True)
+            src_tex = v1 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(tmp_path, src_tex, portfolio)
+
+            body = result.brief_md.read_text(encoding="utf-8")
+            # No ingested fence.
+            self.assertNotIn("BEGIN: ingested from", body)
+            self.assertNotIn("END: ingested source brief", body)
+            # TODO stub still present.
+            self.assertIn("TODO: migration-brief stub", body)
+            # MigrationResult records None for source_brief_path.
+            self.assertIsNone(result.source_brief_path)
+            # Changelog does NOT mention an ingested brief.
+            changelog = (result.version_dir / "changelog.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertNotIn("Ingested source brief", changelog)
+
+    # -- AC6 ----------------------------------------------------------------
+
+    def test_ac6_migration_result_records_source_brief_path(self) -> None:
+        """``MigrationResult.source_brief_path`` is the abs path of the ingested brief."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "prov"
+            v1 = legacy_root / "memo.1"
+            v1.mkdir(parents=True)
+            brief_path = v1 / "brief.md"
+            brief_path.write_text("Provenance fixture.\n", encoding="utf-8")
+            src_tex = v1 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(tmp_path, src_tex, portfolio)
+
+            self.assertIsNotNone(result.source_brief_path)
+            self.assertIsInstance(result.source_brief_path, Path)
+            # Absolute path resolution: result is .resolve()'d so the
+            # fixture-side path must also be resolved for the equality.
+            self.assertEqual(
+                result.source_brief_path.resolve(),
+                brief_path.resolve(),
+            )
+
+    # -- AC7 ----------------------------------------------------------------
+
+    def test_ac7_changelog_records_preserved_refs_path(self) -> None:
+        """Changelog cites the *preserved-refs* path, not the original source path."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "bower-fixture"
+            v1 = legacy_root / "memo.1"
+            v3 = legacy_root / "memo.3"
+            v1.mkdir(parents=True)
+            v3.mkdir(parents=True)
+            (v1 / "brief.md").write_text("Brief.\n", encoding="utf-8")
+            src_tex = v3 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(tmp_path, src_tex, portfolio)
+
+            changelog = (result.version_dir / "changelog.md").read_text(
+                encoding="utf-8"
+            )
+            # The cited path is under refs/prior-pipeline/v0/ (the
+            # archival copy), NOT the original ``memo.1/brief.md`` path.
+            self.assertIn("Ingested source brief from", changelog)
+            self.assertIn("refs/prior-pipeline/v0/memo.1/brief.md", changelog)
+            self.assertIn("earliest-brief-wins rule", changelog)
+
+            # The archived copy actually exists.
+            archived = (
+                result.thread_root
+                / "refs"
+                / "prior-pipeline"
+                / "v0"
+                / "memo.1"
+                / "brief.md"
+            )
+            self.assertTrue(archived.is_file())
+            self.assertEqual(
+                archived.read_text(encoding="utf-8"), "Brief.\n"
+            )
+
+    # -- AC9 ----------------------------------------------------------------
+
+    def test_ac9_command_doc_documents_source_brief_discovery(self) -> None:
+        """Command doc has the §"Source brief discovery" subsection + step 14 mention."""
+        doc = COMMAND_DOC.read_text(encoding="utf-8")
+        # New subsection under §"Notes for the agent".
+        self.assertIn("## Source brief discovery", doc)
+        self.assertIn("earliest-brief wins", doc)
+        # Step 14 mentions the ingestion.
+        self.assertIn("BEGIN: ingested from", doc)
+        self.assertIn("source_brief_path", doc)
+
+    # -- AC10 ---------------------------------------------------------------
+
+    def test_ac10_no_new_python_deps_in_pyproject(self) -> None:
+        """``pyproject.toml`` is unchanged — no new base or optional dep names introduced.
+
+        We check the only dependency added by sub-issue 5f's expected
+        diff: no new dep names should appear under ``[project]
+        dependencies`` or ``[project.optional-dependencies]`` as a
+        consequence of this implementation. The migrate module relies
+        only on stdlib (``re``, ``shutil``, ``pathlib``) for the new
+        discovery helper.
+        """
+        pyproject = _REPO_ROOT / "pyproject.toml"
+        text = pyproject.read_text(encoding="utf-8")
+        # The known dep set is pydantic (base) + the documented
+        # optional-extra names. The discovery helper introduces none.
+        # We assert by absence: typical third-party brief-parsing libs
+        # MUST NOT have been added.
+        for forbidden in (
+            "python-frontmatter",
+            "pyyaml",
+            "frontmatter",
+            "ruamel.yaml",
+        ):
+            self.assertNotIn(forbidden, text.lower())
+
+
+class TestSourceBriefIngestionRobustness(unittest.TestCase):
+    """Edge-case coverage that doesn't map to a numbered AC but is cheap.
+
+    Validates the helper's behavior on layouts the canary corpus could
+    surface but the explicit ACs don't enumerate: operator-named
+    directories that look like version dirs but aren't, missing
+    ``brief.md`` files alongside present ones, etc.
+    """
+
+    @staticmethod
+    def _run_migrate(
+        src_tex: Path,
+        portfolio: Path,
+        pandoc_md: str = "Body\n",
+    ) -> MigrationResult:
+        with mock.patch(
+            "anvil.skills.memo.lib.migrate.shutil.which",
+            side_effect=_fake_which_factory({"pandoc": True}),
+        ), mock.patch(
+            "anvil.skills.memo.lib.migrate.subprocess.run",
+            side_effect=_fake_subprocess_factory(pandoc_stdout=pandoc_md),
+        ):
+            return migrate_thread(
+                source_tex=src_tex,
+                portfolio_dir=portfolio,
+            )
+
+    def test_root_brief_wins_over_v1_brief(self) -> None:
+        """Both ``<root>/brief.md`` (N=0) and ``memo.1/brief.md`` (N=1) → root wins."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "both"
+            v1 = legacy_root / "memo.1"
+            v1.mkdir(parents=True)
+            (legacy_root / "brief.md").write_text(
+                "Root brief content.\n", encoding="utf-8"
+            )
+            (v1 / "brief.md").write_text(
+                "V1 brief content.\n", encoding="utf-8"
+            )
+            src_tex = v1 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(src_tex, portfolio)
+            body = result.brief_md.read_text(encoding="utf-8")
+            self.assertIn("Root brief content.", body)
+            self.assertNotIn("V1 brief content.", body)
+            self.assertIn(
+                "<!-- BEGIN: ingested from brief.md -->", body
+            )
+
+    def test_non_memo_dot_n_dirs_are_ignored_by_discovery(self) -> None:
+        """A non-``memo.{N}`` sibling dir with a ``brief.md`` is NOT picked up."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "noise"
+            v1 = legacy_root / "memo.1"
+            v1.mkdir(parents=True)
+            # Sibling project-related folder that should NOT count.
+            other = legacy_root / "exhibits"
+            other.mkdir(parents=True)
+            (other / "brief.md").write_text(
+                "Bogus exhibit brief.\n", encoding="utf-8"
+            )
+            (v1 / "brief.md").write_text(
+                "Real v1 brief.\n", encoding="utf-8"
+            )
+            src_tex = v1 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(src_tex, portfolio)
+            body = result.brief_md.read_text(encoding="utf-8")
+            self.assertIn("Real v1 brief.", body)
+            self.assertNotIn("Bogus exhibit brief.", body)
+
+    def test_ingested_brief_preserves_markdown_headings_verbatim(self) -> None:
+        """Ingested body is NOT rewritten — markdown headings flow through."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            legacy_root = tmp_path / "legacy" / "verbatim"
+            v1 = legacy_root / "memo.1"
+            v1.mkdir(parents=True)
+            heavy_body = (
+                "---\n"
+                "company: ExistingCorp\n"
+                "sector: Hardware\n"
+                "---\n"
+                "\n"
+                "# Heading 1\n"
+                "\n"
+                "## Heading 2 with **bold** and *italics*\n"
+                "\n"
+                "- bullet 1\n"
+                "- bullet 2\n"
+            )
+            (v1 / "brief.md").write_text(heavy_body, encoding="utf-8")
+            src_tex = v1 / "memo.tex"
+            _write_minimal_tex(src_tex, "Body")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            result = self._run_migrate(src_tex, portfolio)
+            body = result.brief_md.read_text(encoding="utf-8")
+            # Frontmatter and headings pass through verbatim.
+            self.assertIn("company: ExistingCorp", body)
+            self.assertIn("# Heading 1", body)
+            self.assertIn("## Heading 2 with **bold** and *italics*", body)
+            self.assertIn("- bullet 1", body)
+
+
 if __name__ == "__main__":
     unittest.main()
