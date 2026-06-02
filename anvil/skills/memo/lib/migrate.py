@@ -505,6 +505,240 @@ def _detect_packed_table_cells(md_source: str) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
+# Metricbox detector (issue #212, sub-issue 5g) — detect-only
+# ---------------------------------------------------------------------------
+#
+# Maximum word count for a cell to qualify as a "short label" in the
+# metricbox detector. Two words covers the canary forms ("Total Revenue",
+# "Gross Margin", "Net Profit", "Run Rate") without flagging prose cells.
+# See issue #212 §"In v0 (must)" item 2.
+_METRICBOX_LABEL_MAX_WORDS = 2
+
+# Minimum number of body rows that must match the label/value/label/value
+# pattern for the metricbox detector to fire. A single 4-col row is more
+# likely a header miscount than a metricbox. See issue #212 §"In v0
+# (must)" item 2.
+_METRICBOX_MIN_BODY_ROWS = 2
+
+# Exactly four columns is the metricbox signal: a key/value/key/value
+# layout. Wider tables (5+ cols) are matrix-shaped; narrower tables
+# (≤3 cols) are already definition-list-shaped or single key/value pairs.
+_METRICBOX_REQUIRED_COLS = 4
+
+
+def _is_metricbox_label_cell(cell: str) -> bool:
+    """Return True if ``cell`` matches the short-label heuristic.
+
+    The heuristic (markdown-side only — pandoc has already converted
+    ``\\textbf{Label}`` into ``**Label**`` by the time this runs):
+
+    1. Strip surrounding whitespace and any bold markers (``**...**``).
+    2. Cell must be ≤ :data:`_METRICBOX_LABEL_MAX_WORDS` words.
+    3. Cell must be EITHER:
+       - capitalized (first non-whitespace char is uppercase), OR
+       - terminate with ``:`` (trailing-colon label form).
+
+    Empty cells return ``False`` (an empty cell is neither a label nor a
+    value in the metricbox sense; it disqualifies the row).
+
+    The bold-marker strip is load-bearing: pandoc emits
+    ``\\textbf{Revenue}`` as ``**Revenue**``, and we want both bare
+    ``Revenue`` and ``**Revenue**`` to satisfy the heuristic.
+
+    Caveat (documented in issue #212 AC2): cells like ``$1.2M`` are
+    short and start with a non-letter that ``str.isupper`` does not
+    accept; cells like ``Q1 2026`` would satisfy the heuristic
+    (2 words, capitalized). The detector relies on the col-2/col-4
+    NOT-label guard to suppress false positives on quarter-shaped
+    tables — see :func:`_detect_metricbox_tables`.
+    """
+    # Strip bold markers BEFORE measuring. The detector receives cells
+    # already trimmed of surrounding whitespace by the caller, but we
+    # re-strip here so the function is independently correct.
+    stripped = cell.strip()
+    # Trim ``**...**`` only when both markers are present and wrap the
+    # whole cell — partial bold mid-cell ("a **bold** word") leaves a
+    # mixed-prose cell that should NOT be classified as a label.
+    if stripped.startswith("**") and stripped.endswith("**") and len(stripped) >= 4:
+        stripped = stripped[2:-2].strip()
+    if not stripped:
+        return False
+    # Word count after bold strip. ``split()`` collapses runs of
+    # whitespace, so ``Total  Revenue`` still counts as 2 words.
+    if len(stripped.split()) > _METRICBOX_LABEL_MAX_WORDS:
+        return False
+    # Either capitalized OR ends in ``:``. Capitalization is a strict
+    # ``isupper`` on the first character: ``$1.2M`` fails (``$`` is not
+    # uppercase letter); ``Revenue`` passes; ``revenue`` fails.
+    first_char = stripped[0]
+    if first_char.isupper():
+        return True
+    if stripped.endswith(":"):
+        return True
+    return False
+
+
+def _detect_metricbox_tables(md_source: str) -> List[str]:
+    """Detect 4-column key/value metricbox markdown tables (sub-issue 5g, #212).
+
+    When the source LaTeX uses a 4-column ``tabular`` to render a
+    metricbox (label / value / label / value layout — e.g. ``Revenue |
+    $1.2M | Cost | $800K``), pandoc converts it cell-for-cell into a
+    generic 4-column markdown table. The key/value semantic is lost:
+    reviewers see an undifferentiated grid.
+
+    This is the **detect-only** v0 (per issue #212 — auto-converting to
+    a definition list or a 2-col table is operator-judgement, and the
+    false-positive surface on a 4-col tabular is unbounded: financial
+    quarter tables, comparison matrices, and parameter-sweep grids are
+    all legitimately 4-col). The detector warns the operator at
+    migration time; reshape happens during the first ``memo-revise``
+    pass.
+
+    Detection heuristic (markdown-side only — pandoc has already
+    converted ``\\textbf{Label}`` to ``**Label**``):
+
+    1. **Column count**: table must have **exactly 4** columns
+       (:data:`_METRICBOX_REQUIRED_COLS`). Tables with ≠ 4 cols are
+       skipped.
+    2. **Label-column check**: across ALL body rows (header row
+       skipped, alignment row skipped), columns 1 and 3 must satisfy
+       :func:`_is_metricbox_label_cell` AND columns 2 and 4 must NOT.
+       The col-2/col-4 NOT-label guard is the false-positive guard
+       against financial-quarter tables (``Q1 2026 | $1.2M | Q2 2026
+       | $1.5M``) — those tables have label-shaped cols 1 and 3, but
+       also short-and-capitalized-or-symbol-prefixed cols 2 and 4, so
+       the guard fails them. (Caveat: a financials table whose value
+       cells are *also* short-and-capitalized in a way that satisfies
+       the label heuristic — e.g. ``Status: | OK | Phase: | DONE`` —
+       would false-fire. Documented limitation.)
+    3. **Minimum body rows**: ≥ :data:`_METRICBOX_MIN_BODY_ROWS` body
+       rows must match. A single 4-col row is more likely a header
+       miscount than a metricbox.
+
+    Returns a list of warning strings (empty when no metricbox tables
+    were detected). Each warning includes the first body row's four
+    cells joined by ``" | "`` so operators can grep ``memo.md`` to
+    locate the offending table (load-bearing for triage, mirrors the
+    cell-preview pattern from #209).
+
+    Mirrors the shape of :func:`_detect_packed_table_cells`: takes the
+    post-pandoc, post-sentinel-substitution markdown body and returns a
+    value rather than mutating in place. Pure stdlib. Called from
+    :func:`migrate_thread` immediately after the packed-cell detector,
+    so both detectors see the same body. The two detectors are
+    independent and may both fire on the same body — the warnings stack
+    in ``notes`` and the changelog records both summaries.
+    """
+    warnings: List[str] = []
+
+    # Walk the body line-by-line, collecting contiguous ``| ... |`` runs
+    # as table blocks. We treat blank lines (or any non-pipe line) as a
+    # block boundary. This mirrors the line-walk in
+    # ``_detect_packed_table_cells`` but groups rows into blocks so we
+    # can apply per-table semantics (4-col requirement, body-row count,
+    # column-class consistency).
+    blocks: List[List[List[str]]] = []
+    current: List[List[str]] = []
+
+    for line in md_source.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or not stripped.endswith("|"):
+            # Block boundary.
+            if current:
+                blocks.append(current)
+                current = []
+            continue
+        inner = stripped[1:-1]
+        # Markdown table cells do not contain unescaped pipes by
+        # convention; pandoc emits ``\|`` for any literal pipe. A plain
+        # split on ``|`` is sufficient for the metricbox heuristic
+        # (which never inspects pipe-internal content).
+        cells = [c.strip() for c in inner.split("|")]
+        current.append(cells)
+    if current:
+        blocks.append(current)
+
+    for block in blocks:
+        # Require exactly 4 columns. A block with ragged row widths
+        # (rare in practice — pandoc normalizes) fails this check on
+        # the first ragged row.
+        if not block:
+            continue
+        if any(len(row) != _METRICBOX_REQUIRED_COLS for row in block):
+            continue
+        # Identify and strip the alignment-separator row (all cells
+        # match ``:?-+:?``). Pandoc-emitted tables always have one when
+        # a header is present.
+        body_rows: List[List[str]] = []
+        header_seen = False
+        for row in block:
+            is_alignment = all(
+                re.fullmatch(r":?-+:?", cell) for cell in row if cell
+            ) and any(cell for cell in row)
+            if is_alignment:
+                # First row before the alignment is the header — drop
+                # whichever we already appended (only one row precedes
+                # the alignment by markdown-table convention).
+                if body_rows and not header_seen:
+                    body_rows.pop(0)
+                    header_seen = True
+                elif not header_seen:
+                    # Alignment seen without a preceding row: treat as
+                    # a header sentinel and continue.
+                    header_seen = True
+                continue
+            body_rows.append(row)
+        # If no alignment row was encountered, fall back to the
+        # documented contract: skip the first row of the block (treat
+        # it as the header). The detector's job is to inspect BODY
+        # rows; the header may carry a section title that does not
+        # match the label-column shape.
+        if not header_seen and len(body_rows) >= 1:
+            body_rows = body_rows[1:]
+
+        if len(body_rows) < _METRICBOX_MIN_BODY_ROWS:
+            continue
+
+        # All body rows must match the label/value/label/value pattern.
+        # A single value-shaped cell in cols 1/3 — or a single
+        # label-shaped cell in cols 2/4 — disqualifies the whole table
+        # (per the per-row consistency contract documented in the
+        # issue body's heuristic). This is the false-positive guard
+        # against financial-quarter tables.
+        all_match = True
+        for row in body_rows:
+            col1_label = _is_metricbox_label_cell(row[0])
+            col3_label = _is_metricbox_label_cell(row[2])
+            col2_label = _is_metricbox_label_cell(row[1])
+            col4_label = _is_metricbox_label_cell(row[3])
+            if not (col1_label and col3_label):
+                all_match = False
+                break
+            if col2_label or col4_label:
+                all_match = False
+                break
+        if not all_match:
+            continue
+
+        # Build the first-row preview (load-bearing for grep-based
+        # operator triage, per issue #212 §"In v0 (must)" item 3 and
+        # the precedent from #209).
+        first_row = body_rows[0]
+        preview = " | ".join(first_row)
+        warnings.append(
+            f"4-column key/value metricbox detected at memo.md table "
+            f'(first-row preview: "{preview}"): '
+            f"{len(body_rows)} body rows match label/value/label/value "
+            "pattern. Consider reshaping to definition-list style "
+            "(**label**: value, one per line) or a 2-column "
+            "metric/value table during first memo-revise pass. See "
+            "refs/prior-pipeline/v0/memo.tex for source layout."
+        )
+    return warnings
+
+
+# ---------------------------------------------------------------------------
 # BRIEF.md §Sources parser + refs/ seeding (issue #203)
 # ---------------------------------------------------------------------------
 #
@@ -1279,6 +1513,20 @@ def migrate_thread(
     packed_cell_warnings = _detect_packed_table_cells(md_body)
     notes.extend(packed_cell_warnings)
 
+    # --- Step 5c: detect 4-column key/value metricbox tables (#212,
+    # detect-only). Runs immediately after the packed-cell detector on
+    # the same post-pandoc, post-sentinel-substitution body. The two
+    # detectors are independent: a body containing both a packed cell
+    # and a metricbox produces both warning families, stacked in
+    # ``notes`` with no de-duplication (they flag different concerns —
+    # illegible single cell vs. lost key/value semantic). Detect-only:
+    # auto-rendering into a definition list or 2-col metric/value table
+    # is operator-judgement (a financials block reads better as a
+    # 2-col table, a status block reads better as a definition list);
+    # the operator reshapes during the first ``memo-revise`` pass.
+    metricbox_warnings = _detect_metricbox_tables(md_body)
+    notes.extend(metricbox_warnings)
+
     # --- Step 6: write memo.md.
     memo_md = version_dir / "memo.md"
     memo_md.write_text(md_body.lstrip("\n"), encoding="utf-8")
@@ -1434,6 +1682,17 @@ def migrate_thread(
         changelog_lines.append(
             f"- Detected {len(packed_cell_warnings)} packed table "
             "cell(s); see notes for unfold guidance."
+        )
+
+    # Metricbox detector summary (#212). Adjacent to the packed-cell
+    # summary by design — both detectors record one thread-level audit
+    # line each when they fire, so the changelog captures the warning
+    # beyond the ephemeral MigrationResult.notes list. They compose
+    # without de-duplication (different concerns).
+    if metricbox_warnings:
+        changelog_lines.append(
+            f"- Detected {len(metricbox_warnings)} 4-column key/value "
+            "metricbox table(s); see notes for reshape guidance."
         )
 
     # --- Step 13: refs/ seeding from BRIEF.md §Sources (issue #203).

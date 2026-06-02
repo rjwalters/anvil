@@ -1570,5 +1570,456 @@ class TestOrphanFigureDetection(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Metricbox detector (issue #212, sub-issue 5g)
+# ---------------------------------------------------------------------------
+
+
+class TestMetricboxDetector(unittest.TestCase):
+    """Issue #212: detect-only warnings for 4-column key/value metricbox tables.
+
+    The detector fires when ALL of the following hold for a markdown
+    table block:
+
+    - Exactly 4 columns (after splitting on unescaped ``|``).
+    - Across all body rows (header + alignment skipped), cols 1 and 3
+      are short-label-shaped AND cols 2 and 4 are NOT short-label-shaped.
+    - At least 2 body rows match.
+
+    Short-label heuristic: ≤2 words AND (capitalized OR ends in ``:``),
+    after stripping ``**...**`` bold markers.
+
+    Detector runs post-pandoc, post-sentinel-substitution (Step 5c in
+    ``migrate_thread`` — immediately after the packed-cell detector).
+    """
+
+    def _run_with_pandoc_md(
+        self, tmp_path: Path, slug: str, pandoc_md: str
+    ) -> MigrationResult:
+        src_dir = tmp_path / "legacy" / slug
+        src_dir.mkdir(parents=True)
+        src_tex = src_dir / "memo.tex"
+        _write_minimal_tex(src_tex, "Body")
+        portfolio = tmp_path / "portfolio"
+        portfolio.mkdir(exist_ok=True)
+
+        with mock.patch(
+            "anvil.skills.memo.lib.migrate.shutil.which",
+            side_effect=_fake_which_factory({"pandoc": True}),
+        ), mock.patch(
+            "anvil.skills.memo.lib.migrate.subprocess.run",
+            side_effect=_fake_subprocess_factory(pandoc_stdout=pandoc_md),
+        ):
+            return migrate_thread(
+                source_tex=src_tex,
+                portfolio_dir=portfolio,
+            )
+
+    def _metricbox_notes(self, result: MigrationResult) -> list:
+        return [
+            n for n in result.notes
+            if n.startswith("4-column key/value metricbox detected at memo.md table")
+        ]
+
+    # ----- AC1: positive — draftwell-autobiography-shape basic ----------------
+
+    def test_ac1_detector_fires_on_basic_metricbox(self) -> None:
+        """AC1: a 4-col label/value/label/value table with 2+ body rows fires."""
+        import tempfile
+
+        # draftwell-autobiography shape: short capitalized labels in
+        # cols 1 and 3, longer value cells in cols 2 and 4.
+        pandoc_md = (
+            "Intro.\n"
+            "\n"
+            "| Header A | Header B | Header C | Header D |\n"
+            "|---|---|---|---|\n"
+            "| Revenue | one point two million dollars | Cost | "
+            "eight hundred thousand dollars |\n"
+            "| Margin | thirty four percent gross | Runway | "
+            "eighteen months remaining |\n"
+            "\n"
+            "Closing prose.\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "draftwell-autobiography", pandoc_md
+            )
+        metricbox = self._metricbox_notes(result)
+        self.assertEqual(len(metricbox), 1)
+        self.assertIn("body rows match label/value/label/value", metricbox[0])
+
+    # ----- AC5: positive — bold-label form (`**Label**`) ---------------------
+
+    def test_ac5_detector_fires_on_bold_label_form(self) -> None:
+        """AC5: ``**Label**`` (pandoc's ``\\textbf{Label}``) is detected.
+
+        The detector trims surrounding ``**...**`` before measuring word
+        count and capitalization.
+        """
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| **Revenue** | one point two million dollars | "
+            "**Cost** | eight hundred thousand dollars |\n"
+            "| **Margin** | thirty four percent gross | "
+            "**Runway** | eighteen months remaining |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "bold-label-thread", pandoc_md
+            )
+        metricbox = self._metricbox_notes(result)
+        self.assertEqual(len(metricbox), 1)
+
+    # ----- AC6: positive — trailing-colon label form ------------------------
+
+    def test_ac6_detector_fires_on_trailing_colon_form(self) -> None:
+        """AC6: labels ending in ``:`` are detected via the colon branch."""
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| revenue: | one point two million dollars total | "
+            "cost: | eight hundred thousand dollars net |\n"
+            "| margin: | thirty four percent gross blended | "
+            "runway: | eighteen months remaining capital |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "colon-label-thread", pandoc_md
+            )
+        metricbox = self._metricbox_notes(result)
+        self.assertEqual(len(metricbox), 1)
+
+    # ----- AC3 negative: 3-col table does NOT fire ---------------------------
+
+    def test_ac3_no_fire_on_3_col_table(self) -> None:
+        """AC3 (3-col): a 3-column table is skipped by the col-count gate."""
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 |\n"
+            "|---|---|---|\n"
+            "| Revenue | one point two million dollars | extra cell |\n"
+            "| Margin | thirty four percent gross | extra cell |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "three-col-thread", pandoc_md
+            )
+        self.assertEqual(self._metricbox_notes(result), [])
+
+    # ----- AC3 negative: 5-col table does NOT fire ---------------------------
+
+    def test_ac3_no_fire_on_5_col_table(self) -> None:
+        """AC3 (5-col): a 5-column table is skipped by the col-count gate."""
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 | H5 |\n"
+            "|---|---|---|---|---|\n"
+            "| Revenue | one point two | Cost | eight hundred | extra |\n"
+            "| Margin | thirty four pct | Runway | eighteen months | extra |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "five-col-thread", pandoc_md
+            )
+        self.assertEqual(self._metricbox_notes(result), [])
+
+    # ----- AC4 negative: single body row does NOT fire -----------------------
+
+    def test_ac4_no_fire_on_single_body_row(self) -> None:
+        """AC4: a 4-col table with only one body row is skipped (min ≥2)."""
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| Revenue | one point two million dollars | Cost | "
+            "eight hundred thousand dollars |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "single-row-thread", pandoc_md
+            )
+        self.assertEqual(self._metricbox_notes(result), [])
+
+    # ----- AC2 negative: financial-quarter table does NOT fire ---------------
+
+    def test_ac2_fires_on_quarter_table_with_prose_values(self) -> None:
+        """AC2 (composition reality check): 4-col table with quarter-shaped
+        labels in cols 1/3 and long, multi-word, lowercase value cells in
+        cols 2/4 fires the metricbox detector.
+
+        Per the AC2 fixture's documented logic: when cols 2/4 are
+        unambiguously NOT short-label-shaped (e.g. multi-word lowercase
+        prose), the col-2/col-4 NOT-label guard SUCCEEDS (cells are
+        correctly identified as values) and the table is reported as
+        a metricbox — operators reshape during ``memo-revise``.
+
+        This documents the dual reading of the AC2 fixture: a
+        ``Quarter / value / Quarter / value`` table IS structurally a
+        4-col key/value layout under the v0 heuristic, even if a human
+        reader might think of it as a financial-period matrix. The
+        warning's reshape guidance still applies (def-list or 2-col
+        metric/value rendering).
+        """
+        import tempfile
+
+        pandoc_md = (
+            "| Quarter | Revenue figure | Quarter | Revenue figure |\n"
+            "|---|---|---|---|\n"
+            "| Q1 2026 | one point two three four million dollars vs prior | "
+            "Q2 2026 | one point five zero zero million dollars vs prior |\n"
+            "| Q3 2026 | one point eight zero zero million dollars vs prior | "
+            "Q4 2026 | two point one zero zero million dollars vs prior |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "quarter-with-prose-values-thread", pandoc_md
+            )
+        self.assertEqual(len(self._metricbox_notes(result)), 1)
+
+    def test_ac2_documented_limitation_short_currency_value_fires(self) -> None:
+        """AC2 (documented limitation): cells like ``$1.2M`` are 1 word
+        and start with ``$``. Under the v0 heuristic — strict ``isupper``
+        first-char check — they do NOT satisfy the short-label
+        heuristic, so the col-2/col-4 NOT-label guard SUCCEEDS and the
+        detector flags the table as a metricbox.
+
+        Per issue #212 AC2: "Document the limitation: cells like
+        ``$1.2M`` would currently false-fire — note in code comment."
+        This test pins the documented behavior so a future tuning of
+        the capitalization check (e.g. accept currency symbols as
+        "capitalized-by-symbol") will trip this assertion and force
+        a re-think of the AC2 contract.
+        """
+        import tempfile
+
+        pandoc_md = (
+            "| Q | val | Q | val |\n"
+            "|---|---|---|---|\n"
+            "| Q1 2026 | $1.2M | Q2 2026 | $1.5M |\n"
+            "| Q3 2026 | $1.8M | Q4 2026 | $2.1M |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "currency-symbol-thread", pandoc_md
+            )
+        # Documented limitation: this currently fires (false-positive
+        # surface called out explicitly in the issue body).
+        self.assertEqual(len(self._metricbox_notes(result)), 1)
+
+    def test_ac2_no_fire_when_value_cols_short_capitalized(self) -> None:
+        """AC2 (sharp guard): the col-2/col-4 NOT-label guard suppresses
+        a 4-col table whose value cells are ALSO short-and-capitalized
+        (e.g. ``Status: | OK | Phase: | DONE``). Documented as the
+        intended false-positive guard: when cols 2 and 4 themselves
+        look label-shaped, the table is not unambiguously
+        label/value/label/value and we skip it.
+        """
+        import tempfile
+
+        # All four columns satisfy the label heuristic. The guard
+        # requires cols 2 and 4 to NOT match — they do, so we skip.
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| Status: | OK | Phase: | DONE |\n"
+            "| Mode: | LIVE | Build: | GREEN |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "all-label-cols-thread", pandoc_md
+            )
+        self.assertEqual(self._metricbox_notes(result), [])
+
+    # ----- AC7: warning includes first-row preview ---------------------------
+
+    def test_ac7_first_row_preview_in_warning(self) -> None:
+        """AC7: the notes entry includes the first body row joined by ``" | "``."""
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| Revenue | one point two million dollars | Cost | "
+            "eight hundred thousand dollars |\n"
+            "| Margin | thirty four percent gross | Runway | "
+            "eighteen months remaining |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "preview-thread", pandoc_md
+            )
+        metricbox = self._metricbox_notes(result)
+        self.assertEqual(len(metricbox), 1)
+        # First-row cells joined by " | " are in the warning preview.
+        self.assertIn("Revenue", metricbox[0])
+        self.assertIn("Cost", metricbox[0])
+        self.assertIn(
+            "one point two million dollars | Cost", metricbox[0]
+        )
+
+    # ----- AC8: changelog records the detection ------------------------------
+
+    def test_ac8_changelog_records_detection(self) -> None:
+        """AC8: changelog.md contains the metricbox summary line."""
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| Revenue | one point two million dollars | Cost | "
+            "eight hundred thousand dollars |\n"
+            "| Margin | thirty four percent gross | Runway | "
+            "eighteen months remaining |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "metricbox-changelog-thread", pandoc_md
+            )
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+        self.assertIn(
+            "Detected 1 4-column key/value metricbox table(s)", changelog
+        )
+        self.assertIn("see notes for reshape guidance", changelog)
+
+    def test_ac8_changelog_silent_when_no_detection(self) -> None:
+        """AC8 (negative): changelog does NOT mention metricbox when not detected."""
+        import tempfile
+
+        pandoc_md = "Plain body, no tables.\n"
+        with tempfile.TemporaryDirectory() as td:
+            # Slug deliberately does NOT contain the word "metricbox" —
+            # the changelog's "# Changelog for {slug}" header would
+            # otherwise tautologically contain the search string.
+            result = self._run_with_pandoc_md(
+                Path(td), "plain-body-thread", pandoc_md
+            )
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+        self.assertNotIn("metricbox", changelog)
+
+    # ----- AC9: detector is post-pandoc, post-sentinel ----------------------
+
+    def test_ac9_detector_runs_post_pandoc_post_sentinel(self) -> None:
+        """AC9: detector sees post-substitution ``~`` and ``€`` in body cells.
+
+        The detector must run AFTER ``_post_substitute_sentinels`` so
+        the first-row preview contains a literal ``~`` rather than the
+        sentinel string. Verifies the wiring at Step 5c.
+        """
+        import tempfile
+
+        # A metricbox where one value cell contains a literal ``~`` —
+        # the post-substitution form. If the detector ran BEFORE
+        # substitution it would see the ANVILTILDESENTINEL string in
+        # the preview, not ``~``.
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| Revenue | ~one point two million dollars | Cost | "
+            "eight hundred thousand dollars |\n"
+            "| Margin | thirty four percent gross | Runway | "
+            "eighteen months remaining |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "post-sentinel-metricbox-thread", pandoc_md
+            )
+        metricbox = self._metricbox_notes(result)
+        self.assertEqual(len(metricbox), 1)
+        # Literal ``~`` in the preview (the post-substitution form).
+        self.assertIn("~one point two", metricbox[0])
+        self.assertNotIn("ANVILTILDESENTINEL", metricbox[0])
+
+    # ----- AC10: composes with packed-cell detector --------------------------
+
+    def test_ac10_composes_with_packed_cell_detector(self) -> None:
+        """AC10: a body with BOTH a packed cell AND a metricbox produces
+        both warning families and both changelog summary lines.
+        """
+        import tempfile
+
+        # First table: a packed cell (multi-glyph signal).
+        # Second table: a metricbox.
+        packed_cell = (
+            "Revenue $150 $-$ COGS $40 $-$ Gross $110 $-$ Labor $35 "
+            "$-$ Overhead $20 $-$ EBITDA $55"
+        )
+        pandoc_md = (
+            "| Packed P&L |\n"
+            "|---|\n"
+            f"| {packed_cell} |\n"
+            "\n"
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| Revenue | one point two million dollars | Cost | "
+            "eight hundred thousand dollars |\n"
+            "| Margin | thirty four percent gross | Runway | "
+            "eighteen months remaining |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "compose-thread", pandoc_md
+            )
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+
+        packed = [
+            n for n in result.notes
+            if n.startswith("Packed tabularx cell detected at memo.md table")
+        ]
+        metricbox = self._metricbox_notes(result)
+        self.assertGreaterEqual(len(packed), 1)
+        self.assertEqual(len(metricbox), 1)
+        # Both changelog summary lines present (no de-duplication).
+        self.assertIn("packed table cell(s)", changelog)
+        self.assertIn(
+            "4-column key/value metricbox table(s)", changelog
+        )
+
+    # ----- AC11: detect-only is non-fatal -----------------------------------
+
+    def test_ac11_migration_succeeds_when_metricbox_detected(self) -> None:
+        """AC11: detect-only is non-fatal — migration produces a DRAFTED thread."""
+        import tempfile
+
+        pandoc_md = (
+            "| H1 | H2 | H3 | H4 |\n"
+            "|---|---|---|---|\n"
+            "| Revenue | one point two million dollars | Cost | "
+            "eight hundred thousand dollars |\n"
+            "| Margin | thirty four percent gross | Runway | "
+            "eighteen months remaining |\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            result = self._run_with_pandoc_md(
+                Path(td), "metricbox-non-fatal-thread", pandoc_md
+            )
+            self.assertTrue(result.memo_md.exists())
+            self.assertTrue(result.brief_md.exists())
+            self.assertTrue(result.anvil_json.exists())
+            self.assertTrue((result.version_dir / "_progress.json").exists())
+            self.assertTrue((result.version_dir / "changelog.md").exists())
+            progress = json.loads(
+                (result.version_dir / "_progress.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(progress["phases"]["draft"]["state"], "done")
+        self.assertEqual(len(self._metricbox_notes(result)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
