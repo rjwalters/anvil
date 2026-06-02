@@ -29,8 +29,6 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
     exhibits/              Inline exhibits referenced from body
     _progress.json         Phase state for this version
     changelog.md           (revisions only) Maps prior critic notes to changes
-    _convictions.md        (revisions only, optional) Reviser-written carry-forward
-                           positions — advisory only; see §Convictions ledger below
   <thread>.1.review/       Reviewer output for version 1 (read-only)
     verdict.md             Top-level decision (advance / block) + total /40
     scoring.md             Per-dimension scores against the memo rubric
@@ -75,23 +73,9 @@ Accepted file shapes for source-of-truth materials in v0: markdown (`.md`), plai
 
 See `commands/memo-draft.md` §Procedure step 3 for the drafter contract (ingestion of `refs/` source-of-truth materials), `commands/memo-review.md` §Procedure step 5 for the reviewer back-check sub-step, and `rubric.md` §"Refs back-check (dim 3)" for the per-instance deduction rule. The contract degrades gracefully: when `refs/` contains no source-of-truth materials (only citation stubs, or empty), the back-check is inactive and dim 3 falls back to the citation-hook behavior alone.
 
-### Convictions ledger
+### Optional `.latest` convenience symlinks
 
-`<thread>.{N}/_convictions.md` is an **optional, advisory** file written by the reviser to carry settled positions forward across versions. It exists to solve a single observed friction: a reviser at version `N+1` re-litigating an issue that was already settled — by a critic challenge or by a prior reviser decision — at version `N` (or earlier).
-
-The contract is narrowly scoped on purpose:
-
-- **Writer**: `memo-revise` only. Written immediately after the `changelog.md` step in the reviser procedure. The drafter does not write it; reviewers do not write it; auditors do not write it.
-- **Reader**: the *next* `memo-revise` invocation only. The reviser reads the convictions from `<thread>.{N}/_convictions.md` before planning the v{N+2} revision — specifically to avoid reopening positions that have already survived an explicit critic challenge or an explicit reviser decision.
-- **What counts as a "conviction"**: a position that has either (a) survived an explicit critic challenge in a prior review/audit pass, or (b) survived an explicit reviser decision (e.g., a `Resolution: declined` row in a prior `changelog.md`). A drafter-introduced position with no prior challenge is **not** a conviction in this contract — only contested-and-held positions qualify.
-- **Body-anchor requirement**: each conviction entry MUST name a specific section heading or paragraph anchor in the current `memo.md` that the conviction attaches to (e.g., "§Risks ¶3" or "§Recommendation ¶1"). A conviction whose named anchor no longer exists in the latest `memo.md` is automatically **stale** and should be removed (or rewritten against the new structure) on the next revise pass. This anchor requirement is the load-bearing safeguard against the ledger drifting free of the artifact it is supposed to describe.
-- **Schema**: free-form prose. No JSON, no required headings, no scored fields. A single conviction entry is typically one short paragraph (anchor + position + the prior challenge it survived). See `templates/BRIEF.migration.md.example` §Convictions for a shape demonstration.
-
-**Advisory: not scored, not gating, no state-machine impact.** `_convictions.md` does not appear in the rubric (no dimension reads it; no deduction is applied for its presence or absence). It does not appear in the state machine (`READY` and `AUDITED` derivation ignore it). The reviewer does not read it. It is purely a reviser-to-next-reviser channel. Its absence is fully normal; its presence is fully optional.
-
-**Phase B kill switch.** This contract ships as Phase A of an explicitly staged rollout (Epic #142). If the canary does not consume `_convictions.md` within 2–4 weeks of merge, the file and its references are removed entirely per the PR #40 / PR #72 negative-result precedent. The single named consumer is the next reviser at the next version — if that consumer never reads the file, the contract has no audience and the work closes.
-
-**Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`, etc.) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Resolution semantics for the memo lifecycle commands:
+Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`, etc.) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Resolution semantics for the memo lifecycle commands:
 
 - **`memo-revise` does not follow `.latest`.** It enumerates numbered `<thread>.{N}/` directories and picks the highest N (see `commands/memo-revise.md` step 1). A `.latest` symlink in the portfolio dir is inert — the digit-N anchor in `enumerate_versions` (see `anvil/lib/snippets/thread_state.md`) ignores it.
 - **`memo-revise` does not update `.latest`.** After writing `<thread>.{N+1}/`, the symlink (if present) still points at the prior N until the consumer's own script (or hand-`ln`) re-points it. Anvil-shipped memo commands do not write, require, or read `.latest` symlinks in v0; maintenance is consumer-side.
@@ -143,7 +127,7 @@ The reason argument to `--polish` is **required**: empty, whitespace-only, or mi
 
 What `--polish` bypasses: **step 4 (verdict pre-check) only.** The iteration-cap check (step 3) still applies — a polish pass against a thread at `max_iterations` still hits the BLOCKED notice. The "fresh review required" check (step 1) still applies — running `--polish` twice in a row without an intervening `memo-review` is rejected (no fresh review to polish against). The flag is single-pass: it produces exactly one `<thread>.{N+1}/`, never loops, never consults a target score, never re-invokes itself.
 
-The polish pass re-enters the state machine at `REVISED`. The next `memo-review` pass derives state from on-disk evidence as usual; the reviewer does NOT read `revision_mode` or `revise_force_reason` and does NOT special-case the polish pass — it scores the polished version on its own rubric merits. The state-machine derivation in the table above is unchanged; `revision_mode` is audit-trail-only, mirroring the `_convictions.md` advisory-only contract above.
+The polish pass re-enters the state machine at `REVISED`. The next `memo-review` pass derives state from on-disk evidence as usual; the reviewer does NOT read `revision_mode` or `revise_force_reason` and does NOT special-case the polish pass — it scores the polished version on its own rubric merits. The state-machine derivation in the table above is unchanged; `revision_mode` is audit-trail-only — not scored, not gating, no state-machine impact.
 
 See `commands/memo-revise.md` §"CLI flags" for the full reviser-side contract.
 

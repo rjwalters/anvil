@@ -66,10 +66,14 @@ byte-identical to a thread without the parity lint enabled.
 Phase B promotion to ``error`` (and therefore ``advance: false``-gating) is a
 separate decision deferred 2–4 weeks after Phase A merge, based on canary
 consumption signal — does the warning fire reliably on actionable drift, or is
-the false-positive volume too high? This Phase A / Phase B contract mirrors
-the ``_convictions.md`` kill-switch precedent documented in
-``anvil/skills/memo/SKILL.md`` §"Convictions ledger" / "Phase B kill switch"
-(issue #147).
+the false-positive volume too high? This Phase A / Phase B
+ship-with-falsifiability pattern (single named consumer + bounded observation
+window + explicit kill-switch criterion) is the framework's established
+negative-result discipline; see ``WORK_LOG.md`` 2026-06-02 (issue #227) for
+the canonical kill-switch precedent — a Phase A primitive that did not
+survive its bounded canary window and was cleanly retracted. The pattern
+itself — ship-with-falsifiability, observe, retract-cleanly — is what carries
+forward here.
 
 What the lint does (v0)
 -----------------------

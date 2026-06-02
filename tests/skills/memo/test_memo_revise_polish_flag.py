@@ -281,11 +281,11 @@ def test_polish_flag_still_blocked_at_iteration_cap():
 
 def test_polish_flag_full_reviser_contract_honored():
     """The full reviser contract from step 5 onward (target-length
-    resolution, critic-sibling discovery, optional _convictions.md
-    carry-forward, memo-render non-blocking call, phases.revise.state =
-    done) MUST be honored unchanged under ``--polish``. The reviewer
-    does NOT read revision_mode and does NOT special-case the polish
-    pass — it scores the polished version on its own rubric merits.
+    resolution, critic-sibling discovery, memo-render non-blocking call,
+    phases.revise.state = done) MUST be honored unchanged under
+    ``--polish``. The reviewer does NOT read revision_mode and does NOT
+    special-case the polish pass — it scores the polished version on its
+    own rubric merits.
     """
     revise = _read(REVISE_MD)
     skill = _read(SKILL_MD)
@@ -315,5 +315,5 @@ def test_polish_flag_full_reviser_contract_honored():
     )
     assert "not scored" in lowered_skill and "not gating" in lowered_skill, (
         "SKILL.md MUST state revision_mode is not scored, not gating "
-        "(issue #201 AC8 — mirrors _convictions.md advisory contract)"
+        "(issue #201 AC8 — audit-trail-only contract)"
     )

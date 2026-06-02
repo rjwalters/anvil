@@ -454,7 +454,6 @@ def test_memo_revise_preserves_existing_steps():
         "Initialize `_progress.json`",
         "Read inputs",
         "Build a revision plan",
-        "Read prior convictions",
         "Produce `memo.md`",
         "Write `changelog.md`",
         "Update `_progress.json`",

@@ -55,7 +55,7 @@ See SKILL.md §"Operator-initiated polish passes" for the user-facing shape.
    - Default path (no `--polish`): `metadata.revision_mode = "normal"` (or omit the field entirely — readers tolerate both shapes for backwards-compat with pre-this-change version dirs); `metadata.revise_force_reason = null` (or omit).
    - Polish path (`--polish "<reason>"`): `metadata.revision_mode = "polish"`; `metadata.revise_force_reason = "<verbatim operator-supplied reason>"`. The reason MUST be stored verbatim — no trimming, no normalization, no truncation beyond what JSON encoding requires.
 
-   Both fields participate in the standard shallow-merge rule per `anvil/lib/snippets/progress.md` §"Read-merge-write recipe" — any subsequent command that touches `_progress.json` preserves them. `revision_mode` is NOT scored, NOT gating, and has NO state-machine impact — it is audit-trail-only, mirroring the `_convictions.md` advisory-only contract.
+   Both fields participate in the standard shallow-merge rule per `anvil/lib/snippets/progress.md` §"Read-merge-write recipe" — any subsequent command that touches `_progress.json` preserves them. `revision_mode` is NOT scored, NOT gating, and has NO state-machine impact — it is audit-trail-only (operator-side disclosure of why the polish-pass bypass was taken).
 6. **Read inputs**:
    - Prior version's `memo.md` and `exhibits/`.
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
@@ -85,12 +85,6 @@ See SKILL.md §"Operator-initiated polish passes" for the user-facing shape.
    - For each rubric dimension that scored below threshold (or had a critical flag), enumerate the specific changes required to lift the score.
    - For each `comments.md` entry tagged `blocker` or `major`, plan a concrete change.
    - Resolve conflicting feedback between critic siblings explicitly (e.g., reviewer says "more risks," critic says "fewer risks but deeper" — pick a synthesis and note it in the changelog).
-7.5. **Read prior convictions (before re-litigating settled issues)**: if `<thread>.{N}/_convictions.md` exists, read it before finalizing the revision plan. Each conviction names a body anchor (section heading or paragraph) in the prior `memo.md` and records a position that has already survived an explicit critic challenge or an explicit reviser decision. For each conviction:
-   - If the same position is being reopened by a critic note in the current pass, the default is to **honor the conviction**: keep the position, document the disagreement in `changelog.md` as `Resolution: declined — see prior conviction at <anchor>`, and carry the conviction forward into the v{N+1} `_convictions.md` (see step 9.5). The next reviewer pass can still override.
-   - If the conviction's named anchor no longer exists in the prior `memo.md` (or will be removed by the planned revision), the conviction is **stale**: drop it. Do not carry stale convictions forward.
-   - If no prior `_convictions.md` exists, this step is a no-op. The file is optional and advisory — its absence is normal.
-
-   See SKILL.md §Convictions ledger for the full contract (advisory only, not scored, not gating, no state-machine impact).
 8. **Produce `memo.md`** at `<thread>.{N+1}/memo.md`:
    - Address each planned change.
    - Preserve sections that scored well — do not regress on dimensions that already met the standard.
@@ -120,14 +114,7 @@ See SKILL.md §"Operator-initiated polish passes" for the user-facing shape.
    ```
 
    This makes the polish-pass disposition visible in-line for downstream readers (next reviewer, auditor, human reader of the changelog) without requiring them to inspect `_progress.json.metadata`. The reason is quoted verbatim — do NOT paraphrase or shorten. Under `--polish`, the changelog table SHOULD treat sub-threshold dimensions and `nit`/untagged comments as first-class rows (one row per addressed item); the `Source` column names the sibling and tag (e.g., `acme-seed.4.review (dim 4)`, `acme-seed.4.review (nit)`).
-9.5. **Write `_convictions.md`** at `<thread>.{N+1}/_convictions.md` (optional, advisory): record positions in the just-produced v{N+1} `memo.md` that have either (a) survived an explicit critic challenge in the current or any prior pass, or (b) survived an explicit reviser decision (typically a `Resolution: declined` row in this or a prior `changelog.md`). Each entry MUST name a body anchor — a section heading or paragraph reference — in the current v{N+1} `memo.md` (e.g., "§Risks ¶3"). A conviction without a current-version anchor is automatically stale and must not be written.
-
-   Carry forward surviving entries from `<thread>.{N}/_convictions.md` (read in step 7.5) whose anchors still resolve against the v{N+1} `memo.md`, rewriting the anchor if the section was renamed. Add new entries for positions newly contested-and-held in this revision pass (look at the `Resolution: declined` rows of the changelog you just wrote — each is a candidate).
-
-   The file is free-form prose; one short paragraph per entry is the documented shape. If there are no contested-and-held positions to record (a normal outcome — many revisions produce no convictions), skip the file entirely. Absence is fully normal. See SKILL.md §Convictions ledger for the full contract; see `templates/BRIEF.migration.md.example` §Convictions for a shape example.
-
-   **Advisory only.** This file is not scored, not gating, has no state-machine impact, and is read only by the next `memo-revise` invocation. The reviewer does not read it. The auditor does not read it.
-9.7. **Invoke `memo-render` (optional, non-blocking)**: after the revised `memo.md`, `changelog.md`, and (optional) `_convictions.md` are written, invoke `memo-render <thread>` to render the revised `memo.md` → `memo.pdf` and write the render-gate findings into `<thread>.{N+1}/_progress.json.phases.render` + `_progress.json.render_gate`. This step is the lifecycle wiring shipped by Epic #158 Phase 3 (issue #190).
+9.7. **Invoke `memo-render` (optional, non-blocking)**: after the revised `memo.md` and `changelog.md` are written, invoke `memo-render <thread>` to render the revised `memo.md` → `memo.pdf` and write the render-gate findings into `<thread>.{N+1}/_progress.json.phases.render` + `_progress.json.render_gate`. This step is the lifecycle wiring shipped by Epic #158 Phase 3 (issue #190).
 
    **Non-blocking by design.** A missing renderer, a render-gate finding, or a hard pandoc failure does NOT abort `memo-revise`. The reviser still reports `Revised <thread>.{N} → <thread>.{N+1}/...` per step 11. The render outcome is recorded in `_progress.json` for the operator to surface and for the Phase 4 reviewer to read in `_summary.md.render_gate`.
 
