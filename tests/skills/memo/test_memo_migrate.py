@@ -969,5 +969,265 @@ class TestSourceNotFound(unittest.TestCase):
             self.assertIn("not found", str(ctx.exception).lower())
 
 
+# ---------------------------------------------------------------------------
+# Sub-issue 5e (issue #210) — orphan-figure detection
+# ---------------------------------------------------------------------------
+
+
+class TestOrphanFigureDetection(unittest.TestCase):
+    """Sub-issue 5e (#210): figures/*.pdf not referenced by any
+    ``\\includegraphics`` in the source ``.tex`` are surfaced as orphans
+    on ``MigrationResult.orphan_figures`` and in the changelog/notes.
+
+    Report-only — preservation behavior (``_copy_refs`` archives
+    everything under ``figures/`` regardless) is intentionally unchanged.
+    """
+
+    def _run_with_figures(
+        self,
+        tmp_path: Path,
+        thread_name: str,
+        figure_files: list,
+        referenced: list,
+    ) -> MigrationResult:
+        """Build a fixture: ``figure_files`` populate ``figures/``,
+        ``referenced`` are the basenames pandoc emits as image refs.
+
+        Each ``referenced`` entry is a basename like ``"fig1"`` and
+        becomes a ``![](figures/<basename>.pdf)`` line in the simulated
+        pandoc output.
+        """
+        src_dir = tmp_path / "legacy" / thread_name
+        src_dir.mkdir(parents=True)
+        src_tex = src_dir / "memo.tex"
+        _write_minimal_tex(src_tex, "Body")
+        figures = src_dir / "figures"
+        figures.mkdir()
+        for name in figure_files:
+            (figures / name).write_bytes(b"%PDF-fake")
+        portfolio = tmp_path / "portfolio"
+        portfolio.mkdir()
+
+        ref_lines = "\n".join(
+            f"![caption](figures/{basename}.pdf)" for basename in referenced
+        )
+        pandoc_md = f"Body\n\n{ref_lines}\n"
+
+        def _on_pdftoppm(cmd):
+            out_stem = Path(cmd[-1])
+            out_png = out_stem.parent / f"{out_stem.name}-1.png"
+            out_png.parent.mkdir(parents=True, exist_ok=True)
+            out_png.write_bytes(b"\x89PNG-fake")
+
+        with mock.patch(
+            "anvil.skills.memo.lib.migrate.shutil.which",
+            side_effect=_fake_which_factory(
+                {"pandoc": True, "pdftoppm": True}
+            ),
+        ), mock.patch(
+            "anvil.skills.memo.lib.migrate.subprocess.run",
+            side_effect=_fake_subprocess_factory(
+                pandoc_stdout=pandoc_md,
+                on_pdftoppm=_on_pdftoppm,
+            ),
+        ):
+            return migrate_thread(
+                source_tex=src_tex,
+                portfolio_dir=portfolio,
+            )
+
+    def test_orphan_figures_detected_aldus_shape(self) -> None:
+        """aldus shape: 3 PDFs in figures/, source references 2; 1 orphan."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            result = self._run_with_figures(
+                tmp_path,
+                "aldus-shape",
+                figure_files=["fig1.pdf", "fig2.pdf", "unused1.pdf"],
+                referenced=["fig1", "fig2"],
+            )
+            self.assertEqual(
+                result.orphan_figures, ["figures/unused1.pdf"]
+            )
+
+    def test_orphan_figures_multiple_orphans_flat_pack_world_shape(
+        self,
+    ) -> None:
+        """flat-pack-world shape: 4 PDFs, 1 referenced, 3 orphans (sorted)."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            result = self._run_with_figures(
+                tmp_path,
+                "flat-pack-shape",
+                figure_files=[
+                    "fig1.pdf",
+                    "orphan_a.pdf",
+                    "orphan_b.pdf",
+                    "orphan_c.pdf",
+                ],
+                referenced=["fig1"],
+            )
+            # Sorted lexicographically by basename (glob() iteration order
+            # is not guaranteed; the implementation sorts explicitly).
+            self.assertEqual(
+                result.orphan_figures,
+                [
+                    "figures/orphan_a.pdf",
+                    "figures/orphan_b.pdf",
+                    "figures/orphan_c.pdf",
+                ],
+            )
+
+    def test_orphan_figures_empty_when_all_referenced(self) -> None:
+        """Every PDF in figures/ is referenced → no orphans."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            result = self._run_with_figures(
+                tmp_path,
+                "all-referenced",
+                figure_files=["fig1.pdf", "fig2.pdf"],
+                referenced=["fig1", "fig2"],
+            )
+            self.assertEqual(result.orphan_figures, [])
+
+    def test_orphan_figures_empty_when_no_figures_dir(self) -> None:
+        """No sibling figures/ dir → no orphans, no orphan-related note."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            src_dir = tmp_path / "legacy" / "no-figures-dir"
+            src_dir.mkdir(parents=True)
+            src_tex = src_dir / "memo.tex"
+            _write_minimal_tex(src_tex, "Body with no figures")
+            portfolio = tmp_path / "portfolio"
+            portfolio.mkdir()
+
+            with mock.patch(
+                "anvil.skills.memo.lib.migrate.shutil.which",
+                side_effect=_fake_which_factory({"pandoc": True}),
+            ), mock.patch(
+                "anvil.skills.memo.lib.migrate.subprocess.run",
+                side_effect=_fake_subprocess_factory(
+                    pandoc_stdout="Body with no figures\n"
+                ),
+            ):
+                result = migrate_thread(
+                    source_tex=src_tex,
+                    portfolio_dir=portfolio,
+                )
+
+            self.assertEqual(result.orphan_figures, [])
+            # No orphan-related note should be emitted in the silent path.
+            for note in result.notes:
+                self.assertNotIn("orphan figure", note)
+
+    def test_orphan_figures_in_changelog(self) -> None:
+        """When orphans present, changelog.md carries the Detected line."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            result = self._run_with_figures(
+                tmp_path,
+                "orphans-changelog",
+                figure_files=["fig1.pdf", "unused1.pdf", "unused2.pdf"],
+                referenced=["fig1"],
+            )
+            changelog = (
+                result.version_dir / "changelog.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("Detected 2 orphan figure(s)", changelog)
+            self.assertIn("figures/unused1.pdf", changelog)
+            self.assertIn("figures/unused2.pdf", changelog)
+            self.assertIn(
+                "never referenced by \\includegraphics", changelog
+            )
+
+    def test_orphan_figures_in_notes(self) -> None:
+        """When orphans present, MigrationResult.notes mentions count + list."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            result = self._run_with_figures(
+                tmp_path,
+                "orphans-notes",
+                figure_files=["fig1.pdf", "unused1.pdf"],
+                referenced=["fig1"],
+            )
+            orphan_notes = [
+                n for n in result.notes if "orphan figure" in n
+            ]
+            self.assertEqual(len(orphan_notes), 1)
+            note = orphan_notes[0]
+            self.assertIn("1 orphan figure(s)", note)
+            self.assertIn("figures/unused1.pdf", note)
+
+    def test_orphan_figures_preservation_invariant(self) -> None:
+        """Orphan PDFs land at refs/prior-pipeline/v0/figures/ regardless."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_path = Path(td)
+            result = self._run_with_figures(
+                tmp_path,
+                "preservation-invariant",
+                figure_files=["fig1.pdf", "unused1.pdf", "unused2.pdf"],
+                referenced=["fig1"],
+            )
+            prior_figures = (
+                result.thread_root
+                / "refs"
+                / "prior-pipeline"
+                / "v0"
+                / "figures"
+            )
+            # All three PDFs preserved — referenced AND orphans.
+            self.assertTrue((prior_figures / "fig1.pdf").exists())
+            self.assertTrue((prior_figures / "unused1.pdf").exists())
+            self.assertTrue((prior_figures / "unused2.pdf").exists())
+            # And the orphan list reports the two unused ones.
+            self.assertEqual(
+                result.orphan_figures,
+                ["figures/unused1.pdf", "figures/unused2.pdf"],
+            )
+
+    def test_orphan_figures_idempotent(self) -> None:
+        """Two back-to-back migrate_thread calls → equal orphan_figures lists.
+
+        Each call uses its own tempdir so the portfolio resolves to a
+        fresh ``<thread>.1`` per run; the detector is a pure function of
+        the source tree, so the orphan lists must match exactly.
+        """
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td1:
+            result1 = self._run_with_figures(
+                Path(td1),
+                "idempotent-run1",
+                figure_files=["fig1.pdf", "unused1.pdf", "unused2.pdf"],
+                referenced=["fig1"],
+            )
+        with tempfile.TemporaryDirectory() as td2:
+            result2 = self._run_with_figures(
+                Path(td2),
+                "idempotent-run2",
+                figure_files=["fig1.pdf", "unused1.pdf", "unused2.pdf"],
+                referenced=["fig1"],
+            )
+        self.assertEqual(result1.orphan_figures, result2.orphan_figures)
+        self.assertEqual(
+            result1.orphan_figures,
+            ["figures/unused1.pdf", "figures/unused2.pdf"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
