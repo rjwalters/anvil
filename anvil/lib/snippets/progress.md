@@ -44,8 +44,15 @@ top-level field naming the version they critique:
 
 Skill-specific extensions are allowed (e.g., `project: <slug>` for the
 report skill; `metadata.audit_summary` for pub-audit's rich nested
-metadata). The merge rule preserves any extension fields the caller does
-not touch.
+metadata; `metadata.revision_mode` + `metadata.revise_force_reason` for
+the memo skill's operator-initiated polish-pass audit trail — see
+`anvil/skills/memo/commands/memo-revise.md` §"CLI flags" — where
+`revision_mode` is `"normal"` (or absent) on the default revise path and
+`"polish"` when invoked with `--polish "<reason>"`, and
+`revise_force_reason` is `null` (or absent) by default and the verbatim
+operator reason string under `--polish`; both fields are audit-trail
+only, not scored, not gating, and not state-machine inputs). The merge
+rule preserves any extension fields the caller does not touch.
 
 ## Phase states
 
