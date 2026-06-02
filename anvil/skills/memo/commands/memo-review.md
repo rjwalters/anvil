@@ -52,6 +52,15 @@ The review sibling directory is **read-only once written**. Revisions consume it
    - **Severity model surfaced verbatim**: the render gate classifies `memo_page_fit` findings as `error` when the operator declared `target_length.pages` (an explicit page-range contract) and `warning` when they declared `target_length.words` (the page-range is derived via the 600-words-per-page proxy; dim 7 word-count is authoritative). The reviewer does NOT re-derive the severity; the gate's classification is the contract. The `_summary.md.render_gate.findings_by_dimension` block surfaces the severities verbatim from `render_gate.findings`.
    - **Mirror of the deck-side shape**: this step mirrors the deck-side `_summary.md.lint` block that `deck-review` already produces (see `commands/deck-review.md` step 5b + step 9 — pre-flight `marp_lint` findings surfaced in `_summary.md.lint.errors_by_slide` + `lint.warnings_by_slide`). The memo block is named `render_gate` (not `lint`) so it stays distinct from the existing memo-side `lint` block (`memo_image_refs` + `refs_pdf_extraction`) that step 4b owns.
    - Cache the parsed block as `render_gate_block` for the `_summary.md` write at step 9. The dim 7 scoring at step 5 SHOULD read `render_gate_block.pages` (when present and non-null) for the rendered-page-count second-layer signal documented in `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory".
+4d. **Run memo↔deck parity lint (Phase A, warning-only)** — issue #215 (memo-side mirror of deck-review step 5d / PR #205 / issue #200):
+   - Invoke `anvil/skills/memo/lib/parity_lint.py`'s `lint_memo_deck_parity(<thread>.{N}/, <sibling deck version dir or None>)`. This is a Python-stdlib heuristic check (no third-party deps, no Marp / Pandoc invocation) that extracts hard-claim tokens — money (`$XXK/M/B`, decimal prices), percentages (including en-dash ranges), quarters/FY tags, named months + year, ALL-CAPS acronyms (length 2-6), and unit-bearing integers — from both `memo.md` and the sibling `deck.md` body, then compares the two token sets and flags any token present in one body but absent from the other. The module is a **near-byte-identical mirror** of `anvil/skills/deck/lib/parity_lint.py` (PR #205) with the "primary artifact" framing flipped — `lint_source(memo_source, deck_source)` takes memo first, the rule label is `memo_deck_parity`, the escape-hatch directive is `<!-- anvil-lint-disable: memo_deck_parity -->`, and `LintResult.deck_sibling` mirrors the deck-side `memo_sibling`. The `Finding.side` values (`"only_in_memo"` / `"only_in_deck"`) are preserved verbatim — they describe *which body the token came from*, independent of which side is "primary".
+   - **Sibling-deck-version discovery is the caller's (this command's) responsibility in v0**. Convention: at the portfolio root that contains `<thread>.{N}/memo.md`, look for sibling deck version dirs matching `<thread>.{M}/deck.md` and pick the highest `M`. If no sibling deck version exists (single-pipeline thread — most non-Studio consumers, and Studio threads where only the memo has shipped), pass `deck_version_dir=None`. Mirrors the deck-side's portfolio-root convention exactly. Centralizing the discovery in `anvil/lib/parity.py` is part of the now-fired second-consumer promotion plan — see the WORK_LOG entry for #215.
+   - **Graceful-skip when no deck sibling**: `lint_memo_deck_parity(memo_dir, None)` (or with a sibling dir that lacks `deck.md`) returns `LintResult(skipped=True, reason="no deck sibling found at portfolio root; parity check inactive", deck_sibling=None)` with zero findings. `memo-review` proceeds normally — the rest of the review/verdict logic is byte-identical to a thread without the parity lint enabled. The skip is RECORDED in `_summary.md.lint.memo_deck_parity` (`ran: false`, `deck_sibling: null`, `reason: "..."`) and as a single info-level entry in `findings.md` § Parity-lint findings, so the operator sees WHY the check did not fire — same skip-reason convention as `lint.refs_pdf_extraction` (step 5) and the deck-side's `lint.deck_memo_parity` (deck-review step 5d).
+   - The call returns a `LintResult` with `warnings: list[Finding]`, `infos: list[Finding]`, `skipped: bool`, `reason: str | None`, and `deck_sibling: str | None`. Each `Finding` has `line` (1-based source line in whichever body the token appeared), `rule="memo_deck_parity"`, `severity="warning"` (or `"info"` if suppressed), `message` (a human-readable diagnostic naming the canary anchor), `token` (the normalized token surface form), and `side` (`"only_in_memo"` or `"only_in_deck"`).
+   - **v0 ships at `warning` severity only** (Phase A). Parity findings do NOT contribute to `lint_critical_flag` and do NOT force `advance: false` — the `errors` list on the result is always empty in v0. Verdict aggregation (step 7) is byte-identical to a thread without this lint enabled. Phase B promotion to `error` severity (and therefore `advance: false`-gating) is a separate decision deferred 2–4 weeks after Phase A merge, based on canary consumption signal. This Phase A / Phase B contract mirrors the `_convictions.md` kill-switch precedent documented in `anvil/skills/memo/SKILL.md` §"Convictions ledger" (issue #147) and is carried verbatim from the deck-side step 5d.
+   - **Escape hatch**: `<!-- anvil-lint-disable: memo_deck_parity -->` placed on the same line as a deliberately-memo-only or deliberately-deck-only claim (or on the line directly above) downgrades that finding from `warning` to `info`. Use case: the deck says "we considered FTC enforcement" but the memo deliberately omits it for prose density — the operator marks the claim and the lint stops complaining. Comma-separated rule lists (`<!-- anvil-lint-disable: memo_deck_parity, memo_image_refs_exist -->`) are honored.
+   - **Canary anchor**: the load-bearing failure mode this lint catches (from the memo-side POV) is the symmetric direction of Citation Clear memo.4 ↔ deck.3 — a deck pulling ahead of the memo on a load-bearing hard claim (e.g., the reviser tightens an insurer benchmark to "~50–60% completion" in deck.4 that memo.4 lacked) that no anvil primitive would otherwise detect. The deck-side step 5d catches the inverse drift direction (memo.4 introducing a claim deck.3 lacked); together the two checks cover both directions and are symmetric / idempotent — running deck-review and memo-review on the same `<thread>.{N}` produces the same warning set with the same tokens, just with rule names `deck_memo_parity` vs `memo_deck_parity`.
+   - Cache the `LintResult` for the `_summary.md` write at step 9 and the `findings.md` write at step 10 (advisory only — `verdict.md` MAY reference under "Top revision priorities" but is NOT required). **Do NOT OR this lint's findings into `lint_critical_flag`** — Phase A is observational only.
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the memo.
@@ -104,6 +113,19 @@ The review sibling directory is **read-only once written**. Revisions consume it
          "ran": false,
          "reason": "pdftotext not available",
          "remediation": "pdftotext (poppler-utils) not found on PATH — required only for the optional `anvil:memo` PDF refs back-check (issue #167). Install via `brew install poppler` (macOS) or `apt-get install poppler-utils` (Debian/Ubuntu). ..."
+       },
+       "memo_deck_parity": {
+         "ran": true,
+         "deck_sibling": "/abs/path/to/citation-clear.3",
+         "reason": null,
+         "warnings": 1,
+         "infos": 0,
+         "only_in_memo": [],
+         "only_in_deck": ["50-60%"],
+         "warnings_by_token": [
+           { "line": 31, "rule": "memo_deck_parity", "severity": "warning", "message": "Hard claim `50-60%` appears in deck (line 31) but not in the sibling memo...", "token": "50-60%", "side": "only_in_deck" }
+         ],
+         "infos_by_token": []
        }
      },
      "render_gate": {
@@ -156,6 +178,37 @@ The review sibling directory is **read-only once written**. Revisions consume it
      - `reasons` (`list[str]`, only when `ran: true`): the verbatim `reasons` list from `GateResult.to_json()`, one informational reason per gate dimension that ran.
    - **The `render_gate` block is non-blocking and info-level for the verdict.** It NEVER sets `critical_flag` and NEVER forces `advance: false`. Render-gate findings surface for the operator and inform the dim 7 justification per `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory", but the verdict logic at step 7 (`advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)`) does NOT consume render-gate findings. A memo that scores ≥32 with no critical flags is advance-eligible even when `render_gate.pass == false` — word count remains the primary length signal and the rendered page count is advisory.
    - **The `memo_image_refs_exist` finding in `render_gate.findings_by_dimension`** is the post-render catch (refs that exist on disk but pandoc's resolver flagged, or symlink / case edge cases), distinct from the source-side `lint.memo_image_refs` block at step 4b. Both blocks are emitted (one per-step). When the source-side lint at step 4b already flagged a broken ref (the common case), the post-render gate's finding for the same ref is informational redundancy — the operator already has the actionable signal from `lint.memo_image_refs.errors_by_path`. The post-render block's purpose is the edge-case catch (pandoc resolver disagreed with the heuristic).
+   - The `lint.memo_deck_parity` block (issue #215, Phase A) is populated from the cached `LintResult` returned by step 4d. When the lint skipped (no deck sibling discoverable), the block shape is `{ "ran": false, "deck_sibling": null, "reason": "no deck sibling found at portfolio root; parity check inactive", "warnings": 0, "infos": 0, "only_in_memo": [], "only_in_deck": [], "warnings_by_token": [], "infos_by_token": [] }`. The `ran: false` skip path MUST be recorded — the operator should see WHY the parity check did not fire (same skip-reason convention as `refs_pdf_extraction` and the deck-side's `lint.deck_memo_parity`).
+   - **The `lint.memo_deck_parity` block does NOT participate in `critical_flag` in v0** (Phase A ships warning-only). The block is observational: it surfaces drift in `findings.md` and the operator's revision priorities, but `critical_flag` continues to be driven by `lint.memo_image_refs.errors > 0` only (per the verdict logic at step 7, which is byte-identical to a thread without the parity lint enabled). Phase B promotion to error severity (and therefore `advance: false`-gating) is a separate decision deferred per the issue body's Phase A / Phase B contract.
+   - **Findings subsection (always emitted)**: write a `## Parity-lint findings (memo↔deck, optional)` subsection into `findings.md` (the review sibling's findings document, sibling to `comments.md`). The subsection is **always present** (subsection emitted even when the lint skipped) so the operator sees WHY the check did or did not fire. v0 ships warning-only — entries surface drift but do NOT block advance. Three shapes:
+
+     ```
+     ## Parity-lint findings (memo↔deck, optional)
+
+     Each entry comes from the memo↔deck parity lint (step 4d). v0 (Phase A) ships at **warning severity** — entries surface drift in shared hard claims (money, percentages, dates / quarters / FY, named months + year, ALL-CAPS acronyms, unit-bearing integers) but do NOT contribute to `lint_critical_flag` and do NOT block advance. Phase B promotion to error severity is a separate decision after 2–4 weeks of canary consumption signal.
+
+     1. **[warning]** only_in_deck (deck line 31): Hard claim `50-60%` appears in deck but not in the sibling memo. Either reconcile on next `memo-revise`, document the deliberate divergence with `<!-- anvil-lint-disable: memo_deck_parity -->`, or accept the divergence (warning only in v0).
+     ```
+
+     Or, when the parity check was skipped (no deck sibling discoverable at the portfolio root):
+
+     ```
+     ## Parity-lint findings (memo↔deck, optional)
+
+     _Skipped: no deck sibling found at portfolio root; parity check inactive._
+
+     Deck sibling discovered: null
+     ```
+
+     Or, when the parity check ran cleanly (no divergences):
+
+     ```
+     ## Parity-lint findings (memo↔deck, optional)
+
+     _No parity-lint findings._
+
+     Deck sibling discovered: /abs/path/to/<thread>.{M}/
+     ```
 10. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Total: `XX / 40`
     - Decision: `advance: true` or `advance: false`
