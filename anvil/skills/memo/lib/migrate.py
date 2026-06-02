@@ -166,6 +166,61 @@ class MigrationResult:
     figure_conversion_skipped: bool = False
     figure_conversion_reason: Optional[str] = None
     notes: List[str] = field(default_factory=list)
+    # Step 13 (issue #203) — refs/ seeding from BRIEF.md §Sources.
+    refs_seeded: List[Path] = field(default_factory=list)
+    refs_skipped: List[Tuple[Path, str]] = field(default_factory=list)
+
+
+@dataclass
+class BriefSourceEntry:
+    """A single parsed ``## Sources`` entry from BRIEF.md.
+
+    Carries enough context to render a :func:`seed_refs_from_brief` stub:
+
+    - ``ordinal``: 1-based position within the §Sources list (drives the
+      ``(BRIEF Source <N>)`` provenance suffix in the rendered stub).
+    - ``title``: extracted title (markdown-link text, bold-prefix run, or
+      domain-fallback). ``None`` only when no title could be derived AND
+      no URL was present (a degenerate entry).
+    - ``urls``: one or more URLs extracted from the entry (bare or
+      markdown-link form).
+    - ``prose``: the entry's verbatim prose, used as the "What this
+      sources" body. URLs are NOT stripped from prose — the operator's
+      narrative carries forward intact (per issue #203 "preserve operator
+      prose verbatim" out-of-scope note).
+    - ``raw_line``: the original list-item line (for debugging /
+      audit-trail; not currently consumed downstream).
+    """
+
+    ordinal: int
+    title: Optional[str]
+    urls: List[str]
+    prose: str
+    raw_line: str
+
+
+@dataclass
+class SeedRefsResult:
+    """Summary of a single :func:`seed_refs_from_brief` invocation.
+
+    Returned by :func:`seed_refs_from_brief` and folded into
+    :class:`MigrationResult` by the step-13 auto-invoke.
+
+    - ``stubs_written``: paths of the ``refs/<key>.md`` files newly created.
+    - ``stubs_skipped``: ``(path, reason)`` tuples for entries that already
+      had an existing stub on disk (idempotence) and were skipped because
+      ``force=False``.
+    - ``entries_parsed``: total number of §Sources entries the parser
+      extracted (``len(stubs_written) + len(stubs_skipped)`` when no
+      degenerate entries — see :func:`_parse_brief_sources`).
+    - ``notes``: human-readable diagnostic lines (e.g., "No ## Sources
+      section in BRIEF.md", soft-fail parser warnings).
+    """
+
+    stubs_written: List[Path] = field(default_factory=list)
+    stubs_skipped: List[Tuple[Path, str]] = field(default_factory=list)
+    entries_parsed: int = 0
+    notes: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +395,401 @@ def _pair_footnotes(md_source: str) -> str:
         for fid in orphans
     )
     return md_source.rstrip() + "\n\n" + placeholder_block + "\n"
+
+
+# ---------------------------------------------------------------------------
+# BRIEF.md §Sources parser + refs/ seeding (issue #203)
+# ---------------------------------------------------------------------------
+#
+# Why this lives in migrate.py rather than its own module:
+#
+#  - Skill-local first (CLAUDE.md): both the step-13 auto-invoke from
+#    :func:`migrate_thread` and the standalone ``memo-migrate-refs``
+#    command share one helper. Two entry points, one helper — the
+#    canonical shape for the "second consumer" promotion threshold.
+#  - The parser is pure stdlib (re + Path), no new Python deps.
+#  - The §Sources convention is memo-specific (the canary cohort is
+#    memo threads). When (or if) ``anvil:report`` / ``anvil:proposal``
+#    sprout the same §Sources → refs/ pattern, lib-promotion to
+#    ``anvil/lib/`` is the natural follow-on.
+
+# Pattern matching ``## Sources`` heading at any depth ``#``..``####``.
+# Case-insensitive on the literal word "Sources" (per issue #203 spec).
+# Anchored to a new line so it does not match "Sources" inside a
+# paragraph or a table cell.
+_SOURCES_HEADING_RE = re.compile(
+    r"^(#{1,4})\s+Sources\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Markdown link: ``[text](url)`` — non-greedy on text, no-paren on url.
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^\s\)]+)\)")
+
+# Bare URL inside prose. Match a reasonably loose URL shape; we don't
+# need RFC-grade strictness for the slugification fallback.
+_BARE_URL_RE = re.compile(r"https?://[^\s\)\,\;]+")
+
+# Bold-prefix run at the start of a list-item body: ``**title** — rest``.
+# The bold run is the title; the rest is prose.
+_BOLD_PREFIX_RE = re.compile(r"^\*\*([^*]+)\*\*\s*[—\-:]\s*(.*)$", re.DOTALL)
+
+# List-item-start: ``- ``, ``* ``, or ``1.`` / ``12.`` at line start.
+# Captures the body sans the list marker. We accept any 1- or 2-digit
+# numeric marker (the canonical §Sources lists max out around 20 entries).
+_LIST_ITEM_RE = re.compile(r"^(?:[-*]|\d{1,2}\.)\s+(.*)$")
+
+
+def _parse_brief_sources(brief_md_text: str) -> List[BriefSourceEntry]:
+    """Parse BRIEF.md text and return one :class:`BriefSourceEntry` per §Sources item.
+
+    Returns ``[]`` when the document has no ``## Sources`` heading (the
+    graceful-success branch of acceptance criterion 8) or when the
+    section exists but is empty.
+
+    The parser handles the three observed shapes from the studio canary:
+
+    1. **Bulleted-with-markdown-link** (aldus):
+       ``- [Title](URL) — claim``
+    2. **Numbered prose** (geode):
+       ``1. <name>, <date> — <claim with figures and trailing URL or no URL>``
+    3. **Numbered bold-prefix** (the-bottega):
+       ``1. **Title** — <description with inline URLs>``
+
+    Boundary detection: the §Sources section starts at the ``## Sources``
+    heading and ends at the **next heading of equal or higher depth** (so
+    a ``### Sub-heading`` within the §Sources block is treated as
+    in-section content; a sibling ``## Other`` ends the section).
+    """
+    # Locate the ## Sources heading.
+    heading_match = _SOURCES_HEADING_RE.search(brief_md_text)
+    if heading_match is None:
+        return []
+
+    heading_depth = len(heading_match.group(1))  # number of leading '#'
+    section_start = heading_match.end()
+
+    # Find the next heading of equal-or-higher depth (lower depth number
+    # = higher rank — but per the spec we end on equal-or-higher level).
+    # In markdown convention, ``## X`` (depth 2) is sibling-or-parent of
+    # another ``## Y`` (depth 2) or ``# Z`` (depth 1). A deeper ``### W``
+    # (depth 3) is a child and stays inside §Sources.
+    terminator_re = re.compile(
+        r"^(#{1," + str(heading_depth) + r"})\s+\S",
+        re.MULTILINE,
+    )
+    terminator = terminator_re.search(brief_md_text, pos=section_start)
+    section_end = terminator.start() if terminator else len(brief_md_text)
+    section_body = brief_md_text[section_start:section_end].strip("\n")
+    if not section_body.strip():
+        return []
+
+    # Walk the section line-by-line, collecting list items. List items
+    # may span multiple lines (continuation indented or unindented) — we
+    # accumulate continuation lines into the current item until we hit
+    # another list marker or a blank line that precedes a non-marker.
+    entries: List[BriefSourceEntry] = []
+    current_item_lines: List[str] = []
+    current_raw_line: str = ""
+
+    def _flush_item() -> None:
+        if not current_item_lines:
+            return
+        body = " ".join(line.strip() for line in current_item_lines).strip()
+        if not body:
+            return
+        ordinal = len(entries) + 1
+        entry = _interpret_source_item(ordinal, body, current_raw_line)
+        if entry is not None:
+            entries.append(entry)
+
+    for raw_line in section_body.splitlines():
+        list_match = _LIST_ITEM_RE.match(raw_line.strip())
+        if list_match is not None:
+            # New list item — flush the previous item, then start fresh.
+            _flush_item()
+            current_item_lines = [list_match.group(1)]
+            current_raw_line = raw_line
+            continue
+        # Continuation line. Empty lines are tolerated as long as a
+        # current item is open; the body join collapses whitespace.
+        if current_item_lines:
+            stripped = raw_line.strip()
+            if stripped:
+                current_item_lines.append(stripped)
+    _flush_item()
+
+    return entries
+
+
+def _interpret_source_item(
+    ordinal: int,
+    body: str,
+    raw_line: str,
+) -> Optional[BriefSourceEntry]:
+    """Interpret one §Sources list-item body into a :class:`BriefSourceEntry`.
+
+    Returns ``None`` for a degenerate item (no title AND no URLs — e.g., a
+    pure-prose footnote that slipped into the §Sources list). The caller
+    treats ``None`` as "skip this entry" rather than as a parse failure.
+
+    The three observed shapes (aldus / geode / the-bottega) all flow
+    through this single function:
+
+    1. **Markdown-link shape**: ``[title](URL) — rest`` — the link's text
+       is the title; remaining bare URLs are appended to ``urls``.
+    2. **Bold-prefix shape**: ``**title** — rest`` — the bold run is the
+       title; URLs are pulled from ``rest``.
+    3. **Numbered prose shape**: no leading markdown-link, no bold-prefix.
+       Title is derived from the leading clause up to the first dash /
+       em-dash / colon. URLs are pulled from the entire body.
+    """
+    body = body.strip()
+    if not body:
+        return None
+
+    urls: List[str] = []
+    title: Optional[str] = None
+    prose: str = body
+
+    # Shape 1: markdown link at the head of the entry.
+    md_link_match = _MARKDOWN_LINK_RE.search(body)
+    if md_link_match is not None and md_link_match.start() <= 2:
+        title = md_link_match.group(1).strip()
+        urls.append(md_link_match.group(2).strip())
+
+    # Shape 3: bold-prefix when no leading markdown link.
+    if title is None:
+        bold_match = _BOLD_PREFIX_RE.match(body)
+        if bold_match is not None:
+            title = bold_match.group(1).strip()
+
+    # Pull all bare URLs out of the body (covers multi-URL entries and
+    # mid-prose URLs in the bold-prefix and numbered-prose shapes).
+    for url_match in _BARE_URL_RE.finditer(body):
+        candidate = url_match.group(0).rstrip(".,;)")
+        if candidate not in urls:
+            urls.append(candidate)
+
+    # Shape 2: numbered prose — derive title from the leading clause.
+    # We split on the first em-dash, en-dash, hyphen-with-spaces, or
+    # colon and take the prefix. Falls back to the first 8 words.
+    if title is None and body:
+        # First try an em-dash / en-dash / dash-with-spaces split.
+        split_match = re.split(r"\s+[—–-]\s+", body, maxsplit=1)
+        candidate = split_match[0].strip() if split_match else body
+        # Strip stray markdown formatting markers.
+        candidate = re.sub(r"[*_`]+", "", candidate)
+        # If the candidate is still very long, take the first few words.
+        words = candidate.split()
+        if len(words) > 12:
+            candidate = " ".join(words[:8])
+        title = candidate.strip(" ,.;:—–-") or None
+
+    # Degenerate: no title and no URLs.
+    if title is None and not urls:
+        return None
+
+    return BriefSourceEntry(
+        ordinal=ordinal,
+        title=title,
+        urls=urls,
+        prose=prose,
+        raw_line=raw_line,
+    )
+
+
+def _slugify_source_key(
+    entry: BriefSourceEntry,
+    existing_keys: Iterable[str] = (),
+) -> str:
+    """Derive a deterministic ``<key>.md`` filename slug for a §Sources entry.
+
+    Rules per issue #203:
+
+    1. Slugify the title (lowercase, collapse non-alphanumeric to ``-``,
+       strip leading/trailing ``-``, truncate to 60 chars).
+    2. Fallback when no title: synthesize from URL domain + path stem,
+       e.g., ``https://fortune.com/2023/05/15/atomic/`` →
+       ``fortune-com-atomic``.
+    3. Collision: append ``-2``, ``-3``... when the base slug is already
+       in ``existing_keys``.
+
+    ``existing_keys`` carries already-allocated slugs WITHIN the current
+    invocation so two entries that slugify the same way (e.g., two
+    entries titled "Atomic") get distinct keys. Filesystem-existing
+    stubs are handled separately by the idempotence rule in
+    :func:`seed_refs_from_brief` — they are not collisions, they are
+    "already present, skip".
+    """
+    base = ""
+    if entry.title:
+        base = _slug_text(entry.title)
+    if not base and entry.urls:
+        base = _slug_from_url(entry.urls[0])
+    if not base:
+        base = f"source-{entry.ordinal}"
+
+    base = base[:60].rstrip("-") or f"source-{entry.ordinal}"
+
+    existing = set(existing_keys)
+    if base not in existing:
+        return base
+    n = 2
+    while f"{base}-{n}" in existing:
+        n += 1
+    return f"{base}-{n}"
+
+
+def _slug_text(text: str) -> str:
+    """Slugify arbitrary text: lowercase, non-alphanumeric → '-', collapse."""
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    text = re.sub(r"-+", "-", text)
+    return text.strip("-")
+
+
+def _slug_from_url(url: str) -> str:
+    """Derive a slug from a URL's domain + path stem."""
+    # Strip the scheme.
+    cleaned = re.sub(r"^https?://", "", url)
+    # Drop any query / fragment.
+    cleaned = cleaned.split("?", 1)[0].split("#", 1)[0]
+    # Domain: take the part before the first slash; strip leading 'www.'.
+    parts = cleaned.split("/", 1)
+    domain = parts[0]
+    domain = re.sub(r"^www\.", "", domain)
+    domain_slug = _slug_text(domain)
+    # Path: take the last non-empty segment as the stem.
+    path_stem = ""
+    if len(parts) > 1:
+        path_segments = [seg for seg in parts[1].split("/") if seg]
+        if path_segments:
+            # Combine all segments into one slug — preserves enough
+            # context to disambiguate same-domain entries.
+            path_stem = _slug_text(" ".join(path_segments))
+    if domain_slug and path_stem:
+        return f"{domain_slug}-{path_stem}"
+    return domain_slug or path_stem
+
+
+def _render_stub(entry: BriefSourceEntry) -> str:
+    """Render a refs/<key>.md stub body for one §Sources entry.
+
+    Schema (confirmed against the-bottega / aldus / bessemer / geode
+    on-disk exemplars):
+
+    ::
+
+        # <title> — <one-line context> (BRIEF Source <N>)
+
+        **Source(s):** <URL(s)>
+
+        **What this sources.** <2-3 lines tying URL to memo claims/sections>
+
+    Implementation notes:
+
+    - The "one-line context" is omitted when no useful derivation is
+      possible (per the on-disk evidence — half the exemplars do not
+      have a context fragment in the title line).
+    - ``Source(s):`` is singular ``Source:`` for one URL, plural
+      ``Sources:`` for two-or-more (matches the on-disk shape).
+    - The "What this sources" prose is the operator's verbatim §Sources
+      entry text — the migration stub does not paraphrase or summarize.
+      It is a faithful seed the operator can extend on the next revise
+      pass.
+    """
+    title = entry.title or "Untitled source"
+    suffix = f" (BRIEF Source {entry.ordinal})"
+    # The "one-line context" is intentionally omitted from the title:
+    # the original issue spec allowed for it but the on-disk evidence
+    # shows ~half the exemplars elide it. We err on the side of "less
+    # auto-generated boilerplate" — the operator will edit the title
+    # anyway on the next revise pass.
+    heading = f"# {title}{suffix}"
+
+    if not entry.urls:
+        sources_block = "**Source(s):** _(no URL extracted from BRIEF.md entry)_"
+    elif len(entry.urls) == 1:
+        sources_block = f"**Source:** {entry.urls[0]}"
+    else:
+        sources_block_lines = ["**Sources:**"]
+        for url in entry.urls:
+            sources_block_lines.append(f"- {url}")
+        sources_block = "\n".join(sources_block_lines)
+
+    # "What this sources" body — use the entry's prose verbatim.
+    body_prose = entry.prose.strip()
+    body_block = f"**What this sources.** {body_prose}"
+
+    return "\n\n".join([heading, sources_block, body_block]) + "\n"
+
+
+def seed_refs_from_brief(
+    thread_dir: Path,
+    force: bool = False,
+) -> SeedRefsResult:
+    """Seed ``<thread_dir>/refs/<key>.md`` stubs from ``<thread_dir>/BRIEF.md`` §Sources.
+
+    The single public helper behind both the step-13 auto-invoke in
+    :func:`migrate_thread` and the standalone ``anvil:memo-migrate-refs``
+    command. See ``commands/memo-migrate-refs.md`` for the operator-facing
+    contract.
+
+    Parameters
+    ----------
+    thread_dir:
+        Path to the thread root directory. Must contain ``BRIEF.md``.
+    force:
+        When ``True``, overwrite existing ``refs/<key>.md`` stubs.
+        Default ``False`` enforces the idempotence contract: an existing
+        stub is recorded in ``stubs_skipped`` and never modified.
+
+    Returns
+    -------
+    A :class:`SeedRefsResult` summarizing what was written / skipped.
+
+    Raises
+    ------
+    MigrateError
+        When ``<thread_dir>/BRIEF.md`` is missing. Mirrors the
+        source-missing failure mode in :func:`migrate_thread`. Graceful
+        success branches (no ``## Sources`` section, empty section) are
+        returned via :class:`SeedRefsResult` with ``entries_parsed=0``.
+    """
+    thread_dir = Path(thread_dir).resolve()
+    brief_md = thread_dir / "BRIEF.md"
+    if not brief_md.exists():
+        raise MigrateError(
+            f"BRIEF.md not found at {brief_md} — cannot seed refs/ from §Sources."
+        )
+
+    brief_text = brief_md.read_text(encoding="utf-8", errors="replace")
+    entries = _parse_brief_sources(brief_text)
+
+    result = SeedRefsResult(entries_parsed=len(entries))
+    if not entries:
+        result.notes.append(
+            "No ## Sources section in BRIEF.md — refs/ seeding skipped."
+        )
+        return result
+
+    refs_dir = thread_dir / "refs"
+    refs_dir.mkdir(parents=True, exist_ok=True)
+
+    allocated_keys: List[str] = []
+    for entry in entries:
+        key = _slugify_source_key(entry, allocated_keys)
+        allocated_keys.append(key)
+        target = refs_dir / f"{key}.md"
+        if target.exists() and not force:
+            result.stubs_skipped.append(
+                (target, "already exists; pass force=True to overwrite")
+            )
+            continue
+        target.write_text(_render_stub(entry), encoding="utf-8")
+        result.stubs_written.append(target)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -823,6 +1273,37 @@ def migrate_thread(
                 f"- Converted {len(exhibits)} of {len(figure_refs)} figure "
                 "ref(s) from PDF to PNG via pdftoppm at 150 DPI."
             )
+
+    # --- Step 13: refs/ seeding from BRIEF.md §Sources (issue #203).
+    # Soft-fail: a §Sources parse error or missing-BRIEF must not regress
+    # the migration's success contract. The standalone
+    # ``anvil:memo-migrate-refs`` command re-runs the helper directly and
+    # surfaces hard failures to the operator; the migration auto-invoke
+    # only ever appends notes.
+    refs_seeded: List[Path] = []
+    refs_skipped: List[Tuple[Path, str]] = []
+    try:
+        seed_result = seed_refs_from_brief(thread_root, force=False)
+        refs_seeded = list(seed_result.stubs_written)
+        refs_skipped = list(seed_result.stubs_skipped)
+        notes.extend(seed_result.notes)
+        if refs_seeded:
+            changelog_lines.append(
+                f"- Seeded {len(refs_seeded)} refs/ stub(s) from BRIEF.md "
+                "§Sources via `seed_refs_from_brief`."
+            )
+        if refs_skipped:
+            changelog_lines.append(
+                f"- Skipped {len(refs_skipped)} existing refs/ stub(s) "
+                "(idempotence; re-run `memo-migrate-refs --force` to overwrite)."
+            )
+    except Exception as exc:  # pragma: no cover - defensive soft-fail
+        # Step 13 is soft-fail per issue #203 acceptance criterion 10:
+        # the new auto-invoke does NOT add a failure mode to migration.
+        notes.append(
+            f"refs/ seeding from BRIEF.md §Sources soft-failed: {exc!r}"
+        )
+
     changelog_md.write_text(
         "\n".join(changelog_lines) + "\n",
         encoding="utf-8",
@@ -840,15 +1321,20 @@ def migrate_thread(
         figure_conversion_skipped=figure_conversion_skipped,
         figure_conversion_reason=figure_conversion_reason,
         notes=notes,
+        refs_seeded=refs_seeded,
+        refs_skipped=refs_skipped,
     )
 
 
 __all__ = [
+    "BriefSourceEntry",
     "MigrateError",
     "MigrationResult",
     "PANDOC_REMEDIATION",
     "PDFTOPPM_REMEDIATION",
+    "SeedRefsResult",
     "check_pandoc_available",
     "check_pdftoppm_available",
     "migrate_thread",
+    "seed_refs_from_brief",
 ]

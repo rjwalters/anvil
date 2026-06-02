@@ -13,7 +13,7 @@ This command exists because Studio's 2026-06-01 portfolio review surfaced 14 leg
 
 **State-machine status**: `memo-migrate` is a **one-shot entry point**, NOT a lifecycle phase. It produces a thread in `DRAFTED` state (derived from `<thread>.1/_progress.json.phases.draft == done` per SKILL.md §"State machine") and then exits. The operator runs `memo-review <thread>` next, exactly as if `memo-draft` had produced the version. The output thread is indistinguishable from a freshly-drafted one — only `refs/prior-pipeline/v0/` and the `migrated_from` `_progress.json` metadata field distinguish a migrated thread from a clean one.
 
-**Composability**: `memo-migrate` is **single-shot** — it is run once per legacy `.tex` source. There is no re-run case; if the migration produced a broken `memo.md`, the operator either (a) hand-edits `<thread>.1/memo.md` and proceeds normally, or (b) deletes the entire thread root and re-runs `memo-migrate`. The command does not attempt to merge into an existing thread.
+**Composability**: `memo-migrate` is **single-shot** — it is run once per legacy `.tex` source. There is no re-run case; if the migration produced a broken `memo.md`, the operator either (a) hand-edits `<thread>.1/memo.md` and proceeds normally, or (b) deletes the entire thread root and re-runs `memo-migrate`. The command does not attempt to merge into an existing thread. **Step 13 (issue #203)** auto-invokes the standalone `anvil:memo-migrate-refs` helper to seed `<thread>/refs/<key>.md` stubs from the `BRIEF.md` §Sources section; that command is independently re-runnable after the operator edits BRIEF.md §Sources (idempotent by default; `--force` to overwrite). See `commands/memo-migrate-refs.md` for the standalone re-run path.
 
 ## Inputs
 
@@ -31,6 +31,9 @@ Mirrors the migration-thread shape documented in `anvil/skills/memo/SKILL.md` §
                             TODO; operator MUST fill in before first revise pass).
   .anvil.json               { "max_iterations": 4, "target_length"?: {...} }
   refs/
+    <key>.md                Citation-hook stubs seeded from BRIEF.md §Sources by
+                            step 13 (one per §Sources entry; see commands/memo-migrate-refs.md).
+                            Empty when BRIEF.md has no §Sources section (graceful).
     prior-pipeline/v0/
       memo.tex              Copy of the original .tex source (read-only reference)
       memo.pdf              Original rendered PDF (if found alongside .tex)
@@ -40,7 +43,8 @@ Mirrors the migration-thread shape documented in `anvil/skills/memo/SKILL.md` §
     exhibits/               PDF → PNG converted figures (one PNG per source PDF)
     _progress.json          { phases.draft: { state: "done", ... },
                               metadata: { iteration: 1, max_iterations: 4 } }
-    changelog.md            Single-line "migrated from <source>" record
+    changelog.md            Single-line "migrated from <source>" record (+ optional
+                            "N refs/ stubs seeded from BRIEF.md §Sources" line)
 ```
 
 The "v0 starts at `<thread>.1/`" convention matches `anvil/skills/memo/SKILL.md` §"State machine" — `DRAFTED` is derived from "latest `<thread>.{N}/` exists with `memo.md` and `_progress.json.draft == done`". The operator then runs `memo-review <thread>` against `<thread>.1/` normally — the migration produces a `DRAFTED`-state thread that re-enters the standard memo lifecycle.
@@ -74,8 +78,9 @@ The "v0 starts at `<thread>.1/`" convention matches `anvil/skills/memo/SKILL.md`
     - The shape of the canonical `BRIEF.migration.md.example` template appended below as a reference block — so the operator sees the section structure of a finished migration brief while editing.
 15. **Write `.anvil.json`** (acceptance criterion 8). Emit the legacy flat shape: `{ "max_iterations": 4 }` (+ optional `"target_length": { "words": [min, max] }` when `--target-length` was provided). Matches the SKILL.md §"Length targets" "Flat shape (legacy)" documentation.
 16. **Write `_progress.json`** (acceptance criterion 3). Initialize the version dir's `_progress.json` with `phases.draft = { state: "done", started: <ISO>, completed: <ISO> }`, `metadata.iteration = 1`, `metadata.max_iterations = 4`, and an additional `metadata.migrated_from = "<source.tex>"` field for provenance. This shape derives `DRAFTED` state per SKILL.md §"State machine".
-17. **Write `changelog.md`**. Single-block record: "Migrated from `<source>` via `anvil:memo-migrate` on `<ISO>`" + a line naming where the refs were preserved + a line summarizing the figure-conversion outcome. This file is *informational* — it does not feed the rubric, it does not gate any state transition.
-18. **Report**. Print a one-line summary identifying the produced thread and any soft-fail notes (e.g., `pdftoppm not on PATH — skipped figure conversion`).
+17. **Seed `refs/` stubs from BRIEF.md §Sources** (issue #203). Auto-invoke `seed_refs_from_brief(thread_root, force=False)` to walk the BRIEF.md `## Sources` section and write one `<thread>/refs/<key>.md` stub per entry. **Soft-fail by contract**: a §Sources parse anomaly or unexpected exception from the helper is recorded as a note and does NOT regress the migration's success contract. The seed-result counts (stubs written, stubs skipped) are folded into the changelog summary lines and the returned `MigrationResult.refs_seeded` / `refs_skipped` fields. See `commands/memo-migrate-refs.md` for the standalone re-run path. **The `refs/` seeding is idempotent**: because the migration itself just created the `refs/` directory, the auto-invoke's `force=False` produces a clean seed; subsequent operator-initiated re-runs (e.g., after editing BRIEF.md §Sources to add a new entry) safely skip existing stubs.
+18. **Write `changelog.md`**. Single-block record: "Migrated from `<source>` via `anvil:memo-migrate` on `<ISO>`" + a line naming where the refs were preserved + a line summarizing the figure-conversion outcome + a line summarizing the §Sources seeding outcome (e.g., "Seeded N refs/ stub(s) from BRIEF.md §Sources"). This file is *informational* — it does not feed the rubric, it does not gate any state transition.
+19. **Report**. Print a one-line summary identifying the produced thread and any soft-fail notes (e.g., `pdftoppm not on PATH — skipped figure conversion`, `No ## Sources section in BRIEF.md — refs/ seeding skipped`).
 
 ## Failure modes
 
