@@ -173,6 +173,15 @@ class MigrationResult:
     # \includegraphics in the source .tex. Report-only: operator decides
     # whether to embed, drop, or treat as authoring bug.
     orphan_figures: List[str] = field(default_factory=list)
+    # Sub-issue 5f (issue #211) — absolute path of the legacy ``brief.md``
+    # that was ingested into the generated ``BRIEF.md`` body under the
+    # "earliest-brief wins" rule. ``None`` when no source brief was found
+    # (i.e., the legacy thread carried no operator-authored brief; the
+    # generated BRIEF.md is the TODO-only stub of v0). Recorded for
+    # provenance: the command's report line names the path and the
+    # ``<thread>.1/changelog.md`` ``Ingested source brief`` line cites
+    # the preserved-refs copy at ``refs/prior-pipeline/v0/``.
+    source_brief_path: Optional[Path] = None
 
 
 @dataclass
@@ -1257,10 +1266,111 @@ def _load_brief_template(skill_root: Optional[Path]) -> str:
     return ""
 
 
+# Sub-issue 5f (issue #211) — pattern that classifies a directory name
+# as a legacy ``memo.{N}`` version dir. Bower's pre-anvil layout used
+# ``memo.1/``, ``memo.2/``, ``memo.3/`` with a ``brief.md`` co-located in
+# (typically) the v1 directory. The migration entrypoint accepts both
+# the version-dir-shape source (``bower/memo.3/memo.tex``) and the
+# flat-thread-root shape (``acme/memo.tex``); the discovery helper
+# normalizes both into a single legacy-thread root for the glob.
+_LEGACY_VERSION_DIR_RE = re.compile(r"^memo\.(\d+)$")
+
+
+def _discover_source_brief(
+    source_tex: Path,
+) -> Tuple[Optional[Path], List[Path]]:
+    """Locate the operator-authored ``brief.md`` in the legacy thread, if any.
+
+    Sub-issue 5f (issue #211) — codifies the "earliest-brief wins" rule
+    surfaced by the bower migration:
+
+    1. The legacy thread root is ``source_tex.parent.parent`` when the
+       source ``.tex`` sits inside a ``memo.{N}/`` version dir (e.g.,
+       ``bower/memo.3/memo.tex`` → legacy root ``bower/``); otherwise it
+       is ``source_tex.parent`` (flat thread-root shape: ``acme/memo.tex``
+       → legacy root ``acme/``).
+    2. Globs ``<legacy-root>/memo.*/brief.md`` AND the bare
+       ``<legacy-root>/brief.md`` (treated as the N=0 candidate so a
+       thread-root brief wins over every version-dir brief).
+    3. Filters to candidates whose content (after ``.strip()``) is
+       non-empty — a whitespace-only ``brief.md`` is functionally absent
+       and the next-earliest candidate wins.
+    4. Returns the candidate with the **lowest N** (thread-root = 0; v1
+       = 1; v2 = 2; …) so the bower case ("operator wrote the brief at
+       v1 and never moved it") survives even when later version dirs
+       carry placeholder briefs.
+
+    Returns a pair ``(winner, all_candidates_with_content)``:
+
+    - ``winner``: the absolute path of the chosen brief, or ``None`` when
+      no non-empty candidate exists.
+    - ``all_candidates_with_content``: every candidate path whose
+      content was non-empty, sorted by N ascending. The caller uses
+      this to emit a multi-candidate diagnostic note (in-v0-if-cheap
+      AC7) when more than one candidate had content.
+
+    Rationale (per the curator on issue #211): "earliest-brief wins" is
+    the most forgiving rule. It survives both "operator wrote the brief
+    once and never moved it forward" *and* "operator copied the brief
+    forward into every version dir" without requiring operator
+    pre-cleanup of the legacy layout.
+    """
+    # Normalize the legacy thread root. The ``memo.{N}`` shape detection
+    # is regex-based (not just "parent is a directory") so we don't
+    # accidentally treat an operator-named project dir like
+    # ``bower-2026-06-01/memo.tex`` as a version dir.
+    parent = source_tex.parent
+    if _LEGACY_VERSION_DIR_RE.match(parent.name):
+        legacy_root = parent.parent
+    else:
+        legacy_root = parent
+
+    # Build the candidate list as ``(N, path)`` pairs. The thread-root
+    # brief is N=0 so it sorts first; version-dir briefs are N=1, 2, …
+    # When two paths share the same N (only possible if the legacy
+    # layout had odd duplication), ``min`` is deterministic on the
+    # ``(N, path)`` pair.
+    candidates: List[Tuple[int, Path]] = []
+    root_brief = legacy_root / "brief.md"
+    if root_brief.is_file():
+        candidates.append((0, root_brief))
+    if legacy_root.is_dir():
+        for child in sorted(legacy_root.iterdir()):
+            match = _LEGACY_VERSION_DIR_RE.match(child.name)
+            if match is None or not child.is_dir():
+                continue
+            candidate = child / "brief.md"
+            if candidate.is_file():
+                candidates.append((int(match.group(1)), candidate))
+
+    # Filter to candidates with non-empty content. We read the file
+    # here (rather than just checking ``stat().st_size > 0``) so a
+    # whitespace-only brief is treated as "absent" per AC4. Read
+    # failures (permissions, encoding) are treated as absent — the
+    # migration cannot block on an unreadable optional input.
+    with_content: List[Tuple[int, Path]] = []
+    for n, path in sorted(candidates):
+        try:
+            body = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if body.strip():
+            with_content.append((n, path))
+
+    if not with_content:
+        return None, []
+
+    winner = with_content[0][1]
+    all_paths = [path for _, path in with_content]
+    return winner, all_paths
+
+
 def _build_brief_stub(
     source_tex: Path,
     thread_slug: str,
     template_body: str,
+    source_brief_body: Optional[str] = None,
+    source_brief_display_path: Optional[str] = None,
 ) -> str:
     """Produce the BRIEF.md stub body for a migration thread.
 
@@ -1273,6 +1383,15 @@ def _build_brief_stub(
     replaced with an explicit ``TODO`` marker. The stub-marker token
     ``TODO: migration-brief stub`` is included at the top so operators
     can grep for unfinished briefs across a portfolio.
+
+    Sub-issue 5f (issue #211): when ``source_brief_body`` is provided
+    (the discovery helper located an operator-authored ``brief.md`` in
+    the legacy thread), it is emitted verbatim between the TODO header
+    and the canonical-template reference block. The ingested block is
+    fenced with grep-friendly HTML comments
+    (``<!-- BEGIN: ingested from <path> -->`` /
+    ``<!-- END: ingested source brief -->``) so the operator can locate
+    and excise it after merging on the first revise pass.
     """
     # Use ISO date for traceability — the timestamp answers
     # "when was this migration run?" without inspecting filesystem mtimes.
@@ -1324,6 +1443,38 @@ def _build_brief_stub(
         "naming conventions, risk-ordering). The reviewer will flag "
         "violations of rules listed here as critical.\n"
     )
+    # Sub-issue 5f: when an operator-authored brief was discovered in
+    # the legacy thread, ingest it verbatim between the TODO header and
+    # the canonical-template reference block. The fencing comments are
+    # grep-friendly so the operator can locate and excise the ingested
+    # block once they have merged its content into the TODO fields
+    # above. Body is emitted verbatim — no heading rewrites, no
+    # frontmatter extraction (out-of-scope per issue #211 §"Explicit
+    # out-of-scope").
+    if source_brief_body is not None:
+        # ``or "(unknown source)"`` defends against a caller passing
+        # ``source_brief_body`` without a display path; in practice
+        # ``migrate_thread`` always passes both.
+        display = source_brief_display_path or "(unknown source)"
+        # Ensure the ingested body ends with exactly one newline so the
+        # END fence sits on its own line regardless of upstream content.
+        ingested = source_brief_body.rstrip("\n") + "\n"
+        header += (
+            "\n"
+            "---\n"
+            "\n"
+            f"<!-- BEGIN: ingested from {display} -->\n"
+            "<!-- The block below is the verbatim body of the source "
+            "brief discovered in the legacy thread under the "
+            "earliest-brief-wins rule (issue #211). Merge its content "
+            "into the TODO fields above on the first revise pass, then "
+            "delete this block. -->\n"
+            "\n"
+            + ingested
+            + "\n"
+            "<!-- END: ingested source brief -->\n"
+        )
+
     # Append the canonical template body as a reference block so the
     # operator can see the shape of a finished migration brief.
     if template_body:
@@ -1603,10 +1754,87 @@ def migrate_thread(
             )
 
     # --- Step 9: BRIEF.md (stub).
+    #
+    # Sub-issue 5f (issue #211): before building the stub, scan the
+    # legacy thread for an operator-authored ``brief.md`` and ingest its
+    # body verbatim into the generated BRIEF.md under the "earliest-brief
+    # wins" rule. The discovery helper handles both layouts (flat
+    # thread-root and ``memo.{N}/`` version-dir) and returns ``None`` for
+    # the no-source-brief case (which preserves today's TODO-only stub
+    # behavior — AC5).
     brief_md = thread_root / "BRIEF.md"
     template_body = _load_brief_template(skill_root)
+    source_brief_path, source_brief_candidates = _discover_source_brief(
+        source_tex
+    )
+    source_brief_body: Optional[str] = None
+    source_brief_display_path: Optional[str] = None
+    source_brief_preserved_path: Optional[Path] = None
+    if source_brief_path is not None:
+        # Read the body verbatim (errors="replace" for the same reason
+        # we use it on the source .tex — encoding glitches in the legacy
+        # corpus must not block the migration).
+        source_brief_body = source_brief_path.read_text(
+            encoding="utf-8", errors="replace"
+        )
+        # Compute a stable display path for the BEGIN-fence comment.
+        # We reuse the same legacy-root resolution as the discovery
+        # helper so the path is human-meaningful (``memo.1/brief.md``
+        # rather than the absolute filesystem path).
+        parent = source_tex.parent
+        if _LEGACY_VERSION_DIR_RE.match(parent.name):
+            legacy_root = parent.parent
+        else:
+            legacy_root = parent
+        try:
+            relative = source_brief_path.relative_to(legacy_root)
+            source_brief_display_path = str(relative)
+        except ValueError:
+            source_brief_display_path = str(source_brief_path)
+
+        # Preserve the discovered brief alongside the source .tex at
+        # ``refs/prior-pipeline/v0/<relative-from-legacy-root>``. This
+        # matches AC7's "preserved-refs path" contract and matches the
+        # archival pattern already established for ``memo.tex`` and
+        # ``memo.pdf``: the migration is the canonical record of the
+        # legacy inputs.
+        source_brief_preserved_path = (
+            prior_dir / source_brief_display_path
+        )
+        source_brief_preserved_path.parent.mkdir(
+            parents=True, exist_ok=True
+        )
+        shutil.copy2(source_brief_path, source_brief_preserved_path)
+
+        # in-v0-if-cheap AC7: emit a diagnostic note when multiple
+        # candidates with content were found. The operator should diff
+        # the unused candidates against the chosen one after migration
+        # so a misfit cohort member (where "v1 is canonical" was wrong)
+        # surfaces visibly rather than silently losing content.
+        if len(source_brief_candidates) > 1:
+            ignored_rels: List[str] = []
+            for cand in source_brief_candidates[1:]:
+                try:
+                    ignored_rels.append(
+                        str(cand.relative_to(legacy_root))
+                    )
+                except ValueError:
+                    ignored_rels.append(str(cand))
+            notes.append(
+                "Multiple source briefs with content found: "
+                f"{source_brief_display_path} (used), "
+                f"{', '.join(ignored_rels)} (ignored — N greater than "
+                "winner). Diff after migration to verify nothing lost."
+            )
+
     brief_md.write_text(
-        _build_brief_stub(source_tex, thread_slug, template_body),
+        _build_brief_stub(
+            source_tex,
+            thread_slug,
+            template_body,
+            source_brief_body=source_brief_body,
+            source_brief_display_path=source_brief_display_path,
+        ),
         encoding="utf-8",
     )
 
@@ -1695,6 +1923,21 @@ def migrate_thread(
             "metricbox table(s); see notes for reshape guidance."
         )
 
+    # Sub-issue 5f (issue #211): when a source brief was ingested,
+    # record the provenance line citing the *preserved-refs path*
+    # (relative to the new thread root). Per AC7: the path points at
+    # the archived copy under ``refs/prior-pipeline/v0/`` — that copy
+    # is the canonical record, not the original source location which
+    # may move or be deleted after the migration.
+    if source_brief_preserved_path is not None:
+        preserved_rel = source_brief_preserved_path.relative_to(
+            thread_root
+        )
+        changelog_lines.append(
+            f"- Ingested source brief from `{preserved_rel}` "
+            "(earliest-brief-wins rule)."
+        )
+
     # --- Step 13: refs/ seeding from BRIEF.md §Sources (issue #203).
     # Soft-fail: a §Sources parse error or missing-BRIEF must not regress
     # the migration's success contract. The standalone
@@ -1745,6 +1988,7 @@ def migrate_thread(
         refs_seeded=refs_seeded,
         refs_skipped=refs_skipped,
         orphan_figures=orphan_figures,
+        source_brief_path=source_brief_path,
     )
 
 
