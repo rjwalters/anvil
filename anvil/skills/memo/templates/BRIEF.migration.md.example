@@ -110,48 +110,6 @@ will flag violations as critical.
   Established v5; this is the structural risk for the business and the
   Risks section ordering reflects that.
 
-## Convictions to carry forward (shape demonstration)
-
-The actual convictions ledger lives at `<thread>.{N}/_convictions.md` — not
-in this brief — because convictions are reviser-written per version, not
-brief-level inputs. The brief is the natural place to **demonstrate** the
-shape, though, because migration is the case where carry-forward matters
-most: each `Hard rule` above is the kind of position the reviser will
-typically inscribe as a conviction once it has survived its first
-explicit critic challenge under the new lifecycle.
-
-Concretely, two example entries showing what `<thread>.9/_convictions.md`
-might contain after v9 is revised (assume v8's substantive critic
-challenged both positions and v9's reviser declined the challenges):
-
-```
-- §Risks ¶1 (route-density flywheel as lead risk).
-  Survived: v8 substantive critic argued for putting capital-efficiency
-  first. Position held — flywheel is the structural risk for the
-  business; capital efficiency is a consequence, not a peer risk.
-  Established v5; rewritten against v9's new Risks structure.
-
-- §Unit economics ¶3 (cohort accounting by signup quarter, not
-  delivery quarter). Survived: v8 audit pass re-raised the
-  delivery-quarter framing as more standard for last-mile logistics.
-  Position held — signup-quarter accounting makes v8→v9 retention
-  comparisons apples-to-apples; the convention has been load-bearing
-  since v7 and changing it would invalidate the cohort-2 retention
-  evidence that the bridge thesis rests on.
-```
-
-Each entry: a body anchor in the current `memo.md` (the `§...` reference
-is the load-bearing safeguard against the ledger drifting free of the
-artifact), the explicit prior challenge that the position survived, and
-a one-line restatement of the held position. A conviction whose anchor
-no longer exists in the current `memo.md` is automatically stale and
-must be dropped on the next revise pass.
-
-`_convictions.md` is **advisory only** — it does not feed the rubric, it
-does not gate any state transition, and it is read only by the next
-`memo-revise` invocation. See SKILL.md §Convictions ledger for the full
-contract.
-
 ## What v10 will tighten (forward-planning placeholder)
 
 A forward-planning hint so the reader (and the next reviser) knows where
