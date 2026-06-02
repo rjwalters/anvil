@@ -124,6 +124,29 @@ Thresholds: ≥32/40 advances. <32/40 requires revision. Any critical flag short
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
+### Operator-initiated polish passes
+
+A `READY` thread is the normal terminus, but operators MAY invoke `memo-revise <thread> --polish "<reason>"` to produce one additional revision pass that targets the line-level signal the default-refuse path would skip. The polish-pass entry point exists because the studio canary's 15/15 reviewed memos landed `advance:true` + 0 critical, universally blocking the polish-pass use case under the default verdict pre-check (issue #201).
+
+What `--polish` polishes against:
+
+1. **Sub-threshold per-dimension justifications** in `<thread>.{N}.review/scoring.md` — any dimension where the reviewer flagged room to grow (e.g., "5/6 — the recommendation is clear but the conditional terms could be sharper").
+2. **`comments.md` line-level notes** tagged `nit` or untagged — i.e., suggestions the default "fix what's broken" pass would skip because they did not rise to `blocker` / `major`.
+3. Any optional `<thread>.{N}.audit/` or other critic siblings, on the same terms as a normal revise pass.
+
+The polish-pass output is a normal `<thread>.{N+1}/` version dir (immutable, follows the reviser contract). It carries two skill-specific `metadata` extensions as the on-disk audit trail:
+
+- `metadata.revision_mode = "polish"` (default is `"normal"` or absent).
+- `metadata.revise_force_reason = "<verbatim operator-supplied reason>"` (default is `null` or absent).
+
+The reason argument to `--polish` is **required**: empty, whitespace-only, or missing values are rejected with a clear error and the thread is left untouched. This mirrors the deck skill's `iteration_cap_rationale` rejection pattern at §"Per-thread override contract" (around line 182) — an unjustified override is treated as malformed. Unlike the deck override (which lives in `<thread>/.anvil.json`), `--polish` is a CLI flag because the polish pass is a per-invocation operator decision, not a per-thread configuration.
+
+What `--polish` bypasses: **step 4 (verdict pre-check) only.** The iteration-cap check (step 3) still applies — a polish pass against a thread at `max_iterations` still hits the BLOCKED notice. The "fresh review required" check (step 1) still applies — running `--polish` twice in a row without an intervening `memo-review` is rejected (no fresh review to polish against). The flag is single-pass: it produces exactly one `<thread>.{N+1}/`, never loops, never consults a target score, never re-invokes itself.
+
+The polish pass re-enters the state machine at `REVISED`. The next `memo-review` pass derives state from on-disk evidence as usual; the reviewer does NOT read `revision_mode` or `revise_force_reason` and does NOT special-case the polish pass — it scores the polished version on its own rubric merits. The state-machine derivation in the table above is unchanged; `revision_mode` is audit-trail-only, mirroring the `_convictions.md` advisory-only contract above.
+
+See `commands/memo-revise.md` §"CLI flags" for the full reviser-side contract.
+
 ## Length targets
 
 A memo thread can declare an optional **target length** in `<thread>/.anvil.json`. The drafter and reviser pass this target into the LLM prompt as a soft length budget, and the reviewer uses it as the comparison anchor for rubric dim 7 (*Scope discipline*). When `target_length` is absent the skill behaves exactly as it does without the field — the reviewer falls back to the implicit "reasonable for the decision being made" judgment.
@@ -218,7 +241,7 @@ The full command contract — preflight, gate invocation, `_progress.json` shape
 | `memo-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/memo.md` and `.review/comments.md` evidence / market / comparables / risk findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating; may side-effect-write to `<thread>/refs/<key>.md` citation stubs |
 | `memo-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `memo-revise`) |
 | `memo-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
-| `memo-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
+| `memo-revise <thread> [--polish "<reason>"]` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md`; with `--polish`, also `metadata.revision_mode = "polish"` + `metadata.revise_force_reason` audit trail (bypasses step 4 verdict pre-check only — step 1 fresh-review + step 3 iteration-cap checks still apply; see §"Operator-initiated polish passes") |
 | `memo-render <thread>` | PDF renderer (optional, non-blocking) | latest `<thread>.{N}/memo.md`, `<thread>.{N}/_progress.json.metadata.target_length_resolved` | `<thread>.{N}/memo.pdf` (on success); `<thread>.{N}/_progress.json.phases.render` + `_progress.json.render_gate` always |
 | `memo-figures <thread>` | figurer | latest `<thread>.{N}/memo.md` | figures/tables under `<thread>.{N}/exhibits/` |
 
