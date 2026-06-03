@@ -73,6 +73,12 @@ Accepted file shapes for source-of-truth materials in v0: markdown (`.md`), plai
 
 See `commands/memo-draft.md` §Procedure step 3 for the drafter contract (ingestion of `refs/` source-of-truth materials), `commands/memo-review.md` §Procedure step 5 for the reviewer back-check sub-step, and `rubric.md` §"Refs back-check (dim 3)" for the per-instance deduction rule. The contract degrades gracefully: when `refs/` contains no source-of-truth materials (only citation stubs, or empty), the back-check is inactive and dim 3 falls back to the citation-hook behavior alone.
 
+### Summary-detail consistency back-check
+
+In addition to the refs back-check above (memo claim ↔ `refs/` source-of-truth), the reviewer performs an **intra-memo summary-detail consistency back-check** on every memo with a callout, abstract, TL;DR, or thesis block — see `rubric.md` §"Summary-detail consistency" and `commands/memo-review.md` §Procedure step 4e. The back-check enumerates load-bearing summary claims, locates the detail section that elaborates each claim, and classifies the relationship as `MATCH` / `ABSENT` / `CONTRADICTED` / `DIVERGENT` with severity `critical` / `important` / `suggestion`. A `CONTRADICTED` finding at `critical` severity (e.g., a callout that assigns one generation's behavior to a different generation) raises a `Summary-detail consistency: CONTRADICTED` critical flag and forces `advance: false` regardless of the rubric total.
+
+This is the **intra-memo** leg of the back-check triangle (memo A summary ↔ memo A detail); the refs back-check above is the source-of-truth leg (memo A claim ↔ memo A `refs/`); the cross-thread analog (#236) covers memo A claim ↔ memo B §N. Phase A ships as reviewer-prose discipline (no Python detector); a Phase B detector at `anvil/skills/memo/lib/summary_detail.py` is a follow-on gated on canary signal. The canary-anchor fixture under `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/` preserves the Studio Raytheon-pitch memo.3 Gen-attribution swap as the regression-test anchor for Phase B.
+
 ### Optional `.latest` convenience symlinks
 
 Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`, etc.) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Resolution semantics for the memo lifecycle commands:

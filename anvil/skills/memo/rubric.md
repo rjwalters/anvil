@@ -126,6 +126,65 @@ The dim 3 justification MUST cite the specific verdict and the refs-document pat
 
 The deduction is applied entirely via reviewer judgment — there is no automated `refs/` parsing in v0. See `commands/memo-review.md` §Procedure step 5 (dim 3 refs back-check sub-step) for the reviewer-side procedure and `commands/memo-draft.md` §Procedure step 3 for the drafter-side ingestion contract.
 
+## Summary-detail consistency
+
+Reviewer-judgment **cross-section back-check** between the memo's executive-summary blocks (callouts, abstracts, TL;DRs, thesis blocks, "what we believe" frontmatter) and the detailed sections that elaborate them. This is a **structural-gap check** that the existing per-section dimensions (Thesis coherence / Evidence quality / Defensibility) cannot catch by construction.
+
+**Why the existing rubric can't catch this.** Thesis coherence measures whether the thesis statement is clear and sharp **in isolation**. It does not ask whether the thesis statement matches what the body argues. Evidence quality and Defensibility evaluate the detail alone. No dim spans both — so a summary that's sharp but wrong gets full credit on Thesis coherence, and the body that contradicts it gets full credit on Evidence quality. This is a structural gap in the rubric, not reviewer carelessness; see the canary-anchor fixture under `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/` for the worked example.
+
+**Output channel.** Findings surface in their own `_summary.md.summary_detail_consistency` top-level block (sibling to the existing `lint` and `render_gate` top-level blocks, NOT nested under `lint` — see the schema notes at `commands/memo-review.md` step 9) and a corresponding `## Summary-detail consistency findings` subsection in `findings.md`. This sub-rule **does NOT add a 9th rubric dimension** and **does NOT alter the /40 total**. The block sits alongside the existing dimensions as a co-equal observation namespace.
+
+### What counts as a load-bearing summary claim
+
+The reviewer enumerates load-bearing assertions from:
+
+- **Callout / aside blocks** (any `> [!IMPORTANT]` / `> [!NOTE]` / explicitly framed sidebar block on page 1).
+- **Abstract / TL;DR blocks** — explicitly labeled `## Abstract` / `## TL;DR` / `## Executive summary` sections.
+- **Thesis blocks** — the first 1-3 paragraphs of the memo body when the memo's structure puts the thesis up front (the common case).
+- **"What we believe" frontmatter** — bulleted claims in a `## What we believe` / `## Key claims` block.
+- **Explicit `§N` references** in the summary block — when the summary says "see §2.2 for the workload-migration detail", the §2.2 detail section is the back-check target.
+
+Within each summary block, each **bolded**, **numbered**, or *italicized* assertion counts as one load-bearing claim, plus any unmarked claim whose load-bearing-ness is obvious to a sophisticated reader (e.g., a quarter / year tag, a Gen-N attribution, a load-bearing noun phrase like "the FPGA is the measurement instrument"). The reviewer's judgment is the contract — the rule is not "count every sentence" but "count every assertion a sophisticated reader anchors on."
+
+### Verdict tags
+
+For each (summary claim, detail section) pair, the reviewer classifies the relationship as one of:
+
+- **`MATCH`** — summary and detail say the same thing on the same load-bearing nouns / numbers. No finding emitted.
+- **`ABSENT`** — summary makes a claim no detail section elaborates. Severity typically `important`; `critical` when the claim is the memo's thesis or a load-bearing recommendation justification.
+- **`CONTRADICTED`** — detail section contradicts the summary on a load-bearing noun / number / quarter / actor. Severity **always `critical`** — this is the canary failure mode the contract exists to catch. The Raytheon-pitch Gen-1/Gen-2/Gen-3 attribution swap is the worked-example anchor (see `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/`).
+- **`DIVERGENT`** — summary and detail are technically compatible but framed differently in a way a sophisticated reader would notice. Severity typically `suggestion`; `important` when the framing change shifts the recommendation.
+
+### Severity ladder
+
+| Severity | Meaning | Verdict integration |
+|---|---|---|
+| `critical` | Load-bearing summary claim is contradicted by detail (CONTRADICTED-always) or absent from detail and is the memo's thesis (ABSENT-thesis). A sophisticated reader who stops after the summary has the wrong mental model of the recommendation. | **Critical-flag candidate** — see "Critical-flag integration" below. |
+| `important` | Summary claim is absent from detail, or framing divergence shifts the recommendation. The reviser should reconcile but the memo is not blocked solely on this finding. | Observational; included in revision priorities but does NOT force `advance: false` on its own. |
+| `suggestion` | Framing divergence that a sophisticated reader would notice but that does not shift the recommendation. The reviser may reconcile or accept the divergence. | Observational only. |
+
+The severity vocabulary (`critical` / `important` / `suggestion`) deliberately diverges from the existing `lint.*` severity vocabulary (`error` / `warning` / `info`) to signal the different character of the check — reviewer **judgment** vs. mechanical **lint**. The divergence is load-bearing; implementers SHOULD NOT normalize across the two vocabularies.
+
+### Critical-flag integration
+
+A `CONTRADICTED` finding at `critical` severity is a **critical-flag candidate** under the rubric's open-ended "any deal-breaker a sophisticated reader would catch" slot (mirrors the refs back-check `CONTRADICTED` precedent for dim 3 above). When such a flag is set, the verdict in `verdict.md` lists it as `Summary-detail consistency: CONTRADICTED` with the claim excerpt + the contradicting detail location as the one-paragraph justification, AND the top-3 revision priorities MUST include "Reconcile callout/abstract with detailed sections (see `_summary.md.summary_detail_consistency.findings[critical=true]`)" as priority #1.
+
+`ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are **observational** and do NOT force `advance: false`. The verdict aggregation logic at `commands/memo-review.md` step 7 (`advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)`) plugs into the existing "no critical flags" clause via the existing critical-flag-candidate pathway, not via a new gate.
+
+### Phase A / Phase B split
+
+**Phase A ships as reviewer-prose discipline (no Python module).** Following the §"Refs back-check (dim 3)" precedent above — "applied entirely via reviewer judgment — there is no automated `refs/` parsing in v0" — the back-check is encoded as procedure prose in `commands/memo-review.md` step 4e and the rubric prose in this section. The reviewer enumerates summary claims, locates detail sections, classifies the mismatch by verdict tag and severity, and emits the structured block. No detector is invoked.
+
+**Phase B (deferred, optional).** An automated detector at `anvil/skills/memo/lib/summary_detail.py` is a Phase B follow-on, gated on canary signal. The canary-anchor fixture under `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/` carries the expected-block shape so Phase B's detector has a regression anchor on landing. Promotion from skill-local to `anvil/lib/` is a Phase C decision gated on a deck-side or pub-side second consumer per CLAUDE.md §"Skill-local first, lib promotion later".
+
+### Related (composition with other back-checks)
+
+This is the **intra-memo** back-check; the related cross-thread back-check (#236) is the **cross-thread** analog. Both share the verdict-tag pattern (4-valued for #236's refs analog; 3-valued for this issue's summary-detail variant). When both ship, the framework covers the **back-check triangle**:
+
+1. **memo A claim ↔ memo A `refs/`** — existing §"Refs back-check (dim 3)" above (PR #144).
+2. **memo A callout ↔ memo A §N** — this sub-rule (intra-memo summary-detail consistency).
+3. **memo A claim ↔ memo B §N** — #236 (cross-thread citation back-check).
+
 ## Length targets (dim 7)
 
 When `<thread>/.anvil.json` declares a `target_length` (see `SKILL.md` §Length targets), dim 7 *Scope discipline* compares the produced memo's word count against the declared range rather than judging length against an implicit default.
