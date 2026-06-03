@@ -46,6 +46,7 @@ The `render_gate` block is **always written** (whether the gate passed or failed
    - If `phases.render.state == in_progress` (crashed prior run), treat as crashed: re-render from scratch. Any partial `memo.pdf` is overwritten in step 5.
 3. **Initialize `_progress.json`**: read existing `_progress.json` (per the read-merge-write recipe in `anvil/lib/snippets/progress.md`), set `phases.render.state = in_progress`, `phases.render.started = <ISO>` (per `anvil/lib/snippets/timestamp.md`). Preserve every other phase and all `metadata` fields.
 4. **Resolve target_length**: read `metadata.target_length_resolved` from the same `_progress.json`. If present and `source != "none"`, build `target_length = {"words": [metadata.target_length_resolved.min_words, metadata.target_length_resolved.max_words]}`. Otherwise pass `target_length = None` to the gate (the page-fit dimension graceful-degrades — see `render_gate.py` `_gate_memo` step 2).
+4b. **Resolve the `words_per_page` override** (optional, per-thread page_cap calibration): read `render_gate.words_per_page` from `<thread>/.anvil.json`. If present and a positive number (int or float), pass it through as `words_per_page=<value>`; otherwise omit the kwarg (the gate's default `MEMO_WORDS_PER_PAGE = 600` applies). Malformed values (non-numeric, `<= 0`, boolean) silently fall back to the default per the gate's graceful-degrade contract — no error raised. The override **only affects the `target_length.words → page range` conversion**: when `target_length.pages` is declared directly, the override is a no-op. See `anvil/lib/render_gate.py` module docstring §"page_cap calibration" for the calibration story (600 wpp is the dense-prose default; table-dense memos typically want ~300-400 wpp).
 5. **Invoke the render gate**: call
 
    ```python
@@ -56,6 +57,7 @@ The `render_gate` block is **always written** (whether the gate passed or failed
        version_dir=<thread>.{N}/,
        out_pdf=<thread>.{N}/memo.pdf,
        target_length=target_length,
+       words_per_page=words_per_page,  # omit when not set in .anvil.json
    )
    ```
 
@@ -88,6 +90,7 @@ All failure modes are **non-blocking** by design (per Epic #158 architect Q7 —
 | **Missing HTML/PDF engine** | pandoc present, but neither weasyprint, wkhtmltopdf, nor xelatex on PATH | `failed` | `unavailable` | Install one of the three engines per `MEMO_RENDERER_REMEDIATION`; re-run. |
 | **pandoc non-zero exit** | Engine reachable but the markdown source rejected (e.g., malformed YAML frontmatter, broken cross-ref) | `failed` | `failed` | Inspect `render_gate.findings` for the captured stderr excerpt; fix `memo.md`; re-run. |
 | **Render-gate finding** (placeholder, image-ref, overflow, page-fit) | PDF rendered but the gate flagged a deterministic issue | `done` (PDF exists) | `ok` | The PDF is usable but the Phase 4 reviewer will surface the finding in `_summary.md.render_gate`. Fix in the next revise pass. |
+| **`memo_page_fit: rendered N pages outside derived range`** (words-form, table-dense memos) | PDF rendered, word count is on-target by dim 7, but the 600-wpp default conversion derives a page range the rendered PDF overruns | `done` (PDF exists) | `ok` | The warning is advisory — the rubric's dim 7 word-count proxy remains authoritative. For genuinely table-dense memos where the 600-wpp conversion is systematically off, set `render_gate.words_per_page` (e.g., `400` for table-heavy investment memos) in `<thread>/.anvil.json` and re-run. See `anvil/lib/render_gate.py` module docstring §"page_cap calibration" for the calibration story. |
 | **pdfinfo missing** | PDF rendered, but page-count introspection skipped | `done` | `ok` | Informational only; install `poppler` for the page-fit check on the next run. |
 
 In all five cases the upstream `memo-draft` / `memo-revise` step that invoked `memo-render` (per their step additions, see those command files) treats this command's exit as **non-blocking** and continues to its own completion. The render outcome is recorded; the operator decides whether to act on it.
