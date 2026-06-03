@@ -385,3 +385,63 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 - `voice.md` (optional) — Author or fund voice/style guidance the drafter reads in addition to its base prompt.
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any-deal-breaker" instruction.
 - Reference brief shapes: `templates/BRIEF.fresh.md.example` (new-thread case — no prior version, no migration context, idea seed only) and `templates/BRIEF.migration.md.example` (migrate-from-prior-pipeline case — carries forward a prior version body, prior critic siblings, and a named delta to land). Both are freeform prose with optional YAML frontmatter. Copy whichever shape matches the thread state into `<thread>/BRIEF.md` and edit in place.
+- Reference rubric-override shapes (issue #233): `templates/.anvil.json.synthesis-brief.example` and `templates/.anvil.json.feedback-memo.example` are full, copy-and-edit `.anvil.json` configs calibrated from the two canary threads documented below. Copy whichever shape matches your memo into `<thread>/.anvil.json` and tune the calibration prose from there.
+
+## Rubric overrides and non-investment-memo shapes
+
+`anvil:memo` ships a single rubric calibrated for **investment memos** — Recommendation clarity = "single unambiguous recommendation with check size" (dim 1), Market & competitive framing = "TAM/SAM/SOM sized to the artifact" (dim 5), Financial reasoning = "unit economics + scenario math" (dim 6), Scope discipline = "2000–3000 word memo expectation" (dim 7). Studio canary use (2026-06-02) surfaced two READY threads at 39/40 that are **not** investment memos: a decision-framework portfolio synthesis (~11K words across 5 vertical sub-recommendations) and a studio-side feedback memo TO a third party (~5K words validating + sharpening another document). Both threads worked around the rubric mismatch via per-dimension reviewer-guidance prose telling the reviewer how to interpret dims 1, 5, 6, 7 for the non-standard shape.
+
+Two consumer surfaces support this calibration. The **structured config** (recommended) is the `rubric_overrides` block in `<thread>/.anvil.json`; the **unstructured fallback** (legacy) is a "Critical reviewer guidance" section in `BRIEF.md`. When BOTH surfaces are present the structured config wins — see `commands/memo-review.md` §"Reader dispatch order" for the precedence contract.
+
+### Structured config: `rubric_overrides` in `<thread>/.anvil.json`
+
+Per-thread rubric calibration lives in the `rubric_overrides` block of `<thread>/.anvil.json`. The block is **optional**: when absent, the memo skill behaves exactly as it does today (investment-memo rubric, no calibration suffixes — zero-impact for existing consumers). The full schema-of-record is the module docstring of `anvil/skills/memo/lib/anvil_config.py`; the on-disk shape is:
+
+```json
+{
+  "max_iterations": 8,
+  "target_length": { "words": [9000, 13000] },
+  "rubric_overrides": {
+    "memo_subtype": "synthesis-brief",
+    "dim_1_calibration": "decision-framework — score on framework clarity + sub-recommendation sharpness, not on single ranked recommendation",
+    "dim_5_calibration": "defers to underlying market models — score on integration quality not on fresh sizing",
+    "dim_6_calibration": "defers to underlying market models — score on whether financial framing supports positioning",
+    "dim_7_calibration": "target length 9000-13000 words; score against declared target",
+    "target_length": { "words": [9000, 13000] }
+  }
+}
+```
+
+Recognized keys (all optional; absent keys yield byte-identical-to-pre-#233 reviewer behavior):
+
+- **`memo_subtype`** (`string`) — Free-string label naming the shape (e.g., `"synthesis-brief"`, `"feedback-memo"`, `"decision-framework"`). Opaque to the loader and the reviewer logic; intended for human reference and audit-trail visibility in `_summary.md.rubric_overrides.memo_subtype`. Anvil does NOT ship a fixed `memo_subtype` enum in v0 — the canary subtypes documented below are conventions, not contracts. A future shipped enum (Option C in #233) is deferred until 3–4 more non-investment-memo threads accumulate.
+- **`dim_N_calibration`** (`string`, `N` in 1–9) — Per-dimension calibration prose. The reviewer appends the verbatim text as a `"calibration applied: <text>"` suffix to that dimension's `scoring.md` justification (see `commands/memo-review.md` step 5 §"Rubric overrides (rubric_overrides) — calibration suffixes"). The author's exact wording is the load-bearing audit trail — no rewording, no truncation, no normalization. Only dimensions with a `dim_N_calibration` declared carry a suffix; other dimensions are byte-identical to their pre-#233 form.
+- **`target_length`** (object with `words` or `pages` range) — Optional per-thread length-target override. Same flat-shape semantics as the top-level `target_length` field (see §"Length targets" above); per-version overrides are NOT supported inside `rubric_overrides` (use the top-level extended shape for that). The reviewer does NOT consume `rubric_overrides.target_length` directly for dim 7 scoring — the dim 7 anchor is the resolved range cached in `_progress.json.metadata.target_length_resolved` by the drafter / reviser. `rubric_overrides.target_length` is the **drafter / reviser** consumer surface; the reviewer's `_summary.md` records its presence as `target_length_present: bool` for the audit trail.
+
+Tolerance and validation (lenient by default — parse errors degrade to "no overrides" rather than raising). A missing `.anvil.json`, malformed JSON, a non-dict `rubric_overrides`, or a per-field validation failure all yield an empty `RubricOverrides` and the reviewer's behavior is byte-identical to the pre-#233 status quo. Per-field validation warnings (non-string `memo_subtype`, out-of-range dim number, non-string calibration value, malformed `target_length`) are emitted via `warnings.warn` (category `UserWarning`) but never block the lifecycle. **Unknown keys** in `rubric_overrides` (anything that is not `memo_subtype`, `dim_N_calibration`, or `target_length`) are preserved verbatim under `RubricOverrides.unknown_keys` and surfaced in `_summary.md.rubric_overrides.unknown_keys` — this is the forward-compat path: a future shipped `memo_subtype` enum, a "Concision Discipline" knob, or any other key can land in `.anvil.json` ahead of loader support without breaking existing consumers.
+
+### Worked example: `synthesis-brief` (brasidas-synthesis canary)
+
+A decision-framework portfolio synthesis that reads across an analytical bundle and is deliberately **non-prescriptive** on the portfolio-shape choice. The reader is expected to extract the framework and apply judgment; the memo commits clearly to several sub-recommendations but explicitly defers the portfolio-shape choice to the reader. The bundle is large (~75K words of source material); the synthesis is correspondingly longer than a typical investment memo (~11K words). Without calibration, the reviewer would deduct on dim 1 ("no single recommendation"), dims 5/6 ("under-developed market/financial framing"), and dim 7 ("doc is 3–5× too long for an investment memo").
+
+Drop `templates/.anvil.json.synthesis-brief.example` into `<thread>/.anvil.json` and tune from there. The example calibrates dims 1, 5, 6, 7 (the canary's load-bearing recalibrations) with prose drawn directly from the canary thread's `BRIEF.md` "Critical reviewer guidance" section, and sets `target_length` to `[9000, 13000]` words.
+
+### Worked example: `feedback-memo` (raytheon-pitch-strategy canary)
+
+A studio-side feedback memo TO a third party on a draft roadmap thesis (~5K words). The memo engages another document directly, validates parts, recommends sharpening, and proposes a concrete pitch backbone. There is **no "the company," no ask, no founder section** — the recommendation target is **positional** (sharpen the thesis, adopt the pitch backbone), not financial. Forceful brevity is load-bearing for this shape; every other rubric dim rewards additions, so the calibration prose tells the reviewer to score on positional clarity rather than investment-memo coverage. Without calibration, the reviewer would deduct on dim 1 ("no invest/pass recommendation"), dims 5/6 ("missing TAM/SAM/SOM and unit economics"), and dim 7 ("too short for a real investment memo").
+
+Drop `templates/.anvil.json.feedback-memo.example` into `<thread>/.anvil.json` and tune from there. The example calibrates dims 1, 4, 5, 6, 7 with prose framed around the positional-recommendation shape, and sets `target_length` to `[4000, 6000]` words.
+
+### Unstructured fallback: `BRIEF.md` "Critical reviewer guidance" (Option A)
+
+Before the structured config shipped, the two canary threads carried per-dimension reviewer guidance as a prose section inside `BRIEF.md` — a section titled something like "Critical reviewer guidance" or "Reviewer guidance" telling the reviewer how to interpret specific dimensions for the non-standard shape. The convention works because the reviewer is briefed to read `BRIEF.md` early in `memo-review` and respects the guidance inline. Reviewer's `commands/memo-review.md` step 4g §"Reader dispatch order" formalizes this fallback: when `.anvil.json` carries no `rubric_overrides` block (or no `.anvil.json` at all), the reviewer reads any `BRIEF.md` reviewer-guidance section and respects it inline in its `scoring.md` justifications — no suffix mechanism is applied because the prose is author-written prose, not loader-typed data. When **both** sources are present, the structured config wins and the `BRIEF.md` guidance is treated as documented fallback / context only (the reviewer does NOT re-apply its prose as a suffix — that would double-count the calibration in the audit trail).
+
+Typical `BRIEF.md` guidance shape (verbatim from the studio canary):
+
+> **Dim 1 (Recommendation clarity).** This brief is *intentionally non-prescriptive on the strategic shape choice*. The brief commits clearly to several sub-recommendations [...] but explicitly defers the portfolio-shape choice [...] to the studio CEO. **Do not score down dim 1 for "no single recommendation" — score dim 1 on whether the decision framework itself is clearly stated and whether the sub-recommendations are sharp.**
+>
+> **Dim 5 (Market & competitive framing) and Dim 6 (Financial reasoning).** This brief deliberately defers detailed market sizing and quantitative scenario modeling to the underlying per-vertical market models [...] **Score these dimensions on whether the synthesis correctly integrates the model outputs into the strategic framework, not on whether the synthesis itself does original financial modeling.**
+>
+> **Dim 7 (Scope discipline).** Target length is [9000, 13000] words. This is materially longer than the typical investment-memo target because the brief synthesizes ~75K words of source material. **Score dim 7 against the declared target, not against a 2000-3000 word memo expectation.**
+
+The structured `rubric_overrides` block is the recommended steady-state surface for new threads; the `BRIEF.md` convention is documented here so legacy threads continue to read correctly and so consumers who prefer the prose surface have an authoritative reference. See `commands/memo-review.md` §"Reader dispatch order: `.anvil.json` vs `BRIEF.md` 'Critical reviewer guidance'" for the full precedence contract.

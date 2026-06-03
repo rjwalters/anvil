@@ -1,0 +1,20 @@
+{
+  "_comment": "Worked example — synthesis-brief memo subtype. Calibrated from the studio brasidas-synthesis canary (2026-06-02): a decision-framework portfolio synthesis (~11K words) reading across a bundle of 1 platform doc + 5 vertical briefs + 10 strongman docs + 5 market models + 2 framing companions (~75K words total). The reader (CEO) is expected to extract the framework and apply judgment; the memo is deliberately non-prescriptive on the portfolio-shape choice. To use: copy this file to <thread>/.anvil.json, drop the _comment lines, and tune the calibration prose / target range to your thread. See anvil/skills/memo/SKILL.md §'Rubric overrides and non-investment-memo shapes' for the full contract.",
+
+  "max_iterations": 8,
+  "target_length": { "words": [9000, 13000] },
+
+  "rubric_overrides": {
+    "memo_subtype": "synthesis-brief",
+
+    "dim_1_calibration": "decision-framework — score on framework clarity + sub-recommendation sharpness, not on single ranked recommendation. This brief is intentionally non-prescriptive on the strategic shape choice; it commits clearly to several sub-recommendations but explicitly defers the portfolio-shape choice to the reader. Do not score down dim 1 for 'no single recommendation' — score dim 1 on whether the decision framework itself is clearly stated and whether the sub-recommendations are sharp.",
+
+    "dim_5_calibration": "defers to underlying market models — score on integration quality not on fresh sizing. This brief deliberately defers detailed market sizing to the underlying per-vertical market models in the analytical bundle. Score this dimension on whether the synthesis correctly integrates the model outputs into the strategic framework, not on whether the synthesis itself does original market sizing.",
+
+    "dim_6_calibration": "defers to underlying market models — score on whether financial framing supports positioning, not on whether the synthesis itself does original financial modeling. The per-vertical scenario math lives in the bundle; the synthesis's job is to integrate the outputs, not to re-derive them.",
+
+    "dim_7_calibration": "target length 9000-13000 words; score against declared target, not against a 2000-3000 word investment-memo expectation. This brief is materially longer than a typical investment memo because it synthesizes ~75K words of source material; the declared range reflects the synthesis-brief shape, not scope creep.",
+
+    "target_length": { "words": [9000, 13000] }
+  }
+}

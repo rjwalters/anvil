@@ -19,6 +19,15 @@ The rubric is tuned so that **intellectual honesty and reasoning quality (thesis
 | 9 | **Rhetorical economy** | 4 | Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds? |
 | | **Total** | **44** | Advance threshold: ≥35 |
 
+**Per-thread recalibration for non-investment-memo shapes (issue #233).** Dimensions 1, 5, 6, and 7 are the dims most commonly recalibrated when the memo is not an investment memo (e.g., a synthesis brief, a feedback memo to a third party, a decision-framework synthesis). The recalibration surface is the optional `rubric_overrides` block in `<thread>/.anvil.json`:
+
+- **Dim 1 (Recommendation clarity)** — A `dim_1_calibration` override re-scopes "single unambiguous recommendation" to the shape's actual recommendation target (e.g., "decision-framework — score on framework clarity + sub-recommendation sharpness" or "feedback-memo — score on position clarity, not single ranked recommendation"). See `SKILL.md` §"Rubric overrides and non-investment-memo shapes".
+- **Dim 5 (Market & competitive framing)** — A `dim_5_calibration` override re-scopes the TAM/SAM/SOM expectation (e.g., "defers to underlying market models — score on integration quality not on fresh sizing"). See `SKILL.md` §"Rubric overrides and non-investment-memo shapes".
+- **Dim 6 (Financial reasoning)** — A `dim_6_calibration` override re-scopes the unit-economics expectation (e.g., "defers to underlying market models — score on whether financial framing supports positioning"). See `SKILL.md` §"Rubric overrides and non-investment-memo shapes".
+- **Dim 7 (Scope discipline)** — A `dim_7_calibration` override anchors dim 7 to the declared `target_length` rather than the implicit investment-memo length expectation (e.g., "target length 9000-13000 words; score against declared target, not against a 2000-3000 word memo expectation"). See `SKILL.md` §"Rubric overrides and non-investment-memo shapes" + §"Length targets (dim 7)" below.
+
+When `rubric_overrides` is absent the rubric behaves exactly as documented above — zero-impact for existing investment-memo threads. When present, the reviewer appends the verbatim calibration prose as a `"calibration applied: <text>"` suffix to each affected dimension's `scoring.md` justification (see `commands/memo-review.md` step 5 §"Rubric overrides — calibration suffixes"). The full override contract, schema, worked examples (synthesis-brief, feedback-memo), and the `BRIEF.md` "Critical reviewer guidance" unstructured fallback all live in `SKILL.md` §"Rubric overrides and non-investment-memo shapes".
+
 ## Scoring guidance
 
 For each dimension, the reviewer assigns an integer between 0 and the dimension's weight. A short justification accompanies each score (1–3 sentences pointing to specific evidence in the memo).
