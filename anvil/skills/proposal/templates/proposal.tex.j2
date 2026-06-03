@@ -25,8 +25,14 @@
 %%                      line and how the reviewer reads dim 7 (persuasiveness):
 %%                      external = "wins the client"; internal = "justifies the
 %%                      budget allocation". It does NOT add or remove sections.
+%%   orientation      — portrait|landscape (default portrait). When landscape,
+%%                      passes the `landscape` class option to anvil-proposal.cls
+%%                      so the geometry package switches to landscape letter
+%%                      (792 x 612 pt). Useful for table-dense proposals where
+%%                      the wider text block lets columns breathe; default
+%%                      portrait keeps the Gossamer LAN worked example unchanged.
 
-\documentclass{anvil-proposal}
+\documentclass[{% if (orientation | default("portrait")) == "landscape" %}landscape{% endif %}]{anvil-proposal}
 
 %% Signature color override (default 4A6FA5 lives in the class).
 \definecolor{accent}{HTML}{ {{- signature_color | default("4A6FA5") -}} }

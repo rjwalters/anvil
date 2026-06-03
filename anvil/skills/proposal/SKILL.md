@@ -148,6 +148,15 @@ A single optional frontmatter key, `customer_kind: external | internal` (default
 - **Template effect**: drives the title-block `\proposalstage` default — `DESIGN PROPOSAL --- CONCEPT STAGE` for an external pitch, `INTERNAL BUILD SPEC` for an internal allocation. An explicit `stage:` in the brief overrides either default.
 - **Review effect** (see `rubric.md` and `commands/proposal-review.md`): for `external`, dimension 7 (persuasiveness / value proposition) is read as written — "why should the client say yes". For `internal`, the reviewer reads dim 7 as "justifies the budget allocation" rather than "wins the client" — same weight, reframed prompt. This is a documented reviewer instruction, not a code branch.
 
+## The `orientation` knob
+
+A second optional frontmatter key, `orientation: portrait | landscape` (default `portrait`), switches the rendered PDF's page orientation. It mirrors the brief-driven precedent established by `customer_kind` and `signature_color`: a single frontmatter key, propagated by the Jinja template into a class option, consumed by `anvil-proposal.cls`'s geometry block.
+
+- **When to use `landscape`**: table-dense proposals where the wider text block lets columns breathe — multi-section priced BOMs (4+ rows per section), 4+ column comparison tables (e.g., a V1/V2/V3 generation summary), multi-domain coverage matrices, multi-vertical buildable systems. The same content fits fewer pages with better legibility; canary observation: a portrait-letter proposal at 12 pages compacted to 8 pages (-33%) in landscape because columns no longer wrapped.
+- **Template effect**: the template emits `\documentclass[landscape]{anvil-proposal}` when `orientation: landscape` is set; otherwise `\documentclass{anvil-proposal}` (unchanged from the previous behavior). The class file's geometry block honors the option via `\ifanvil@landscape`, switching the page from 612 × 792 pt (portrait letter) to 792 × 612 pt (landscape letter) at the same margins.
+- **What it does NOT do**: it does not add, remove, or rename any section; it does not affect the rubric or any reviewer/auditor instruction; it does not change the typography or accent color. It is a pure layout knob.
+- **Backward compatibility**: when `orientation` is absent or `portrait`, the rendered PDF is identical to the pre-#247 behavior. The Gossamer LAN worked example (and every existing thread) is unaffected.
+
 ## Progress tracking
 
 Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. The canonical schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/lib/snippets/progress.md`); every command in this skill follows that convention.
