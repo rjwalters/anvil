@@ -41,9 +41,17 @@ def _run_install(target: Path) -> subprocess.CompletedProcess[str]:
 
 
 def _assert_install_artifacts(target: Path) -> None:
-    """Common post-install structural checks shared by both regression cases."""
+    """Common post-install structural checks shared by both regression cases.
 
-    assert (target / ".anvil" / "lib").is_dir()
+    Updated for the issue #230 layout: the framework Python ships under
+    ``.anvil/anvil/lib`` (importable mirror), with the skill body still at
+    ``.anvil/skills/<name>/`` (consumer-override target). The pre-#230
+    ``.anvil/lib`` path is no longer the install target.
+    """
+
+    assert (target / ".anvil" / "anvil" / "lib").is_dir()
+    assert (target / ".anvil" / "anvil" / "__init__.py").is_file()
+    assert (target / ".anvil" / "pyproject.toml").is_file()
     assert (target / ".anvil" / "roles").is_dir()
     assert (target / ".anvil" / "skills" / "memo" / "SKILL.md").is_file()
     assert (target / ".anvil" / "install-metadata.json").is_file()
