@@ -64,7 +64,7 @@ usage() {
 # ----- CLAUDE.md marker constants -------------------------------------------
 ANVIL_MARK_BEGIN='<!-- BEGIN ANVIL -->'
 ANVIL_MARK_END='<!-- END ANVIL -->'
-ANVIL_POINTER='This repository uses [Anvil](https://github.com/rjwalters/anvil) for AI-powered artifact creation. See `.anvil/CLAUDE.md` for the full guide (skills, rubric, state machine).'
+ANVIL_POINTER='This repository uses [Anvil](https://github.com/rjwalters/anvil) for AI-powered artifact creation. See `.anvil/CLAUDE.md` for the full guide (skills, rubric, state machine). To upgrade Anvil, re-run `install-anvil.sh .` from the anvil checkout without `--skills=` to pick up newly-shipped skills; pass `--skills=...` only to install a strict subset.'
 
 # ----- Argument parsing ------------------------------------------------------
 SKILLS_FILTER=""
@@ -733,6 +733,37 @@ else
 fi
 echo "  renderer deps:       $([[ "$DEPS_MISSING" -eq 0 ]] && echo "all present" || echo "$DEPS_MISSING missing -- re-run with --check-deps for detail")"
 echo ""
+
+# ----- Drift-detection note (issue #239) ------------------------------------
+# When SELECTED_SKILLS is a strict subset of ALL_SKILLS the installer has just
+# been steered toward installing fewer than the available source-side skills.
+# Surface the gap so the operator can tell apart "I deliberately pinned a
+# subset" from "I'm copy-pasting an old --skills= from my docs and missing
+# upstream additions." The signal is computed against the active selection
+# (SELECTED_SKILLS) vs the source enumeration (ALL_SKILLS), NOT against the
+# manifest's installed_skills (which exhibits the same staleness as the docs).
+# Fires under both real-install and --dry-run paths -- the drift signal is
+# part of the operator UX even on dry-run pre-flight.
+if [[ ${#SELECTED_SKILLS[@]} -lt ${#ALL_SKILLS[@]} ]]; then
+  MISSING_SKILLS=()
+  for avail in "${ALL_SKILLS[@]}"; do
+    selected=false
+    for sel in "${SELECTED_SKILLS[@]}"; do
+      if [[ "$sel" == "$avail" ]]; then selected=true; break; fi
+    done
+    $selected || MISSING_SKILLS+=("$avail")
+  done
+  if [[ ${#MISSING_SKILLS[@]} -gt 0 ]]; then
+    # ALL_SKILLS is already alpha-sorted via Stage 4's `sort -z`, and we
+    # iterate it in order to build MISSING_SKILLS -- so the listing here is
+    # deterministically alpha-ordered without an extra sort pass.
+    note "${#MISSING_SKILLS[@]} anvil skills available beyond your selection:"
+    note "      ${MISSING_SKILLS[*]}"
+    note "to install all available skills, re-run without --skills= (recommended for upgrades)."
+    echo ""
+  fi
+fi
+
 if [[ "$DRY_RUN" == true ]]; then
   warn "DRY-RUN: no files were written"
 else
