@@ -17,6 +17,18 @@ The review sibling directory is **read-only once written**. Revisions consume it
 - **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/memo.md` existing.
 - **Rubric**: `anvil/skills/memo/rubric.md` (9 dimensions, /44, ≥35 threshold, critical flags).
 - **Optional consumer override**: `.anvil/skills/memo/rubric.overrides.md` (additional critical-flag examples; never reduces the base rubric).
+- **Optional per-thread rubric overrides** (issue #233 / #265): `<thread>/.anvil.json`'s `rubric_overrides` block, parsed via `anvil/skills/memo/lib/anvil_config.py::load_rubric_overrides`. When present, per-dimension `dim_N_calibration` strings are appended as verbatim suffixes to each affected dimension's `scoring.md` justification (see step 4g + the §"Rubric overrides (rubric_overrides) — calibration suffixes" subsection below).
+
+## Reader dispatch order: `.anvil.json` vs `BRIEF.md` "Critical reviewer guidance"
+
+A thread MAY surface non-investment-memo calibration guidance in two places:
+
+1. **Structured config** at `<thread>/.anvil.json` under the `rubric_overrides` block (the primary, machine-readable path shipped under issue #233). The reader is `anvil/skills/memo/lib/anvil_config.py::load_rubric_overrides`; per-dimension calibrations attach as verbatim suffixes to `scoring.md` justifications per step 4g.
+2. **Author-side prose** in `BRIEF.md` (the legacy convention surfaced by the Studio canary's 2 READY-at-39/40 threads, the workaround that motivated #233 in the first place). The "Critical reviewer guidance" section is freeform prose telling the reviewer how to interpret specific dimensions for the non-standard shape.
+
+**Precedence — structured config wins.** When BOTH sources are present, the reviewer reads `.anvil.json` first and applies per-dimension calibrations to `scoring.md` justifications via the suffix mechanism. The `BRIEF.md` "Critical reviewer guidance" section is then treated as **documented fallback / context** — the reviewer reads it for additional context (especially for `memo_subtype`-level orientation that does not map cleanly to a per-dim calibration) but does NOT re-apply its prose as a suffix (that would double-count the calibration in the audit trail). When ONLY `BRIEF.md` carries the guidance (no `rubric_overrides` block in `.anvil.json`, or no `.anvil.json` at all), the reviewer reads the BRIEF.md guidance and respects it inline in its `scoring.md` justifications — the pre-#233 status quo for the two canary threads. When ONLY `.anvil.json` carries the guidance (the recommended steady-state for new threads going forward), the suffix mechanism is the entire calibration surface.
+
+**Why structured-config-wins.** The `.anvil.json` shape is the schema-of-record contract — it is parseable, validated by the typed loader, surfaces malformed inputs as warnings, and produces a deterministic audit trail (`scoring.md` carries the verbatim suffix). The `BRIEF.md` prose is author-discretion and can phrase the same intent in 20 different ways; making it the secondary source decouples the reviewer's mechanical behavior from author wording. Consumers migrating off the BRIEF.md convention should move their guidance into `.anvil.json` over the next 2-3 revisions; the BRIEF.md fallback ships indefinitely as backwards-compat.
 
 ## Outputs
 
@@ -107,6 +119,15 @@ The review sibling directory is **read-only once written**. Revisions consume it
      - `critical_flag_candidate: bool` — convenience flag for step 7 verdict aggregation. MUST equal `any(f.severity == "critical" and f.verdict == "ANCHOR-CONTRADICTED" for f in findings)`. Implementer convention; not duplicated state.
    - **Cache `cross_thread_cite_critical_flag = cross_thread_cite_block.critical_flag_candidate`** for the verdict logic at step 7. An `ANCHOR-CONTRADICTED` finding at `critical` severity surfaces as a `Cross-thread cite: ANCHOR-CONTRADICTED` critical flag in `verdict.md` (see step 10) and forces `advance: false` via the existing critical-flag pathway. `ANCHOR-MISSING-BUT-THREAD-PRESENT` and `THREAD-NOT-FOUND` findings at `important` severity are observational only and do NOT force `advance: false` (the per-instance dim 3 deduction is the natural surface).
    - **Related (back-check triangle)**: this is the *cross-thread* back-check (memo A claim ↔ memo B `§N`). Step 4e above covers the intra-memo back-check (memo A summary ↔ memo A detail, #245 / PR #250). The §"Refs back-check (dim 3)" sub-step at step 5 below covers memo A claim ↔ memo A `refs/` (#144 / PR #140 / PR #162). Together the three legs cover the **back-check triangle** — see `rubric.md` §"Cross-thread citation back-check (dim 3)" §"Related (back-check triangle composition)" for the composition contract. The three legs share the structural shape (explicit-skip convention, top-level `_summary.md` block, critical-flag-candidate pathway, `findings.md` subsection, fixture-anchored Phase B) but preserve divergent verdict-tag vocabularies — each leg's vocabulary is canon for that leg.
+4g. **Load `rubric_overrides` from `<thread>/.anvil.json`** — issue #233 / #265:
+   - Invoke `anvil/skills/memo/lib/anvil_config.py::load_rubric_overrides(<thread_dir>)`. The thread dir is the **portfolio-root parent** of `<thread>.{N}/memo.md` (the directory that contains `BRIEF.md` and `.anvil.json`, NOT a version subdirectory). The loader returns a `RubricOverrides` instance per the schema documented in `anvil_config.py`'s module docstring.
+   - The returned object carries:
+     - `memo_subtype: Optional[str]` — free-string label naming the shape (e.g., `"synthesis-brief"`, `"feedback-memo"`, `"decision-framework"`). Opaque to the reviewer logic; recorded in the `_summary.md.rubric_overrides` block for audit-trail visibility (see step 9).
+     - `calibrations: List[CalibrationOverride]` — per-dimension calibration entries (the load-bearing data: each entry is `(dimension: int 1-9, text: str)`).
+     - `target_length: Optional[TargetLengthRange]` — optional per-thread override of the existing `target_length` field. **NOT consumed by `memo-review`** — the reviewer's dim 7 anchor is `<thread>.{N}/_progress.json.metadata.target_length_resolved` per step 4, written by the drafter / reviser. The `rubric_overrides.target_length` field is the **drafter / reviser** consumer surface (sub-issue 2's deferred half: `memo-draft` and `memo-revise` will honor it when they next ship a target-length-resolution update). This separation matches the schema decision noted in `anvil_config.py`'s docstring §"Relationship to existing schema": `rubric_overrides.target_length` is the *subtype calibration* surface, not the per-version surface.
+     - `unknown_keys: Dict[str, Any]` — forward-compat passthrough (any key the loader didn't recognize). Surfaced via `warnings.warn` from the loader; surfaced in `_summary.md.rubric_overrides.unknown_keys` for operator visibility.
+   - **Graceful-degrade when absent**: the loader returns an empty `RubricOverrides` (every field `None` / empty) for any of: missing `.anvil.json`, malformed JSON, missing `rubric_overrides` block, non-dict `rubric_overrides`. The lenient form is the production contract — a consumer typo in `.anvil.json` never breaks the lifecycle. The reviewer's behavior on an empty `RubricOverrides` is **byte-identical** to the pre-#233 status quo: no suffixes attached, no `_summary.md.rubric_overrides` block emitted (or emitted with `ran: false`).
+   - **Cache the `RubricOverrides` instance** for the scoring write at step 5 and the `_summary.md` write at step 9. The instance is read-only from this point — no mutation.
 5. **Score each dimension** (1–9 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the memo.
@@ -134,6 +155,44 @@ The review sibling directory is **read-only once written**. Revisions consume it
      The dim 7 justification MUST record **both the declared target and the actual count** (e.g., "Target 1800–2400 words; actual 2050 — in range" or "Target 1800–2400 words; actual 3400 — 42% over upper bound"). When the resolved source is `"overrides.v{N}"`, append the provenance to the declared-target clause so the reader can see which override fired (e.g., "Target 2000–2800 words (from overrides.v10); actual 2389 — in range"). When the source is `"default"` or `"legacy_flat"`, the provenance parenthetical MAY be omitted — those sources match the implicit "thread-level default" reading and adding the tag adds noise without information. When `target_length` is unset (source `"none"`), the dim 7 justification falls back to the implicit "reasonable for the decision being made" judgment as today, with no length numbers required.
 
      **Rendered page count as second-layer advisory** (Phase 4 / issue #196): when `render_gate_block` (cached at step 4c) is present AND `render_gate_block.pages` is non-null, append the rendered page count to the dim 7 justification alongside the word count (e.g., "Target 1800–2400 words; actual 2050 (3 rendered pages) — in range"). Per `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory", the word count is the primary measure and the rendered page count is a second-layer advisory signal — the two MAY disagree, and when they do the reviewer judges which is binding (word count wins for the typical markdown-first memo; rendered page count is binding only when the operator declared `target_length.pages` explicitly). When the word count is in range but the rendered page count is out of range (e.g., 2050 words within `[1800, 2400]` but 5 rendered pages because of an oversized figure), record both numbers and note the rendered overflow as advisory in the dim 7 justification (e.g., "Target 1800–2400 words; actual 2050 (5 rendered pages — second-layer advisory, see `_summary.md.render_gate`) — in range on the primary signal"). When `render_gate_block.ran == false` (no render_gate block on disk — legal pre-Phase-3 or pre-render state), the rendered-page parenthetical is omitted and dim 7 falls back to word-count-only judgment.
+
+   **Rubric overrides (rubric_overrides) — calibration suffixes** (issue #233 / #265): for each dimension N with a `dim_N_calibration` declared in the cached `RubricOverrides` (step 4g), append the verbatim calibration text as a suffix to that dimension's justification BEFORE writing it to `scoring.md`. The contract:
+
+   - **Suffix shape (verbatim)**: `"<reviewer-prose-justification> calibration applied: <override text>"`. A single space separates the reviewer prose from the suffix; the prefix `"calibration applied: "` (with trailing space) is the load-bearing anchor a downstream consumer greps for. The override text is reproduced **byte-for-byte verbatim** — no rewording, no truncation, no whitespace normalization. The author's exact wording is the audit trail.
+   - **Empty justification handling**: when the reviewer wrote no justification body for a dimension (e.g., full-weight score without prose), the suffix becomes the entire justification: `"calibration applied: <override text>"`. The calibration MUST still appear in the audit trail even when the reviewer's own prose is absent.
+   - **Per-dimension dispatch**: ONLY dimensions with `dim_N_calibration` declared carry the suffix. Dimensions without a calibration are byte-identical to their pre-#233 form. A reviewer that sets calibrations for dims 1, 5, 6, 7 (the brasidas-synthesis canary) sees suffixes on those four; dims 2, 3, 4, 8, 9 are unchanged.
+   - **Mechanical helper**: `anvil/skills/memo/lib/rubric_overrides_suffix.py::apply_calibration_to_justification(justification, overrides, dimension)` (single dim) or `apply_calibrations_to_scores(scores, overrides)` (batch) implements the suffix shape. The reviewer agent SHOULD invoke the helper rather than reproducing the suffix format by hand — the helper is the schema-of-record for the format. Calling sites: at the end of the per-dim scoring loop (step 5), after the reviewer has written its own prose justification, run the cached `RubricOverrides` through the helper and use the returned suffix-appended string as the `scoring.md` table cell.
+   - **Zero-impact when `rubric_overrides` is absent** (AC3 of #265): the helper returns the input justification byte-for-byte unchanged when `overrides` is `None` OR `overrides.is_empty == True`. The reviewer's per-dim scoring write path is byte-identical to its pre-#233 behavior for legacy threads. This is the load-bearing backwards-compat contract for the ~90% of threads that do not declare `rubric_overrides`.
+   - **Dim 7 interaction**: when `target_length` is declared inside `rubric_overrides`, the reviewer's dim 7 anchor is STILL the resolved range cached at step 4 (from `_progress.json.metadata.target_length_resolved` or the `.anvil.json` top-level fallback). The `rubric_overrides.target_length` field is consumed by `memo-draft` and `memo-revise` (the drafter / reviser) — they write the resolved range into `_progress.json.metadata.target_length_resolved` for the next version, and `memo-review` reads that resolved field per step 4. So `rubric_overrides.target_length` participates indirectly via the existing pinning mechanism. A `dim_7_calibration` (separate from `target_length`) attaches as a suffix per the rules above.
+
+   **Worked example** — brasidas-synthesis canary (`memo_subtype: "synthesis-brief"`, the worked example from issue #233):
+
+   On-disk `<thread>/.anvil.json`:
+   ```json
+   {
+     "max_iterations": 8,
+     "rubric_overrides": {
+       "memo_subtype": "synthesis-brief",
+       "dim_1_calibration": "decision-framework — score on framework clarity + sub-recommendation sharpness, not on single ranked recommendation",
+       "dim_5_calibration": "defers to underlying market models — score on integration quality not on fresh sizing",
+       "dim_6_calibration": "defers to underlying market models — score on whether financial framing supports positioning",
+       "dim_7_calibration": "target length 9000-13000 words; score against declared target",
+       "target_length": { "words": [9000, 13000] }
+     }
+   }
+   ```
+
+   Resulting `scoring.md` table rows (only the affected dims shown):
+   ```
+   | # | Dimension                 | Weight | Score | Justification                                                                                                                                                                                                                                                  |
+   |---|---------------------------|--------|-------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+   | 1 | Recommendation clarity    | 5      | 5     | Brief commits to 5 sharp sub-recommendations and explicitly defers portfolio-shape choice to the CEO; the framework itself is unambiguous. calibration applied: decision-framework — score on framework clarity + sub-recommendation sharpness, not on single ranked recommendation |
+   | 5 | Market & competitive framing | 4   | 4     | Synthesis correctly integrates per-vertical market models without re-doing the sizing work — references all 5 verticals with appropriate weight. calibration applied: defers to underlying market models — score on integration quality not on fresh sizing |
+   | 6 | Financial reasoning       | 5      | 5     | Financial framing supports the recommendation framework without re-modeling; defers to the underlying per-vertical scenario math. calibration applied: defers to underlying market models — score on whether financial framing supports positioning |
+   | 7 | Scope discipline          | 4      | 4     | Target 9000-13000 words; actual 11,247 — in range. Synthesis stays within scope of the analytical bundle. calibration applied: target length 9000-13000 words; score against declared target |
+   ```
+
+   Dims 2, 3, 4, 8, 9 carry their normal reviewer-prose justifications with NO suffix attached (no calibration declared for those dims). The verdict + advance logic at step 7 is unchanged — the suffix is audit-trail commentary, not a score modifier.
 6. **Identify critical flags**: review the memo against the 4 example flags in `rubric.md` AND the open-ended "any deal-breaker a sophisticated reader would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 35) AND (no critical flags) AND (lint.errors == 0)`. When the pre-flight image-reference lint (step 4b) reports `errors > 0`, `advance` is forced `false` and the verdict lists `Memo image refs (lint)` under critical flags. The rubric total is reported honestly but does not save the verdict — a memo that references files that do not exist is not advance-eligible regardless of its prose quality.
 
@@ -295,6 +354,18 @@ The review sibling directory is **read-only once written**. Revisions consume it
        ],
        "critical_flag_candidate": false
      },
+     "rubric_overrides": {
+       "ran": true,
+       "memo_subtype": "synthesis-brief",
+       "calibrations_applied": [
+         { "dimension": 1, "text": "decision-framework — score on framework clarity + sub-recommendation sharpness, not on single ranked recommendation" },
+         { "dimension": 5, "text": "defers to underlying market models — score on integration quality not on fresh sizing" },
+         { "dimension": 6, "text": "defers to underlying market models — score on whether financial framing supports positioning" },
+         { "dimension": 7, "text": "target length 9000-13000 words; score against declared target" }
+       ],
+       "target_length_present": true,
+       "unknown_keys": []
+     },
      "critical_flag": true,
      "critical_flag_notes": [
        { "type": "memo_image_refs_lint", "ref_lines": [41], "justification": "Pre-flight image-reference lint flagged 1 missing ref. See lint.memo_image_refs.errors_by_path for the per-ref breakdown and suggested fixes." },
@@ -303,6 +374,15 @@ The review sibling directory is **read-only once written**. Revisions consume it
    }
    ```
    ```
+   - The top-level `rubric_overrides` block (issue #233 / #265) is populated from the cached `RubricOverrides` from step 4g. The block lives at the **top level** of `_summary.md` (sibling to `lint`, `render_gate`, `summary_detail_consistency`, `cross_thread_cite_consistency`, and `scope_distribution`), NOT nested under `lint` — rationale: the existing `lint` namespace is reserved for deterministic mechanical checks; `rubric_overrides` is **per-thread reviewer configuration**, not a check result. The block exists so the operator and downstream consumers can see at a glance *which* calibrations the reviewer applied to which dimensions, with the verbatim override text recorded for the audit trail (mirroring the suffix text written into `scoring.md`). Shape:
+     - `ran` (`bool`): whether any rubric override was loaded. `true` when the loader returned a non-empty `RubricOverrides` (any of `memo_subtype`, `calibrations`, `target_length`, or `unknown_keys` populated); `false` when the loader returned an empty instance (no `.anvil.json`, no `rubric_overrides` block, or malformed block — see the loader's lenient-form contract).
+     - `reason` (`str`, only when `ran: false`): short tag — `"no rubric_overrides block in .anvil.json"`.
+     - `memo_subtype` (`str | null`, only when `ran: true`): the verbatim `memo_subtype` string from the loader, or `null` when not declared. Opaque to the reviewer logic; surfaced for operator-side audit and for future-shipped tooling (e.g., a CI hook that asserts "all synthesis-brief threads carry dim_1_calibration").
+     - `calibrations_applied` (`list[dict]`, only when `ran: true`): one entry per dimension with a `dim_N_calibration` declared. Each entry is `{dimension: int (1-9), text: str}`. The `text` field is **verbatim** from the loader — the same string that was appended as a suffix to `scoring.md`. Order is by dimension number ascending (the loader's sort order). When no calibrations are declared, the list is `[]`.
+     - `target_length_present` (`bool`, only when `ran: true`): `true` when the loader parsed a `rubric_overrides.target_length` block. The reviewer does NOT consume this field for dim 7 scoring (the resolved range from `_progress.json.metadata.target_length_resolved` is the dim 7 anchor per step 4); this flag is surfaced so the operator can see WHAT the loader saw. Drafter / reviser are the consumers of `rubric_overrides.target_length`; the reviewer's `_summary.md` just records its presence.
+     - `unknown_keys` (`list[str]`, only when `ran: true`): forward-compat passthrough — the keys the loader did not recognize (preserved verbatim by the loader under `RubricOverrides.unknown_keys`). Surfaced here so the operator sees WHICH unrecognized keys were present without having to re-read `.anvil.json`. When all keys are recognized, the list is `[]`.
+   - **The `rubric_overrides` block does NOT participate in `critical_flag`.** This is by design: calibration overrides are reviewer-configuration metadata, not a check result. The block is observational only — the load-bearing surfacing of the calibrations themselves is the `scoring.md` suffix (per step 5's calibration-suffix rules). The `_summary.md` block is the structured shadow / audit trail.
+   - **Backwards-compat**: a legacy review sibling produced before this block shipped MAY omit `rubric_overrides` entirely. Downstream consumers (test suites, tooling) MUST tolerate the absence by treating it as `{ran: false, reason: "block predates issue #265"}`. New reviews produced after this contract ships SHOULD emit the block (`ran: false` with reason when no overrides; `ran: true` with the full shape when overrides are present).
    - The top-level `scope_distribution` block (issue #242, Phase A) is a count of `comments.md` entries per `scope` value. Shape:
      - `preserve` (`int`): count of `scope: preserve` comments.
      - `expand` (`int`): count of `scope: expand` comments.
