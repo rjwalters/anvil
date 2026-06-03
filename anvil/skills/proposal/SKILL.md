@@ -98,13 +98,17 @@ See `commands/proposal-draft.md` §Procedure step 3 for the drafter contract (in
 Per-thread state, derived from on-disk evidence (not flags):
 
 ```
-EMPTY → DRAFTED → REVIEWED+AUDITED → REVISED → … → READY → AUDITED → figures
+EMPTY → DRAFTED → REVIEWED+AUDITED → SYNTHESIZED → REVISED → … → READY → AUDITED → figures
                        ↘ (either critic alone is insufficient — both required to leave DRAFTED) ↗
-   ↑
-   (optional .0.perspective/ may exist before DRAFTED; it does not gate the machine)
+   ↑                                       ↘ (synthesis is the v0-recommended pre-revise step
+   (optional .0.perspective/ may exist        but optional — the reviser falls back to per-sibling
+    before DRAFTED; it does not gate           reading when .synthesis/ is absent) ↗
+    the machine)
 ```
 
 The perspective sibling is intentionally allowed at `.0.perspective/` (before the first drafted version) AND at `.{N}.perspective/` (after a reviewer or `proposal-audit` extended-sourceability finding points out a substrate gap). Both follow the same "N parallel critics, one reviser" rule: when present at `<thread>.{N}.perspective/`, the next `proposal-revise` pass consumes it alongside `.review/` and `.audit/`. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence of a perspective sibling does NOT block draft / review / audit / revise — a proposal thread with no perspective sibling proceeds normally. The proposal-skill required critic set (`review + audit`, both REQUIRED) MUST NOT list `perspective` as required; it is opt-in input, not required output. See `commands/proposal-perspective.md` for the command spec.
+
+The **synthesis sibling** (`<thread>.{N}.synthesis/`) is the v0-recommended pre-revise step on the proposal skill: it consolidates cross-critic findings from `.review/`, `.audit/`, and (when present) `.perspective/` + any opt-in `.<critic>/` siblings into a single machine-readable `gaps.json` the reviser consumes as its primary input. The synthesizer fixes the "3 findings, 1 gap" layered-language failure mode documented in issue #246 (three siblings all flag the same underlying gap → reviser writes three layered responses instead of one coordinated response). The synthesis sibling is **non-gating**: when `<thread>.{N}.synthesis/gaps.json` is absent or fails schema validation, `proposal-revise` falls back to per-sibling finding reading (the pre-synthesis behavior is preserved verbatim — see `commands/proposal-revise.md` step 6). See `commands/proposal-synthesize.md` for the writer-side contract and `anvil/skills/proposal/lib/synthesis_schema.py` for the pydantic schema.
 
 | State | Evidence |
 |---|---|
@@ -113,7 +117,8 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` (without `.audit/`) — transient; not advance-eligible |
 | `AUDITED-PARTIAL` | `<thread>.{N}.audit/verdict.md` exists for the latest `N` (without `.review/`) — transient; not advance-eligible |
 | `REVIEWED+AUDITED` | BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` exist for the latest `N` |
-| `REVISED` | A `<thread>.{N+1}/` exists after a prior `REVIEWED+AUDITED` state at `N` |
+| `SYNTHESIZED` | `<thread>.{N}.synthesis/verdict.md` + `<thread>.{N}.synthesis/gaps.json` exist for the latest `N`; presupposes `REVIEWED+AUDITED` (the synthesizer refuses to run without both critic siblings). Transient state between `REVIEWED+AUDITED` and `REVISED`; the reviser consumes `gaps.json` as its primary planning input (with per-sibling fallback when this state is skipped). |
+| `REVISED` | A `<thread>.{N+1}/` exists after a prior `REVIEWED+AUDITED` (or `SYNTHESIZED`) state at `N` |
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` (≥35) AND latest `<thread>.{N}.audit/verdict.md` records `pass: true` AND no unresolved critical flag in either sibling |
 | `AUDITED` | Same as `READY` for this skill — `AUDITED` is the standard anvil terminal state; proposal reaches it once both critic siblings clear. There is no further `CUSTOMER-READY`/`promote` stage (that is report-specific). |
 
@@ -132,10 +137,11 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | `proposal-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `proposal-revise`) |
 | `proposal-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `proposal-audit <thread>` | auditor (REQUIRED by default) | latest `<thread>.{N}/` (BOM, specs, link budgets), `<thread>/refs/` | `<thread>.{N}.audit/` |
-| `proposal-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings (both `.review/` and `.audit/` required) | `<thread>.{N+1}/` with `changelog.md` |
+| `proposal-synthesize <thread>` | synthesizer (v0-recommended pre-revise; optional, non-gating) | latest `<thread>.{N}/proposal.tex`, BOTH `<thread>.{N}.review/` AND `<thread>.{N}.audit/` (REQUIRED), AND all other discovered `<thread>.{N}.<critic>/` siblings (`.perspective/`, opt-in `.<critic>/`) | `<thread>.{N}.synthesis/` with `verdict.md`, `synthesis.md`, `gaps.json`, `_meta.json` (`role: synthesizer`; the sibling does NOT contribute scores to the aggregator) |
+| `proposal-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings (both `.review/` and `.audit/` required); prefers `<thread>.{N}.synthesis/gaps.json` as planning input when present, falls back to per-sibling reading otherwise | `<thread>.{N+1}/` with `changelog.md` |
 | `proposal-figures <thread>` | figurer | latest `<thread>.{N}/proposal.tex` | renders/stubs under `<thread>.{N}/figures/` |
 
-The portfolio orchestrator is the user-facing entry point for status; the lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent). `proposal-review` and `proposal-audit` run in parallel after `proposal-draft`; both must complete before `proposal-revise` (or before the thread can reach `READY`/`AUDITED`).
+The portfolio orchestrator is the user-facing entry point for status; the lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent). `proposal-review` and `proposal-audit` run in parallel after `proposal-draft`; both must complete before `proposal-synthesize` (or `proposal-revise` directly, if a consumer skips the synthesis step), and before the thread can reach `READY`/`AUDITED`. `proposal-synthesize` runs after both critic siblings complete and before `proposal-revise`; it is the v0-recommended pre-revise step but non-gating — the reviser falls back to per-sibling reading when no `synthesis/` sibling is present.
 
 ## Renderer
 
