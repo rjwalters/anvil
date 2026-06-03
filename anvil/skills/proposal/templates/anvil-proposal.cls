@@ -33,12 +33,26 @@
 %%   colors: ink, accent, muted, bg, rule
 %%
 %% ── Options ─────────────────────────────────────────────────────────────────
-%%   (none) — the signature accent color is set via \definecolor in the preamble
-%%   below; the template overrides it from the brief's signature_color when set.
+%%   landscape — switches the geometry orientation from the default portrait to
+%%               landscape letter (792 x 612 pt). Driven from the BRIEF.md
+%%               `orientation:` frontmatter key by the proposal.tex.j2 template;
+%%               useful for table-dense proposals (multi-section priced BOMs,
+%%               4+ column comparison tables, multi-domain coverage matrices)
+%%               where the wider text block lets columns breathe. Default
+%%               portrait (matches Gossamer LAN).
+%%   (other)  — the signature accent color is set via \definecolor in the preamble
+%%              below; the template overrides it from the brief's signature_color
+%%              when set.
 
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesClass{anvil-proposal}[2026/05/29 v0.1 Anvil buildable-system proposal class]
 
+%% landscape orientation flag — declared option that sets a boolean the geometry
+%% block conditionally honors. Default false (portrait). See \ifanvil@landscape
+%% in the layout section below.
+\newif\ifanvil@landscape
+\anvil@landscapefalse
+\DeclareOption{landscape}{\anvil@landscapetrue}
 \DeclareOption*{\PassOptionsToClass{\CurrentOption}{article}}
 \ProcessOptions\relax
 
@@ -66,7 +80,20 @@
 }
 
 %% ─── Layout ──────────────────────────────────────────────────────────────────
+%% The geometry package honors the class-level landscape option (set by the
+%% template from the brief's `orientation: landscape` frontmatter key). The
+%% landscape option, when set, is forwarded via \PassOptionsToPackage so the
+%% geometry option list stays a plain comma-separated key=value sequence (an
+%% inline \ifanvil@landscape ... \fi inside the option list expands awkwardly
+%% during geometry's preprocessing). The geometry call carries `letterpaper`
+%% explicitly so the paper dimensions are reset in the same pass that the
+%% landscape orientation flag applies — without it, geometry's mode toggle
+%% does not swap paperwidth/paperheight.
+\ifanvil@landscape
+  \PassOptionsToPackage{landscape}{geometry}
+\fi
 \RequirePackage[
+  letterpaper,
   top=0.7in,
   bottom=0.8in,
   left=0.95in,
