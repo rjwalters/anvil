@@ -36,6 +36,7 @@ from anvil.lib.render_gate import (
     MEMO_ENGINE_XELATEX,
     MEMO_WORDS_PER_PAGE,
     GateResult,
+    _coerce_words_per_page,
     _gate_memo,
     _parse_memo_overfull,
     _render_memo_source,
@@ -271,31 +272,35 @@ def test_render_memo_source_pandoc_failure(monkeypatch, memo_version_dir):
 
 def test_resolve_target_length_pages_form():
     """{'pages': [3, 4]} → page range used directly; source='pages'."""
-    pr, wr, src = _resolve_target_length({"pages": [3, 4]})
+    pr, wr, src, wpp = _resolve_target_length({"pages": [3, 4]})
     assert pr == (3, 4)
     assert wr is None
     assert src == "pages"
+    # effective_wpp is the default even when the conversion didn't apply.
+    assert wpp == MEMO_WORDS_PER_PAGE
 
 
 def test_resolve_target_length_words_form_uses_wpp_proxy():
     """{'words': [1800, 2400]} → derived page range via 600-wpp proxy."""
-    pr, wr, src = _resolve_target_length({"words": [1800, 2400]})
+    pr, wr, src, wpp = _resolve_target_length({"words": [1800, 2400]})
     assert pr == (1800 // MEMO_WORDS_PER_PAGE, 2400 // MEMO_WORDS_PER_PAGE)
     assert wr == (1800, 2400)
     assert src == "words"
+    assert wpp == MEMO_WORDS_PER_PAGE
 
 
 def test_resolve_target_length_none():
     """None → all None, source='none'."""
-    pr, wr, src = _resolve_target_length(None)
+    pr, wr, src, wpp = _resolve_target_length(None)
     assert pr is None
     assert wr is None
     assert src == "none"
+    assert wpp == MEMO_WORDS_PER_PAGE
 
 
 def test_resolve_target_length_malformed_both_keys():
     """Both 'words' and 'pages' set → malformed, source='none'."""
-    pr, _, src = _resolve_target_length(
+    pr, _, src, _ = _resolve_target_length(
         {"words": [1800, 2400], "pages": [3, 4]}
     )
     assert pr is None
@@ -307,6 +312,204 @@ def test_resolve_target_length_malformed_wrong_shape():
     assert _resolve_target_length({"pages": 4})[2] == "none"
     assert _resolve_target_length({"pages": [3, 4, 5]})[2] == "none"
     assert _resolve_target_length({"words": [2400, 1800]})[2] == "none"  # min > max
+
+
+# ---------------------------------------------------------------------------
+# words_per_page override (issue #235): per-thread page_cap calibration
+# ---------------------------------------------------------------------------
+
+
+def test_coerce_words_per_page_accepts_positive_int():
+    """Positive int → passes through unchanged."""
+    assert _coerce_words_per_page(400) == 400
+    assert _coerce_words_per_page(1) == 1
+
+
+def test_coerce_words_per_page_accepts_positive_float():
+    """Positive float → coerced to int."""
+    # Curation explicitly says "positive number (int or float)".
+    assert _coerce_words_per_page(400.5) == 400
+
+
+def test_coerce_words_per_page_rejects_non_positive():
+    """0 and negative numbers → None (fall back to default)."""
+    assert _coerce_words_per_page(0) is None
+    assert _coerce_words_per_page(-1) is None
+    assert _coerce_words_per_page(-400) is None
+    assert _coerce_words_per_page(0.0) is None
+    # Subatomic floats that would coerce to 0 also reject.
+    assert _coerce_words_per_page(0.4) is None
+
+
+def test_coerce_words_per_page_rejects_non_numeric():
+    """Strings and other non-numeric values → None (fall back to default)."""
+    assert _coerce_words_per_page("400") is None
+    assert _coerce_words_per_page(None) is None
+    assert _coerce_words_per_page([400]) is None
+    assert _coerce_words_per_page({"value": 400}) is None
+
+
+def test_coerce_words_per_page_rejects_bool():
+    """``True`` / ``False`` → None (bool is technically int but nonsensical here)."""
+    assert _coerce_words_per_page(True) is None
+    assert _coerce_words_per_page(False) is None
+
+
+def test_resolve_target_length_override_changes_derived_range():
+    """words_per_page=400 with words=[9000, 13000] → derived pages [22, 33]
+    (the issue's brasidas-synthesis reproducer numbers)."""
+    pr, wr, src, wpp = _resolve_target_length(
+        {"words": [9000, 13000]}, words_per_page=400
+    )
+    # min: 9000 // 400 = 22; max: ceil(13000 / 400) = 33.
+    assert pr == (22, 33)
+    assert wr == (9000, 13000)
+    assert src == "words"
+    assert wpp == 400
+
+
+def test_resolve_target_length_override_none_uses_default():
+    """words_per_page=None → default 600 wpp applied. Regression guard."""
+    pr, wr, src, wpp = _resolve_target_length(
+        {"words": [9000, 13000]}, words_per_page=None
+    )
+    # 9000 // 600 = 15; ceil(13000 / 600) = 22.
+    assert pr == (15, 22)
+    assert wpp == MEMO_WORDS_PER_PAGE
+
+
+def test_resolve_target_length_override_ignored_for_pages_form():
+    """words_per_page override is a no-op when target_length.pages is set."""
+    pr, wr, src, wpp = _resolve_target_length(
+        {"pages": [3, 4]}, words_per_page=400
+    )
+    # Pages form bypasses the conversion entirely; effective_wpp is
+    # still surfaced (set to the override) but unused.
+    assert pr == (3, 4)
+    assert wr is None
+    assert src == "pages"
+
+
+def test_gate_memo_words_per_page_override_default_preserved(
+    monkeypatch, memo_version_dir, fake_pdfinfo_5pages
+):
+    """No words_per_page kwarg → default 600 wpp behavior is unchanged.
+
+    Regression guard for AC 1 ("default behavior preserved when absent").
+    target_length.words=[1800, 2400] derives [3, 4]; rendered 5 pages
+    fires the warning (same as today).
+    """
+    _mock_full_render_chain(monkeypatch)
+    r = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        pdfinfo_path=fake_pdfinfo_5pages,
+        target_length={"words": [1800, 2400]},
+        # words_per_page omitted on purpose.
+    )
+    assert DIM_MEMO_PAGE_FIT in r.failed_gates
+    findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
+    assert len(findings) == 1
+    # Message surfaces the 600-wpp default.
+    assert "@ 600 wpp" in findings[0].message
+
+
+def test_gate_memo_words_per_page_override_widens_range(
+    monkeypatch, memo_version_dir, fake_pdfinfo_5pages
+):
+    """words_per_page=400 widens the derived range so 5 pages passes.
+
+    AC 8 mirror: target_length.words=[1800, 2400] at 400 wpp derives
+    [4, 6]; rendered 5 is in range → page-fit does NOT fire.
+    """
+    _mock_full_render_chain(monkeypatch)
+    r = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        pdfinfo_path=fake_pdfinfo_5pages,
+        target_length={"words": [1800, 2400]},
+        words_per_page=400,
+    )
+    assert DIM_MEMO_PAGE_FIT not in r.failed_gates
+    # The informational reason surfaces the effective wpp.
+    assert any(
+        DIM_MEMO_PAGE_FIT in reason and "@ 400 wpp" in reason
+        for reason in r.reasons
+    )
+
+
+def test_gate_memo_words_per_page_message_surfaces_override(
+    monkeypatch, memo_version_dir, fake_pdfinfo_5pages
+):
+    """When the override is set and the page-fit warning STILL fires, the
+    finding message records the effective wpp (not hard-coded 600).
+
+    AC 2 + AC 5: ``memo_page_fit`` finding records the effective wpp used.
+    """
+    _mock_full_render_chain(monkeypatch)
+    # 300 wpp on words=[1800, 2400] derives [6, 8]; rendered 5 is below.
+    r = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        pdfinfo_path=fake_pdfinfo_5pages,
+        target_length={"words": [1800, 2400]},
+        words_per_page=300,
+    )
+    assert DIM_MEMO_PAGE_FIT in r.failed_gates
+    findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
+    assert len(findings) == 1
+    assert "@ 300 wpp" in findings[0].message
+    # The hard-coded 600 should NOT appear (regression guard).
+    assert "@ 600 wpp" not in findings[0].message
+
+
+def test_gate_memo_words_per_page_malformed_falls_back_silently(
+    monkeypatch, memo_version_dir, fake_pdfinfo_5pages
+):
+    """Malformed overrides (0, negative, non-numeric, bool) → silent
+    fall back to 600 wpp; no exception raised. AC 4 + curation
+    graceful-degrade contract."""
+    _mock_full_render_chain(monkeypatch)
+    for bad in [0, -1, -400, "400", True, False, [400], {"wpp": 400}]:
+        r = gate(
+            kind="memo",
+            version_dir=memo_version_dir,
+            pdfinfo_path=fake_pdfinfo_5pages,
+            target_length={"words": [1800, 2400]},
+            words_per_page=bad,
+        )
+        # Default 600 wpp behavior: derived [3, 4], 5 pages out of range.
+        assert DIM_MEMO_PAGE_FIT in r.failed_gates, (
+            f"Bad words_per_page={bad!r} did not fall back to default"
+        )
+        findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
+        assert "@ 600 wpp" in findings[0].message, (
+            f"Bad words_per_page={bad!r} did not produce default-wpp message"
+        )
+
+
+def test_gate_memo_words_per_page_override_ignored_when_pages_set(
+    monkeypatch, memo_version_dir, fake_pdfinfo_5pages
+):
+    """words_per_page override is a no-op when target_length.pages is set.
+
+    AC 3: override only applies when target_length.words is set.
+    """
+    _mock_full_render_chain(monkeypatch)
+    # pages=[2, 3], rendered 5 → fails regardless of words_per_page.
+    r = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        pdfinfo_path=fake_pdfinfo_5pages,
+        target_length={"pages": [2, 3]},
+        words_per_page=400,
+    )
+    assert DIM_MEMO_PAGE_FIT in r.failed_gates
+    findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
+    # Error severity (pages-form), not warning — and message does NOT
+    # reference wpp at all (no conversion happened).
+    assert findings[0].severity == "error"
+    assert "wpp" not in findings[0].message
 
 
 # ---------------------------------------------------------------------------
