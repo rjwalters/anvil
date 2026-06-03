@@ -1,8 +1,8 @@
 # Proposal review rubric
 
-The reviewer scores a buildable-system proposal against 8 weighted dimensions summing to **40**. The threshold to advance is **≥32/40**. Any **critical flag** — set by either `proposal-review` or `proposal-audit` — short-circuits the verdict regardless of total score until addressed.
+The reviewer scores a buildable-system proposal against 9 weighted dimensions summing to **44**. The threshold to advance is **≥35/44**. Any **critical flag** — set by either `proposal-review` or `proposal-audit` — short-circuits the verdict regardless of total score until addressed.
 
-A proposal must score BOTH "is this technically sound" AND "should the approver say yes / can we deliver". The weighting reflects this: the **engineering substance (dims 1–4 = 22/40 = 55%)** dominates, with deliverability + cost (10/40) and the pitch (4/40) as the proposal-specific additions. A proposal lives or dies on the customer's hard constraints, so constraint satisfaction is tied for the top weight with design correctness.
+A proposal must score BOTH "is this technically sound" AND "should the approver say yes / can we deliver". The weighting reflects this: the **engineering substance (dims 1–4 = 22/44 = 50%)** dominates, with deliverability + cost (10/44) and the pitch (4/44) as the proposal-specific additions; the rhetorical-economy dim (4/44, dim 9) provides countervailing pressure against bloat. A proposal lives or dies on the customer's hard constraints, so constraint satisfaction is tied for the top weight with design correctness.
 
 ## Dimensions
 
@@ -16,7 +16,8 @@ A proposal must score BOTH "is this technically sound" AND "should the approver 
 | 6 | **Cost credibility** | 5 | BOM + labor are priced, sourceable, and competitive. Figures have a basis (planning range, vendor list price, quote), not arbitrary numbers; the arithmetic holds. |
 | 7 | **Persuasiveness / value proposition** | 4 | Why the approver should say yes — the pitch element. For `customer_kind: external`, read as "wins the client". For `customer_kind: internal`, read as "justifies the budget allocation" (same weight, reframed prompt). |
 | 8 | **Open decisions** | 4 | Unresolved engineering choices are tracked honestly (the `anvil:memo` "assumptions to validate" analogue). A proposal that pretends every decision is settled scores low. |
-| | **Total** | **40** | Advance threshold: ≥32 |
+| 9 | **Rhetorical economy** | 4 | Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds? |
+| | **Total** | **44** | Advance threshold: ≥35 |
 
 ## `customer_kind` and dimension 7
 
@@ -150,6 +151,23 @@ The dim 6 audit-side justification (in the audit's `verdict.md` and `findings.md
 
 The deduction is applied entirely via auditor judgment — there is no automated `refs/` parsing in v0. See `commands/proposal-audit.md` §Procedure step 7 (refs back-check sub-step for non-cost claims) for the auditor-side procedure, `commands/proposal-review.md` §Procedure step 4 for the light reviewer-side mention, and `commands/proposal-draft.md` §Procedure step 3 for the drafter-side ingestion contract.
 
+## Dim 9 — rhetorical economy
+
+**Rhetorical economy** (weight: 4) — Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds?
+
+The dim exists because every other dimension in this rubric rewards *more*: more constraint-threading prose (dim 3), more enumerated BOM lines (dim 4), more sourced footnotes (dim 6), more open-decisions entries (dim 8). A reviser optimizing against the legacy 8-dim rubric is incentivized to add — but for strategic-positioning artifacts (program-design memos, internal sponsor pitches, executive briefs) force comes from compression and surprise, not enumeration. Dim 9 is the countervailing pressure: a paragraph that does not earn its weight costs the same score as a missing one.
+
+Anti-patterns to penalize:
+
+- Multi-paragraph hedges where one sentence carries the load.
+- Inline citation footnotes longer than the claim they source.
+- Subsections that elaborate on a point already made.
+- Worked-example tables when the rule is stated and obvious.
+- Open-decisions / risks entries that are reformulations of items already named in earlier sections.
+- Bullet lists that restate adjacent prose without adding granularity.
+
+The dim 9 justification MUST cite specific instances (e.g., "§4.2's three-paragraph hedge on PAM4/FEC could land in one sentence — -2 on dim 9"). Vague "could be tighter" deductions without named instances are not actionable for the reviser and SHOULD be avoided. (Same anchoring discipline as the existing dim 3 citation-hooks rule and the §"Refs back-check (dim 6 + dim 4)" sub-rule above.)
+
 ## Scoring guidance
 
 For each dimension, the reviewer assigns an integer between 0 and the dimension's weight. A short justification accompanies each score (1–3 sentences pointing to specific evidence in `proposal.tex`).
@@ -163,8 +181,8 @@ Suggested calibration:
 
 ## Advance threshold
 
-- **≥32/40** — advance to `READY` (subject to also having `pass: true` in the audit sibling).
-- **<32/40** — block; revise.
+- **≥35/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling).
+- **<35/44** — block; revise.
 - **Any critical flag set** (in either `.review/` or `.audit/`) — block regardless of total. The next revision must address the flagged issue specifically and the relevant critic must re-evaluate the flag before the threshold check applies.
 
 ## Critical flags
@@ -182,8 +200,8 @@ The reviewer and auditor should each raise a flag for any other issue that, in t
 
 ### Review verdict (`<thread>.{N}.review/verdict.md`)
 
-1. **Total score**: `XX / 40`.
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires `total ≥ 32` AND `no unresolved critical flag`.)
+1. **Total score**: `XX / 44`.
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires `total ≥ 35` AND `no unresolved critical flag`.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification.
 4. **Dimension summary**: a markdown table of per-dimension scores (full detail lives in `scoring.md`).
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes the reviser should focus on.
@@ -202,7 +220,7 @@ The auditor's `findings.md` contains the per-claim audit log (claim, location, b
 For the thread to reach the `AUDITED` state (this skill's terminal state):
 
 ```
-advance = review.advance == true       (total ≥ 32)
+advance = review.advance == true       (total ≥ 35)
        AND audit.pass == true
        AND no unresolved critical flags in either sibling
 ```

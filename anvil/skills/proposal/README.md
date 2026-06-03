@@ -7,10 +7,10 @@ Buildable-system proposals — the pre-commitment document that pitches a concre
 | File | What it is |
 |---|---|
 | `SKILL.md` | Frontmatter + artifact contract + state machine (incl. `REVIEWED+AUDITED`). Read this first. |
-| `rubric.md` | 8-dimension /40 scorecard. ≥32 advances. Four critical-flag conditions (three audit-owned). |
+| `rubric.md` | 9-dimension /44 scorecard. ≥35 advances. Four critical-flag conditions (three audit-owned). |
 | `commands/proposal.md` | Portfolio orchestrator. Run from a portfolio dir to see thread state. |
 | `commands/proposal-draft.md` | Drafter. Brief → `proposal.tex` (XeLaTeX) by filling the template. |
-| `commands/proposal-review.md` | Reviewer. Scores the 8 dims → `.review/` sibling (verdict/scoring/comments). |
+| `commands/proposal-review.md` | Reviewer. Scores the 9 dims → `.review/` sibling (verdict/scoring/comments). |
 | `commands/proposal-audit.md` | Auditor (REQUIRED by default). Verifies BOM arithmetic + spec/link-budget consistency + sourceability → `.audit/` sibling. |
 | `commands/proposal-revise.md` | Reviser. Aggregates ALL critic siblings (`.review/` + `.audit/`) → next version + `changelog.md`. |
 | `commands/proposal-figures.md` | Figurer. Catalogs/renders figures into `figures/`; stub-by-default for author-supplied artwork, renders deterministic topology/data figures. |
@@ -28,7 +28,7 @@ This skill is built by composing three existing skills:
 
 - **`anvil:installation`** — the **structural** reference. Installation solved the identical "new LaTeX-prose, memo-shaped skill" problem one issue earlier (XeLaTeX `.cls` extraction, Jinja conditional sections, structural-not-golden examples, the #58 test-collision dodge). `proposal` mirrors its file layout almost exactly, swapping the section template, the accent color (steel blue vs. amber), the rubric dimensions, and the worked example.
 - **`anvil:report`** — the **audit-by-default** reference. Report is the post-commitment bookend and runs its auditor sibling by default because customer-facing material has higher correctness stakes. `proposal` adopts the same parallel `REVIEWED+AUDITED` state and `report-audit`'s findings/evidence shape, scoped to BOM arithmetic and link-budget/spec consistency. It does NOT adopt report's `CUSTOMER-READY`/`-promote` two-stage gate.
-- **`anvil:memo`** — the **lifecycle / rubric-format** reference. Memo supplies the `draft → review → revise` core loop, `EMPTY → DRAFTED → … → READY`, ≥32 advance, critical-flag short-circuit, `max_iterations: 4`, and the `verdict.md` / `scoring.md` / `comments.md` critic triple.
+- **`anvil:memo`** — the **lifecycle / rubric-format** reference. Memo supplies the `draft → review → revise` core loop, `EMPTY → DRAFTED → … → READY`, ≥35 advance (matching this skill's 9-dim /44 rubric after the dim 9 addition), critical-flag short-circuit, `max_iterations: 4`, and the `verdict.md` / `scoring.md` / `comments.md` critic triple.
 
 ## Bookend relationship
 
@@ -91,4 +91,4 @@ A proposal typically converges in 2–4 revisions. The default `max_iterations: 
 
 - **`proposal-vision`** — rendered-artifact review (topology renders, routing plans) is valuable but depends on `anvil/lib/render.py` / `vision.py`, which are not yet on disk. Tracked as a follow-up.
 - **`CUSTOMER-READY` / `proposal-promote`** — report's two-stage delivery-acceptance gate is report-specific. A proposal's terminal state is `AUDITED`. If a future issue wants a proposal "submitted to client" gate, track it separately.
-- **No `anvil/lib/` changes.** The 8-dimension rubric uses the existing scorecard machinery; critic siblings keep `scorecard_kind: "human-verdict"`; the auditor emits the legacy prose triple + `_meta.json` (the legacy adapter bridges to the `kind: tool_evidence` contract per the migration note in `audit.md`).
+- **No `anvil/lib/` changes.** The 9-dimension /44 rubric uses the existing scorecard machinery; critic siblings keep `scorecard_kind: "human-verdict"`; the auditor emits the legacy prose triple + `_meta.json` (the legacy adapter bridges to the `kind: tool_evidence` contract per the migration note in `audit.md`).

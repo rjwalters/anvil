@@ -492,8 +492,9 @@ def test_rubric_preserves_existing_critical_flags_section():
 
 
 def test_rubric_preserves_dimensions_table():
-    """The 8-dim /40 rubric table MUST remain — the refs back-check is
-    a sibling subsection, not a replacement."""
+    """The 9-dim /44 rubric table (post-issue #244 dim 9 *Rhetorical economy*
+    addition) MUST preserve the original dim names — the refs back-check is
+    a sibling subsection, not a replacement, and dim 9 is additive."""
     body = _read(RUBRIC_MD)
     assert "Intent / requirements clarity" in body, (
         "rubric.md MUST preserve dim 1 (Intent / requirements clarity)"

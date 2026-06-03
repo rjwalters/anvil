@@ -1,7 +1,7 @@
 """Structural smoke tests for the ``anvil:proposal`` skill.
 
 These tests assert **structural properties** of the shipped skill files (files
-exist, frontmatter parses, the rubric declares 8 dimensions summing to 40 and
+exist, frontmatter parses, the rubric declares 9 dimensions summing to 44 and
 names the 4 critical flags, the template carries all 10 sections, the three
 priced tables, and the customer_kind knob, the class defines the
 callout/metricbox boxes and the steel-blue signature color). They are
@@ -153,30 +153,32 @@ class TestCommandFrontmatter(unittest.TestCase):
 
 
 class TestRubric(unittest.TestCase):
-    """rubric.md declares exactly 8 dimensions summing to 40 + the 4 flags."""
+    """rubric.md declares exactly 9 dimensions summing to 44 + the 4 flags."""
 
     def setUp(self):
         self.text = _read("rubric.md")
 
-    def test_eight_dimensions_sum_to_forty(self):
+    def test_nine_dimensions_sum_to_forty_four(self):
         # Dimension rows look like: | 1 | **Intent / requirements clarity** | 5 | ... |
+        # After issue #244, dim 9 *Rhetorical economy* (weight 4) joins the
+        # legacy 8 dims, bringing the total to 44 (≥35 advance threshold).
         rows = re.findall(
-            r"^\|\s*([1-8])\s*\|\s*\*\*[^|]+\*\*\s*\|\s*(\d+)\s*\|",
+            r"^\|\s*([1-9])\s*\|\s*\*\*[^|]+\*\*\s*\|\s*(\d+)\s*\|",
             self.text,
             flags=re.MULTILINE,
         )
         self.assertEqual(
-            len(rows), 8, f"expected 8 dimension rows, found {len(rows)}"
+            len(rows), 9, f"expected 9 dimension rows, found {len(rows)}"
         )
         indices = sorted(int(i) for i, _ in rows)
-        self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8])
+        self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8, 9])
         total = sum(int(w) for _, w in rows)
-        self.assertEqual(total, 40, f"dimension weights sum to {total}, not 40")
+        self.assertEqual(total, 44, f"dimension weights sum to {total}, not 44")
 
     def test_advance_threshold_present(self):
         self.assertTrue(
-            re.search(r"(≥\s*32|>=\s*32|\b32/40\b)", self.text),
-            "advance threshold of 32 not stated in rubric.md",
+            re.search(r"(≥\s*35|>=\s*35|\b35/44\b)", self.text),
+            "advance threshold of 35 not stated in rubric.md",
         )
 
     def test_four_critical_flags_named(self):

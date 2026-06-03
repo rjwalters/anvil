@@ -25,8 +25,8 @@ After running BOTH `proposal-review gossamer-lan` AND `proposal-audit gossamer-l
 
 ```
 gossamer-lan.1.review/
-  verdict.md       Total XX / 40; advance: true|false; critical flags (if any); dimension summary; top-3 priorities
-  scoring.md       8-row dimension table (# | Dimension | Weight | Score | Justification)
+  verdict.md       Total XX / 44; advance: true|false; critical flags (if any); dimension summary; top-3 priorities
+  scoring.md       9-row dimension table (# | Dimension | Weight | Score | Justification)
   comments.md      Line-level comments keyed to proposal.tex sections, grouped by severity
   _meta.json       { ..., scorecard_kind: "human-verdict" }
   _progress.json   { for_version: 1, phases.review.state: "done" }
@@ -96,7 +96,7 @@ proposal-review gossamer-lan   &   proposal-audit gossamer-lan      # in paralle
 # → gossamer-lan.1.audit/  (verdict/findings/evidence)
 
 proposal-revise gossamer-lan
-# → gossamer-lan.2/ (if review <32, audit fails, or either has a critical flag)
+# → gossamer-lan.2/ (if review <35, audit fails, or either has a critical flag)
 
 proposal-figures gossamer-lan
 # → gossamer-lan.{N}/figures/ (topology TikZ rendered; author renders stubbed as .MISSING)

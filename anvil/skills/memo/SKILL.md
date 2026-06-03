@@ -30,7 +30,7 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
     _progress.json         Phase state for this version
     changelog.md           (revisions only) Maps prior critic notes to changes
   <thread>.1.review/       Reviewer output for version 1 (read-only)
-    verdict.md             Top-level decision (advance / block) + total /40
+    verdict.md             Top-level decision (advance / block) + total /44
     scoring.md             Per-dimension scores against the memo rubric
     comments.md            Line-level comments keyed to memo.md
     _meta.json             scorecard kind + provenance; full required field set in lib/snippets/scorecard_kind.md
@@ -110,7 +110,7 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag |
 | `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version |
 
-Thresholds: ≥32/40 advances. <32/40 requires revision. Any critical flag short-circuits regardless of total — block until addressed.
+Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short-circuits regardless of total — block until addressed.
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
@@ -278,7 +278,7 @@ Critic siblings (e.g., `<thread>.{N}.review/`) follow the `human-verdict` scorec
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 scoring schema, the ≥32 advance threshold, and the critical-flag short-circuit policy.
+See `rubric.md` for the 9-dimension /44 scoring schema, the ≥35 advance threshold, and the critical-flag short-circuit policy.
 
 ## Skill-specific phases
 

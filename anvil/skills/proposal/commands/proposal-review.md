@@ -1,6 +1,6 @@
 ---
 name: proposal-review
-description: Reviewer command for the proposal skill. Scores the latest proposal version against the 8-dimension /40 rubric and writes a read-only review sibling directory. Runs in parallel with proposal-audit; both are required to advance.
+description: Reviewer command for the proposal skill. Scores the latest proposal version against the 9-dimension /44 rubric and writes a read-only review sibling directory. Runs in parallel with proposal-audit; both are required to advance.
 ---
 
 # proposal-review — Reviewer
@@ -18,14 +18,14 @@ This is one of the **two REQUIRED critic siblings** for the proposal skill (the 
 - **Thread slug** (positional argument).
 - **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/proposal.tex` existing.
 - **`customer_kind`**: read from the brief frontmatter (or `<thread>/.anvil.json`); default `external`. Reframes how dimension 7 is read (see below).
-- **Rubric**: `anvil/skills/proposal/rubric.md` (8 dimensions, /40, ≥32 threshold, critical flags).
+- **Rubric**: `anvil/skills/proposal/rubric.md` (9 dimensions, /44, ≥35 threshold, critical flags).
 - **Optional consumer override**: `.anvil/skills/proposal/rubric.overrides.md` (additional critical-flag examples; never reduces the base rubric).
 
 ## Outputs
 
 ```
 <thread>.{N}.review/
-  verdict.md       Top-level decision + total /40 + critical flags + top revision priorities
+  verdict.md       Top-level decision + total /44 + critical flags + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Line-level comments keyed to proposal.tex sections or excerpts
   _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
@@ -50,22 +50,22 @@ This is one of the **two REQUIRED critic siblings** for the proposal skill (the 
    - Write the `GateResult.to_json()` payload to `<thread>.{N}.review/_gate.json` for CI inspection.
    - On failure, the gate's `to_review(...)` Review carries one `CriticalFlag` per failed gate dimension (type prefix: `render_gate_<dim>`); the aggregator (`anvil/lib/critics.py::compute_verdict`) treats this as `BLOCK` per the standard path. No schema change needed.
 
-5. **Score each dimension** (1–8 per rubric):
+5. **Score each dimension** (1–9 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (section heading, excerpt, figure) from the proposal.
    - Record per-dimension result in `scoring.md` as a markdown table with columns `# | Dimension | Weight | Score | Justification`.
    - **Dimension 7 (persuasiveness / value proposition) is read through `customer_kind`**: for `external`, score "does this give the client a reason to commit money?"; for `internal`, score "does this justify the budget allocation against the alternative?" Same weight (4), reframed prompt. Note the framing you used in the justification.
 6. **Identify critical flags**: review the proposal against the rubric's four named flags AND the open-ended "any issue that means the proposal cannot proceed as specified" instruction. The reviewer **owns flag 1** (*misses a stated hard constraint*) and shares flag 3 (*not deliverable as resourced*) with the auditor; flags 2 (*cost not credible/sourceable*) and 4 (*internal inconsistency*) are primarily audit-owned but flag them here too if obvious from the text alone. For each flag set, write a one-paragraph justification in `verdict.md`.
-7. **Compute total**: sum all dimension scores. `advance = (total >= 32) AND (no critical flags)`.
+7. **Compute total**: sum all dimension scores. `advance = (total >= 35) AND (no critical flags)`.
 8. **Write line-level comments**: in `comments.md`, list specific feedback keyed to proposal sections — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`).
 9. **Write `verdict.md`** in the format specified in `rubric.md`:
-   - Total: `XX / 40`
+   - Total: `XX / 44`
    - Decision: `advance: true` or `advance: false`
    - Critical flags (if any)
    - Dimension summary table (per-dim scores; full justifications in `scoring.md`)
    - Top 3 revision priorities (if `advance: false`)
 10. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
-11. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed gossamer-lan.1 → gossamer-lan.1.review/ (30/40, advance: false, 0 critical flags)`).
+11. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed gossamer-lan.1 → gossamer-lan.1.review/ (32/44, advance: false, 0 critical flags)`).
 
 ## Idempotence and resumability
 

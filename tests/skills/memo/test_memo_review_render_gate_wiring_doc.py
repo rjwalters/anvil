@@ -212,12 +212,16 @@ def test_memo_review_render_gate_block_is_info_level_only():
         # the verdict NEVER consumes render-gate findings.
         idx = body.find("render_gate")
     assert idx > -1
-    # The verdict logic at step 7 MUST remain unchanged: advance is gated
-    # by (total >= 32) AND (no critical flags) AND (lint.errors == 0) only.
-    assert "advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)" in body, (
-        "memo-review.md step 7 verdict logic MUST remain unchanged — "
-        "advance is gated by rubric total + critical flags + source-side "
-        "lint, NOT by render-gate findings (issue #196 AC)"
+    # The verdict logic at step 7 MUST remain unchanged in shape: advance is gated
+    # by (total >= THRESHOLD) AND (no critical flags) AND (lint.errors == 0) only.
+    # The threshold value moved from 32 to 35 in issue #244 (dim 9 *Rhetorical
+    # economy* addition; rubric scales to /44). The shape of the verdict
+    # formula — total + critical flags + source-side lint, NOT render-gate
+    # findings — is the load-bearing contract from issue #196 AC.
+    assert "advance = (total >= 35) AND (no critical flags) AND (lint.errors == 0)" in body, (
+        "memo-review.md step 7 verdict logic MUST remain unchanged in shape — "
+        "advance is gated by rubric total (≥35 after issue #244) + critical "
+        "flags + source-side lint, NOT by render-gate findings (issue #196 AC)"
     )
 
 

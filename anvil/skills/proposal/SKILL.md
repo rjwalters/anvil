@@ -50,7 +50,7 @@ A **proposal thread** is a single proposal for one buildable system, authored ac
     _progress.json         Phase state for this version
     changelog.md           (revisions only) Maps prior critic notes to changes
   <thread>.1.review/       Reviewer output for version 1 (read-only)
-    verdict.md             Top-level decision (advance / block) + total /40
+    verdict.md             Top-level decision (advance / block) + total /44
     scoring.md             Per-dimension scores against the proposal rubric
     comments.md            Line-level comments keyed to proposal.tex
     _meta.json             { critic, scorecard_kind: "human-verdict", ... } (see lib/snippets/scorecard_kind.md)
@@ -114,12 +114,12 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | `AUDITED-PARTIAL` | `<thread>.{N}.audit/verdict.md` exists for the latest `N` (without `.review/`) — transient; not advance-eligible |
 | `REVIEWED+AUDITED` | BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` exist for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `REVIEWED+AUDITED` state at `N` |
-| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` (≥32) AND latest `<thread>.{N}.audit/verdict.md` records `pass: true` AND no unresolved critical flag in either sibling |
+| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` (≥35) AND latest `<thread>.{N}.audit/verdict.md` records `pass: true` AND no unresolved critical flag in either sibling |
 | `AUDITED` | Same as `READY` for this skill — `AUDITED` is the standard anvil terminal state; proposal reaches it once both critic siblings clear. There is no further `CUSTOMER-READY`/`promote` stage (that is report-specific). |
 
 **Why "REVIEWED+AUDITED" rather than running them serially?** Both siblings consume the same `<thread>.{N}/` and write to disjoint paths — they are pure parallel critics in the "N parallel critics, one reviser" sense. The reviewer scores subjective quality (`kind: judgment`); the auditor verifies externally-checkable correctness (`kind: tool_evidence` — BOM arithmetic, link budgets, sourceability). v0 runs them in parallel.
 
-**Thresholds**: ≥32/40 advances (the internal/proposal tier, matching `anvil:memo`; not report's ≥35 customer-delivery tier). Any critical flag in EITHER `.review/` or `.audit/` short-circuits regardless of total — block until addressed.
+**Thresholds**: ≥35/44 advances (matching `anvil:memo`'s 9-dim /44 rubric after the dim 9 *Rhetorical economy* addition; not report's ≥35-of-40 customer-delivery tier, which retains the legacy 8-dim shape). Any critical flag in EITHER `.review/` or `.audit/` short-circuits regardless of total — block until addressed.
 
 **Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
@@ -197,7 +197,7 @@ Critic siblings (`<thread>.{N}.review/`, `<thread>.{N}.audit/`) follow the `huma
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 scoring schema, the ≥32 advance threshold, and the four critical-flag short-circuit conditions. The dimensions are tuned for buildable-system proposals (intent clarity, design correctness, constraint satisfaction, scope completeness, deliverability, cost credibility, persuasiveness, open decisions). The four critical flags — *misses a stated hard constraint* · *cost estimate not credible/sourceable* · *not deliverable as resourced* · *internal inconsistency* — are the disqualifiers; three of the four are audit-owned (`kind: tool_evidence`).
+See `rubric.md` for the 9-dimension /44 scoring schema, the ≥35 advance threshold, and the four critical-flag short-circuit conditions. The dimensions are tuned for buildable-system proposals (intent clarity, design correctness, constraint satisfaction, scope completeness, deliverability, cost credibility, persuasiveness, open decisions, rhetorical economy). The four critical flags — *misses a stated hard constraint* · *cost estimate not credible/sourceable* · *not deliverable as resourced* · *internal inconsistency* — are the disqualifiers; three of the four are audit-owned (`kind: tool_evidence`).
 
 ## Skill-specific phases
 

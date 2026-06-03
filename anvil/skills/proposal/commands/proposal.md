@@ -24,14 +24,14 @@ A single command that an operator (or orchestrating agent) runs to see the state
 2. Group by slug. For each slug, identify:
    - The latest `N` for which `<slug>.{N}/` exists.
    - Which sibling critic dirs exist at that `N` — specifically whether BOTH `<slug>.{N}.review/` AND `<slug>.{N}.audit/` are present (both are required to leave `DRAFTED`).
-   - The review verdict (advance/block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present, and the audit verdict (pass/fail, critical flags) from `<slug>.{N}.audit/verdict.md` if present.
+   - The review verdict (advance/block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present, and the audit verdict (pass/fail, critical flags) from `<slug>.{N}.audit/verdict.md` if present.
    - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or from `<slug>/.anvil.json` if the per-thread override is set).
 3. Compute the state-machine position per thread using the table in `SKILL.md`. Note the parallel-critic states:
    - `DRAFTED` — neither critic sibling present.
    - `REVIEWED` (transient) — only `.review/` present; not advance-eligible.
    - `AUDITED-PARTIAL` (transient) — only `.audit/` present; not advance-eligible.
    - `REVIEWED+AUDITED` — both present.
-   - `READY`/`AUDITED` — both clear (review `advance: true` ≥32, audit `pass: true`, no critical flags).
+   - `READY`/`AUDITED` — both clear (review `advance: true` ≥35, audit `pass: true`, no critical flags).
 4. Recommend the next command per thread:
 
    | State | Recommended next command |
@@ -59,8 +59,8 @@ Print a markdown table to stdout:
 ```
 | Thread       | Latest | State            | Review | Audit | Iter | Next                              |
 |--------------|--------|------------------|--------|-------|------|-----------------------------------|
-| gossamer-lan | .2     | REVIEWED+AUDITED | 30/40  | pass  | 2/4  | proposal-revise gossamer-lan      |
-| solar-rig    | .3     | AUDITED          | 35/40  | pass  | 3/4  | (terminal)                        |
+| gossamer-lan | .2     | REVIEWED+AUDITED | 32/44  | pass  | 2/4  | proposal-revise gossamer-lan      |
+| solar-rig    | .3     | AUDITED          | 38/44  | pass  | 3/4  | (terminal)                        |
 | new-system   | -      | EMPTY            | -      | -     | 0/4  | proposal-draft new-system         |
 ```
 
