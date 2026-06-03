@@ -2530,24 +2530,32 @@ class TestSourceBriefDiscovery(unittest.TestCase):
     # -- AC10 ---------------------------------------------------------------
 
     def test_ac10_no_new_python_deps_in_pyproject(self) -> None:
-        """``pyproject.toml`` is unchanged — no new base or optional dep names introduced.
+        """``pyproject.toml`` introduces no uncontrolled deps beyond the documented base-dep exceptions.
 
-        We check the only dependency added by sub-issue 5f's expected
-        diff: no new dep names should appear under ``[project]
-        dependencies`` or ``[project.optional-dependencies]`` as a
-        consequence of this implementation. The migrate module relies
-        only on stdlib (``re``, ``shutil``, ``pathlib``) for the new
-        discovery helper.
+        The source-brief-discovery helper relies only on stdlib
+        (``re``, ``shutil``, ``pathlib``) — it does not need a
+        frontmatter / YAML parsing library. This test was originally a
+        narrow regression guard for sub-issue 5f's expected diff;
+        it now reads as a forward-looking guard against frontmatter
+        brief-parsing libs sneaking in under the same justification.
+
+        The forbidden list specifically targets the third-party
+        brief-parsing libraries that the discovery helper might
+        plausibly reach for: ``python-frontmatter`` / ``frontmatter``
+        (frontmatter parsers) and ``ruamel.yaml`` (an alternate YAML
+        implementation). ``pydantic`` and ``pyyaml`` are the
+        documented load-bearing-for-import-chain base-dep exceptions
+        (see the top-of-file comment in ``pyproject.toml`` and PR #268
+        for ``pyyaml``'s addition) and are explicitly allowed.
         """
         pyproject = _REPO_ROOT / "pyproject.toml"
         text = pyproject.read_text(encoding="utf-8")
-        # The known dep set is pydantic (base) + the documented
-        # optional-extra names. The discovery helper introduces none.
-        # We assert by absence: typical third-party brief-parsing libs
-        # MUST NOT have been added.
+        # Forbidden list: third-party brief / frontmatter parsers.
+        # `pydantic` and `pyyaml` are documented base-dep exceptions
+        # (load-bearing for the `anvil.lib` import chain) and are NOT
+        # in this list — see the `pyproject.toml` header comment.
         for forbidden in (
             "python-frontmatter",
-            "pyyaml",
             "frontmatter",
             "ruamel.yaml",
         ):
