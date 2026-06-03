@@ -33,6 +33,16 @@ This is one of the **two REQUIRED critic siblings** for the proposal skill (the 
   _progress.json   Phase state for the auditor (phase: audit)
 ```
 
+### Alias contract — per-claim findings filename
+
+The per-claim findings file ships canonically as **`findings.md`**. Writers SHOULD use that name; readers MUST accept any of the three documented aliases below. The contract:
+
+- **Canonical**: `findings.md` — the default; emit this name in the happy path.
+- **Accepted aliases** (in priority order, for the read side): `claim-log.md`, `audit-findings.md`.
+- **When a writer MAY use an alias**: if the execution context blocks files literally named `findings.md` (a documented subagent-harness scenario — see #135 for anvil's broader subagent-delegation workaround; the proposal canary surfaced this specific block in issue #240). In that case, write to `claim-log.md` (preferred alias) or `audit-findings.md`, AND prepend a one-line header note in the file body explaining the rename (e.g., `> Note: written as claim-log.md because the execution context blocked the canonical findings.md name.`). The header note is human-readable bookkeeping for the reviser agent; downstream consumers do not parse it.
+- **Read side**: `proposal-revise.md` step 6 documents the tolerant-read procedure (try `findings.md` → `claim-log.md` → `audit-findings.md`; first match wins; error citing all three if none exist).
+- **Scope**: this alias contract applies to the proposal skill's auditor only (this round). Other shipped audit-bearing skills (`pub`, `report`, `deck`, `slides`, `ip-uspto`) continue to use `findings.md` strictly until their own canaries surface the same block. The lib-promotion rule (see `lib/snippets/audit.md` §"Filename tolerance") governs any future cross-skill generalization.
+
 ## Procedure
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex`. If `<thread>.{N}.audit/_progress.json.audit.state == done` and `verdict.md` exists, the audit is complete — exit early with a notice (idempotent).
