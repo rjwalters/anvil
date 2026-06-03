@@ -85,6 +85,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the memo.
    - Record per-dimension result in `scoring.md` as a markdown table with columns `# | Dimension | Weight | Score | Justification`.
+   - **Dim 9 (Rhetorical economy) `scope: reduce` echo sub-step (issue #242)**: when dim 9 scores below full weight (4/4), the rubric requires the reviewer to cite specific anti-pattern instances in the dim 9 justification (multi-paragraph hedges, oversized footnotes, restated subsections, redundant tables, reformulated open-decisions entries, restated bullet lists — per `rubric.md` §"Dim 9 — rhetorical economy"). For every cited instance, the reviewer MUST ALSO surface that instance as a `scope: reduce` entry in `comments.md` (see step 8) — the two surfaces stay coherent: `scoring.md` says "-2 on §4.2's three-paragraph hedge"; `comments.md` echoes the same §4.2 instance as a `scope: reduce` comment with the suggested trim. This is the **mechanical surfacing path** from rubric-side anti-pattern citation to operator-visible comment stream: without the echo, the reviser sees the dim 9 deduction in `scoring.md` but has no `comments.md` entry to act on, and the named instances stay locked in score-justification prose the reviser may not parse. The echo is **per-instance**: each named anti-pattern instance becomes one `scope: reduce` comment, severity matching the load-bearing-ness of the instance (typically `major` for thesis-block bloat, `minor` for tangential bloat). When dim 9 scores 4/4 (full weight) the echo is inactive — there are no instances to surface.
    - **Dim 3 (Evidence quality) refs back-check sub-step**: enumerate `<thread>/refs/` and partition the entries into (a) **source-of-truth materials** — files named for their content (`cv.pdf`, `cv.md`, `transcript-*.md`, `filing-*.pdf`, `paper-*.pdf`, `email-*.md`, `image-*.{png,jpg}`, `prior/<vN>.{pdf,md}`) per SKILL.md §"Source-of-truth materials" — and (b) **citation stubs** — files matching the `<key>.md` shape with `# TODO: source for <claim>` content per SKILL.md §"Citation stubs". The back-check applies ONLY to source-of-truth materials; citation stubs are out of scope for this sub-step (they are scored under §"Citation hooks (dim 3)" per the existing per-instance deduction). For each source-of-truth refs-document **type** present (one CV, one filing, one transcript, etc.), pick at least one biographical or factual claim in `memo.md` whose evidentiary basis is the document's subject, and write a `comments.md` entry of the form:
      ```
      claim: "<excerpt from memo.md>"
@@ -112,6 +113,41 @@ The review sibling directory is **read-only once written**. Revisions consume it
 
    **Summary-detail consistency critical flag (issue #245)**: when the cached `summary_detail_critical_flag` from step 4e is `true` (i.e., the back-check identified at least one `CONTRADICTED` finding at `critical` severity), append a critical flag named `Summary-detail consistency: CONTRADICTED` to the verdict's critical-flag list with the claim excerpt + the contradicting detail location as the one-paragraph justification. This flag is set via the existing critical-flag-candidate pathway, NOT via a new gate — the existing `advance` aggregation (`(total >= 35) AND (no critical flags) AND (lint.errors == 0)`) is unchanged; the back-check plugs into the "no critical flags" clause exactly like the §"Refs back-check" `CONTRADICTED` precedent. `ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are observational only — they do NOT contribute to the critical-flag list and do NOT force `advance: false` on their own.
 8. **Write line-level comments**: in `comments.md`, list specific feedback keyed to memo sections — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`).
+
+   **Scope tagging (issue #242, Phase A — reviewer-prose-only)**: every comment carries a `scope: preserve | expand | reduce` label alongside its severity grouping. The label appears in the comment heading directly so the operator can scan/filter at a glance and the reviser at #241 can read scope + severity together. See `rubric.md` §"Scope tagging (comments.md)" for the three-valued vocabulary, the dim 9 echo rule, the expand-trim-candidate rule, and the backwards-compat fallback. Shape:
+
+   ```
+   ### §4.2 (line 187) — scope: reduce, major
+   Excerpt: "Three-paragraph hedge on PAM4/FEC tradeoffs..."
+   Comment: Could land in one sentence per dim 9 §"Multi-paragraph hedges where one sentence carries the load."
+   ```
+
+   The three values:
+
+   - **`scope: preserve`** — the comment proposes a change that neither adds nor removes content (e.g., reword for clarity, fix a typo, swap a noun for a sharper noun, reorder paragraphs without compression). Default when the comment does not propose adding or removing content.
+   - **`scope: expand`** — the comment proposes ADDING content (a new paragraph, a new subsection, a new exhibit, a new risk entry, a new financial-scenario row, a new citation expansion).
+   - **`scope: reduce`** — the comment proposes REMOVING or COMPRESSING content (collapse a three-paragraph hedge to one sentence, drop a redundant subsection, trim a restated bullet list, replace a worked-example table with a one-line rule statement, fold an oversized footnote into a parenthetical).
+
+   **Required `scope: reduce` echoes from dim 9 (issue #242 AC 2)**: every dim 9 anti-pattern instance cited in `scoring.md` (per step 5's echo sub-step) MUST appear as a `scope: reduce` `comments.md` entry. The two surfaces stay coherent: when dim 9 scored less than 4/4, the `scope: reduce` subset of `comments.md` is **non-empty** AND each entry cites a specific instance with a suggested trim. Severity matches the load-bearing-ness of the instance (typically `major` for thesis-block bloat, `minor` for tangential bloat).
+
+   **`scope: expand` trim-candidate rule (issue #242 AC 3)**: any `scope: expand` comment that proposes adding **≥1 paragraph** or **≥1 subsection** MUST identify what could be trimmed to fund the addition. Two acceptable forms:
+
+   1. Name an existing paragraph / subsection to compress, OR
+   2. Explicitly acknowledge that the addition fits within dim 9's budget without compression cost (e.g., "The risk section currently runs short — adding this risk fits without trimming elsewhere.").
+
+   Comments lacking the trim-candidate clause are **automatically downgraded from `major` to `minor`** — the bar for unconditional expansion at `major` severity is "the dim 9 budget can absorb it." A `scope: expand` comment at `minor` severity does NOT carry the trim-candidate requirement (the additive cost is small enough that the budget is implicit). A `scope: expand` comment at `nit` severity (single-word / single-clause additions like a missing definition or a one-line clarification) is also exempt.
+
+   **Heading shape**: the `scope` label appears in the comment heading after the severity, separated by a comma:
+
+   ```
+   ### <heading reference> (<location>) — scope: <preserve|expand|reduce>, <blocker|major|minor|nit>
+   Excerpt: "<short excerpt>"
+   Comment: <comment text>
+   ```
+
+   The comment groupings by severity (`blocker` / `major` / `minor` / `nit`) MAY remain as top-level `## Severity: <severity>` subsections; the scope label is per-comment inside those groupings. Alternatively the reviewer MAY group by scope at the top level (`## Scope: reduce` / `## Scope: expand` / `## Scope: preserve`) with severity per-comment — the choice is reviewer judgment and not load-bearing for the contract; the requirement is that BOTH scope and severity appear on every comment.
+
+   **Backwards-compat (issue #242 AC 6)**: a review sibling produced **before** this contract shipped does NOT need to be re-emitted and remains a legal historical record. The reviser at #241 reads `scope` when present and falls back to severity-only when absent (mirrors the perspective-sibling backwards-compat pattern in `rubric.md` §"Perspective substrate (dim 3)" §"Without perspective"). New reviews produced after this contract ships MUST carry scope labels per the rules above.
 9. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 4b, the `refs_pdf_extraction` block reflects the PDF refs back-check path (step 5, issue #167), and the `render_gate` block reflects the cached `render_gate_block` from step 4c (Phase 4 / issue #196):
    ```markdown
    # Review summary
@@ -209,6 +245,11 @@ The review sibling directory is **read-only once written**. Revisions consume it
        ],
        "critical_flag_candidate": true
      },
+     "scope_distribution": {
+       "preserve": 0,
+       "expand": 4,
+       "reduce": 3
+     },
      "critical_flag": true,
      "critical_flag_notes": [
        { "type": "memo_image_refs_lint", "ref_lines": [41], "justification": "Pre-flight image-reference lint flagged 1 missing ref. See lint.memo_image_refs.errors_by_path for the per-ref breakdown and suggested fixes." },
@@ -217,6 +258,14 @@ The review sibling directory is **read-only once written**. Revisions consume it
    }
    ```
    ```
+   - The top-level `scope_distribution` block (issue #242, Phase A) is a count of `comments.md` entries per `scope` value. Shape:
+     - `preserve` (`int`): count of `scope: preserve` comments.
+     - `expand` (`int`): count of `scope: expand` comments.
+     - `reduce` (`int`): count of `scope: reduce` comments.
+   - The block lives at the **top level** of `_summary.md` (sibling to `lint` and `render_gate`), NOT nested under `lint` — the scope label is **reviewer-judgment metadata on each comment**, not a mechanical lint result. Same placement rationale as the `summary_detail_consistency` top-level block (issue #245): the existing `lint` namespace is reserved for deterministic mechanical checks.
+   - The `scope_distribution` block is the operator-visible signal that the critic is actually surfacing both directions, not just additions. The canary's "7-of-8-additions diagnostic" (the friction case from the issue body: a strategic critic that produced 7 `scope: expand` comments and 1 `scope: reduce` comment) becomes mechanical: a review with `scope_distribution.reduce == 0` AND `dimensions.9 < 4` is **malformed** per AC 2; the reviewer SHOULD re-run.
+   - **The `scope_distribution` block does NOT participate in `critical_flag` in v0** (Phase A). The block is observational: it surfaces the comment-stream balance for the operator and the reviser, but `critical_flag` continues to be driven by the existing pathway (lint errors + summary-detail consistency CONTRADICTED) only. Phase B promotion to gating behavior is a separate decision after canary consumption signal.
+   - **Backwards-compat**: a legacy review sibling produced before this block shipped MAY omit `scope_distribution` entirely; downstream consumers (the reviser at #241) MUST tolerate the absence and fall back to severity-only ordering (mirrors the perspective-sibling backwards-compat pattern). New reviews produced after this contract ships MUST emit the block.
    - When `lint.memo_image_refs.errors > 0`, set `critical_flag: true` and append a `critical_flag_notes` entry of type `memo_image_refs_lint` naming the affected source lines. This flag lives under the "fourth-category critical flag" bucket per `rubric.md`'s open-ended "any deal-breaker a sophisticated reader would catch" slot — a memo whose PDF renders with broken-image placeholders is not ship-ready regardless of its prose.
    - The `lint.refs_pdf_extraction` block mirrors the `lint.memo_image_refs` shape and records the PDF refs back-check path's per-run outcome (issue #167). Shape:
      - `ran` (`bool`): whether the PDF text extraction path ran. `True` when `refs_pdf.check_pdftotext_available()` returned `True` AND at least one `<thread>/refs/*.pdf` was present; `False` otherwise (binary absent OR no PDF refs).
@@ -329,6 +378,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
     - Critical flags (if any) — include `Memo image refs (lint)` when `lint.memo_image_refs.errors > 0`; include `Summary-detail consistency: CONTRADICTED` when `summary_detail_consistency.critical_flag_candidate == true` (issue #245), with the claim excerpt + contradicting detail location as the one-paragraph justification.
     - Dimension summary table (per-dim scores; full justifications in `scoring.md`)
     - Top 3 revision priorities (if `advance: false`) — when the lint raised errors, the first priority MUST be "Fix the N missing image references (see `_summary.md` lint block)". When the summary-detail consistency back-check raised a `CONTRADICTED` / `critical` finding (issue #245), the top-3 revision priorities MUST include "Reconcile callout/abstract with detailed sections (see `_summary.md.summary_detail_consistency.findings[critical=true]`)" as priority #1 — the contradicting summary is the page-1 reader-anchor and fixing it precedes other prose work.
+    - **`scope: reduce` first-priority rule (issue #242 AC 4)**: when **dim 9 scored below full weight (< 4/4)**, the top-3 revision priorities MUST include at least one `scope: reduce` priority citing the specific dim 9 anti-pattern instance the reviser should act on first (e.g., "Collapse §4.2's three-paragraph hedge on PAM4/FEC into one sentence — see `comments.md` § scope: reduce"). This mirrors the existing critical-flag-driven "fix the N missing image references" first-priority precedent and the summary-detail-consistency CONTRADICTED first-priority precedent: when a structural countervailing pressure has fired (dim 9 deduction here, lint error in the precedent, CONTRADICTED finding in the #245 precedent), the verdict's revision priorities explicitly surface it so the reviser does not drown the trim directive in `scope: expand` noise. The `scope: reduce` priority is independent of and additive to the lint / summary-detail-consistency priorities: when multiple fire on the same review, all of them appear in the top-3 (the rubric's "Top 3 revision priorities" cap is the budget, not the count). When dim 9 scored 4/4 (full weight) the `scope: reduce` priority is inactive — the rubric judged the rhetorical economy already converged.
 11. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
 12. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed acme-seed.1 → acme-seed.1.review/ (30/44, advance: false, 0 critical flags)`).
 

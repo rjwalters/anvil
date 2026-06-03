@@ -243,6 +243,67 @@ Anti-patterns to penalize:
 
 The dim 9 justification MUST cite specific instances (e.g., "§4.2's three-paragraph hedge on PAM4/FEC could land in one sentence — -2 on dim 9"). Vague "could be tighter" deductions without named instances are not actionable for the reviser and SHOULD be avoided. (Same anchoring discipline as the existing dim 3 citation-hooks rule and §"Refs back-check (dim 3)" sub-rule above.)
 
+### Surfacing to `comments.md` (issue #242)
+
+When dim 9 scores below full weight (< 4/4), every cited anti-pattern instance in the dim 9 justification MUST ALSO appear as a `scope: reduce` entry in `comments.md` (see §"Scope tagging (comments.md)" below and `commands/memo-review.md` step 8). The two surfaces stay coherent:
+
+- `scoring.md` records the deduction with the cited instance ("-2 on §4.2's three-paragraph hedge").
+- `comments.md` echoes the same instance as a `scope: reduce` comment with a suggested trim ("Could land in one sentence per dim 9 §'Multi-paragraph hedges where one sentence carries the load.'").
+
+This is the **mechanical surfacing path** from rubric-side anti-pattern citation to operator-visible comment stream. Without the echo, the reviser sees the dim 9 deduction in `scoring.md` but has no `comments.md` entry to act on — the named instances stay locked in score-justification prose the reviser may not parse. The echo is **per-instance**: each named anti-pattern instance becomes one `scope: reduce` comment, severity matching the load-bearing-ness of the instance (typically `major` for thesis-block bloat, `minor` for tangential bloat). When dim 9 scores 4/4 (full weight) the echo is inactive — there are no instances to surface.
+
+The countervailing-pressure logic: dim 9 gives the **score** a countervailing pressure against bloat; the `scope: reduce` echo gives the **comments stream** a countervailing pressure. Without the echo, a reviewer who scored dim 9 at 2/4 still produces a `comments.md` biased entirely toward `scope: expand` recommendations — the dim 9 deduction has no operational handle for the reviser. With it, every dim 9 deduction is visible in the comment stream as a labeled trim directive the reviser can act on directly.
+
+## Scope tagging (comments.md)
+
+The reviewer-produced `comments.md` carries a `scope: preserve | expand | reduce` label on every entry (issue #242, Phase A — reviewer-prose-only, no `anvil/lib/` schema changes). The label appears alongside the existing severity grouping (`blocker / major / minor / nit`) so the operator can scan/filter at a glance and the reviser at #241 can read scope + severity together. This subsection codifies the vocabulary, the rules, and the backwards-compat fallback; the operational shape (comment heading, examples) lives in `commands/memo-review.md` step 8.
+
+### Three-valued vocabulary
+
+- **`scope: preserve`** — the comment proposes a change that neither adds nor removes content (reword for clarity, fix a typo, swap a noun for a sharper noun, reorder paragraphs without compression). Default when the comment does not propose adding or removing content.
+- **`scope: expand`** — the comment proposes ADDING content (a new paragraph, a new subsection, a new exhibit, a new risk entry, a new financial-scenario row, a new citation expansion).
+- **`scope: reduce`** — the comment proposes REMOVING or COMPRESSING content (collapse a multi-paragraph hedge to one sentence, drop a redundant subsection, trim a restated bullet list, replace a worked-example table with a one-line rule statement, fold an oversized footnote into a parenthetical).
+
+### Dim 9 echo rule (required `scope: reduce`)
+
+When the reviewer deducts on dim 9 (< 4/4), the rubric requires named anti-pattern instances in the dim 9 justification (per §"Dim 9 — rhetorical economy" above). Every such cited instance MUST also be surfaced as a `scope: reduce` entry in `comments.md`. See §"Surfacing to `comments.md`" above for the mechanical-surfacing motivation. Net result: when dim 9 < 4/4, the `scope: reduce` subset of `comments.md` is **non-empty**.
+
+### Expand trim-candidate rule
+
+Any `scope: expand` comment that proposes adding **≥1 paragraph** or **≥1 subsection** MUST identify what could be trimmed to fund the addition. Two acceptable forms:
+
+1. Name an existing paragraph / subsection / table / footnote that could be compressed to free the budget, OR
+2. Explicitly acknowledge that the addition fits within dim 9's budget without compression cost (e.g., "The risk section currently runs short — adding this risk fits without trimming elsewhere.").
+
+Comments lacking the trim-candidate clause are **automatically downgraded from `major` to `minor`** — the bar for unconditional expansion at `major` severity is "the dim 9 budget can absorb it." A `scope: expand` comment at `minor` or `nit` severity does NOT carry the trim-candidate requirement (the additive cost is small enough that the budget is implicit).
+
+The rule is the **forcing-tradeoff mechanism** the issue body named: the reviewer cannot recommend a load-bearing addition (paragraph / subsection) without naming the compression cost. This converts the implicit asymmetry the canary diagnosed — critics propose adding content, never trimming — into an explicit per-comment discipline.
+
+### `verdict.md` first-priority rule (when dim 9 < 4/4)
+
+The `verdict.md` "Top 3 revision priorities" section MUST include at least one `scope: reduce` priority when dim 9 scored below full weight (< 4/4). This mirrors the existing critical-flag-driven precedents (lint-error first priority, summary-detail-consistency CONTRADICTED first priority): when a structural countervailing pressure has fired, the verdict's revision priorities explicitly surface it so the reviser does not drown the trim directive in `scope: expand` noise. See `commands/memo-review.md` step 10.
+
+### `_summary.md.scope_distribution` operator-visible signal
+
+`_summary.md` carries a top-level `scope_distribution` block (sibling to `lint` and `render_gate`, NOT nested under `lint` — same rationale as the `summary_detail_consistency` block placement at issue #245: the scope label is reviewer-judgment metadata, not mechanical lint output) reporting `{preserve, expand, reduce}` counts of comments. See `commands/memo-review.md` step 9 for the JSON shape.
+
+The block is the operator-visible signal that the critic is surfacing both directions, not just additions. The canary's "7-of-8-additions diagnostic" becomes mechanical: a review with `scope_distribution.reduce == 0` AND `dimensions.9 < 4` is **malformed** per the dim 9 echo rule above; the reviewer SHOULD re-run.
+
+### Backwards-compat
+
+A review sibling produced **before** this contract shipped does NOT need to be re-emitted and remains a legal historical record. Two compatibility paths matter:
+
+- **Operator side**: legacy review siblings without `scope:` labels continue to be displayed and consumed normally — the scope label is additive metadata, not a required field. Reviewers re-running on the same `<thread>.{N}/` produce new review siblings that DO carry the label per the rules above.
+- **Reviser side (#241)**: the reviser reads `scope:` when present and falls back to severity-only ordering when absent. This mirrors the perspective-sibling backwards-compat pattern in §"Perspective substrate (dim 3)" §"Without perspective" — the new metadata can be opportunistically consumed without breaking the legacy consumption path.
+
+New reviews produced **after** this contract ships MUST carry scope labels per the rules above (Phase A discipline). Phase B promotion to gating behavior (e.g., a malformed-review re-run forced by the runtime when `scope_distribution.reduce == 0 AND dim 9 < 4`) is a separate decision deferred per the same precedent that #245 and #215 followed: ship the reviewer-prose contract on the canary-surface skill first; promote to gating after one consumption cycle. The same Phase A / Phase B framing applies.
+
+### Composition with related primitives
+
+- **Dim 9 (Rhetorical economy, #244 / PR #254)**: dim 9 gives the **score** a countervailing pressure; the scope-tagging contract here gives the **comments stream** a countervailing pressure. The two compose: dim 9 fires on the score-justification side; scope-tagging fires on the comment-stream side. Both surfaces are coherent because the dim 9 anti-pattern instances mechanically become `scope: reduce` comments per the echo rule.
+- **Reviser additivity (#241)**: the reviser-side issue closes the consumption loop: when #241 ships, the reviser reads `scope: reduce` comments first, addresses them as compression directives, and only THEN consumes `scope: expand` comments at their declared severity. The two issues compose naturally: this rubric produces the labeled comment stream; #241 consumes it with the right ordering.
+- **Proposal-side mirror**: deferred per the same precedent that #245's deck-side mirror followed (ship the rubric-side primitive on the canary-surface skill first; mirror to siblings after one consumption cycle). The proposal-side dim 9 already shipped via PR #254, so the proposal-side scope-tagging mirror is a clean one-cycle follow-on.
+
 ## Advance threshold
 
 - **≥35/44** — advance to `READY` (or to next step in the lifecycle).
