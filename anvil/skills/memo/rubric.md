@@ -1,8 +1,8 @@
 # Memo review rubric
 
-The reviewer scores a memo against 8 weighted dimensions summing to **40**. The threshold to advance is **≥32/40**. Any **critical flag** short-circuits the verdict — the memo is blocked regardless of total score until the flagged issue is addressed.
+The reviewer scores a memo against 9 weighted dimensions summing to **44**. The threshold to advance is **≥35/44**. Any **critical flag** short-circuits the verdict — the memo is blocked regardless of total score until the flagged issue is addressed.
 
-The rubric is tuned so that **intellectual honesty and reasoning quality (thesis + evidence + risk = 17/40 = 42.5%)** dominate the score. A memo's primary job is to make a defensible recommendation; prose polish is necessary but not sufficient.
+The rubric is tuned so that **intellectual honesty and reasoning quality (thesis + evidence + risk = 17/44 = 38.6%)** dominate the score. A memo's primary job is to make a defensible recommendation; prose polish is necessary but not sufficient. The dim 9 *Rhetorical economy* addition (weight 4) provides explicit countervailing pressure against bloat — the "dominates" framing above continues to hold in spirit, with dim 9 catching the failure mode where every other dim rewards adding more.
 
 ## Dimensions
 
@@ -16,7 +16,8 @@ The rubric is tuned so that **intellectual honesty and reasoning quality (thesis
 | 6 | **Financial reasoning** | 5 | Unit economics, capital efficiency, scenario math. Early-stage: clear sensitivity to key assumptions. Later-stage: defensible model. |
 | 7 | **Scope discipline** | 4 | The memo stays within its declared scope (no scope creep into adjacent deals, no kitchen-sink appendices that dilute the argument). Length is within the declared `target_length` if set (default: reasonable for the decision being made). |
 | 8 | **Prose & structure** | 4 | Navigable headings, tight prose, no jargon-without-definition, exhibits referenced from body. Lowest weight by design — substance over style. |
-| | **Total** | **40** | Advance threshold: ≥32 |
+| 9 | **Rhetorical economy** | 4 | Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds? |
+| | **Total** | **44** | Advance threshold: ≥35 |
 
 ## Scoring guidance
 
@@ -132,7 +133,7 @@ Reviewer-judgment **cross-section back-check** between the memo's executive-summ
 
 **Why the existing rubric can't catch this.** Thesis coherence measures whether the thesis statement is clear and sharp **in isolation**. It does not ask whether the thesis statement matches what the body argues. Evidence quality and Defensibility evaluate the detail alone. No dim spans both — so a summary that's sharp but wrong gets full credit on Thesis coherence, and the body that contradicts it gets full credit on Evidence quality. This is a structural gap in the rubric, not reviewer carelessness; see the canary-anchor fixture under `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/` for the worked example.
 
-**Output channel.** Findings surface in their own `_summary.md.summary_detail_consistency` top-level block (sibling to the existing `lint` and `render_gate` top-level blocks, NOT nested under `lint` — see the schema notes at `commands/memo-review.md` step 9) and a corresponding `## Summary-detail consistency findings` subsection in `findings.md`. This sub-rule **does NOT add a 9th rubric dimension** and **does NOT alter the /40 total**. The block sits alongside the existing dimensions as a co-equal observation namespace.
+**Output channel.** Findings surface in their own `_summary.md.summary_detail_consistency` top-level block (sibling to the existing `lint` and `render_gate` top-level blocks, NOT nested under `lint` — see the schema notes at `commands/memo-review.md` step 9) and a corresponding `## Summary-detail consistency findings` subsection in `findings.md`. This sub-rule **does NOT add a rubric dimension** and **does NOT alter the /44 total**. The block sits alongside the existing dimensions as a co-equal observation namespace.
 
 ### What counts as a load-bearing summary claim
 
@@ -169,7 +170,7 @@ The severity vocabulary (`critical` / `important` / `suggestion`) deliberately d
 
 A `CONTRADICTED` finding at `critical` severity is a **critical-flag candidate** under the rubric's open-ended "any deal-breaker a sophisticated reader would catch" slot (mirrors the refs back-check `CONTRADICTED` precedent for dim 3 above). When such a flag is set, the verdict in `verdict.md` lists it as `Summary-detail consistency: CONTRADICTED` with the claim excerpt + the contradicting detail location as the one-paragraph justification, AND the top-3 revision priorities MUST include "Reconcile callout/abstract with detailed sections (see `_summary.md.summary_detail_consistency.findings[critical=true]`)" as priority #1.
 
-`ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are **observational** and do NOT force `advance: false`. The verdict aggregation logic at `commands/memo-review.md` step 7 (`advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)`) plugs into the existing "no critical flags" clause via the existing critical-flag-candidate pathway, not via a new gate.
+`ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are **observational** and do NOT force `advance: false`. The verdict aggregation logic at `commands/memo-review.md` step 7 (`advance = (total >= 35) AND (no critical flags) AND (lint.errors == 0)`) plugs into the existing "no critical flags" clause via the existing critical-flag-candidate pathway, not via a new gate.
 
 ### Phase A / Phase B split
 
@@ -219,14 +220,33 @@ The dim 7 justification SHOULD record **both** numbers when both are available (
 
 **Severity escalation via target_length spec form**: the `render_gate.gate(kind="memo")` `memo_page_fit` check (see `anvil/lib/render_gate.py`) treats `target_length.pages` as an **error** (operator declared the page range explicitly — out of range is a hard fail) and `target_length.words` as a **warning** (the page range is derived via the 600-words-per-page proxy; the word-count signal in dim 7 remains authoritative). The reviewer's `_summary.md.render_gate` block surfaces these severities verbatim from the render gate's findings — see `commands/memo-review.md` step 4c. The reviewer does NOT re-derive the severity; the gate's classification is the contract.
 
-**Render-gate findings are non-blocking for the verdict**: `_summary.md.render_gate` informs the dim 7 justification (and surfaces page-fit warnings / overfull-render advisories the operator should act on in the next revise pass) but does NOT gate `advance`. The reviewer's verdict is driven by the rubric total + the four critical-flag categories + the source-side `memo_image_refs_exist` lint as today. A memo that scores ≥32 with no critical flags is advance-eligible even when `_progress.json.render_gate.pass == false`.
+**Render-gate findings are non-blocking for the verdict**: `_summary.md.render_gate` informs the dim 7 justification (and surfaces page-fit warnings / overfull-render advisories the operator should act on in the next revise pass) but does NOT gate `advance`. The reviewer's verdict is driven by the rubric total + the four critical-flag categories + the source-side `memo_image_refs_exist` lint as today. A memo that scores ≥35 with no critical flags is advance-eligible even when `_progress.json.render_gate.pass == false`.
 
 **Backwards-compat**: a memo without `_progress.json.render_gate` (legal pre-Phase-3 state, every legacy version dir on disk) reviews exactly as before — the reviewer falls back to word-count-only dim 7 judgment and the `_summary.md.render_gate` block is `{"ran": false, "reason": "no render_gate block in _progress.json"}`.
 
+## Dim 9 — rhetorical economy
+
+**Rhetorical economy** (weight: 4) — Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds?
+
+The dim exists because every other dimension in this rubric rewards *more*: more thesis-supporting evidence (dim 3), more risk-section coverage (dim 4), more financial-scenario detail (dim 6), more navigable structure (dim 8). A reviser optimizing against the legacy 8-dim rubric is incentivized to add — but force for an investment memo comes from compression and surprise, not enumeration. Dim 9 is the countervailing pressure: a paragraph that does not earn its weight costs the same score as a missing one.
+
+**Relationship to dim 7 (Scope discipline / length targets).** Dim 7 polices the **declared length target** (`target_length` in `<thread>/.anvil.json`): does the memo hit its word-count window? Dim 9 polices whether **the words used inside the budget are load-bearing**. The two are **independent and additive**: a memo can hit its word target (dim 7 = full marks) and still bloat within the budget (dim 9 deduction). Conversely, a memo that overshoots its target (dim 7 deduction) MAY still earn full marks on dim 9 if every overshoot paragraph is load-bearing — the scoring on the two dims is uncoupled.
+
+Anti-patterns to penalize:
+
+- Multi-paragraph hedges where one sentence carries the load.
+- Inline citation footnotes longer than the claim they source.
+- Subsections that elaborate on a point already made.
+- Worked-example tables when the rule is stated and obvious.
+- Open-decisions / risks entries that are reformulations of items already named in earlier sections.
+- Bullet lists that restate adjacent prose without adding granularity.
+
+The dim 9 justification MUST cite specific instances (e.g., "§4.2's three-paragraph hedge on PAM4/FEC could land in one sentence — -2 on dim 9"). Vague "could be tighter" deductions without named instances are not actionable for the reviser and SHOULD be avoided. (Same anchoring discipline as the existing dim 3 citation-hooks rule and §"Refs back-check (dim 3)" sub-rule above.)
+
 ## Advance threshold
 
-- **≥32/40** — advance to `READY` (or to next step in the lifecycle).
-- **<32/40** — block; revise.
+- **≥35/44** — advance to `READY` (or to next step in the lifecycle).
+- **<35/44** — block; revise.
 - **Any critical flag set** — block regardless of total. The next revision must address the flagged issue specifically and the reviewer must re-evaluate the flag before the threshold check applies.
 
 ## Critical flags
@@ -244,8 +264,8 @@ The reviewer should also raise a flag for any other issue that, in their judgmen
 
 The reviewer writes a `verdict.md` at the top of the review sibling dir with:
 
-1. **Total score**: `XX / 40`.
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 32` AND `no unresolved critical flag`.)
+1. **Total score**: `XX / 44`.
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 35` AND `no unresolved critical flag`.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification.
 4. **Dimension summary**: a markdown table of per-dimension scores (full detail lives in `scoring.md`).
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes the reviser should focus on.

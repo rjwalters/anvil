@@ -23,7 +23,7 @@ orientation: portrait         # portrait (default) | landscape. Use landscape fo
 
 A short statement of what this brief is and what the drafter should produce: a
 buildable-system proposal (`proposal.tex`) compiling under XeLaTeX, following the
-10-section template, scoring against the 8-dimension rubric, and passing the
+10-section template, scoring against the 9-dimension rubric, and passing the
 mandatory audit (BOM arithmetic + spec/link-budget consistency + sourceability).
 
 State the **hard constraints** up front — the customer's non-negotiables (e.g.

@@ -33,7 +33,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex` AND BOTH `<thread>.{N}.review/verdict.md` and `<thread>.{N}.audit/verdict.md`. If either critic sibling is missing, exit with an error ("both review and audit are required before revising; run the missing critic first").
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` and `proposal.tex` + `changelog.md` exist, the revision is complete — exit early with a notice.
 3. **Iteration cap check**: read `metadata.max_iterations` from `<thread>.{N}/_progress.json` (or `<thread>/.anvil.json` override; default 4). If `N + 1 > max_iterations`, exit with a `BLOCKED` notice — human review required.
-4. **Combined-advance pre-check**: parse both verdicts. If `review.advance == true` (≥32) AND `audit.pass == true` AND there are no critical flags in either sibling, exit with a notice: the thread is `READY`/`AUDITED`, no revision needed. (Operator can force-run by deleting a verdict or bumping the iteration manually, but the default is to refuse to revise an already-passing version.)
+4. **Combined-advance pre-check**: parse both verdicts. If `review.advance == true` (≥35) AND `audit.pass == true` AND there are no critical flags in either sibling, exit with a notice: the thread is `READY`/`AUDITED`, no revision needed. (Operator can force-run by deleting a verdict or bumping the iteration manually, but the default is to refuse to revise an already-passing version.)
 5. **Initialize `_progress.json`**: write `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations`.
 6. **Read inputs**:
    - Prior version's `proposal.tex` and `figures/`.
@@ -73,7 +73,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 ## Convergence
 
 After this command produces `<thread>.{N+1}/`, the orchestrator should run BOTH `proposal-review <thread>` AND `proposal-audit <thread>` on the new version (in parallel). The cycle continues until:
-- BOTH `verdict.md`s clear (`review.advance: true` ≥32 AND `audit.pass: true`, no critical flags) — thread reaches `READY`/`AUDITED`, OR
+- BOTH `verdict.md`s clear (`review.advance: true` ≥35 AND `audit.pass: true`, no critical flags) — thread reaches `READY`/`AUDITED`, OR
 - `N+1 > max_iterations` (thread is `BLOCKED` for human review).
 
 ## Notes for the reviser agent
