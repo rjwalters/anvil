@@ -25,7 +25,7 @@ Each skill ships a complete lifecycle (`draft → review → revise → audit �
 
 ## Installation
 
-Anvil installs into a target repository (the consumer repo) where you do the authoring work. The installer copies the framework + selected skills, writes thin Claude Code skill registrations, and appends an Anvil section to the target's `CLAUDE.md`.
+Anvil installs into a target repository (the consumer repo) where you do the authoring work. The installer copies the framework + selected skills, writes thin Claude Code skill registrations, generates a consumer-side `pyproject.toml`, and appends an Anvil section to the target's `CLAUDE.md`.
 
 ```bash
 # Install everything into the current directory
@@ -37,11 +37,29 @@ Anvil installs into a target repository (the consumer repo) where you do the aut
 # Preview without writing
 ./scripts/install-anvil.sh --dry-run /path/to/target-repo
 
+# Skip the post-install `uv sync` step (offline or no-uv installs)
+./scripts/install-anvil.sh --no-sync /path/to/target-repo
+
 # Check renderer dependencies (marp, mmdc, pdfjam, poppler/pdftoppm)
 ./scripts/install-anvil.sh --check-deps
 ```
 
 After installation you invoke the skills from Claude Code in the consumer repo — e.g. `anvil:memo my-thesis` to draft a memo, then `memo-review my-thesis` to score it.
+
+### Running anvil Python from a consumer (issue #230)
+
+Some skill commands (memo-render, render-gate consumers, etc.) call `from anvil.lib.render_gate import gate` directly. The installer ships an uv-runnable `<consumer>/.anvil/` layout so this works without cloning the anvil source repo on the consumer machine:
+
+```bash
+# Default install runs `uv sync --project .anvil` for you at Stage 10.5.
+# If you used --no-sync, materialize the consumer venv manually:
+uv sync --project .anvil
+
+# Then invoke framework Python from the consumer root:
+uv run --project .anvil python -c "from anvil.lib.render_gate import gate; print(gate.__module__)"
+```
+
+The generated `.anvil/pyproject.toml` declares the framework's base runtime deps (`pydantic`, `pyyaml`); no manual `uv add` is required. The importable `anvil/` package mirror lives at `<consumer>/.anvil/anvil/`, fully self-contained — the install-time `anvil_source` recorded in `install-metadata.json` is provenance metadata only and is not consulted at runtime. The pre-#230 install layout (`.anvil/lib/` for framework Python) is detected on upgrade and surfaced with a one-line migration warning; no auto-deletion (hand-edited override files there are preserved for the operator to port).
 
 ### Renderer dependencies
 
