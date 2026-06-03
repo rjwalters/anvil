@@ -184,7 +184,75 @@ This is the **intra-memo** back-check; the related cross-thread back-check (#236
 
 1. **memo A claim ↔ memo A `refs/`** — existing §"Refs back-check (dim 3)" above (PR #144).
 2. **memo A callout ↔ memo A §N** — this sub-rule (intra-memo summary-detail consistency).
-3. **memo A claim ↔ memo B §N** — #236 (cross-thread citation back-check).
+3. **memo A claim ↔ memo B §N** — #236 (cross-thread citation back-check), see §"Cross-thread citation back-check (dim 3)" below.
+
+## Cross-thread citation back-check (dim 3)
+
+Reviewer-judgment **cross-thread back-check** between citations in `memo.md` that reference other anvil threads (memo A claim ↔ memo B §N) and the **current state** of the cited thread. Closes the third leg of the **back-check triangle** (§"Refs back-check (dim 3)" above covers memo A claim ↔ memo A `refs/`; §"Summary-detail consistency" above covers memo A summary ↔ memo A §N; this sub-rule covers memo A claim ↔ memo B §N).
+
+**Why this matters.** As consumers accumulate portfolios of interlinked anvil threads, each revision of any thread can invalidate cites *from other threads* that point at section headers that get renamed, moved, or dropped. The Studio canary (2026-06-02) caught this manually: `raytheon-pitch-strategy memo.1 §2` cited `brasidas-synthesis/memo.2 §3.1` as the location of the data-center disagreement framing, but when `brasidas-synthesis` revised from memo.1 to memo.2, the framing moved to §5.2 and §3.1 became stale. A less-thorough reviewer would have scored the dim 3 evidence claim cleanly and the stale cite would have propagated to v3+. See `tests/fixtures/cross_thread_cite_consistency/raytheon_brasidas_stale_anchor/` for the canary anchor.
+
+**Output channel.** Findings surface in their own `_summary.md.cross_thread_cite_consistency` top-level block (sibling to the existing `lint`, `render_gate`, `summary_detail_consistency`, and `scope_distribution` top-level blocks, NOT nested under `lint` — see the schema notes at `commands/memo-review.md` step 9) and a corresponding `## Cross-thread cite consistency findings` subsection in `findings.md`. This sub-rule **does NOT add a rubric dimension** and **does NOT alter the /44 total**. The block sits alongside the existing dimensions as a co-equal observation namespace. Deductions on dim 3 are per-instance (see "Severity ladder" below) — the back-check plugs into existing dim 3 *Evidence quality* deductions, mirroring the §"Refs back-check (dim 3)" precedent.
+
+### What counts as a cross-thread citation
+
+The reviewer enumerates cross-thread cites permissively, catching all four shapes:
+
+- **Literal-path cites**: `<thread-slug>/memo.<N>/memo.md` (e.g., `brasidas-synthesis/memo.2/memo.md`).
+- **Short-form cites**: `<thread-slug> §X` or `<thread-slug>/memo §X` (e.g., `brasidas-synthesis §3.1`, `brasidas-synthesis/memo §3.1`).
+- **Relative-path cites** (the studio convention): `output/<thread-slug>/...` (e.g., `output/brasidas-synthesis/memo.2/memo.md`).
+- **Backtick-wrapped cites**: `` `<thread-slug>/memo.<N>/memo.md` §<X> `` (e.g., `` `brasidas-synthesis/memo.2/memo.md` §5.2 ``).
+
+The reviewer's enumeration step is **permissive** (catch all four). The verifier step is **strict** (resolve each detected cite to a canonical thread, latest version, and section anchor).
+
+### Resolution rule
+
+For each enumerated cross-thread cite, the reviewer resolves:
+
+1. **Cited thread** → the latest `<thread-slug>.{N}/` directory under the portfolio root (highest `N`). Cross-thread cites point at a **moving target** (the cited thread's latest version) by default — this is the contract.
+2. **Cited version** → the highest-`N` version under the cited thread's portfolio entry. **Pinning to a specific cited version** (e.g., `brasidas-synthesis.2`) is a **stronger contract** and the reviewer gives it a **positive note** in the dim 3 justification, NOT a deduction. The version pin says "this cite is intentional against a specific historical state and should not be re-resolved."
+3. **Section anchor** → the `§N` or section-header reference in the cite text. The reviewer scans the cited `memo.md` for a matching header.
+
+### Verdict tags
+
+For each (cross-thread cite, resolved location) tuple, the reviewer classifies the relationship as one of four verdict tags (mirroring the §"Refs back-check (dim 3)" 4-valued precedent — `VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS` — mapped per the issue body's last paragraph):
+
+- **`ANCHOR-FOUND`** — silent. The cited thread exists, the latest version is present, and the §N anchor resolves to a matching header in the cited `memo.md`. No finding emitted.
+- **`ANCHOR-MISSING-BUT-THREAD-PRESENT`** — severity `important`. The cited thread exists but the §N anchor is NOT found in the latest version (likely renumbered, moved, or dropped between revisions). This is the **canary failure mode** the contract exists to catch. **One-point dim 3 deduction.**
+- **`ANCHOR-CONTRADICTED`** — severity `critical`. The §N anchor exists at the cited location but its content **materially contradicts** the claim the citing memo attributes to it. **Two-point dim 3 deduction AND a critical-flag candidate** (see "Critical-flag integration" below).
+- **`THREAD-NOT-FOUND`** — severity `important`. The cited thread slug does not resolve to any directory under the portfolio root (the cited thread does not exist — likely a typo, a renamed thread, or a cite at a thread that has not been authored yet). **One-point dim 3 deduction.**
+
+### Severity ladder
+
+| Severity | Meaning | Dim 3 deduction | Verdict integration |
+|---|---|---|---|
+| `critical` | `ANCHOR-CONTRADICTED` — cited content materially contradicts the claim. Mirrors §"Refs back-check" `CONTRADICTED` precedent for a load-bearing factual error in a cross-thread citation. | -2 | **Critical-flag candidate** — see "Critical-flag integration" below. |
+| `important` | `ANCHOR-MISSING-BUT-THREAD-PRESENT` (the canary missing-anchor case) or `THREAD-NOT-FOUND` (cited thread absent). The reviser should reconcile but the memo is not blocked solely on this finding. | -1 | Observational; included in revision priorities but does NOT force `advance: false` on its own. |
+| `suggestion` | Reserved for marginal cases the reviewer judges minor (e.g., a cited thread that exists but at a name-spelling variant the cite should normalize against). The reviewer's judgment is the contract. | 0 (no deduction) | Observational only. |
+
+The severity vocabulary (`critical` / `important` / `suggestion`) matches the §"Summary-detail consistency" precedent and deliberately diverges from the existing `lint.*` severity vocabulary (`error` / `warning` / `info`) to signal the different character of the check — reviewer **judgment** vs. mechanical **lint**. The divergence is load-bearing; implementers SHOULD NOT normalize across the two vocabularies.
+
+### Critical-flag integration
+
+An `ANCHOR-CONTRADICTED` finding at `critical` severity is a **critical-flag candidate** under the rubric's open-ended "any deal-breaker a sophisticated reader would catch" slot (mirrors the §"Refs back-check (dim 3)" `CONTRADICTED` precedent and the §"Summary-detail consistency" `CONTRADICTED` precedent above). When such a flag is set, the verdict in `verdict.md` lists it as `Cross-thread cite: ANCHOR-CONTRADICTED` with the cite text + the contradicting cited-section location as the one-paragraph justification, AND the top-3 revision priorities MUST include "Reconcile cross-thread citation against cited thread's latest version (see `_summary.md.cross_thread_cite_consistency.findings[critical=true]`)" when the back-check fires `ANCHOR-CONTRADICTED`.
+
+`ANCHOR-MISSING-BUT-THREAD-PRESENT` and `THREAD-NOT-FOUND` findings at `important` severity are **observational** and do NOT force `advance: false` on their own (the per-instance dim 3 deduction is the natural surface; the cite may still be repairable on the next revision pass without rising to critical). The verdict aggregation logic at `commands/memo-review.md` step 7 (`advance = (total >= 35) AND (no critical flags) AND (lint.errors == 0)`) plugs into the existing "no critical flags" clause via the existing critical-flag-candidate pathway, not via a new gate.
+
+### Phase A / Phase B split
+
+**Phase A ships as reviewer-prose discipline (no Python module).** Following the §"Refs back-check (dim 3)" precedent above — "applied entirely via reviewer judgment — there is no automated `refs/` parsing in v0" — and the §"Summary-detail consistency" precedent (issue #245 / PR #250), the back-check is encoded as procedure prose in `commands/memo-review.md` step 4f and the rubric prose in this section. The reviewer enumerates cross-thread cites, resolves each to `(thread_slug, latest_version_dir, section_anchor)`, classifies by verdict tag and severity, and emits the structured block. No detector is invoked.
+
+**Phase B (deferred, optional).** An automated detector at `anvil/skills/memo/lib/cross_thread_cite.py` (skill-local first per CLAUDE.md §"Skill-local first, lib promotion later"; promotion to `anvil/lib/cross_thread_cite.py` is a Phase C decision gated on a second consumer per the same convention) is a Phase B follow-on, gated on canary signal. The cite-shape surface is heuristic-heavy (four explicit shapes + the `output/<thread-slug>/` studio convention + per-version anchor resolution) and one canary instance is not enough to anchor the detector's heuristic surface. The canary-anchor fixture under `tests/fixtures/cross_thread_cite_consistency/raytheon_brasidas_stale_anchor/` carries the expected-block shape so Phase B's detector has a regression anchor on landing.
+
+### Related (back-check triangle composition)
+
+This sub-rule closes the **back-check triangle**:
+
+1. **memo A claim ↔ memo A `refs/`** — §"Refs back-check (dim 3)" above (PR #144). 4-valued verdict (`VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS`).
+2. **memo A summary ↔ memo A §N** — §"Summary-detail consistency" above (#245 / PR #250). 3-valued verdict (`ABSENT` / `CONTRADICTED` / `DIVERGENT`, plus silent `MATCH`).
+3. **memo A claim ↔ memo B §N** — this sub-rule (#236). 4-valued verdict (`ANCHOR-FOUND` / `ANCHOR-MISSING-BUT-THREAD-PRESENT` / `ANCHOR-CONTRADICTED` / `THREAD-NOT-FOUND`).
+
+The three legs share the **shape** (explicit-skip convention, top-level `_summary.md` block sibling to `lint` / `render_gate`, critical-flag-candidate pathway feeding the existing "no critical flags" verdict clause, `findings.md` subsection, fixture-anchored Phase B) but **deliberately preserve divergent verdict-tag vocabularies** — each leg's vocabulary is canon for that leg; the divergence is signal, not noise (the same way severity vocabularies diverge between reviewer-judgment blocks and mechanical lints per the §"Summary-detail consistency" §"Severity ladder" notes).
 
 ## Length targets (dim 7)
 
