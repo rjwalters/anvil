@@ -72,7 +72,148 @@ Operator-initiated polish-pass entry point. When passed, `memo-revise` bypasses 
 
 See SKILL.md §"Operator-initiated polish passes" for the user-facing shape.
 
+### `--plan` (optional)
+
+Operator-confirmable change-set preview entry point. When passed, `memo-revise` writes a plan-only artifact at `<thread>.{N+1}.plan/plan.md` (a critic-sibling-shaped directory, NOT a version dir) describing the planned edits, and exits WITHOUT producing `<thread>.{N+1}/memo.md`. The plan is the in-band, durable, git-diffable alternative to an out-of-band AskUserQuestion prompt — operators see *what specifically would change* before any edit is committed, and edit the plan in place to reject items.
+
+**The flag takes no argument.** The reason for invoking `--plan` lives in the operator's commit message / PR description, not on the CLI. The plan sibling is timestamped on disk; staleness is enforced by the `--apply` step (see `--apply` below + the staleness contract in §"Plan-then-apply mode" §"Plan validity").
+
+**Composition with `--polish`.** `memo-revise <thread> --polish "<reason>" --plan` writes a polish-pass plan: the plan is computed against the same sub-threshold-dimensions + `nit`-tagged comments + audit/critic sibling set as a normal polish pass, but the planned edits are previewed rather than applied. The `--polish` reason argument flows into the plan's `Revision mode: polish` header field and is preserved verbatim through to `--apply` so the resulting `<thread>.{N+1}/_progress.json.metadata.revise_force_reason` matches.
+
+**Mutual exclusion with `--apply`.** `--plan` and `--apply` MUST NOT be passed in the same invocation. Passing both is rejected with a clear error pointing at the two-phase workflow.
+
+See §"Plan-then-apply mode" below for the full procedure (steps 0a + 0b dispatch) and SKILL.md §"Operator-confirmable change-set preview" for the user-facing shape.
+
+### `--apply` (optional)
+
+Plan-confirmation entry point. When passed, `memo-revise` reads an existing `<thread>.{N+1}.plan/plan.md` (written by a prior `--plan` invocation), validates the plan against the latest source review + critic siblings, and produces `<thread>.{N+1}/memo.md` + `changelog.md` + `_progress.json` per the existing reviser contract — honoring per-item operator edits to the plan (declined items become `Resolution: declined — <reason>` rows in the changelog).
+
+**The flag takes no argument.** All operator intent (per-item accept/decline) is encoded by in-place edits to `plan.md` between `--plan` and `--apply`.
+
+**Plan validity contract.** `--apply` REFUSES the plan with a clear error in any of these cases:
+
+1. **No matching plan exists.** `<thread>.{N+1}.plan/plan.md` is absent. Remediation: run `memo-revise <thread> --plan` first.
+2. **Stale review.** `<thread>.{N}.review/verdict.md`'s mtime is later than `plan.md`'s — i.e., the review was re-run after the plan was written. Remediation: re-run `memo-revise <thread> --plan` to refresh the plan against the new verdict.
+3. **New critic sibling added.** A `<thread>.{N}.<critic>/` directory exists on disk that did not exist when the plan was written (detected by enumerating critic siblings at apply time and comparing against the set recorded in `<thread>.{N+1}.plan/_progress.json.metadata.critic_siblings_at_plan_time`). Remediation: re-run `--plan` to incorporate the new critic.
+4. **Plan too old.** `plan.md`'s mtime is more than `plan_max_age_days` days old (default 7, configurable via `<thread>/.anvil.json` `{"plan_max_age_days": <N>}`). Remediation: re-run `--plan` to confirm the plan is still intended.
+5. **Target version already exists.** `<thread>.{N+1}/` already contains a `memo.md` — `--apply` already ran, or the operator hand-built a version dir. Remediation: delete or rename the existing version dir, then re-run `--apply`.
+
+Each rejection leaves the thread untouched (no partial output, no `_progress.json` mutation).
+
+**Composition with `--polish`.** When the plan was written under `--polish "<reason>"`, `--apply` reads the `Revision mode` and operator reason from the plan header and threads them through to `<thread>.{N+1}/_progress.json.metadata.revision_mode = "polish"` + `metadata.revise_force_reason = "<verbatim>"`. The operator does NOT re-pass `--polish "<reason>"` on the `--apply` invocation — the plan IS the audit trail. Passing `--polish` to `--apply` when the plan does not declare polish mode is rejected as a contradiction.
+
+**Status line.** `--apply` emits the standard `Revised <thread>.{N} → <thread>.{N+1}/...` status line per step 11, with `(via plan)` annotation appended so downstream tooling sees the two-phase path was taken.
+
+**Mutual exclusion with `--plan`.** See `--plan` above.
+
+See §"Plan-then-apply mode" below for the full procedure (steps 0a + 0b dispatch) and SKILL.md §"Operator-confirmable change-set preview" for the user-facing shape.
+
+## Plan-then-apply mode
+
+The `--plan` / `--apply` flags compose a two-phase invocation that materializes a change-set preview between scope choice and edit application — the `terraform plan` / `terraform apply` (or `git rebase -i`) pattern, adapted to the markdown-first anvil:memo lifecycle. The phase split exists because the studio canary surfaced a structural gap (issue #243): the default-path reviser produces a defensible higher-scoring version that nonetheless drifts away from operator intent, and the drift is only visible after the edit is committed. A `plan.md` preview lets the operator see per-item summaries and decline at line-level before any edit is written.
+
+### When to use plan-then-apply
+
+The plan gate is **opt-in, per-invocation**. Three canary-evidenced cases where the gate pays for itself:
+
+1. **Close-to-terminal revisions** (memo.{N} where `N` is close to `max_iterations`) — each addition is high-stakes, the operator wants to see the aggregate shape before committing.
+2. **Operator with stated intent that the rubric does not encode** — e.g., "clean and forceful presentation" or "investor-deck-ready voice"; the rubric scores defensibility, the operator scores clarity, and the plan preview surfaces tension between the two before the revision is written.
+3. **Polish passes** (`--polish --plan`) where the operator wants to preview the sub-threshold / nit-tagged item set before applying — the polish-pass entry point is itself an operator override, and a plan preview adds a second confirmation step for the high-touch case.
+
+The default no-flag path remains the recommended shape for the common case (memo.{N} → memo.{N+1} with the reviser-side judgment trusted). The plan gate is purely additive; absence of both `--plan` and `--apply` is the legacy behavior.
+
+### Plan sibling shape
+
+The plan artifact lives at `<thread>.{N+1}.plan/`, a critic-sibling-shaped directory:
+
+```
+<thread>.{N+1}.plan/
+  plan.md            Change-set preview (canonical shape per templates/plan.md.template)
+  _meta.json         { critic: "plan", scorecard_kind: "planner" }
+  _progress.json     { phases.plan: { state, started, completed }, metadata.critic_siblings_at_plan_time: [...] }
+```
+
+The directory is **critic-sibling-shaped, NOT a version dir.** The distinction is load-bearing:
+
+- A `<thread>.{N+1}.plan/` directory MUST NOT contain `memo.md`. The `memo.md` belongs in the version dir (`<thread>.{N+1}/`) that `--apply` writes.
+- A `<thread>.{N+1}.plan/` directory in isolation (with no matching `<thread>.{N+1}/`) does NOT advance the thread's state to `REVISED`. The thread stays in `REVIEWED` until `--apply` runs. The state-machine derivation table in SKILL.md §"State machine" continues to use `<thread>.{N+1}/` presence as the `REVISED` evidence, not `<thread>.{N+1}.plan/` presence.
+- The plan sibling is discoverable by the existing `enumerate_siblings` regex (see `anvil/lib/snippets/thread_state.md`) — it matches the `<thread>.{N+1}.<critic>/` shape with `<critic> = "plan"`. The `_meta.json` declares `scorecard_kind: "planner"` to disambiguate from `human-verdict` reviewer siblings — readers tolerate the new value, and aggregation in `anvil/lib/critics.py` skips planner-kind siblings (no per-dimension scores to fold in).
+
+### Plan artifact shape
+
+The `plan.md` file shape is documented in `templates/plan.md.template` and contains, at minimum:
+
+- **Header table** with the thread slug, source/target version paths, source review verdict + total /44, ISO-8601 timestamp, and the `Revision mode` (one of `normal` / `polish`).
+- **Planned edits table** with one row per planned change: `ID`, `Source` (critic sibling + tag), `Priority` (one of `critical` / `major` / `nit` / `declined`), `Insertion site` (§N.M ¶X anchor in source memo), `Summary` (one-line description), `Words Δ` (signed integer), `Dim Δ` (e.g., `+1 dim 3`).
+- **Aggregate footer table** with `Items planned`, `Items by priority`, total `Words Δ`, source/projected word counts, the resolved target-length window (per the same resolution rules as step 6 below), and a `Target-length flag` of `within_target` / `exceeds_max` / `under_min` / `no_target`.
+- **Convictions section** when `<thread>.{N}/_convictions.md` exists (legacy — the convictions primitive was reverted via #227); each conviction is labelled `honored` or `reopened by item <ID>`.
+
+### Per-item rejection
+
+Operators reject planned items by **editing `plan.md` in place** between `--plan` and `--apply`. Three accepted rejection shapes:
+
+1. **Same-line declined comment:** append `<!-- declined: <reason> -->` to the table row. The reason is required. `--apply` parses the comment marker and the trailing reason from the next-to-rightmost `-->` token.
+2. **Row deletion:** delete the row from the table entirely. `--apply` treats absent-from-plan items as `Resolution: declined — removed from plan` rows in the changelog (no operator-supplied reason). The original plan-time row set is reconstructable from `_progress.json` metadata if the operator needs to audit later.
+3. **Priority cell replacement:** replace the `Priority` cell value with `declined` and append `[declined: <reason>]` to the `Summary` cell. `--apply` parses the bracketed reason from the summary.
+
+Declined items become `Resolution: declined — <reason>` rows in `<thread>.{N+1}/changelog.md`. The reason flows verbatim — `--apply` MUST NOT paraphrase or shorten.
+
+When `--apply` runs against an unedited plan (every row preserved as written by `--plan`), the behavior is identical to the default-path reviser would have produced — modulo the audit-trail metadata (`revision_mode = "plan_then_apply"`) and the `(via plan)` status-line annotation.
+
+### Plan validity contract (apply-side)
+
+The apply-side staleness checks at steps 0b-1 through 0b-5 (below) enforce that `--apply` operates only against a plan that still reflects the current critic + verdict state. The five rejection cases are documented under `--apply` in §"CLI flags" above — re-stated procedurally in step 0b below.
+
 ## Procedure
+
+### Step 0a. `--plan` dispatch (when `--plan` is passed)
+
+When `--plan` is passed, the reviser executes a plan-only pass that produces `<thread>.{N+1}.plan/` (NOT `<thread>.{N+1}/memo.md`):
+
+1. **Pre-flight argument validation.** Reject `--plan` + `--apply` as mutually exclusive. When `--polish "<reason>"` is also passed, validate the reason argument per the existing required-reason contract (no empty / whitespace-only; same rejection shape as the default path).
+2. **Discover state.** Same as step 1 of the default path (find highest `N` with `memo.md` + `verdict.md`; require fresh review).
+3. **Iteration cap check.** Same as step 3 of the default path. A `--plan` invocation against a thread at `max_iterations` STILL hits the BLOCKED notice — the plan would describe edits the reviser is not allowed to apply, so the cap fires first.
+4. **Verdict pre-check.** Same as step 4 of the default path. When `--polish` is NOT also passed, an `advance:true` + 0-critical thread is rejected with the standard READY notice (no plan written). When `--polish "<reason>"` IS also passed, the verdict pre-check is bypassed per the existing polish-pass contract.
+5. **Existing-plan check.** If `<thread>.{N+1}.plan/plan.md` already exists, the operator either wants to refresh it or applied it already. Behavior: the new plan OVERWRITES the existing plan (and rewrites the `_progress.json` timestamps). This matches the operator mental model "re-run `--plan` to refresh."
+6. **Read inputs.** Same as step 6 of the default path (prior version's memo, all critic siblings, `<thread>/.anvil.json`, target-length resolution per step 6's rules).
+7. **Build the revision plan.** Same logic as step 7 of the default path: for each rubric dimension below threshold or with a critical flag, enumerate the specific changes; for each `comments.md` entry tagged `blocker` / `major` / `nit` (the `nit` tier ONLY when `--polish` is also passed), plan a concrete change. Resolve conflicting feedback between siblings explicitly per the existing convention.
+8. **Write the plan artifact.** Create `<thread>.{N+1}.plan/` and write:
+   - `plan.md` per the shape in `templates/plan.md.template`. The `Revision mode` header field equals `normal` (default) or `polish` (when `--polish` was passed). When `--polish` was passed, write the verbatim operator reason into a header subsection or as a trailing line so `--apply` can read it back. The aggregate footer's `Target-length flag` is computed from the projected new word count vs. the resolved target window.
+   - `_meta.json` with `{ "critic": "plan", "scorecard_kind": "planner", "for_version": <N> }`.
+   - `_progress.json` with `phases.plan.state = "done"`, `phases.plan.started/completed = <ISO>`, `metadata.iteration = N+1`, `metadata.critic_siblings_at_plan_time` listing every `<thread>.{N}.<critic>/` discovered at plan time (sorted; used by `--apply` for the staleness check).
+9. **Report.** Print the status line: `Planned <thread>.{N+1}/ → <thread>.{N+1}.plan/plan.md (M items: K critical, L major, P nit; +Q words projected)`. The status line is the cheap operator signal that the plan was written; the disk artifact is the durable record.
+
+The reviser exits after step 9. **No `<thread>.{N+1}/memo.md` is written.** The next operator action is to read + (optionally edit) `plan.md` and then invoke `memo-revise <thread> --apply`.
+
+### Step 0b. `--apply` dispatch (when `--apply` is passed)
+
+When `--apply` is passed, the reviser reads an existing plan and produces `<thread>.{N+1}/`:
+
+1. **Pre-flight argument validation.** Reject `--plan` + `--apply` as mutually exclusive. Reject `--polish "<reason>"` when the loaded plan declares `Revision mode: normal` (contradiction — the plan is not a polish-pass plan). Reject `--apply` when the plan declares `Revision mode: polish` and `--polish` was NOT passed AND the plan's recorded operator reason is empty — this should never happen in practice but the defensive guard prevents a malformed plan from silently dropping the audit-trail reason.
+2. **Locate the plan.** Find `<thread>.{N+1}.plan/plan.md` where `N` is the highest version with a `memo.md` + `verdict.md`. If absent, reject per plan-validity case 1 (no matching plan exists; remediation: run `--plan` first).
+3. **Staleness check — verdict mtime.** Read `<thread>.{N}.review/verdict.md`'s mtime; read `plan.md`'s mtime; if verdict is newer, reject per plan-validity case 2 (stale review; remediation: re-run `--plan`).
+4. **Staleness check — critic siblings.** Enumerate the current set of `<thread>.{N}.<critic>/` directories; compare against `_progress.json.metadata.critic_siblings_at_plan_time` from the plan's `_progress.json`. If a new critic exists, reject per plan-validity case 3 (new critic sibling; remediation: re-run `--plan`).
+5. **Staleness check — plan age.** Read `plan_max_age_days` from `<thread>/.anvil.json` (default 7). If `plan.md`'s mtime is more than `plan_max_age_days` days old, reject per plan-validity case 4 (plan too old; remediation: re-run `--plan`).
+6. **Existing-target-version check.** If `<thread>.{N+1}/memo.md` already exists, reject per plan-validity case 5 (target version already exists; remediation: delete or rename the existing version dir).
+7. **Parse the plan.** Read `plan.md`:
+   - Extract the `Revision mode` (one of `normal` / `polish`).
+   - When mode is `polish`, extract the verbatim operator reason from the plan's header (or trailing line per the writer-side step 0a-8).
+   - Parse the `Planned edits` table into a list of rows, classifying each row's disposition based on the three operator-edit shapes documented in §"Per-item rejection" above: same-line `<!-- declined: <reason> -->`, row deletion (detected by row-set diff against `_progress.json.metadata.original_plan_row_ids` when present), or `Priority: declined` + bracketed `[declined: <reason>]` in the summary cell.
+   - The `original_plan_row_ids` field MAY be absent from older plans — when absent, the row-deletion detection is best-effort (declined-by-deletion items become `Resolution: declined — removed from plan` rows with no specific row ID recorded). Forward-compat plans SHOULD record the original row-ID set in `_progress.json.metadata` at plan-write time (step 0a-8) so apply-time deletion detection is exact.
+8. **Initialize `_progress.json`.** Same as step 5 of the default path, with two differences:
+   - `metadata.revision_mode = "plan_then_apply"` when the plan declared `normal` mode; `"polish_plan_then_apply"` when the plan declared `polish` mode. This is a NEW third + fourth value for the field — both are additive and audit-trail-only (NOT scored, NOT gating, NO state-machine impact). Readers that pre-date this change tolerate the new values per the `revision_mode` shallow-merge tolerance contract.
+   - `metadata.revise_force_reason = <plan's verbatim operator reason>` when the plan declared `polish` mode (carried through from plan-time, NOT re-read from CLI); `null` (or omitted) when the plan declared `normal` mode.
+9. **Resume at step 6 of the default path.** Read inputs, build the revision (now scoped to the non-declined items from the plan), produce `memo.md` + `changelog.md`. The reviser MUST address every non-declined planned item; declined items become `Resolution: declined — <reason>` rows in `changelog.md` (declined-by-deletion items get `Resolution: declined — removed from plan` with no specific reason).
+10. **Changelog header note.** When the plan declared `polish` mode, prepend the polish-pass blockquote header note per step 9 of the default path (verbatim operator reason quoted from the plan, NOT the CLI). When the plan declared `normal` mode, prepend a `(via plan)` annotation to the changelog's first line so downstream readers see the two-phase path was taken without inspecting `_progress.json`.
+11. **Report.** Print the status line per step 11 of the default path, with `(via plan)` annotation: `Revised <thread>.{N} → <thread>.{N+1}/ (addressed M notes, declined P; via plan)`. When the plan declared `polish` mode, the annotation is `(polish pass; addressed M notes, declined P; via plan)`.
+
+The `--apply` path produces a fully-conformant `<thread>.{N+1}/` version dir (`REVISED` state) per the existing reviser contract — downstream tooling (next reviewer, auditor, render gate) does NOT need to special-case the via-plan path.
+
+### Default path (no flags)
+
+When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 11-step procedure below. This path is unchanged by issue #243 — every existing consumer (the canary today, the 8 shipped skills' integration tests, the install-script regression tests) MUST NOT break.
+
+
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/memo.md` AND at least `<thread>.{N}.review/verdict.md`. If no review exists, exit with an error ("no review to revise against; run `memo-review` first").
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` and `memo.md` + `changelog.md` exist, the revision is complete — exit early with a notice.
@@ -242,4 +383,31 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
 
 `metadata.scope` is the resolved `--scope` level for this revision (`"critical-only"`, `"important"` (default), or `"all"`) — see §"CLI flags" §"`--scope <level>`" for the level semantics and step 7 for the filter logic. Absence of the field is tolerated by readers and treated as `"all"` for backwards-compat with pre-this-change memo version dirs. **The field is audit-trail only — not scored, not gating, not state-machine input.** The reviewer at the next pass does NOT read `metadata.scope` and does NOT special-case "the prior revise punted these findings" — it scores `<thread>.{N+1}/` on its own rubric merits.
 
-`metadata.revision_mode` is `"normal"` (default) or `"polish"` (when invoked with `--polish "<reason>"`). Absence of the field is tolerated by readers and treated as `"normal"` — every pre-this-change memo version dir omits this field, and downstream consumers MUST handle that case. `metadata.revise_force_reason` is `null` (or absent) on the default path; the verbatim operator-supplied reason string when `--polish` was used. All three fields (`scope`, `revision_mode`, `revise_force_reason`) are skill-specific extensions to the `_progress.json` schema and are preserved by the shallow-merge rule per `anvil/lib/snippets/progress.md`. **These fields are audit-trail only — not scored, not gating, not state-machine inputs.** The reviewer does NOT read `revision_mode`, `revise_force_reason`, or `scope` and does NOT special-case the polish pass or the scope filter; it scores the polished version on its own rubric merits.
+`metadata.revision_mode` is one of `"normal"` (default), `"polish"` (when invoked with `--polish "<reason>"`), `"plan_then_apply"` (when invoked via the `--plan` → `--apply` two-phase flow on a normal-mode plan), or `"polish_plan_then_apply"` (when invoked via `--polish --plan` → `--apply` on a polish-mode plan). Absence of the field is tolerated by readers and treated as `"normal"` — every pre-this-change memo version dir omits this field, and downstream consumers MUST handle that case. The `"plan_then_apply"` and `"polish_plan_then_apply"` values are additive and were introduced by issue #243; readers that pre-date this change tolerate the new values per the same shallow-merge rule. `metadata.revise_force_reason` is `null` (or absent) on the default path; the verbatim operator-supplied reason string when `--polish` was used (read either from the CLI on the default path or from the plan header on the `--apply` path — both paths produce byte-identical disk shapes). All four fields (`scope`, `revision_mode`, `revise_force_reason`, and the new `plan_then_apply` / `polish_plan_then_apply` values on `revision_mode`) are skill-specific extensions to the `_progress.json` schema and are preserved by the shallow-merge rule per `anvil/lib/snippets/progress.md`. **These fields are audit-trail only — not scored, not gating, not state-machine inputs.** The reviewer does NOT read `revision_mode`, `revise_force_reason`, or `scope` and does NOT special-case the polish pass, the scope filter, or the plan-then-apply path; it scores the produced version on its own rubric merits.
+
+### Plan sibling `_progress.json` snippet
+
+When `--plan` is invoked, the reviser writes `<thread>.{N+1}.plan/_progress.json` per the critic-sibling shape:
+
+```json
+{
+  "version": 1,
+  "thread": "<slug>",
+  "for_version": <N>,
+  "phases": {
+    "plan": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+  },
+  "metadata": {
+    "iteration": <N+1>,
+    "critic_siblings_at_plan_time": [
+      "<thread>.<N>.review",
+      "<thread>.<N>.audit"
+    ],
+    "original_plan_row_ids": [1, 2, 3, 4, 5],
+    "revision_mode": "polish",
+    "revise_force_reason": "Sharpen the conditional terms in Recommendation."
+  }
+}
+```
+
+`for_version: <N>` follows the critic-sibling convention from `anvil/lib/snippets/progress.md` (the sibling critiques version `N`, even though the planned output is `N+1`). `metadata.critic_siblings_at_plan_time` is the sorted list of `<thread>.{N}.<critic>/` directories that existed when the plan was written; `--apply` compares the current set against this list to detect new critic siblings added between plan and apply (per the staleness contract in §"Plan-then-apply mode"). `metadata.original_plan_row_ids` records the integer ID column from the plan's `Planned edits` table at write time — `--apply` uses it to detect declined-by-row-deletion items (rows present at plan time but absent at apply time). `metadata.revision_mode` and `metadata.revise_force_reason` on the plan sibling carry the same audit-trail values as on the target version dir (per the writer-side dispatch in step 0a-8) so a forensic reader can reconstruct intent from the plan sibling alone.
