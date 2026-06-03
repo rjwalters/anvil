@@ -35,7 +35,7 @@
 /* ------------------------------------------------------------------ */
 
 @page {
-  size: letter;
+  size: 8.5in 11in;  /* US Letter — explicit dims, portable across WeasyPrint versions */
   margin: 0.75in;
 
   @bottom-center {
