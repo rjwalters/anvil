@@ -61,6 +61,26 @@ The review sibling directory is **read-only once written**. Revisions consume it
    - **Escape hatch**: `<!-- anvil-lint-disable: memo_deck_parity -->` placed on the same line as a deliberately-memo-only or deliberately-deck-only claim (or on the line directly above) downgrades that finding from `warning` to `info`. Use case: the deck says "we considered FTC enforcement" but the memo deliberately omits it for prose density — the operator marks the claim and the lint stops complaining. Comma-separated rule lists (`<!-- anvil-lint-disable: memo_deck_parity, memo_image_refs_exist -->`) are honored.
    - **Canary anchor**: the load-bearing failure mode this lint catches (from the memo-side POV) is the symmetric direction of Citation Clear memo.4 ↔ deck.3 — a deck pulling ahead of the memo on a load-bearing hard claim (e.g., the reviser tightens an insurer benchmark to "~50–60% completion" in deck.4 that memo.4 lacked) that no anvil primitive would otherwise detect. The deck-side step 5d catches the inverse drift direction (memo.4 introducing a claim deck.3 lacked); together the two checks cover both directions and are symmetric / idempotent — running deck-review and memo-review on the same `<thread>.{N}` produces the same warning set with the same tokens, just with rule names `deck_memo_parity` vs `memo_deck_parity`.
    - Cache the `LintResult` for the `_summary.md` write at step 9 and the `findings.md` write at step 10 (advisory only — `verdict.md` MAY reference under "Top revision priorities" but is NOT required). **Do NOT OR this lint's findings into `lint_critical_flag`** — Phase A is observational only.
+4e. **Run summary-detail consistency back-check (Phase A, reviewer-judgment)** — issue #245:
+   - This is a **reviewer-prose-only** sub-step in Phase A — no Python module is invoked. Following the §"Refs back-check (dim 3)" precedent (`commands/memo-review.md` step 5, fully reviewer-judgment with no automated `refs/` parsing in v0), the reviewer enumerates load-bearing summary claims, locates their detail elaboration, classifies any mismatch by verdict tag + severity, and emits a structured `summary_detail_consistency` block + a `findings.md` subsection. An automated detector at `anvil/skills/memo/lib/summary_detail.py` is a Phase B follow-on, gated on canary signal.
+   - **Procedure (three phases)** — mirrors the issue body's "Proposed shape" list and `rubric.md` §"Summary-detail consistency":
+     1. **Enumerate summary claims** — scan the callout block(s), abstract / TL;DR block, thesis block (first 1-3 paragraphs depending on memo shape), and any "what we believe" frontmatter for load-bearing assertions per `rubric.md` §"Summary-detail consistency" §"What counts as a load-bearing summary claim". Count each as a numbered claim (claim 1, claim 2, …). Record the source `summary_location` for each claim (e.g., `"callout bullet 1 (page 1)"`, `"§1 thesis paragraph 1"`). If the memo has no callout / abstract / thesis block to scan (short memos), record `ran: false` with `reason: "no callout / abstract / thesis block identified in memo.md"` and skip the rest of this step — the reviewer is required to explicitly emit `ran: false` rather than omit the block (same convention as `lint.refs_pdf_extraction` and `lint.memo_deck_parity`).
+     2. **Locate the detailed elaboration** — for each summary claim, find the section(s) where it is elaborated. Use explicit `§N` references when present in the claim itself; fall back to topic / load-bearing-noun-phrase matching when absent. Record the `detail_location` (e.g., `"§2.2 (Pericles.2)"`) or `"(absent)"` when no detail section elaborates the claim.
+     3. **Classify the mismatch** — for each (summary claim, detail section) pair, apply the verdict tag and severity from `rubric.md` §"Summary-detail consistency" §"Verdict tags" + §"Severity ladder":
+        - **`MATCH`** — no finding emitted.
+        - **`ABSENT`** — severity `important` typically; `critical` when the claim is the memo's thesis or a load-bearing recommendation justification.
+        - **`CONTRADICTED`** — severity **always `critical`** (the canary failure mode).
+        - **`DIVERGENT`** — severity `suggestion` typically; `important` when the framing change shifts the recommendation.
+   - **Cache the structured block** for the `_summary.md` write at step 9 and the `findings.md` write at step 10. Specifically, cache `summary_detail_block` as:
+     - `ran: bool` — `true` when summary blocks were identified and scanned; `false` (with `reason` populated) when no summary block was found.
+     - `summary_blocks_scanned: list[str]` — descriptive labels for each scanned block (e.g., `["callout (page 1)", "§1 thesis paragraph 1"]`).
+     - `claims_enumerated: int` — total count of load-bearing summary claims identified.
+     - `findings_count: int` — total count of non-`MATCH` findings.
+     - `findings_by_severity: {critical, important, suggestion}` — count of findings per severity bucket.
+     - `findings: list[dict]` — one entry per non-`MATCH` finding with `claim_id`, `claim_excerpt`, `summary_location`, `detail_location`, `verdict`, `severity`, `message`, `suggested_fix`, and (when `severity == "critical"`) `load_bearing_justification`. Full shape and field semantics: see step 9 below.
+     - `critical_flag_candidate: bool` — convenience flag for step 7 verdict aggregation. MUST equal `any(f.severity == "critical" and f.verdict == "CONTRADICTED" for f in findings)`. Implementer convention; not duplicated state.
+   - **Cache `summary_detail_critical_flag = summary_detail_block.critical_flag_candidate`** for the verdict logic at step 7. A `CONTRADICTED` finding at `critical` severity surfaces as a `Summary-detail consistency: CONTRADICTED` critical flag in `verdict.md` (see step 10) and forces `advance: false` via the existing critical-flag pathway. `ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are observational only and do NOT force `advance: false`.
+   - **Related (back-check triangle)**: this is the *intra-memo* back-check (memo A summary ↔ memo A detail). The §"Refs back-check (dim 3)" sub-step at step 5 below covers memo A claim ↔ memo A `refs/`. The proposed #236 cross-thread analog covers memo A claim ↔ memo B `§N`. Together the three legs cover the back-check triangle. See `rubric.md` §"Summary-detail consistency" §"Related" for the composition contract.
 5. **Score each dimension** (1–8 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the memo.
@@ -89,6 +109,8 @@ The review sibling directory is **read-only once written**. Revisions consume it
      **Rendered page count as second-layer advisory** (Phase 4 / issue #196): when `render_gate_block` (cached at step 4c) is present AND `render_gate_block.pages` is non-null, append the rendered page count to the dim 7 justification alongside the word count (e.g., "Target 1800–2400 words; actual 2050 (3 rendered pages) — in range"). Per `rubric.md` §"Length targets" §"Word count is primary; rendered page count is second-layer advisory", the word count is the primary measure and the rendered page count is a second-layer advisory signal — the two MAY disagree, and when they do the reviewer judges which is binding (word count wins for the typical markdown-first memo; rendered page count is binding only when the operator declared `target_length.pages` explicitly). When the word count is in range but the rendered page count is out of range (e.g., 2050 words within `[1800, 2400]` but 5 rendered pages because of an oversized figure), record both numbers and note the rendered overflow as advisory in the dim 7 justification (e.g., "Target 1800–2400 words; actual 2050 (5 rendered pages — second-layer advisory, see `_summary.md.render_gate`) — in range on the primary signal"). When `render_gate_block.ran == false` (no render_gate block on disk — legal pre-Phase-3 or pre-render state), the rendered-page parenthetical is omitted and dim 7 falls back to word-count-only judgment.
 6. **Identify critical flags**: review the memo against the 4 example flags in `rubric.md` AND the open-ended "any deal-breaker a sophisticated reader would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 32) AND (no critical flags) AND (lint.errors == 0)`. When the pre-flight image-reference lint (step 4b) reports `errors > 0`, `advance` is forced `false` and the verdict lists `Memo image refs (lint)` under critical flags. The rubric total is reported honestly but does not save the verdict — a memo that references files that do not exist is not advance-eligible regardless of its prose quality.
+
+   **Summary-detail consistency critical flag (issue #245)**: when the cached `summary_detail_critical_flag` from step 4e is `true` (i.e., the back-check identified at least one `CONTRADICTED` finding at `critical` severity), append a critical flag named `Summary-detail consistency: CONTRADICTED` to the verdict's critical-flag list with the claim excerpt + the contradicting detail location as the one-paragraph justification. This flag is set via the existing critical-flag-candidate pathway, NOT via a new gate — the existing `advance` aggregation (`(total >= 32) AND (no critical flags) AND (lint.errors == 0)`) is unchanged; the back-check plugs into the "no critical flags" clause exactly like the §"Refs back-check" `CONTRADICTED` precedent. `ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are observational only — they do NOT contribute to the critical-flag list and do NOT force `advance: false` on their own.
 8. **Write line-level comments**: in `comments.md`, list specific feedback keyed to memo sections — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`).
 9. **Write `_summary.md`** as a JSON-in-markdown scorecard. The `lint` block is populated from the cached `LintResult` returned by step 4b, the `refs_pdf_extraction` block reflects the PDF refs back-check path (step 5, issue #167), and the `render_gate` block reflects the cached `render_gate_block` from step 4c (Phase 4 / issue #196):
    ```markdown
@@ -152,9 +174,45 @@ The review sibling directory is **read-only once written**. Revisions consume it
          "memo_overfull_check: overflow check ran with no stderr warnings detected."
        ]
      },
+     "summary_detail_consistency": {
+       "ran": true,
+       "summary_blocks_scanned": ["callout (page 1)", "§1 thesis paragraph 1"],
+       "claims_enumerated": 4,
+       "findings_count": 2,
+       "findings_by_severity": {
+         "critical": 1,
+         "important": 1,
+         "suggestion": 0
+       },
+       "findings": [
+         {
+           "claim_id": 1,
+           "claim_excerpt": "Gen 2: those workloads migrate.",
+           "summary_location": "callout bullet 1 (page 1)",
+           "detail_location": "§2.2 (Pericles.2)",
+           "verdict": "CONTRADICTED",
+           "severity": "critical",
+           "message": "Callout assigns Pericles.3's workload-migration behavior to Pericles.2 (Gen 2). §2.2 describes Pericles.2 as the 9HP analog FE respin family with mission-tuned variants — no DSP/workload migration. §2.3 describes the 12LP+ bridge die (Pericles.3) absorbing stable DSP blocks. The migration belongs to Gen 3, not Gen 2.",
+           "suggested_fix": "Either rewrite the callout bullet to say 'Gen 3: workloads migrate into 12LP+' (matching §2.3), or rewrite §2.2/§2.3 to put workload migration in Gen 2 (matching the callout). The detail-side framing is the load-bearing one — recommend correcting the callout.",
+           "load_bearing_justification": "The callout is the page-1 reader-anchor; the Gen-1/Gen-2/Gen-3 generation taxonomy IS the strategic thesis. A reader who stops after the callout has the wrong mental model of the platform. Critical."
+         },
+         {
+           "claim_id": 3,
+           "claim_excerpt": "the FPGA is the measurement instrument",
+           "summary_location": "callout bullet 1 (page 1)",
+           "detail_location": "(absent)",
+           "verdict": "ABSENT",
+           "severity": "important",
+           "message": "Callout asserts the FPGA's role as 'measurement instrument that tells us which compute should move into the 12LP+ chiplet ASIC' — no detailed section elaborates on the measurement methodology or what 'tells us' means operationally. Reader has no way to evaluate the claim.",
+           "suggested_fix": "Either add a §2.x subsection elaborating the FPGA-as-measurement-instrument methodology, or soften the callout to remove the operational claim (e.g., 'Gen 1 platform' without the instrument framing)."
+         }
+       ],
+       "critical_flag_candidate": true
+     },
      "critical_flag": true,
      "critical_flag_notes": [
-       { "type": "memo_image_refs_lint", "ref_lines": [41], "justification": "Pre-flight image-reference lint flagged 1 missing ref. See lint.memo_image_refs.errors_by_path for the per-ref breakdown and suggested fixes." }
+       { "type": "memo_image_refs_lint", "ref_lines": [41], "justification": "Pre-flight image-reference lint flagged 1 missing ref. See lint.memo_image_refs.errors_by_path for the per-ref breakdown and suggested fixes." },
+       { "type": "summary_detail_consistency", "claim_id": 1, "justification": "Summary-detail consistency back-check identified a CONTRADICTED finding at critical severity: callout assigns Gen-3 behavior to Gen-2. See summary_detail_consistency.findings for details." }
      ]
    }
    ```
@@ -209,12 +267,68 @@ The review sibling directory is **read-only once written**. Revisions consume it
 
      Deck sibling discovered: /abs/path/to/<thread>.{M}/
      ```
+   - The top-level `summary_detail_consistency` block (issue #245, Phase A) is populated from the cached `summary_detail_block` returned by step 4e. The block lives at the **top level** of `_summary.md` (sibling to the existing `lint` and `render_gate` top-level blocks), **NOT nested under `lint`** — rationale: the existing `lint` namespace is reserved for **deterministic mechanical checks** (`memo_image_refs`, `refs_pdf_extraction`, `memo_deck_parity`); the summary-detail back-check is **reviewer judgment**, not a mechanical lint, and naming it `lint.summary_detail_consistency` would misrepresent its character. The top-level placement matches the §"Schema notes" framing in the issue #245 curation. Shape:
+     - `ran` (`bool`): whether the back-check ran. `True` when the reviewer identified at least one summary block (callout / abstract / TL;DR / thesis block / "what we believe" frontmatter) to scan; `False` when no summary block was present (short memos without callouts/abstracts).
+     - `reason` (`str`, only when `ran: false`): short tag — `"no callout / abstract / thesis block identified in memo.md"`. The reviewer is required to record `ran: false` explicitly rather than omitting the block (same convention as `lint.refs_pdf_extraction` and `lint.memo_deck_parity`).
+     - `summary_blocks_scanned` (`list[str]`, only when `ran: true`): descriptive labels for each scanned block (e.g., `["callout (page 1)", "§1 thesis paragraph 1"]`).
+     - `claims_enumerated` (`int`, only when `ran: true`): total count of load-bearing summary claims identified per `rubric.md` §"Summary-detail consistency" §"What counts as a load-bearing summary claim".
+     - `findings_count` (`int`, only when `ran: true`): total count of non-`MATCH` findings emitted.
+     - `findings_by_severity` (`dict[str, int]`, only when `ran: true`): count of findings per severity bucket, keyed by `"critical"` / `"important"` / `"suggestion"`. The vocabulary deliberately diverges from the existing `lint.*` severity vocabulary (`error` / `warning` / `info`) — see `rubric.md` §"Summary-detail consistency" §"Severity ladder" — to signal the different character of the check (judgment vs. mechanical). Implementers SHOULD NOT normalize across vocabularies.
+     - `findings` (`list[dict]`, only when `ran: true`): one entry per non-`MATCH` finding. Per-finding fields:
+       - `claim_id` (`int`): the 1-based index of the load-bearing summary claim.
+       - `claim_excerpt` (`str`): a short excerpt of the summary claim text (e.g., `"Gen 2: those workloads migrate."`).
+       - `summary_location` (`str`): where the claim was found (e.g., `"callout bullet 1 (page 1)"`, `"§1 thesis paragraph 1"`).
+       - `detail_location` (`str`): the section path where the elaboration was found, or `"(absent)"` when no detail section elaborates the claim.
+       - `verdict` (`str`): one of `"ABSENT"` / `"CONTRADICTED"` / `"DIVERGENT"`. (`"MATCH"` is never emitted — matches are observed silently.)
+       - `severity` (`str`): one of `"critical"` / `"important"` / `"suggestion"` per the rubric severity ladder.
+       - `message` (`str`): a human-readable diagnostic describing the mismatch and naming the load-bearing nouns / numbers / actors involved.
+       - `suggested_fix` (`str`): a concrete reviser-actionable fix — typically "rewrite the callout to match §N" OR "rewrite §N to match the callout" with a justification for which framing is load-bearing.
+       - `load_bearing_justification` (`str`, only when `severity == "critical"`): a one- or two-sentence justification for why the finding rises to critical severity (e.g., "The callout is the page-1 reader-anchor; a reader who stops after the callout has the wrong mental model.").
+     - `critical_flag_candidate` (`bool`, only when `ran: true`): convenience flag. MUST equal `any(f.severity == "critical" and f.verdict == "CONTRADICTED" for f in findings)`. Implementer convention; not duplicated state — the verdict aggregator at step 7 cheaply reads this field to test whether any finding requires a critical-flag entry.
+   - **The `summary_detail_consistency` block plugs into `critical_flag` via the existing critical-flag-candidate pathway** (issue #245, Phase A). When `summary_detail_consistency.critical_flag_candidate == true`, the top-level `critical_flag` is set to `true` AND a `critical_flag_notes` entry of type `summary_detail_consistency` is appended with the claim excerpt + contradicting detail location as the justification (mirrors the `memo_image_refs_lint` type at step 4b). `ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are observational only — they surface in `findings.md` and the verdict's revision priorities but do NOT contribute to `critical_flag`.
+   - **Findings subsection (always emitted)**: write a `## Summary-detail consistency findings` subsection into `findings.md` (sibling to the existing `## Parity-lint findings (memo↔deck, optional)` subsection). The subsection is **always present** (emitted even when the back-check was skipped via `ran: false`) so the operator sees WHY the check did or did not fire. Three shapes:
+
+     When findings are present:
+
+     ```
+     ## Summary-detail consistency findings
+
+     Each entry comes from the summary-detail consistency back-check (step 4e). The check is reviewer-judgment (Phase A: no Python detector); see `rubric.md` §"Summary-detail consistency" for the verdict-tag rubric (`ABSENT` / `CONTRADICTED` / `DIVERGENT`) and severity ladder (`critical` / `important` / `suggestion`). A `CONTRADICTED` finding at `critical` severity contributes to `verdict.md`'s critical-flag list; `ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are observational.
+
+     Summary blocks scanned: callout (page 1), §1 thesis paragraph 1
+     Claims enumerated: 4
+
+     1. **[critical]** CONTRADICTED — claim 1 (callout bullet 1, page 1) ↔ §2.2 (Pericles.2): "Gen 2: those workloads migrate." Callout assigns Pericles.3's workload-migration behavior to Pericles.2 (Gen 2). §2.2 describes Pericles.2 as the 9HP analog FE respin family with mission-tuned variants — no DSP/workload migration. §2.3 describes the 12LP+ bridge die (Pericles.3) absorbing stable DSP blocks. The migration belongs to Gen 3, not Gen 2.
+        Suggested fix: Either rewrite the callout bullet to say 'Gen 3: workloads migrate into 12LP+' (matching §2.3), or rewrite §2.2/§2.3 to put workload migration in Gen 2 (matching the callout). The detail-side framing is the load-bearing one — recommend correcting the callout.
+
+     2. **[important]** ABSENT — claim 3 (callout bullet 1, page 1) ↔ (absent): "the FPGA is the measurement instrument" Callout asserts the FPGA's role as 'measurement instrument that tells us which compute should move into the 12LP+ chiplet ASIC' — no detailed section elaborates on the measurement methodology or what 'tells us' means operationally. Reader has no way to evaluate the claim.
+        Suggested fix: Either add a §2.x subsection elaborating the FPGA-as-measurement-instrument methodology, or soften the callout to remove the operational claim (e.g., 'Gen 1 platform' without the instrument framing).
+     ```
+
+     Or, when the back-check was skipped (no summary block to scan):
+
+     ```
+     ## Summary-detail consistency findings
+
+     _Skipped: no callout / abstract / thesis block identified in memo.md; summary-detail consistency check inactive._
+     ```
+
+     Or, when the back-check ran cleanly (no findings, all `MATCH`):
+
+     ```
+     ## Summary-detail consistency findings
+
+     _No summary-detail consistency findings._
+
+     Summary blocks scanned: callout (page 1), §1 thesis paragraph 1
+     Claims enumerated: 4
+     ```
 10. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Total: `XX / 40`
     - Decision: `advance: true` or `advance: false`
-    - Critical flags (if any) — include `Memo image refs (lint)` when `lint.memo_image_refs.errors > 0`
+    - Critical flags (if any) — include `Memo image refs (lint)` when `lint.memo_image_refs.errors > 0`; include `Summary-detail consistency: CONTRADICTED` when `summary_detail_consistency.critical_flag_candidate == true` (issue #245), with the claim excerpt + contradicting detail location as the one-paragraph justification.
     - Dimension summary table (per-dim scores; full justifications in `scoring.md`)
-    - Top 3 revision priorities (if `advance: false`) — when the lint raised errors, the first priority MUST be "Fix the N missing image references (see `_summary.md` lint block)"
+    - Top 3 revision priorities (if `advance: false`) — when the lint raised errors, the first priority MUST be "Fix the N missing image references (see `_summary.md` lint block)". When the summary-detail consistency back-check raised a `CONTRADICTED` / `critical` finding (issue #245), the top-3 revision priorities MUST include "Reconcile callout/abstract with detailed sections (see `_summary.md.summary_detail_consistency.findings[critical=true]`)" as priority #1 — the contradicting summary is the page-1 reader-anchor and fixing it precedes other prose work.
 11. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
 12. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed acme-seed.1 → acme-seed.1.review/ (28/40, advance: false, 0 critical flags)`).
 
