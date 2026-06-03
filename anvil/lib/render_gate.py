@@ -53,6 +53,42 @@ any schema or aggregator change. When the gate fails, the ``Review``
 carries one ``CriticalFlag`` per failed dimension, which forces
 ``Verdict.BLOCK`` downstream.
 
+page_cap calibration
+--------------------
+
+The memo gate's ``memo_page_fit`` dimension converts
+``target_length.words`` into a rendered-page-count range via a
+words-per-page (wpp) proxy. The default is :data:`MEMO_WORDS_PER_PAGE`
+(**600 wpp**), which is calibrated for the **dense-prose** memo body
+the canary's investment-memo example assumes. Table-dense memos
+(financial models, comp tables, sensitivity matrices) run effectively
+~300-400 wpp once the table whitespace is accounted for — applying the
+default 600-wpp conversion to those memos systematically produces a
+derived page range that the rendered PDF will overrun, even when the
+memo is on-target by word count.
+
+The override hook is per-thread: callers can pass
+``words_per_page=<positive number>`` to :func:`gate` (when
+``kind="memo"``) to use a custom conversion factor for the
+``target_length.words → page range`` conversion. The ``memo-render``
+command reads this from ``<thread>/.anvil.json`` as the
+``render_gate.words_per_page`` field (see
+``anvil/skills/memo/commands/memo-render.md`` step 4 + the SKILL.md
+``.anvil.json`` reference).
+
+Validation: a non-numeric override or one ``<= 0`` is silently
+discarded and the default (:data:`MEMO_WORDS_PER_PAGE`) is used,
+matching :func:`_resolve_target_length`'s graceful-degrade contract
+for malformed inputs. The effective wpp is recorded in the
+``memo_page_fit`` finding message so a reviewer can see which
+calibration the gate used.
+
+The override only affects the **derived** ``target_length.words →
+pages`` path. When ``target_length.pages`` is declared directly, no
+conversion happens and the override is a no-op. The word-count proxy
+in rubric dim 7 (*Scope discipline*) remains authoritative for
+length judgments — ``memo_page_fit`` is the advisory second layer.
+
 Graceful degradation
 --------------------
 
@@ -511,6 +547,7 @@ def gate(
     version_dir: Optional[Path] = None,
     out_pdf: Optional[Path] = None,
     target_length: Optional[dict] = None,
+    words_per_page: Optional[int] = None,
     log_path: Optional[Path] = None,
     source_paths: Optional[list[Path]] = None,
     page_cap: Optional[int] = None,
@@ -534,10 +571,15 @@ def gate(
       Requires ``version_dir``; ``out_pdf`` defaults to
       ``<version_dir>/memo.pdf``. ``target_length`` is the resolved
       ``{"words": [min, max]}`` or ``{"pages": [min, max]}`` dict (per
-      ``SKILL.md`` §Length targets). Routes through
-      :func:`_gate_memo` which invokes :func:`_render_memo_source` for
-      pandoc + the preferred HTML/PDF engine, then runs the five
-      memo-specific checks. See module docstring for the full check list.
+      ``SKILL.md`` §Length targets). Optional ``words_per_page`` is the
+      per-thread override for the words→pages conversion factor (see
+      module docstring §"page_cap calibration"); ``None`` uses
+      :data:`MEMO_WORDS_PER_PAGE` (600). Malformed overrides
+      (non-numeric or ``<= 0``) silently fall back to the default.
+      Routes through :func:`_gate_memo` which invokes
+      :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
+      engine, then runs the five memo-specific checks. See module
+      docstring for the full check list.
 
     Parameters (kind="latex")
     -------------------------
@@ -590,6 +632,7 @@ def gate(
             target_length=target_length,
             placeholder_patterns=placeholder_patterns,
             pdfinfo_path=pdfinfo_path,
+            words_per_page=words_per_page,
         )
     if kind != "latex":
         raise ValueError(
@@ -1039,40 +1082,94 @@ def _scan_memo_placeholders(
     return active, suppressed
 
 
+def _coerce_words_per_page(value: object) -> Optional[int]:
+    """Validate a caller-supplied ``words_per_page`` override.
+
+    Returns the effective ``int`` to use, or ``None`` when the value is
+    absent / malformed (in which case the caller falls back to
+    :data:`MEMO_WORDS_PER_PAGE`). Accepts ``int`` and ``float``; rejects
+    booleans (``isinstance(True, int)`` is the trap), strings,
+    ``None``, and non-positive values.
+
+    The graceful-degrade contract matches :func:`_resolve_target_length`
+    for malformed ``target_length`` inputs — a bad override never
+    raises; the gate continues with the documented default.
+    """
+    if value is None:
+        return None
+    # bool is a subclass of int; reject ``True`` / ``False`` explicitly
+    # so a "truthy override" doesn't sneak through as 1 wpp.
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        if value <= 0:
+            return None
+        # Floats are tolerated (matches the curation's "positive number")
+        # but downstream we operate in ints — round to nearest, with a
+        # 1-floor so a 0.4 → 0 collapse can't slip past the >0 check.
+        coerced = int(value)
+        if coerced <= 0:
+            return None
+        return coerced
+    return None
+
+
 def _resolve_target_length(
     target_length: Optional[dict],
-) -> tuple[Optional[tuple[int, int]], Optional[tuple[int, int]], str]:
-    """Resolve ``target_length`` into ``(page_range, word_range, source)``.
+    *,
+    words_per_page: Optional[int] = None,
+) -> tuple[Optional[tuple[int, int]], Optional[tuple[int, int]], str, int]:
+    """Resolve ``target_length`` into
+    ``(page_range, word_range, source, effective_wpp)``.
 
     The ``target_length`` shape mirrors what the drafter writes into
     ``_progress.json.metadata.target_length_resolved`` (per
     ``commands/memo-draft.md`` step 5):
 
     - ``{"words": [min, max]}`` — word-count range; the gate computes a
-      page-count range via the 600-wpp proxy.
+      page-count range via the wpp proxy (default 600, overridable via
+      ``words_per_page``).
     - ``{"pages": [min, max]}`` — page-count range; the gate uses it
       directly. ``source`` is ``"pages"`` so the gate fires errors
-      (vs warnings) per architect Q3.
-    - ``None`` or malformed — returns ``(None, None, "none")``; the
-      page-fit check is skipped.
+      (vs warnings) per architect Q3. The ``words_per_page`` override
+      is a **no-op** on this path (no conversion happens).
+    - ``None`` or malformed — returns ``(None, None, "none", <wpp>)``;
+      the page-fit check is skipped.
+
+    Parameters
+    ----------
+    target_length:
+        The resolved-target dict from ``_progress.json`` or ``None``.
+    words_per_page:
+        Optional per-thread override for the words→pages conversion
+        factor. ``None`` (the default) uses :data:`MEMO_WORDS_PER_PAGE`.
+        Already validated by :func:`_coerce_words_per_page` (the public
+        ``gate`` entry coerces before passing through).
 
     Returns
     -------
-    A 3-tuple:
+    A 4-tuple:
 
     - ``page_range``: ``(min_pages, max_pages)`` or ``None``.
     - ``word_range``: ``(min_words, max_words)`` or ``None`` (only set
       when ``words`` is the declared shape).
     - ``source``: one of ``"pages"``, ``"words"``, ``"none"``.
+    - ``effective_wpp``: the wpp value used for the conversion (the
+      override when set, otherwise :data:`MEMO_WORDS_PER_PAGE`). Always
+      returned (even when the conversion didn't happen) so the caller
+      can surface it in the finding message.
     """
+    effective_wpp = (
+        words_per_page if words_per_page is not None else MEMO_WORDS_PER_PAGE
+    )
     if not isinstance(target_length, dict):
-        return (None, None, "none")
+        return (None, None, "none", effective_wpp)
     pages = target_length.get("pages")
     words = target_length.get("words")
     # Reject both-keys-set per the malformed-shape contract documented in
     # SKILL.md §Length targets.
     if pages is not None and words is not None:
-        return (None, None, "none")
+        return (None, None, "none", effective_wpp)
     if pages is not None:
         if (
             isinstance(pages, (list, tuple))
@@ -1080,8 +1177,8 @@ def _resolve_target_length(
             and all(isinstance(p, int) and p > 0 for p in pages)
             and pages[0] <= pages[1]
         ):
-            return ((int(pages[0]), int(pages[1])), None, "pages")
-        return (None, None, "none")
+            return ((int(pages[0]), int(pages[1])), None, "pages", effective_wpp)
+        return (None, None, "none", effective_wpp)
     if words is not None:
         if (
             isinstance(words, (list, tuple))
@@ -1090,14 +1187,15 @@ def _resolve_target_length(
             and words[0] <= words[1]
         ):
             min_w, max_w = int(words[0]), int(words[1])
-            # 600-wpp proxy → page range. Round to int; the gate's
+            # wpp proxy → page range. Round to int; the gate's
             # comparison is inclusive both sides so a memo word-count
             # that converts to exactly N pages should pass an [N, N+k]
-            # range.
-            min_pages = max(1, min_w // MEMO_WORDS_PER_PAGE)
-            max_pages = max(1, (max_w + MEMO_WORDS_PER_PAGE - 1) // MEMO_WORDS_PER_PAGE)
-            return ((min_pages, max_pages), (min_w, max_w), "words")
-    return (None, None, "none")
+            # range. ``effective_wpp`` is the override when set,
+            # otherwise the 600-wpp default.
+            min_pages = max(1, min_w // effective_wpp)
+            max_pages = max(1, (max_w + effective_wpp - 1) // effective_wpp)
+            return ((min_pages, max_pages), (min_w, max_w), "words", effective_wpp)
+    return (None, None, "none", effective_wpp)
 
 
 def _gate_memo(
@@ -1107,6 +1205,7 @@ def _gate_memo(
     target_length: Optional[dict],
     placeholder_patterns: Optional[tuple[str, ...]],
     pdfinfo_path: Optional[str],
+    words_per_page: Optional[int] = None,
 ) -> GateResult:
     """Five-dimension memo render-gate (kind="memo").
 
@@ -1203,7 +1302,14 @@ def _gate_memo(
                 )
 
     # --- Check 2: memo_page_fit --------------------------------------------
-    page_range, word_range, target_source = _resolve_target_length(target_length)
+    # ``words_per_page`` is already coerced by the public ``gate`` entry
+    # (via :func:`_coerce_words_per_page`); when callers invoke ``_gate_memo``
+    # directly, we re-coerce here so the validation contract is uniform and
+    # a malformed direct-call argument graceful-degrades the same way.
+    effective_override = _coerce_words_per_page(words_per_page)
+    page_range, word_range, target_source, effective_wpp = _resolve_target_length(
+        target_length, words_per_page=effective_override
+    )
     if page_range is None:
         if target_source == "none":
             reasons.append(
@@ -1218,11 +1324,21 @@ def _gate_memo(
     else:
         min_pages, max_pages = page_range
         if min_pages <= pdf_pages <= max_pages:
-            # In range — informational reason.
-            reasons.append(
-                f"{DIM_MEMO_PAGE_FIT}: rendered {pdf_pages} pages within "
-                f"target [{min_pages}, {max_pages}] (source={target_source})."
-            )
+            # In range — informational reason. When the range was
+            # derived from word count, surface the effective wpp so the
+            # reviewer can see which calibration the gate used (relevant
+            # when a per-thread override is in play).
+            if target_source == "words":
+                reasons.append(
+                    f"{DIM_MEMO_PAGE_FIT}: rendered {pdf_pages} pages within "
+                    f"target [{min_pages}, {max_pages}] "
+                    f"(source={target_source} @ {effective_wpp} wpp)."
+                )
+            else:
+                reasons.append(
+                    f"{DIM_MEMO_PAGE_FIT}: rendered {pdf_pages} pages within "
+                    f"target [{min_pages}, {max_pages}] (source={target_source})."
+                )
         else:
             # Out of range. Severity = error if source="pages" (the
             # author declared the page range explicitly); warning if
@@ -1235,7 +1351,7 @@ def _gate_memo(
                     f"{DIM_MEMO_PAGE_FIT}: rendered {pdf_pages} pages "
                     f"outside derived range [{min_pages}, {max_pages}] "
                     f"(from target_length.words=[{word_range[0]}, "
-                    f"{word_range[1]}] @ {MEMO_WORDS_PER_PAGE} wpp). "
+                    f"{word_range[1]}] @ {effective_wpp} wpp). "
                     "Word-count proxy in dim 7 remains authoritative; "
                     "this is an advisory second-layer warning."
                 )

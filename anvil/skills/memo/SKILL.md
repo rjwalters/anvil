@@ -265,6 +265,31 @@ The resolved `(min_words, max_words)` is recorded in the version dir's `_progres
 
 Parse errors are tolerated, never fatal — this mirrors the precedent set by `_read_anvil_json` in `anvil/lib/rubric.py`. A thread written for PR #122's flat shape continues to produce identical behavior under the resolution helper; no consumer needs to migrate.
 
+### Render-gate `words_per_page` override (per-thread page_cap calibration)
+
+The `memo-render` command's render gate uses a **600 words-per-page (wpp)** proxy to convert a `target_length.words` range into a derived page-count range for the advisory `memo_page_fit` warning. 600 wpp is calibrated for **dense-prose** memo bodies (the canary's investment-memo example); table-dense memos (financial models, comp tables, sensitivity matrices) typically run effective ~300-400 wpp once table whitespace is accounted for, and the 600-wpp default systematically over-derives the page range on those threads.
+
+A thread can opt into a per-thread calibration via the optional `render_gate.words_per_page` field:
+
+```json
+{
+  "max_iterations": 4,
+  "target_length": { "words": [9000, 13000] },
+  "render_gate": {
+    "words_per_page": 400
+  }
+}
+```
+
+Field rules:
+
+- **Type**: positive number (int or float). Non-numeric / boolean / `<= 0` values silently fall back to the 600-wpp default (no error raised; mirrors the malformed-shape contract above).
+- **Scope**: only affects the `target_length.words → derived page range` conversion in the render gate's `memo_page_fit` dimension. When `target_length.pages` is declared directly, the override is a no-op.
+- **Authoritative dimension**: the rubric's dim 7 *Scope discipline* word-count proxy remains the load-bearing length judgment. `memo_page_fit` is an advisory second layer; the override exists to suppress noise on table-dense threads where the proxy's calibration drifts from prose-density.
+- **Discoverability**: the effective wpp used is recorded in the `memo_page_fit` finding message (e.g., `... @ 400 wpp`) and in the in-range informational reason so a reviewer can see which calibration the gate applied.
+
+See `anvil/lib/render_gate.py` module docstring §"page_cap calibration" for the implementation contract and `commands/memo-render.md` step 4b for the plumbing.
+
 ## Rendering
 
 Memo threads can OPTIONALLY render `memo.md` → `memo.pdf` via `memo-render`. Rendering is an **opt-in, asset-producing sub-step** of the canonical `draft → review → revise → figures` lifecycle — it does NOT add a new state, it does NOT add a required phase, and it is fully backward-compat with memo versions written before the renderer shipped.
