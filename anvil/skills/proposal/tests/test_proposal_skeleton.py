@@ -230,6 +230,14 @@ class TestClass(unittest.TestCase):
             with self.subTest(macro=macro):
                 self.assertIn(macro, self.text)
 
+    def test_landscape_class_option(self):
+        # Issue #247: the class accepts a `landscape` declared option and the
+        # geometry block honors it via \ifanvil@landscape. Default is portrait
+        # (false), preserving the Gossamer LAN worked example unchanged.
+        self.assertIn(r"\DeclareOption{landscape}", self.text)
+        self.assertIn(r"\ifanvil@landscape", self.text)
+        self.assertIn(r"\anvil@landscapefalse", self.text)
+
 
 class TestTemplate(unittest.TestCase):
     """proposal.tex.j2 carries all 10 sections, the Premise callout, the three
@@ -239,7 +247,14 @@ class TestTemplate(unittest.TestCase):
         self.text = _read("templates/proposal.tex.j2")
 
     def test_documentclass(self):
-        self.assertIn(r"\documentclass{anvil-proposal}", self.text)
+        # The template now emits the class option from the brief's `orientation`
+        # frontmatter (default portrait → empty option set). Match the line
+        # structurally rather than pinning the exact `\documentclass{...}` form.
+        self.assertTrue(
+            re.search(r"\\documentclass\[[^\]]*\]\{anvil-proposal\}", self.text),
+            "template must reference the anvil-proposal class with a (possibly "
+            "empty) option set",
+        )
 
     def test_premise_callout(self):
         self.assertIn(r"\begin{callout}", self.text)
@@ -287,6 +302,19 @@ class TestTemplate(unittest.TestCase):
             re.search(r'customer_kind[^\n]*default\("external"\)', self.text),
             "customer_kind must default to external in the template",
         )
+
+    def test_orientation_knob(self):
+        # The `orientation: portrait | landscape` frontmatter key (issue #247)
+        # mirrors the customer_kind precedent: optional key, default portrait,
+        # propagates into the \documentclass[...] option set so the class file's
+        # geometry block switches to landscape letter when set.
+        self.assertIn("orientation", self.text)
+        self.assertTrue(
+            re.search(r'orientation[^\n]*default\("portrait"\)', self.text),
+            "orientation must default to portrait in the template",
+        )
+        # The landscape branch must emit the `landscape` class option.
+        self.assertIn("landscape", self.text)
 
     def test_signature_color_default(self):
         # signature_color falls back to 4A6FA5 (steel blue) when omitted.

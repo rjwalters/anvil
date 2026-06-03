@@ -13,6 +13,10 @@ signature_color: "4A6FA5"   # hex, no leading '#'. Default steel blue if omitted
 hero: ""                      # path under figures/ for a hero (topology diagram / render); omit for none
 customer_kind: external       # external (client) | internal (budget sponsor). Default external.
                               # Tunes the title-block stage line and how the reviewer reads dim 7.
+orientation: portrait         # portrait (default) | landscape. Use landscape for table-dense
+                              # proposals (multi-section priced BOMs with 4+ column comparison
+                              # tables, multi-domain coverage matrices, multi-generation roadmap
+                              # tables) where the wider text block lets columns breathe.
 ---
 
 # Brief: <System / Project Name>
