@@ -38,7 +38,12 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 6. **Read inputs**:
    - Prior version's `proposal.tex` and `figures/`.
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
-   - `<thread>.{N}.audit/verdict.md` + `findings.md` + `evidence.md`.
+   - `<thread>.{N}.audit/verdict.md` + evidence file + **per-claim findings file (tolerant-read)**: the auditor's per-claim findings table normally lives at `<thread>.{N}.audit/findings.md`, but some execution contexts (notably subagent harnesses — see #135 for anvil's documented subagent-delegation workaround) block files literally named `findings.md`. To make this reviser robust against that block, try the three documented filenames in priority order and use the first one that exists:
+     1. `<thread>.{N}.audit/findings.md` (canonical)
+     2. `<thread>.{N}.audit/claim-log.md` (documented alias)
+     3. `<thread>.{N}.audit/audit-findings.md` (documented alias)
+
+     If none of the three exist, exit with an error naming all three candidates checked (e.g. `proposal-revise: no per-claim audit findings file found in <thread>.{N}.audit/ — checked findings.md, claim-log.md, audit-findings.md`). Do not introduce glob/regex matching — these three named candidates only. The canonical `findings.md` always wins when multiple files coincidentally exist (defensive-against-confusion property).
    - Every other `<thread>.{N}.<critic>/` sibling discovered on disk.
 7. **Build a revision plan**:
    - For each rubric dimension that scored below threshold (or had a critical flag), enumerate the specific changes required to lift the score.
@@ -82,6 +87,7 @@ After this command produces `<thread>.{N+1}/`, the orchestrator should run BOTH 
 - **Audit-critical flags trump everything.** A failed BOM subtotal or a link budget that does not close is a worse outcome than declining a stylistic suggestion. Fix the math first.
 - **Reconcile the two critics, don't average them.** The reviewer and auditor own different defect classes; a note from one is not softened by a good score from the other. Address both.
 - **Declined notes are a feature, not a bug.** Sometimes a critic is wrong. Document the disagreement in `changelog.md` so the next pass can re-evaluate with full context.
+- **Audit findings filename is tolerant by design.** The per-claim findings file from `proposal-audit` ships canonically as `findings.md`, but step 6 above accepts `claim-log.md` and `audit-findings.md` as documented aliases for subagent-harness-blocked execution contexts (see `proposal-audit.md` §"Alias contract" for the writer-side convention). If you find the audit sibling used an alias, treat it as the canonical findings file — no other handling is required.
 
 ## `_progress.json` snippet (revised version dir)
 

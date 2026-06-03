@@ -122,6 +122,41 @@ When a shipped skill migrates, the change is mechanical:
 3. Keep the legacy prose siblings as optional human-readable artifacts
    if useful; the reviser ignores them once `_review.json` is present.
 
+## Filename tolerance
+
+The five shipped audit commands (`pub`, `report`, `deck`, `slides`, `ip-uspto`)
+and the proposal auditor all write their per-claim findings file as
+`findings.md` by default. Some execution contexts — notably subagent
+harnesses that block specific filenames (see issue #135 for anvil's
+documented subagent-delegation workaround) — can prevent a writer from
+producing `findings.md` literally.
+
+For the **proposal skill only** (per issue #240, canary-surfaced
+2026-06-02), the consumer reviser (`proposal-revise.md` step 6) accepts
+a small whitelist of documented aliases in priority order:
+
+1. `findings.md` (canonical — always wins when present)
+2. `claim-log.md` (documented alias)
+3. `audit-findings.md` (documented alias)
+
+The writer-side convention is documented in
+`anvil/skills/proposal/commands/proposal-audit.md` §"Alias contract":
+writers SHOULD use `findings.md`; if blocked, MAY use one of the two
+aliases and prepend a one-line header note in the file body explaining
+the rename. The reviser does not parse the header note — it is
+human-readable bookkeeping for the next agent.
+
+**Scope is intentionally local to the proposal skill.** The other four
+shipped audit-bearing skills (`pub`, `report`, `deck`, `slides`,
+`ip-uspto`) keep strict `findings.md` behavior. Per the "wait for the
+second consumer before generalizing" rule (CLAUDE.md §"Skill-local
+first, lib promotion later"), the alias-tolerance pattern is **not**
+yet promoted to a framework-wide helper. If a second skill's canary
+reports the same subagent-harness block, the pattern can be lifted to
+`anvil/lib/` as a helper like `find_findings_file(critic_dir: Path) ->
+Path | None` and consumed by all revisers. Until then, the per-skill
+duplication is acceptable.
+
 ## Adding a new audit critic
 
 To add a tool-augmented critic to a skill:
