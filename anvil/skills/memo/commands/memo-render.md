@@ -13,14 +13,14 @@ This command is the memo-skill analog of `deck-figures`: an **optional, asset-pr
 
 **State-machine status**: render is a **sub-step** of `DRAFTED` and `REVISED`, NOT a new state. `_progress.json.phases.render` records whether the phase ran; absence of the phase means it never ran (a fully legal pre-render state for backward-compat with memo versions written before this command shipped). The state-machine derivation in SKILL.md §"State machine" does NOT inspect `phases.render` — `DRAFTED` is still derived from `phases.draft == done`, `REVISED` from the presence of `<thread>.{N+1}/` after a prior review, etc. See SKILL.md §"Rendering" for the full optional-render contract.
 
-**Composability**: `memo-render` is **independently re-runnable**. The consumer can hand-edit the `<thread>/.anvil/lib/memo/styles.css` override (or the framework `anvil/lib/memo/styles.css`), then re-invoke `memo-render <thread>` without going through draft / revise. Each invocation regenerates `memo.pdf` from the current `memo.md` and current styles; `memo.pdf` is a **derived artifact** and MUST NEVER be hand-edited. See §"Re-run pattern" below.
+**Composability**: `memo-render` is **independently re-runnable**. The consumer can hand-edit the `<thread>/.anvil/anvil/lib/memo/styles.css` override (or the framework `anvil/lib/memo/styles.css`), then re-invoke `memo-render <thread>` without going through draft / revise. Each invocation regenerates `memo.pdf` from the current `memo.md` and current styles; `memo.pdf` is a **derived artifact** and MUST NEVER be hand-edited. See §"Re-run pattern" below.
 
 ## Inputs
 
 - **Thread slug** (positional argument): identifies the thread within the cwd portfolio.
 - **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/memo.md` existing. If no such version exists, exit with a notice (no work to do).
 - **Target length** (optional): read from `<thread>.{N}/_progress.json.metadata.target_length_resolved` (the field the drafter or reviser wrote when producing v{N}, per `memo-draft.md` step 5 / `memo-revise.md` step 6). The resolved `(min_words, max_words)` is converted into the `target_length` arg passed to `render_gate.gate(kind="memo")`: if the resolved range is present, pass `{"words": [min_words, max_words]}`; if absent or `source == "none"`, pass `None`. Reading the resolved field — rather than re-resolving from `<thread>/.anvil.json` — pins the render gate's page-fit anchor to the same range the drafter/reviser authored against (mirrors the `memo-review` step 4 convention).
-- **Framework substrate** (read-only): `anvil/lib/memo/template.html`, `anvil/lib/memo/styles.css`, and `anvil/lib/memo/template.tex` (the pinned render-chain config from Epic #158 Phase 1, PR #172). In an installed consumer repo these resolve under `.anvil/lib/memo/`. Consumers override the relevant file at `<consumer>/.anvil/lib/memo/styles.css` etc. per `anvil/lib/memo/README.md` §"Override discipline"; this command picks them up unchanged.
+- **Framework substrate** (read-only): `anvil/lib/memo/template.html`, `anvil/lib/memo/styles.css`, and `anvil/lib/memo/template.tex` (the pinned render-chain config from Epic #158 Phase 1, PR #172). In an installed consumer repo (issue #230 uv-runnable layout) these resolve under `<consumer>/.anvil/anvil/lib/memo/` — the importable `anvil.lib.memo` package directory. Consumers override the relevant file at `<consumer>/.anvil/anvil/lib/memo/styles.css` etc. per `anvil/lib/memo/README.md` §"Override discipline"; this command picks them up unchanged. (Pre-#230 installs placed these files under `.anvil/lib/memo/`; that path is no longer load-bearing for runtime invocation. The installer surfaces a one-line migration warning when the legacy directory is still on disk.)
 
 ## Outputs
 
@@ -179,6 +179,36 @@ Per `anvil/lib/memo/README.md` §"The rendering chain" and `MEMO_RENDERER_REMEDI
 - **`pdfinfo`** (poppler-utils) — optional, used by the render gate to introspect rendered page count. Install: `brew install poppler` or `apt-get install poppler-utils`. When absent, the page-fit dimension graceful-degrades with an info-level reason.
 
 The install script (`scripts/install-anvil.sh --check-deps`) reports which engines are absent so the operator sees the install gap before the first `memo-render` invocation rather than at render time. See `anvil/lib/memo/README.md` §"Renderer detection" for the priority order (weasyprint > wkhtmltopdf > xelatex) and `anvil/lib/render.py` for the `check_*_available()` family that implements the preflight.
+
+## Running anvil Python from a consumer
+
+Step 5 calls `from anvil.lib.render_gate import gate` from inside a consumer repo's working tree. Post-#230 (uv-runnable consumer install) the canonical invocation pattern is:
+
+```bash
+# From the consumer repo root (e.g. /Users/.../studio):
+uv sync --project .anvil                       # one-shot; pulls pydantic + pyyaml
+uv run --project .anvil python <<'PY'
+from anvil.lib.render_gate import gate
+from pathlib import Path
+result = gate(
+    kind="memo",
+    version_dir=Path("brasidas-synthesis.2"),
+    out_pdf=Path("brasidas-synthesis.2/memo.pdf"),
+    target_length={"words": [1800, 2400]},
+)
+print(result.to_json())
+PY
+```
+
+`uv sync --project .anvil` is normally run once by `scripts/install-anvil.sh` itself (Stage 10.5); the operator only needs to re-run it after `--no-sync` or an offline install. The `--project .anvil` flag points uv at `<consumer>/.anvil/pyproject.toml` so the consumer-side venv lives at `<consumer>/.anvil/.venv/` (sibling to the Anvil substrate, not in the consumer's main project venv).
+
+What this DOES NOT require:
+
+- **No anvil source repo on the consumer machine.** The importable `anvil/` package ships under `<consumer>/.anvil/anvil/` directly; the install-time `anvil_source` path recorded in `install-metadata.json` is provenance metadata only and is not consulted at runtime (issue #230 canary).
+- **No manual `uv add` or `pip install`.** Pydantic and PyYAML — the only base-deps the framework's import chain requires — are declared in the generated `<consumer>/.anvil/pyproject.toml`. `uv sync --project .anvil` pulls them.
+- **No `PYTHONPATH` shim, no symlink hack.** The pre-#230 workaround (constructing `/tmp/anvil_shim/anvil/{lib,skills/memo/lib}` symlinks to fabricate an importable package) is no longer necessary. If the install layout is correct (`.anvil/anvil/__init__.py` exists, `.anvil/pyproject.toml` declares `anvil*`), `import anvil` and `from anvil.lib.render_gate import gate` just work.
+
+If `uv` is not on the consumer's PATH, fall back to the source-checkout pattern documented in issue #230's verification recipe, but the self-sufficient install is the supported path going forward.
 
 ## Notes for the agent
 

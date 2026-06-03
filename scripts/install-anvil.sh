@@ -9,6 +9,8 @@
 #   --force           Overwrite consumer-edited skill files (default: skip with warning)
 #   --dry-run         Print planned actions, write nothing
 #   --check-deps      Check renderer dependencies (marp/pdftoppm/mmdc/pdfjam) and exit
+#   --no-sync         Skip the post-install `uv sync --project .anvil` step
+#                     (useful for offline installs or hosts without uv)
 #   -y, --yes         Non-interactive (skip confirmation prompts)
 #   -h, --help        Show this help and exit
 #
@@ -17,17 +19,35 @@
 #   ./scripts/install-anvil.sh --skills=memo /tmp/test-repo
 #   ./scripts/install-anvil.sh --dry-run --skills=memo /tmp/test-repo
 #   ./scripts/install-anvil.sh --force /tmp/test-repo
+#   ./scripts/install-anvil.sh --no-sync /tmp/test-repo
 #
-# Layout produced in <target-repo>:
-#   .anvil/lib/                        Framework code (always installed)
-#   .anvil/roles/                      Generic role definitions (always installed)
-#   .anvil/skills/<name>/              Canonical skill bodies (consumer override target)
-#   .anvil/CLAUDE.md                   Full Anvil guide
-#   .anvil/install-metadata.json       Manifest (version, skills, overrides, skill_hashes)
+# Layout produced in <target-repo> (issue #230 — uv-runnable consumer install):
+#   .anvil/anvil/                      Importable Python package mirror.
+#                                      `from anvil.lib.render_gate import gate`
+#                                      resolves to .anvil/anvil/lib/render_gate.py.
+#     anvil/lib/                       Framework Python (was .anvil/lib/ pre-#230).
+#     anvil/skills/<name>/lib/         Skill-side Python.
+#   .anvil/pyproject.toml              Generated uv project descriptor. Declares
+#                                      pydantic + pyyaml as base deps so a
+#                                      `uv sync --project .anvil` from the
+#                                      consumer root pulls the framework's
+#                                      runtime dependencies without referencing
+#                                      the anvil source repo.
+#   .anvil/roles/                      Generic role definitions (always installed).
+#   .anvil/skills/<name>/              Canonical skill bodies (consumer override
+#                                      target: SKILL.md, commands/, templates/,
+#                                      rubric.md, examples/, etc.). The skill's
+#                                      Python `lib/` lives separately under
+#                                      .anvil/anvil/skills/<name>/lib/ so the
+#                                      import path and the override path are
+#                                      explicitly distinct.
+#   .anvil/CLAUDE.md                   Full Anvil guide.
+#   .anvil/install-metadata.json       Manifest (version, skills, overrides,
+#                                      skill_hashes, layout_version).
 #   .claude/skills/anvil-<name>/SKILL.md  Thin Claude registration shim
 #                                         (depth 1: Claude Code only discovers
 #                                         SKILL.md at .claude/skills/<name>/.)
-#   CLAUDE.md                          Updated with additive <!-- BEGIN ANVIL --> block
+#   CLAUDE.md                          Updated with additive <!-- BEGIN ANVIL --> block.
 #
 # Anvil is forge-optional: git is not required in the target.
 # Coexists with Loom: CLAUDE.md merges are additive and marker-bounded.
@@ -35,6 +55,17 @@
 # v0 distribution model: installs from a local checkout (this script's parent dir).
 # A future "fetch from release" branch can be added when Anvil ships via package
 # managers; out of scope for the v0 implementation.
+#
+# Layout note (issue #230): Prior installs shipped framework Python at
+# `.anvil/lib/` and skill Python at `.anvil/skills/<name>/lib/`. That layout
+# was NOT importable as `anvil.lib.*` because there was no `anvil/` package
+# root and no `pyproject.toml`. From this version the install ships an
+# uv-runnable `.anvil/anvil/` package mirror + `.anvil/pyproject.toml`, and
+# `uv run --project .anvil python -c "from anvil.lib.render_gate import gate"`
+# works from the consumer root with no manual `uv add` or symlink shims.
+# The pre-#230 `.anvil/lib/` location is detected on upgrade and a one-line
+# migration warning surfaces (we don't auto-delete to avoid surprising
+# consumers who hand-edited override files there).
 
 set -euo pipefail
 
@@ -57,7 +88,11 @@ warn()  { echo "${YELLOW}  warn: $*${NC}"; }
 note()  { echo "${CYAN}  note: $*${NC}"; }
 
 usage() {
-  sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'
+  # The Usage / Options / Examples block lives in the header comment. The
+  # range covers through the "Layout produced" header line so --help shows
+  # the operator-facing surface (flags + examples + brief layout summary)
+  # without dumping the long architectural notes that follow.
+  sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -72,6 +107,7 @@ FORCE=false
 DRY_RUN=false
 CHECK_DEPS_ONLY=false
 NON_INTERACTIVE=false
+NO_SYNC=false
 TARGET=""
 
 while [[ $# -gt 0 ]]; do
@@ -81,6 +117,7 @@ while [[ $# -gt 0 ]]; do
     --force)    FORCE=true; shift ;;
     --dry-run)  DRY_RUN=true; shift ;;
     --check-deps) CHECK_DEPS_ONLY=true; shift ;;
+    --no-sync)  NO_SYNC=true; shift ;;
     -y|--yes)   NON_INTERACTIVE=true; shift ;;
     -h|--help)  usage ;;
     --*)        error "unknown option: $1 (run with --help to see usage)" ;;
@@ -362,6 +399,18 @@ replace_tree() {
   rm -rf "$dst" && mkdir -p "$dst" && cp -R "$src/." "$dst/"
 }
 
+# Copy a single file to a destination path, creating intermediate dirs.
+# Portable equivalent of `install -D -m 0644 src dst` (the BSD/macOS
+# install(1) doesn't support -D, so we open-code the mkdir + cp + chmod
+# steps). Used to ship per-package __init__.py files into the importable
+# mirror (anvil/__init__.py, anvil/skills/__init__.py, etc.).
+copy_file_with_parents() {
+  local src="$1" dst="$2"
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+  chmod 0644 "$dst"
+}
+
 # Write the thin Claude registration shim for a skill. Called from both the
 # happy-path (Stage 7 normal install) and the override-skip branch (Stage 7
 # consumer-modified skip) -- single helper, two callers.
@@ -406,21 +455,124 @@ write_guide() {
 # current destination against this baseline to distinguish "consumer never
 # touched the install" (auto-upgrade safe) from "consumer modified the
 # install" (preserve modifications unless --force). See issue #152.
+#
+# `layout_version` records which on-disk shape the installer wrote (issue
+# #230): 1 = pre-#230 (.anvil/lib + .anvil/skills/<name>/lib),
+# 2 = post-#230 (.anvil/anvil/ importable mirror + .anvil/pyproject.toml).
+# Consumers reading the manifest can branch on this to pin invocation
+# paths; the installer is forward-only (always writes the highest layout
+# it knows), so any consumer-side branch should treat the absence of
+# `layout_version` as "1" (legacy).
+#
+# `anvil_source` is preserved as install-provenance metadata (it records
+# which source checkout produced the install — useful for debugging an
+# upgrade). Post-#230, it is NOT load-bearing for runtime invocation: the
+# importable `anvil/` package lives under .anvil/anvil/ regardless of
+# whether `anvil_source` still exists on disk. This closes the canary
+# failure mode where a fresh consumer machine couldn't run anvil because
+# the install-time `anvil_source` path was machine-specific.
 write_manifest() {
   local target_dir="$1" manifest_path="$2"
   local anvil_version="$3" anvil_source="$4" install_date="$5"
   local installed_json="$6" skipped_json="$7" hashes_json="$8"
+  local layout_version="${9:-2}"
   mkdir -p "$target_dir/.anvil"
   cat > "$manifest_path" <<MANIFEST_EOF
 {
   "anvil_version": "$anvil_version",
   "anvil_source": "$anvil_source",
   "install_date": "$install_date",
+  "layout_version": $layout_version,
   "installed_skills": $installed_json,
   "skipped_overrides": $skipped_json,
   "skill_hashes": $hashes_json
 }
 MANIFEST_EOF
+}
+
+# Write the consumer-side pyproject.toml that turns <target>/.anvil/ into
+# a uv-runnable Python project. Issue #230 — the file declares the same
+# base deps as the source repo (pydantic + pyyaml) and points
+# setuptools.packages.find at the in-tree `anvil/` directory (the
+# importable mirror written by Stage 5 + Stage 7).
+#
+# The optional-extras mirror is intentionally narrower than the source
+# repo's: only `auto_shrink` is forwarded (the one extra that's currently
+# wired through `anvil/lib/render.py::check_auto_shrink_deps_available`).
+# `dev` is omitted — consumers running `uv sync --project .anvil` don't
+# need pytest to invoke the framework. New extras added to the source
+# `pyproject.toml` are auto-mirrored here only when this function is
+# updated — by design, since each extra needs a deliberate "yes, the
+# consumer needs this at runtime" decision.
+#
+# Path layout assumption: the consumer's anvil package lives at
+# <target>/.anvil/anvil/ (written by Stage 5). The setuptools include
+# pattern `anvil*` matches that, with `where = ["."]` rooted at
+# <target>/.anvil/ (the directory holding pyproject.toml).
+write_consumer_pyproject() {
+  local pyproject_path="$1" anvil_version="$2"
+  mkdir -p "$(dirname "$pyproject_path")"
+  cat > "$pyproject_path" <<PYPROJECT_EOF
+# Generated by scripts/install-anvil.sh (issue #230 — uv-runnable consumer
+# install). Edit the source repo's pyproject.toml and re-run the installer
+# rather than hand-editing this file: the installer overwrites it on every
+# run.
+#
+# Layout: this file lives at <consumer>/.anvil/pyproject.toml and treats
+# <consumer>/.anvil/anvil/ as the importable package root. From the
+# consumer repo root:
+#
+#     uv sync --project .anvil
+#     uv run --project .anvil python -c "from anvil.lib.render_gate import gate"
+#
+# pulls the runtime deps + makes \`anvil.*\` importable. No need to clone
+# the anvil source repo on the consumer machine.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anvil"
+version = "$anvil_version"
+description = "AI-orchestrated artifact creation using the filesystem as the coordination layer (consumer-side install)."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Base deps: load-bearing for \`anvil/lib/__init__.py\`'s import chain.
+# Mirrors the source repo's \`[project] dependencies\` so a consumer-side
+# \`uv sync --project .anvil\` produces a working framework runtime without
+# manual \`uv add\` steps.
+#   - \`pydantic\` is consumed by \`anvil/lib/review_schema.py\` and the
+#     downstream modules (\`critics\`, \`rubric\`, \`cite\`, \`vision\`,
+#     \`convergence\`) that build on it.
+#   - \`pyyaml\` is consumed by \`anvil/lib/rubric.py\` (top-level
+#     \`import yaml\`; the rubric loader uses \`yaml.safe_load\`). Both are
+#     transitively required by \`from anvil.lib import ...\` — see issue
+#     #231 for the canary reproducer.
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
+
+# Opt-in extras mirrored from the source repo. Each one corresponds to a
+# single advanced check that needs a third-party Python library; the
+# preflights in \`anvil/lib/render.py\` graceful-skip when the extra is
+# missing.
+[project.optional-dependencies]
+# \`anvil:deck\` silent-Marp-auto-shrink lint (issue #102 / #100b).
+auto_shrink = [
+    "Pillow>=10.0",
+    "numpy>=1.24",
+]
+
+[tool.uv]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["anvil*"]
+exclude = ["tests*", "*.tests", "*.tests.*", "tests.*"]
+PYPROJECT_EOF
 }
 
 # Track override decisions for the manifest.
@@ -457,17 +609,54 @@ set_skill_hash() {
 MANIFEST="$TARGET/.anvil/install-metadata.json"
 
 # ----- Stage 5: copy framework code (lib) -----------------------------------
-info "Stage 5: copy framework code (anvil/lib -> .anvil/lib)"
+# Pre-#230 layout: framework Python shipped at <target>/.anvil/lib/ — NOT
+# importable as `anvil.lib.*` because there was no `anvil/` package root
+# and no consumer-side pyproject.toml (issue #230 canary reproducer).
+#
+# Post-#230 layout: framework Python ships at <target>/.anvil/anvil/lib/.
+# Paired with the generated <target>/.anvil/pyproject.toml (Stage 8.5
+# below), `uv run --project .anvil python -c "from anvil.lib.render_gate
+# import gate"` works from the consumer root with no manual `uv add` or
+# symlink shims.
+#
+# The `anvil/__init__.py` source file is copied through as part of the
+# tree (it's the namespace anchor that makes `import anvil` succeed).
+info "Stage 5: copy framework code (anvil/lib -> .anvil/anvil/lib)"
 SRC_LIB="$ANVIL_ROOT/anvil/lib"
-DST_LIB="$TARGET/.anvil/lib"
+DST_ANVIL_PKG="$TARGET/.anvil/anvil"
+DST_LIB="$DST_ANVIL_PKG/lib"
+SRC_ANVIL_INIT="$ANVIL_ROOT/anvil/__init__.py"
 if [[ -d "$SRC_LIB" ]]; then
   # Copy contents (cp -R src/. dest preserves contents, not the wrapper dir).
   do_action "install $DST_LIB from $SRC_LIB" copy_tree "$SRC_LIB" "$DST_LIB"
+  # Copy the anvil package's top-level __init__.py so `import anvil` resolves.
+  # The skills/ subpackage __init__.py is written in Stage 7 alongside the
+  # per-skill lib copies (avoids creating empty skills/ until at least one
+  # skill is installed; the source `anvil/skills/__init__.py` is the file
+  # being copied through).
+  if [[ -f "$SRC_ANVIL_INIT" ]]; then
+    do_action "install $DST_ANVIL_PKG/__init__.py from $SRC_ANVIL_INIT" \
+      copy_file_with_parents "$SRC_ANVIL_INIT" "$DST_ANVIL_PKG/__init__.py"
+  fi
   # Suppress post-action confirmation under --dry-run; the [dry-run] line above
   # is the truthful record (issue #81). Stage 1-4/10 diagnostic ok: lines stay.
-  [[ "$DRY_RUN" == true ]] || ok "framework lib installed"
+  [[ "$DRY_RUN" == true ]] || ok "framework lib installed (importable as anvil.lib.*)"
 else
   warn "source lib not found: $SRC_LIB (skipping)"
+fi
+
+# Migration warning: pre-#230 installs left .anvil/lib/ on disk (the
+# non-importable framework layout). On upgrade, surface its presence so the
+# operator can clean it up — we don't auto-delete because consumers may have
+# hand-edited override files there (memo styles.css, template.html, etc.).
+# The post-#230 runtime resolves these via .anvil/anvil/lib/, so the legacy
+# directory is no longer load-bearing for any imported code path.
+if [[ -d "$TARGET/.anvil/lib" ]]; then
+  warn "legacy framework dir detected: $TARGET/.anvil/lib (pre-#230 install layout)"
+  echo "         The post-#230 import path is .anvil/anvil/lib/ (now installed)."
+  echo "         If you hand-edited files in .anvil/lib/ (e.g. memo styles.css),"
+  echo "         port them to the matching path under .anvil/anvil/lib/ and"
+  echo "         remove .anvil/lib/ to avoid confusion."
 fi
 
 # ----- Stage 6: copy roles --------------------------------------------------
@@ -483,7 +672,20 @@ else
 fi
 
 # ----- Stage 7: copy each selected skill ------------------------------------
-# Override detection decision matrix (issue #152):
+# Per skill (issue #230 split layout):
+#   * Skill body (SKILL.md, commands/, templates/, rubric.md, examples/,
+#     tests/, assets/, README.md, ...) -> .anvil/skills/<name>/
+#       The consumer-override target. Override-detection / hash-tracking
+#       (issue #152) operates on this directory.
+#   * Skill Python `lib/` subdir (when present) -> .anvil/anvil/skills/<name>/lib/
+#       The importable-from-anvil location. Mirrors
+#       `from anvil.skills.<name>.lib import ...` in the source repo.
+#       Auxiliary `__init__.py` files for the skill package and its lib
+#       subpackage are sourced from the source tree (when present) so
+#       `anvil.skills.<name>.lib.foo` resolves cleanly.
+#
+# Override detection decision matrix (issue #152) — applies to the skill-
+# body destination (.anvil/skills/<name>/):
 #
 #   Destination state                          Action
 #   ────────────────────────────────────────── ───────────────────────────────
@@ -503,10 +705,66 @@ fi
 #                                              one-time migration cost.
 #   --force passed                             Overwrite unconditionally.
 #                                              Record new hash.
+#
+# The skill Python `lib/` -> .anvil/anvil/skills/<name>/lib/ copy is
+# unconditional (it's importable code, not a consumer-override target);
+# consumers extending skill behavior do so via siblings under
+# .anvil/skills/<name>/, not by editing .anvil/anvil/skills/<name>/lib/
+# in place. This mirrors the framework-lib treatment in Stage 5.
 info "Stage 7: copy selected skills"
+SRC_SKILLS_INIT="$ANVIL_ROOT/anvil/skills/__init__.py"
+DST_PKG_SKILLS="$DST_ANVIL_PKG/skills"
+# Write the anvil.skills sub-package __init__.py (single shot — it's the
+# same file for every skill iteration, so the source-to-destination copy
+# can happen once before the loop).
+if [[ -f "$SRC_SKILLS_INIT" ]]; then
+  do_action "install $DST_PKG_SKILLS/__init__.py from $SRC_SKILLS_INIT" \
+    copy_file_with_parents "$SRC_SKILLS_INIT" "$DST_PKG_SKILLS/__init__.py"
+fi
+
+# Helper: split the skill-body copy (consumer override target, hash-tracked)
+# from the skill-lib copy (importable Python, unconditional). The body
+# excludes `lib/` so the override-detection hash is stable against the
+# importable-mirror change (i.e., bumping a skill's lib/foo.py doesn't
+# flip its body's override hash).
+#
+# We can't use `cp -R src/. dst/` with an exclusion natively; instead use
+# `find ... | cpio` is overkill. The simpler approach: copy the whole tree
+# then remove the lib subdir from the destination. Under --dry-run we just
+# print the planned actions and skip both side effects.
+copy_skill_body_excluding_lib() {
+  local src="$1" dst="$2"
+  rm -rf "$dst" && mkdir -p "$dst" && cp -R "$src/." "$dst/" && rm -rf "$dst/lib"
+}
+
+# Mirror of `dir_hash` that EXCLUDES the lib/ subdir from the digest. Used
+# for both `dirs_identical` and the recorded-hash comparison so override-
+# detection operates on the body-only view (consumers don't override the
+# importable Python under the skill's lib/).
+dir_hash_body_only() {
+  local d="$1"
+  [[ -d "$d" ]] || { echo ""; return; }
+  ( cd "$d" && find . -type f -not -path "./lib/*" -not -path "./lib" -print0 \
+    | LC_ALL=C sort -z | xargs -0 shasum -a 256 ) \
+    | shasum -a 256 \
+    | awk '{print $1}'
+}
+
+# Mirror of `dirs_identical` that treats the lib/ subdir as out-of-scope
+# for the consumer-modification check (issue #230 — lib/ moves to the
+# importable mirror but the body's override semantics shouldn't churn).
+dirs_identical_body_only() {
+  local a="$1" b="$2"
+  diff -r -q --exclude=lib "$a" "$b" >/dev/null 2>&1
+}
+
 for skill in "${SELECTED_SKILLS[@]}"; do
   src_skill="$ANVIL_ROOT/anvil/skills/$skill"
   dst_skill="$TARGET/.anvil/skills/$skill"
+  src_skill_lib="$src_skill/lib"
+  dst_skill_pylib="$DST_PKG_SKILLS/$skill/lib"
+  src_skill_init="$src_skill/__init__.py"
+  dst_skill_pyinit="$DST_PKG_SKILLS/$skill/__init__.py"
   # Flatten namespace into the directory name (depth 1). Claude Code's skill
   # discovery only finds SKILL.md at .claude/skills/<name>/SKILL.md; the prior
   # depth-2 path .claude/skills/anvil/<skill>/SKILL.md was silently skipped,
@@ -519,9 +777,13 @@ for skill in "${SELECTED_SKILLS[@]}"; do
   # recorded in the manifest at the time of the previous install. The
   # `verdict` string is woven into the dry-run action label so operators can
   # tell apart each per-skill decision in the preview.
+  #
+  # All comparisons here operate on the body-only view (lib/ excluded) so
+  # the importable-mirror split (issue #230) doesn't flip every consumer's
+  # override status on the first post-#230 upgrade.
   verdict="install fresh"
   if [[ -d "$dst_skill" ]]; then
-    if dirs_identical "$src_skill" "$dst_skill"; then
+    if dirs_identical_body_only "$src_skill" "$dst_skill"; then
       note "skill '$skill' already installed and unchanged (refreshing safely)"
       verdict="recopy (identical to source)"
     elif [[ "$FORCE" == true ]]; then
@@ -532,7 +794,7 @@ for skill in "${SELECTED_SKILLS[@]}"; do
       # recorded "as-installed" hash for this skill. We compute the dst hash
       # even under --dry-run because the comparison is read-only.
       recorded_hash="$(read_recorded_hash "$MANIFEST" "$skill")"
-      current_dst_hash="$(dir_hash "$dst_skill")"
+      current_dst_hash="$(dir_hash_body_only "$dst_skill")"
       if [[ -n "$recorded_hash" && "$recorded_hash" == "$current_dst_hash" ]]; then
         # Consumer hasn't touched the install since the last install/upgrade.
         # The dst differs from source only because source moved forward in a
@@ -545,6 +807,16 @@ for skill in "${SELECTED_SKILLS[@]}"; do
         # behavior: assume consumer-modified and require --force.
         warn "skipped: consumer-modified .anvil/skills/$skill (legacy install, no recorded hash; re-run with --force to overwrite — future installs will auto-detect)"
         SKIPPED_OVERRIDES+=("$skill")
+        # Importable lib mirror is always installed even when the body
+        # is skipped — it's unconditional code, not an override target.
+        if [[ -d "$src_skill_lib" ]]; then
+          do_action "install $dst_skill_pylib from $src_skill_lib (importable mirror)" \
+            replace_tree "$src_skill_lib" "$dst_skill_pylib"
+        fi
+        if [[ -f "$src_skill_init" ]]; then
+          do_action "install $dst_skill_pyinit from $src_skill_init" \
+            copy_file_with_parents "$src_skill_init" "$dst_skill_pyinit"
+        fi
         do_action "regenerate Claude registration shim at .claude/skills/anvil-$skill/SKILL.md" \
           write_shim "$skill" "$shim_dir" "$shim_file"
         continue
@@ -553,6 +825,14 @@ for skill in "${SELECTED_SKILLS[@]}"; do
         # consumer actually modified the install. Preserve their work.
         warn "skipped: consumer-modified .anvil/skills/$skill (re-run with --force to overwrite)"
         SKIPPED_OVERRIDES+=("$skill")
+        if [[ -d "$src_skill_lib" ]]; then
+          do_action "install $dst_skill_pylib from $src_skill_lib (importable mirror)" \
+            replace_tree "$src_skill_lib" "$dst_skill_pylib"
+        fi
+        if [[ -f "$src_skill_init" ]]; then
+          do_action "install $dst_skill_pyinit from $src_skill_init" \
+            copy_file_with_parents "$src_skill_init" "$dst_skill_pyinit"
+        fi
         do_action "regenerate Claude registration shim at .claude/skills/anvil-$skill/SKILL.md" \
           write_shim "$skill" "$shim_dir" "$shim_file"
         continue
@@ -560,21 +840,38 @@ for skill in "${SELECTED_SKILLS[@]}"; do
     fi
   fi
 
-  # Copy (or recopy): wipe destination and replace with source contents.
-  do_action "install .anvil/skills/$skill from source [$verdict]" \
-    replace_tree "$src_skill" "$dst_skill"
+  # Copy the skill body (everything except lib/) into the consumer-override
+  # location. Under --dry-run this is a no-op described by the action label.
+  do_action "install .anvil/skills/$skill from source (body only, lib mirrored separately) [$verdict]" \
+    copy_skill_body_excluding_lib "$src_skill" "$dst_skill"
+
+  # Copy the skill's Python lib subdir into the importable mirror (always —
+  # unconditional code, not a consumer-override target).
+  if [[ -d "$src_skill_lib" ]]; then
+    do_action "install $dst_skill_pylib from $src_skill_lib (importable mirror)" \
+      replace_tree "$src_skill_lib" "$dst_skill_pylib"
+  fi
+
+  # Copy the skill's package __init__.py into the importable mirror so
+  # `import anvil.skills.<name>` resolves.
+  if [[ -f "$src_skill_init" ]]; then
+    do_action "install $dst_skill_pyinit from $src_skill_init" \
+      copy_file_with_parents "$src_skill_init" "$dst_skill_pyinit"
+  fi
 
   # Always regenerate the thin Claude registration shim.
   do_action "write Claude registration shim at .claude/skills/anvil-$skill/SKILL.md" \
     write_shim "$skill" "$shim_dir" "$shim_file"
 
   INSTALLED_SKILLS+=("$skill")
-  # Record the "as-installed" hash so the next re-install can distinguish
-  # consumer-modified from unmodified. Under --dry-run no copy happens so
-  # we hash the source tree (which is what a real run WOULD install); this
-  # keeps the dry-run-honesty contract intact (the manifest is not written
-  # in dry-run mode either; see Stage 9 do_action wrapper).
-  set_skill_hash "$skill" "$(dir_hash "$src_skill")"
+  # Record the "as-installed" body hash so the next re-install can distinguish
+  # consumer-modified from unmodified. Body-only digest (lib/ excluded) so
+  # the importable-mirror churn doesn't flip override status. Under --dry-run
+  # no copy happens so we hash the source tree (which is what a real run
+  # WOULD install); this keeps the dry-run-honesty contract intact (the
+  # manifest is not written in dry-run mode either; see Stage 9 do_action
+  # wrapper).
+  set_skill_hash "$skill" "$(dir_hash_body_only "$src_skill")"
   # Suppress post-action confirmation under --dry-run (issue #81). The
   # INSTALLED_SKILLS array is still populated so the Stage 11 summary can
   # accurately report what a real run WOULD install (relabel branch below).
@@ -655,6 +952,17 @@ ANVIL_GUIDE_DST="$TARGET/.anvil/CLAUDE.md"
 do_action "write Anvil guide to .anvil/CLAUDE.md" \
   write_guide "$TARGET" "$ANVIL_VERSION" "$INSTALL_DATE" "$ANVIL_ROOT/CLAUDE.md" "$ANVIL_GUIDE_DST"
 
+# ----- Stage 8.5: write consumer-side pyproject.toml -----------------------
+# Issue #230 — generate <target>/.anvil/pyproject.toml so the install is
+# uv-runnable from the consumer root without the anvil source repo present.
+# This is unconditional: the file is rewritten on every install so it
+# tracks any base-dep churn in the source pyproject.toml (consumers should
+# not hand-edit it — the installer overwrites in-place).
+info "Stage 8.5: write consumer-side pyproject.toml"
+CONSUMER_PYPROJECT="$TARGET/.anvil/pyproject.toml"
+do_action "write $CONSUMER_PYPROJECT (declares pydantic + pyyaml; anvil/ package)" \
+  write_consumer_pyproject "$CONSUMER_PYPROJECT" "$ANVIL_VERSION"
+
 # ----- Stage 9: install manifest --------------------------------------------
 info "Stage 9: write install manifest"
 # MANIFEST is defined earlier (above Stage 5) because Stage 7 also reads it
@@ -705,7 +1013,7 @@ HASHES_JSON="$(json_object_from_skill_hashes)"
 
 do_action "write $MANIFEST" \
   write_manifest "$TARGET" "$MANIFEST" "$ANVIL_VERSION" "$ANVIL_ROOT" "$INSTALL_DATE" \
-                 "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON"
+                 "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON" "2"
 
 # ----- Stage 10: renderer dependency check ----------------------------------
 # Report which renderer binaries are present so a fresh install does not claim
@@ -715,6 +1023,43 @@ do_action "write $MANIFEST" \
 info "Stage 10: renderer dependency check"
 DEPS_MISSING=0
 check_renderer_deps || DEPS_MISSING=$?
+
+# ----- Stage 10.5: uv sync (issue #230) -------------------------------------
+# Pull the framework's runtime Python deps into a venv rooted at
+# <target>/.anvil/. The pyproject.toml written in Stage 8.5 declares
+# pydantic + pyyaml as base deps; `uv sync --project .anvil` materializes
+# them so `uv run --project .anvil python -c "from anvil.lib.render_gate
+# import gate"` works from the consumer root with no follow-up `uv add`.
+#
+# Skipped under:
+#   * --no-sync — offline installs, hosts without uv, or callers that
+#     manage their own venv lifecycle.
+#   * --dry-run — by definition no writes; the planned command is printed
+#     instead so the operator sees what a real run would do.
+# If uv is absent the stage falls back to printing the install hint
+# rather than aborting (the install itself succeeded; the sync is a
+# convenience, not a requirement).
+info "Stage 10.5: uv sync (consumer venv)"
+if [[ "$NO_SYNC" == true ]]; then
+  note "skipping uv sync (--no-sync requested)"
+  note "to materialize the consumer venv later:  uv sync --project $TARGET/.anvil"
+elif [[ "$DRY_RUN" == true ]]; then
+  echo "  [dry-run] uv sync --project $TARGET/.anvil"
+elif ! command -v uv >/dev/null 2>&1; then
+  warn "uv not on PATH — skipping post-install sync"
+  echo "         Install uv (https://docs.astral.sh/uv/) and run:"
+  echo "             uv sync --project $TARGET/.anvil"
+  echo "         to materialize the consumer-side venv."
+else
+  info "running uv sync --project $TARGET/.anvil"
+  if uv sync --project "$TARGET/.anvil"; then
+    ok "consumer venv synced ($TARGET/.anvil/.venv)"
+  else
+    warn "uv sync exited non-zero — consumer venv may be incomplete"
+    echo "         Re-run manually to see the full error output:"
+    echo "             uv sync --project $TARGET/.anvil"
+  fi
+fi
 
 # ----- Stage 11: summary ----------------------------------------------------
 info "Stage 11: summary"
