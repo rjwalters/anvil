@@ -37,7 +37,11 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
     _progress.json         Phase state for the reviewer
   <thread>.1.audit/        Optional auditor critic sibling (fact-check)
   <thread>.1.critic/       Optional substantive critic sibling
-  <thread>.2/              Revised version (after revise consumes v1 + all critic siblings)
+  <thread>.2.plan/         Optional change-set preview written by `memo-revise <thread> --plan`
+    plan.md                Per-item planned-edit table (operator edits in place to decline items)
+    _meta.json             { critic: plan, scorecard_kind: planner }
+    _progress.json         Phase state for the plan (phase: plan)
+  <thread>.2/              Revised version (after revise consumes v1 + all critic siblings; or `--apply` against `<thread>.2.plan/`)
   <thread>.2.review/
   ...
   <thread>.{N}/            Terminal version, marked READY in its _progress.json
@@ -116,6 +120,8 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 
 Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short-circuits regardless of total — block until addressed.
 
+**Plan siblings do NOT advance state.** A `<thread>.{N+1}.plan/` directory (written by `memo-revise <thread> --plan` — see §"Operator-confirmable change-set preview" below) is a critic-sibling-shaped artifact, NOT a version dir. Its presence does NOT advance the thread to `REVISED`: the state stays `REVIEWED` until `memo-revise <thread> --apply` writes the matching `<thread>.{N+1}/memo.md`. The state-machine derivation table above continues to use `<thread>.{N+1}/` presence as the `REVISED` evidence; plan siblings are invisible to it. This preserves the existing immutability contract (a half-built version dir without a `memo.md` is never `REVISED`) and keeps the two-phase flow audit-trailable on disk.
+
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
 ### Operator-initiated polish passes
@@ -140,6 +146,30 @@ What `--polish` bypasses: **step 4 (verdict pre-check) only.** The iteration-cap
 The polish pass re-enters the state machine at `REVISED`. The next `memo-review` pass derives state from on-disk evidence as usual; the reviewer does NOT read `revision_mode` or `revise_force_reason` and does NOT special-case the polish pass — it scores the polished version on its own rubric merits. The state-machine derivation in the table above is unchanged; `revision_mode` is audit-trail-only — not scored, not gating, no state-machine impact.
 
 See `commands/memo-revise.md` §"CLI flags" for the full reviser-side contract.
+
+### Operator-confirmable change-set preview
+
+A normal `memo-revise` invocation produces `<thread>.{N+1}/memo.md` directly — the reviser picks the revision plan, applies the edits, and writes the version dir in a single pass. Operators MAY instead invoke a **two-phase** revision via `memo-revise <thread> --plan` followed by `memo-revise <thread> --apply` to materialize a change-set preview before any edit is committed. The two-phase mode exists because the studio canary surfaced a structural gap (issue #243): the default-path reviser produces a defensible higher-scoring version that nonetheless drifts away from operator intent ("clean and forceful presentation" — the rubric scores defensibility, the operator scores clarity), and the drift surfaces only after the edit is written.
+
+**Phase 1 — `--plan`.** `memo-revise <thread> --plan` writes a change-set preview at `<thread>.{N+1}.plan/plan.md` and exits WITHOUT producing `<thread>.{N+1}/memo.md`. The plan describes each planned edit (source critic, priority, insertion site, one-line summary, expected words delta, expected dim delta) plus an aggregate footer with the projected new word count and a target-length flag (`within_target` / `exceeds_max` / `under_min` / `no_target`). The canonical shape is documented in `templates/plan.md.template`.
+
+**Phase 2 — `--apply`.** `memo-revise <thread> --apply` reads `<thread>.{N+1}.plan/plan.md`, validates that the plan is still fresh (verdict mtime, critic-sibling set, age cap), and produces `<thread>.{N+1}/memo.md` + `changelog.md` per the existing reviser contract. The status line is annotated `(via plan)` so downstream tooling sees the two-phase path was taken.
+
+**Per-item rejection.** Operators reject planned items by **editing `plan.md` in place** between `--plan` and `--apply`. Three accepted edit shapes — pick whichever fits the editor flow:
+
+1. Same-line `<!-- declined: <reason> -->` comment appended to the table row.
+2. Row deletion (treated as `Resolution: declined — removed from plan` at apply time).
+3. `Priority: declined` + `[declined: <reason>]` bracketed addition to the `Summary` cell.
+
+Declined items become `Resolution: declined — <reason>` rows in `<thread>.{N+1}/changelog.md`. The reason flows verbatim — `--apply` MUST NOT paraphrase or shorten. This is the in-band, durable, git-diffable alternative to an out-of-band AskUserQuestion prompt; the plan artifact is reviewable after the fact, archivable in git history, and portable across orchestrators (Studio, raw `claude` CLI, future TUI, batch CI).
+
+**Plan validity.** `--apply` REFUSES the plan in five cases: no matching plan exists, the source review verdict was re-run after the plan was written, a new critic sibling was added since the plan was written, the plan is older than `plan_max_age_days` (default 7, configurable via `<thread>/.anvil.json` `{"plan_max_age_days": <N>}`), or `<thread>.{N+1}/` already exists. Each rejection points at remediation (typically: re-run `--plan` to refresh).
+
+**Composition with `--polish`.** `memo-revise <thread> --polish "<reason>" --plan` writes a polish-pass plan; `memo-revise <thread> --apply` against a polish-mode plan threads the polish-pass `revision_mode` + `revise_force_reason` audit trail through to the produced version dir. The operator does NOT re-pass `--polish "<reason>"` on the `--apply` invocation — the plan IS the audit trail. The composed flow produces `metadata.revision_mode = "polish_plan_then_apply"`.
+
+**State-machine impact: none.** The plan sibling does NOT advance the thread to `REVISED` (see §"State machine" above). The next `memo-review` pass scores the produced version on its own rubric merits — the reviewer does NOT read `revision_mode` and does NOT special-case the via-plan path. The audit-trail fields are operator-side disclosure only, same constraints as the polish-pass entry above.
+
+See `commands/memo-revise.md` §"Plan-then-apply mode" for the full reviser-side procedure and `templates/plan.md.template` for the canonical plan artifact shape.
 
 ## Length targets
 
@@ -235,7 +265,7 @@ The full command contract — preflight, gate invocation, `_progress.json` shape
 | `memo-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/memo.md` and `.review/comments.md` evidence / market / comparables / risk findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating; may side-effect-write to `<thread>/refs/<key>.md` citation stubs |
 | `memo-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `memo-revise`) |
 | `memo-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
-| `memo-revise <thread> [--polish "<reason>"]` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md`; with `--polish`, also `metadata.revision_mode = "polish"` + `metadata.revise_force_reason` audit trail (bypasses step 4 verdict pre-check only — step 1 fresh-review + step 3 iteration-cap checks still apply; see §"Operator-initiated polish passes") |
+| `memo-revise <thread> [--polish "<reason>"] [--plan|--apply]` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings (and `<thread>.{N+1}.plan/` on `--apply`) | `<thread>.{N+1}/` with `changelog.md` (default path; `--apply` path); OR `<thread>.{N+1}.plan/plan.md` only (on `--plan`); with `--polish`, also `metadata.revision_mode = "polish"` + `metadata.revise_force_reason` audit trail; with `--plan`/`--apply`, also `metadata.revision_mode = "plan_then_apply"` (or `"polish_plan_then_apply"` when composed with `--polish`). `--plan` and `--apply` are mutually exclusive. See §"Operator-confirmable change-set preview" + §"Operator-initiated polish passes" for the full two-phase + polish-pass contracts. |
 | `memo-render <thread>` | PDF renderer (optional, non-blocking) | latest `<thread>.{N}/memo.md`, `<thread>.{N}/_progress.json.metadata.target_length_resolved` | `<thread>.{N}/memo.pdf` (on success); `<thread>.{N}/_progress.json.phases.render` + `_progress.json.render_gate` always |
 | `memo-figures <thread>` | figurer | latest `<thread>.{N}/memo.md` | figures/tables under `<thread>.{N}/exhibits/` |
 | `memo-migrate-refs <thread>` | refs/ seeder (idempotent re-run path; auto-invoked as step 13 by `memo-migrate`) | `<thread>/BRIEF.md` (specifically the `## Sources` section) | `<thread>/refs/<key>.md` stubs (one per §Sources entry; idempotent by default — existing stubs skipped; `--force` overwrites) |
