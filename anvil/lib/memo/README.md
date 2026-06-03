@@ -138,6 +138,18 @@ above. This mirrors the `anvil/lib/marp/config.yml` discipline (the
 shipped Marp themes are also deliberately neutral, with consumer
 overrides expected for any branded deck).
 
+The bar isn't "no styling" — it's "no color, no logos, no
+`@font-face`, no decorative rules". Edits that stay inside that bar
+but materially affect the rhetorical function of an artifact are
+**in-scope**. The precedent is **issue #238**: booktabs-class rule
+weights for tables (top rule, header-bottom rule, final-row bottom
+rule, no vertical rules, `tabular-nums` on data cells). Comparison
+tables in synthesis / feedback memos carry rhetorical load — the
+LaTeX fallback already emits booktabs-quality output via the default
+`template.tex`, and the markdown render path is expected to track
+that quality. Rule-weight tuning for the shipped `styles.css` `table`
+block is treated as a functional defaults fix, not an aesthetic PR.
+
 Functional bugs in the defaults (an `@page` rule that breaks
 weasyprint, a `\setmainfont` line that fails on TeX Live without
 Helvetica, a pandoc template variable that doesn't render) ARE
