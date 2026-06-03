@@ -1,7 +1,7 @@
 # Anvil - Repository Guide
 
-**Anvil Version**: 0.1.0
-**Status**: v0.1.0 — installable; 8 skills shipped. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
+**Anvil Version**: 0.2.0
+**Status**: v0.2.0 — canary-hardened; 8 skills shipped; memo + proposal rubrics moved to /44 (dim 9 *Rhetorical economy*); proposal synthesis pipeline + memo rubric_overrides ship in this release. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
 
