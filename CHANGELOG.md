@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-03
+
+**Canary-driven iteration since 0.1.0.** Seventy-eight PRs landed in five days as the framework absorbed friction from the 2AM Logic Studio canary running multi-thread investment memos and proposals against rolling deadlines. The shape of this release: a new dim 9 *Rhetorical economy* rubric dimension (rubrics → /44, threshold ≥35), an `anvil:proposal` synthesis-sibling pipeline that consolidates cross-critic findings before revise, an `anvil:memo` `--plan` / `--apply` two-phase reviser, a `rubric_overrides` mechanism for non-investment-memo shapes (synthesis-brief, feedback-memo), a bulk `memo-migrate` LaTeX→markdown migration tool with 9 detector clusters, a framework-wide `<thread>.{N}.perspective/` sibling role, and an installer pivoted to `uv`-runnable consumer layouts. See `WORK_LOG.md` for the chronological merge record.
+
 ### Added — `anvil:memo` critic-side scope tagging on review comments (#242)
 
 - Critic-side `scope: preserve | expand | reduce` tagging on every `<thread>.{N}.review/comments.md` entry, mechanically tied to dim 9 *Rhetorical economy* (#244 / PR #254). Phase A reviewer-prose-only (no `anvil/lib/` schema changes); composes with reviser-side severity filtering (#241).
@@ -38,6 +42,105 @@ This is **sub-issue 1 of 4** from the curator's decomposition of issue #246. It 
 - **Cross-skill divergence**: the other six anvil-shipped skills (`anvil:pub`, `anvil:report`, `anvil:deck`, `anvil:slides`, `anvil:ip-uspto`, `anvil:installation`) continue on the 8-dim /40 rubric. Dim 9 ships first on the two skills where canary friction surfaced it; broader propagation is a separate decision driven by per-skill calibration evidence. The framework no longer has a single "8-dim /40" default — per-skill rubric shape is now the explicit reality.
 - **Backward compatibility**: existing on-disk `<thread>.{N}.review/verdict.md` written against the old /40 rubric remains a legal historical record and will not be retroactively re-scored. The first revise pass after upgrade produces a v{N+1} whose subsequent review scores against the new /44 rubric. No `anvil/lib/` schema changes; critic siblings continue to emit the `human-verdict` scorecard kind via the existing `LEGACY_MEMO_FILES` adapter in `anvil/lib/critics.py`.
 - **Deferred — Option C (genre-flag knob)**: the long-term shape is a `genre: buildable-system | strategic` frontmatter knob that activates dim 9 only for strategic-positioning artifacts. Option C depends on the per-genre rubric-override mechanism in #233 and ships as a companion issue once #233 lands. The dim 9 prose shipping here is reusable across both shapes.
+
+### Added — `anvil:proposal` synthesis pipeline (issue #246, four-PR decomposition)
+
+- **Sub-issue 2 — reviser consumes `gaps.json`** (#270). `proposal-revise.md` steps 6/7/9 updated to prefer `<thread>.{N}.synthesis/gaps.json` as the revision-plan source when present (validated against the pinned `GapList` pydantic model), with the per-sibling reading path preserved verbatim as the rollout-safety fallback. Step 7 walks `gaps` + `singletons` with `critical → blocker → should-fix → nice-to-have` ordering, planning one coordinated response per gap. Step 9 introduces the canonical `synthesis <gap-id> (<sibling>.<ref>, ...)` row format while preserving the `<thread>.<N>.<sibling> (<severity>)` shape on the fallback. 26 new structural tests pin the contract.
+- **Sub-issue 3 — orchestrator + state-machine integration** (#271). `commands/proposal.md` state inference (step 3) recognizes `SYNTHESIZED` as a transient state when `<thread>.{N}.synthesis/verdict.md` + `gaps.json` exist. Dispatch table (step 4) gains rows for `REVIEWED+AUDITED → proposal-synthesize` and `SYNTHESIZED → proposal-revise`, plus the parallel at-cap → BLOCKED rows. Anomaly detection extended for stalled-no-synthesis, crashed-synthesis, and orphan-synthesis cases. `SKILL.md` state-machine ASCII diagram now includes `SYNTHESIZED` between `REVIEWED+AUDITED` and `REVISED`; evidence table and command-dispatch table updated to match. 32 new tests across 9 classes pin the contract.
+- **Sub-issue 4 — Studio reproducer integration test** (#272). Fixture-and-clustering regression test for the 12LP+ FinFET mask cost canary (three siblings → one gap with three contributing findings). Ships an `anvil/skills/proposal/lib/synthesizer.py` clustering primitive with callback-injection seam (mirrors `anvil/lib/vision.py::VisionCritic`): default path raises `NotImplementedError`; consumers pass a callback for the LLM clustering step. Skill-local per CLAUDE.md "skill-local first, lib promotion later." 25 new tests pin clustering shape + post-processing pipeline (severity ladder defensive-override, dim-list union, schema validation).
+- **Tolerant findings filename + alias contract** (#255 / `proposal-synthesize.md`). The synthesizer's input contract documents that critic siblings may emit `findings.md`, `Findings.md`, or `findings.json`; the synthesizer reads whichever exists. Matches the existing audit-side tolerance pattern.
+
+Sub-issue 1 of #246 (schema + command spec, #253) is documented above under "Added — `anvil:proposal` synthesis-sibling schema + command spec". With all four sub-issues landed, the `EMPTY → DRAFTED → REVIEWED+AUDITED → SYNTHESIZED → REVISED → … → READY → AUDITED` proposal lifecycle is fully wired end-to-end.
+
+### Added — `anvil:memo` rubric_overrides for non-investment-memo shapes (issue #233)
+
+- **Sub-issue 1 — typed loader** (#267 / `anvil/skills/memo/lib/anvil_config.py`). Pydantic loader for the `rubric_overrides` block in `<thread>/.anvil.json`. Supports per-dimension calibration strings (`dim_N_calibration`), optional `target_length` inside the override, and a `memo_subtype` discriminator (`synthesis-brief`, `feedback-memo`, etc.). `extra="forbid"` on the inner block; unknown keys surface as `unknown_keys` for forward-compat visibility without hard-failing the load.
+- **Sub-issue 2 — reviewer integration** (#273 / `anvil/skills/memo/lib/rubric_overrides_suffix.py`). `memo-review` reads `rubric_overrides` via the typed loader and appends `\"calibration applied: <override text>\"` as a verbatim suffix to each scored dimension's justification in `_review.json` + `scoring.md`. New top-level §"Reader dispatch order: `.anvil.json` vs `BRIEF.md` 'Critical reviewer guidance'" documents the precedence (structured config wins; BRIEF.md is documented Option-A fallback). Zero-impact when `rubric_overrides` is absent; documented in 27 tests covering suffix attached / suffix absent / per-dim dispatch / zero-impact / verbatim contract / loader-integration pipeline.
+- **Sub-issue 3 — docs + worked-example templates** (#274). `SKILL.md` gains a "Rubric overrides and non-investment-memo shapes" section with worked examples for both canary subtypes and the `BRIEF.md` Option-A fallback. `rubric.md` carries one-sentence pointers near the most-commonly-recalibrated dims (1, 5, 6, 7). Two `.anvil.json` example templates ship under `anvil/skills/memo/templates/`: `.anvil.json.synthesis-brief.example` (brasidas-synthesis canary, [9000, 13000] words, calibrates dims 1/5/6/7) and `.anvil.json.feedback-memo.example` (raytheon-pitch-strategy canary, [4000, 6000] words, calibrates dims 1/4/5/6/7). 19 round-trip tests pin loader compatibility + cross-template consistency. Deferred: `memo-draft` / `memo-revise` consumption of `rubric_overrides.target_length` (the reviewer surfaces `target_length_present` for audit visibility but doesn't act on the value; drafter/reviser wiring is a follow-on).
+
+### Added — `anvil:memo-migrate` (bulk LaTeX → markdown migration)
+
+A new `anvil:memo-migrate` command and supporting library for converting a portfolio of legacy LaTeX memo threads to the markdown convention in bulk. Ships across nine PRs:
+
+- **Command + base migration** (#207). `anvil:memo-migrate <source.tex> <portfolio>` runs `pandoc` over the source, lays down the version-dir layout, and emits a structured `_progress.json` report.
+- **Refs/ seeding from BRIEF.md Sources** (#208). `anvil:memo-migrate-refs` extracts Sources references from BRIEF.md and seeds `refs/` for later reviewer back-check consumption.
+- **Detector clusters** (#217–#222). Five detector clusters in `anvil/skills/memo/lib/migrate.py` flag layouts the canary corpus surfaces but pandoc loses: orphan figures in source `figures/` (#217), packed single-cell tabularx layouts (#218), 4-column key/value metricbox tables (#219), empty `figures/` directories (#221), and `figure_policy` classification for zero-figures intent (#222). Each emits a structured finding into the migration report.
+- **Source brief ingestion** (#220). Earliest-brief-wins rule: when multiple version directories carry a `brief.md`, the migration ingests the root-level (or oldest) brief and records provenance in `_progress.json.metadata.source_brief_path`.
+- **Detector cluster reference** (#223). `commands/memo-migrate.md` documents the detector cluster catalog with one-paragraph framing per cluster, anchoring the reviewer-side surface to the source-side detectors.
+- **Memo parity lint mirror** (#224). Memo-side `<thread>.{N}.review/lint.json` mirror of the existing `anvil:deck` parity lint shape (warning-only, Phase A). Surfaces missing-from-BRIEF and missing-from-memo discrepancies without gating advance.
+
+### Added — Framework `<thread>.{N}.perspective/` sibling role (Epic #143)
+
+A new perspective-aware critic sibling that surfaces strong-form alternatives to the artifact's central claim before the reviewer scores it. Lands across five PRs as a framework-level addition rather than a per-skill one.
+
+- **Snippet convention + perspective discipline** (#154). `anvil/lib/snippets/perspective.md` introduces the perspective sibling convention to the snippet-library substrate every skill reads.
+- **`anvil:memo` perspective sibling** (#183). `memo-perspective` command surfaces alternative candidate threads from the portfolio; output lands at `<thread>.{N}.perspective/candidates.md` for reviewer consumption.
+- **`anvil:proposal` perspective sibling** (#184). `proposal-perspective` mirrors the memo shape against the proposal lifecycle; new audit-wiring lines surface perspective evidence in the audit's `findings.md`.
+- **Deck market perspective cross-check** (#156, #157). `deck-perspective` command + market-side cross-check.
+- **Perspective-aware dimension calibration** (#194). `anvil/lib/rubric.py` extension that lets venue-pinned rubric overlays opt into perspective-aware calibration prose per scored dimension.
+
+### Added — `anvil:memo` reviewer & reviser convergence machinery
+
+- **`memo-revise --polish` operator-initiated polish-pass entry point** (#206). Operators can force a polish-pass revision with a verbatim free-text reason that flows into `_progress.json.metadata.revise_force_reason` for audit. Composes with `--scope` and `--plan` (see below).
+- **`--scope severity filter` on revisers** (#257, memo + proposal). Default `important`; operators may pass `--scope all` to fold in `nice-to-have`-severity findings or `--scope blocker` to limit to blocker-severity only. Filter is applied to per-sibling findings (or to gap severity under synthesis).
+- **Per-revision directive convention** (#260). Formalizes the operator-supplied `<thread>.{N+1}.directives.md` shape as the pre-revise directive surface — separate from BRIEF.md's per-thread directives.
+- **Summary-detail consistency back-check** (#245, PR #250). Phase A reviewer-prose-only back-check that surfaces verdict-summary vs per-dim-detail mismatches in `<thread>.{N}.review/comments.md`.
+- **Cross-thread citation back-check** (#236, PR #262). Phase A reviewer-prose-only back-check that flags citations referenced in a thread's body but absent from its `refs.bib`, walking sibling threads in the same portfolio.
+
+### Added — Rendering, layout, and ergonomics
+
+- **`anvil:memo-render` command + state-machine integration** (Epic #158 / PR #193). New explicit render lifecycle phase, replacing the implicit rendering that previously hid inside `memo-revise`. State-machine snippets updated to document the new phase.
+- **`anvil:memo` lib substrate + renderer detection** (Epic #158 Phase 1 / PR #172). New `anvil/skills/memo/lib/` with renderer-detection helpers (`weasyprint`, `pandoc`, fallbacks).
+- **Memo PDF render-gate (kind="memo")** (#185). `anvil/lib/render_gate.py` gains a `kind="memo"` mode for the markdown→PDF pipeline; matches the LaTeX-side gate's shape (page-fit, overfull boxes, compile success, placeholder scan).
+- **Render-gate findings wired into reviewer + word-count-primacy rubric prose** (Epic #158 Phase 4 / PR #198). Render-gate output flows into reviewer prose for the dim 7 length-pinning calculation.
+- **`@page` size US-Letter pinning for weasyprint** (#232, PR #263). Fixes a regression where weasyprint defaulted to A4 because the `@page` size was unspecified.
+- **Per-thread `words_per_page` override for `memo_page_fit`** (#264). `<thread>/.anvil.json: words_per_page` lets operators tune the page-fit gate's word/page coefficient when the canary corpus drifts from the default.
+- **Booktabs-class CSS for markdown tables** (#238, PR #259). Brings the markdown table render closer to the LaTeX booktabs aesthetic; opt-in via `class="booktabs"`.
+- **`orientation: landscape` frontmatter knob for table-dense proposals** (#248). Per-version landscape rendering for proposals whose table widths exceed portrait.
+- **Pre-flight image-reference lint (`memo_image_refs_exist`)** (#160). Detects markdown image links that resolve to missing files in `figures/`.
+- **Per-version `target_length` overrides + provenance** (#161). Operators may pin `target_length` on a per-version basis via `<thread>.{N}/_progress.json.metadata.target_length` for dim 7 anchoring.
+- **`refs/` source-of-truth materials + reviewer back-check** (#162). Reviewers verify every body-of-memo citation against the materials in `refs/`; mismatches surface as dim 3 findings.
+- **Configurable `target_length` in `.anvil.json`** (#122). Top-level `target_length` in `.anvil.json` defines the resolved range that flows into dim 7 scoring. (Carried forward to the rubric_overrides mechanism above.)
+- **Per-skill installer content-hash detection** (#163). Installer records a per-skill content hash for modified-vs-pristine detection at upgrade time.
+- **Surface new-skill availability on upgrade** (#239, PR #261). Installer prints which skills are NEW at upgrade time, with copy-and-paste invocation lines.
+
+### Added — `anvil:deck` and `anvil:slides` extensions
+
+- **`anvil:deck-imagegen` orchestration runtime + command spec** (Epic #130 Phase 2 / PRs #169, #170, #171, #182, #186, #191, #192, #197). Brings generative-imagery into deck via a backend-agnostic preset library, an `imagery_policy` BRIEF.md frontmatter field, an `imagegen` orchestration runtime with prompt-journal schema and read/write primitive, three new audit findings (fabrication-attribution, generative-imagery findings gated on `imagery_policy`), and a consolidated `imagegen_phrases.py` for stock phrasing.
+- **`deck↔memo` parity pre-flight lint** (#205). Warning-only Phase A check that flags structural mismatches between a deck and its companion memo (used by the canary's deck-from-memo pipeline).
+- **Deck `.row` + `.split` stock layout classes** (#174). Reusable layout-only utility classes in `anvil-deck.css`.
+- **Slides `marp_lint` re-export** (#164, PR #173). `anvil:slides` pins re-export of the deck-side `inline-display-style-dropped` rule; the underlying primitive lives in `marp_lint`.
+- **Inline `display:grid` / `display:flex` lint** (#134). Source-side warning for inline display styles that Marp's foreignObject SVG render silently drops.
+- **Deck iteration-cap rationale paired with `max_iterations` override** (#141). When a deck override raises `max_iterations`, an `iteration_cap_rationale` line is mandatory and the orchestrator surfaces a BLOCKED notice for missing-rationale cases.
+
+### Added — Framework substrate
+
+- **`palette.json` sibling for bare-python3 consumption** (#126). Anvil's brand palette is now also available as a JSON sibling alongside `palette.py` for tooling that can't import the Python module.
+- **Optional `.latest` symlink convention** (#120, PR #123). Documented convention for the optional `<thread>.latest` symlink that resolves to the highest version dir.
+- **Filetype-first vs project-first portfolio placement** (#127). Snippet-level documentation of the two portfolio-layout shapes.
+- **Drafter-side citation-hook contract** (#140). Documented contract for the drafter-emitted citation-hook lines that the reviewer back-check consumes.
+- **`anvil:memo` BRIEF.md fresh + migration templates** (#139). Two new BRIEF.md templates: a fresh-thread template and a migration-target template.
+- **Optional pdftotext PDF refs back-check** (#175). Path A: subprocess `pdftotext` extracts the rendered PDF's text and back-checks refs against the source markdown.
+- **Refs back-check rolled out to deck + proposal** (#176). Same back-check primitive consumed by both sibling skills.
+- **`revise_consistency` stale-token sweep + deck-revise wiring** (#114). New `anvil/lib/revise_consistency.py` primitive sweeps for stale tokens between drafter output and reviser input; wired into `deck-revise`.
+
+### Changed — Dependencies
+
+- **`pyyaml>=6.0` declared as a base `[project]` dep** (#231, PR #268). `anvil/lib/rubric.py` does a top-level `import yaml`; `anvil/lib/__init__.py` re-exports `Rubric` / `load_rubric` / `discover_venue_rubric`, so any `from anvil.lib import ...` (and downstream `anvil.lib.render_gate`) transitively requires yaml at import time. This matches the same load-bearing-for-import-chain shape as the existing `pydantic` base-dep exception; `pyproject.toml`'s header comment is updated to document the second exception. Without this, a fresh `uv sync` produced a build that failed on first import.
+- **Installer pivots to uv-runnable consumer layout** (#230, PR #269). The shipped install layout is now a directly-`uv sync`-runnable shape; consumers no longer need a separate `pip install` invocation. Drift-detection note added to the installer to flag layouts that predate the new shape.
+
+### Removed
+
+- **`_convictions.md` advisory contract** (PR #229, retiring PR #155). The Epic #142 Phase A `_convictions.md` advisory primitive shipped in #155 was removed after Phase B verdict surfaced no canary signal to justify it. Kill-switch removes the snippet, command-doc references, and tests. The same surface area is being re-explored under a different (in-progress) design.
+- **`anvil:memo` per-skill `--polish` BRIEF.md scaffolding** (rolled into the new `--polish` flag landed in #206 above; pre-#206 partial scaffolding removed in the same PR).
+
+### Fixed
+
+- **`memo-migrate` `RenderError` inline for consumer-install layout** (#199, PR #204). Inlined `RenderError` in `refs_pdf.py` so consumer installs don't carry a dangling import.
+- **Installer Claude shim depth-1 placement** (#138). Shims must land at depth 1 of `.claude/commands/` so `/anvil-*:*` commands actually register; the installer was previously placing them too deep.
+- **`anvil:deck` auto-shrink tests gated on `[auto_shrink]` extra** (#115, PR #116). Without the gate, the auto-shrink tests fail when the optional `[auto_shrink]` extra isn't installed.
+- **`matplotlib parse_math` anti-pattern guidance** (#125). Docs note steering away from `parse_math=True` in figure-side matplotlib code.
+- **CLAUDE.md refresh post-0.1.0** (#112). Refresh of stale sections after the first installable release.
 
 ## [0.1.0] — 2026-05-30
 
