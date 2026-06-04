@@ -123,6 +123,27 @@ under the standard `--force` discipline (see #163). When the consumer
 ships a custom `styles.css`, Phase 3's `memo-render` command picks it
 up unchanged.
 
+#### `template.tex` override: preserve the pandoc 3.x compat block
+
+The shipped `template.tex` ships a "Pandoc 3.x emission compatibility"
+preamble block (`xcolor`, `soul`/`lua-ul`, `fancyvrb`, `longtable`,
+`booktabs`, `array`, `calc`, `etoolbox`, `footnotehyper`/`footnote`,
+`bookmark`, plus `\newcounter{none}`, `\providecommand{\tightlist}{...}`,
+and a `\providecommand{\st}` fallback). This block tracks what
+pandoc 3.x's default LaTeX emission expects the template to provide —
+e.g. `\st{...}` from `~~strike~~`, the `\toprule`/`\midrule`/
+`\bottomrule` family from any markdown table, `\Verb` from inline code,
+etc. Without it, modern pandoc + xelatex fails with `\Undefined control
+sequence` (see issue #277 for the canary reproducer).
+
+Consumers overriding `template.tex` for custom typography, headers, or
+fonts SHOULD preserve the compat block verbatim — it is functional, not
+aesthetic. The `\IfFileExists` guards mean the block is safe to ship
+even on thin TeX Live installs that lack `soul.sty` or
+`footnotehyper.sty`: missing-package consumers get a slightly worse
+memo (strikethrough passes through unstyled) rather than a hard compile
+failure.
+
 ### Maintainer policy on aesthetic PRs
 
 The default theme is **deliberately minimal**:
