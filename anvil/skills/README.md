@@ -36,6 +36,23 @@ user-invocable: false  # true for one-shot escape hatches
 
 See repository `README.md` for the v0 skill catalog.
 
+## Shipped skills
+
+The current skill index:
+
+- `anvil:memo` — investment / strategy / position memo.
+- `anvil:pub` — academic publication.
+- `anvil:report` — customer-facing report.
+- `anvil:deck` — slide deck (Marp).
+- `anvil:slides` — narrated slide outline.
+- `anvil:ip-uspto` — USPTO patent application.
+- `anvil:installation` — installation-art concept proposal.
+- `anvil:proposal` — multi-document proposal package.
+- `anvil:project-migrate` — bridge tool migrating existing projects to the
+  post-#295 / post-#296 model (project root + `BRIEF.md` absorbing all
+  config + `<slug>.md` body filename). Opinionated, idempotent, dry-run
+  first. See `project-migrate/SKILL.md`.
+
 ## Adding a new skill
 
 Use the scaffold (planned: `anvil/templates/SKILL.md.j2`). Until that lands, copy an existing skill and edit. Skills should consume `anvil/lib/` primitives rather than reimplementing state machine, rubric, or checkpointing logic.

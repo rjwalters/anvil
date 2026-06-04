@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added — `anvil:project-migrate` skill (issue #297, bridge for the three-part model lock)
+
+- NEW skill `anvil/skills/project-migrate/` — one-shot bridge tool that migrates existing studio projects to the post-#295 / post-#296 canonical model (project root + `BRIEF.md` absorbing all anvil config + `<slug>.md` body filename + `<project>/<slug>/<slug>.<N>/` shape). Closes the third leg of the three-part model lock (#295 + #296 + #297).
+- **Commands**: `/anvil:project-migrate <project-dir>` (dry-run, NO mutations), `/anvil:project-migrate <project-dir> --apply` (execute), `/anvil:project-migrate <project-dir> --report` (markdown report only).
+- **Three recognized current shapes**: pre-#283 classic (`<stem>.N/` sibling version dirs, no project BRIEF), post-#283 with `.anvil.json` (project BRIEF + per-thread `.anvil.json`), fully-migrated (target shape — no-op).
+- **Per-project steps**: detect → plan → (optional) apply → verify. Each `DocumentPlan` is independently applyable; rollback is per-doc via a `<project>/.anvil-migrate-rollback/<slug>/` snapshot.
+- **Cross-thread reference rewriting**: planner walks each body markdown for old-stem tokens (e.g., `memo.7`) and emits a `ContentRewrite` that updates them to the new slug-shaped reference (`<slug>.7`) after the directory renames land.
+- **Git integration**: `git mv` is preferred when the project is under git so history follows; falls back to plain `shutil.move` otherwise.
+- **Opinionated**: no back-compat flags. The skill converges existing projects onto one shape; it does not preserve the legacy shape under any option.
+- **Idempotent**: re-running `--apply` on a fully-migrated project is byte-identical zero-diff.
+- **rubric.md OMITTED**: migration output is mechanical; no /40 dimension to score.
+- **`anvil:memo-migrate` carve-out**: the LaTeX bootstrap path continues to write a legacy `.anvil.json`; `project-migrate` runs as the documented post-step that consolidates it into the project BRIEF.
+- Touched: NEW `anvil/skills/project-migrate/SKILL.md`, NEW `anvil/skills/project-migrate/commands/project-migrate.md`, NEW `anvil/skills/project-migrate/lib/` (`__init__.py`, `detect.py`, `plan.py`, `apply.py`, `verify.py`, `orchestrate.py`), NEW `anvil/skills/project-migrate/tests/` (six `test_project_migrate_*.py` files + `_fixtures.py` programmatic fixture builders + `conftest.py`), MODIFIED `anvil/skills/README.md` (skill index), MODIFIED `CLAUDE.md` (skill count 8 → 9).
+
 ## [0.2.0] — 2026-06-03
 
 **Canary-driven iteration since 0.1.0.** Seventy-eight PRs landed in five days as the framework absorbed friction from the 2AM Logic Studio canary running multi-thread investment memos and proposals against rolling deadlines. The shape of this release: a new dim 9 *Rhetorical economy* rubric dimension (rubrics → /44, threshold ≥35), an `anvil:proposal` synthesis-sibling pipeline that consolidates cross-critic findings before revise, an `anvil:memo` `--plan` / `--apply` two-phase reviser, a `rubric_overrides` mechanism for non-investment-memo shapes (synthesis-brief, feedback-memo), a bulk `memo-migrate` LaTeX→markdown migration tool with 9 detector clusters, a framework-wide `<thread>.{N}.perspective/` sibling role, and an installer pivoted to `uv`-runnable consumer layouts. See `WORK_LOG.md` for the chronological merge record.
