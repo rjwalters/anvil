@@ -96,7 +96,7 @@ Plan-confirmation entry point. When passed, `memo-revise` reads an existing `<th
 1. **No matching plan exists.** `<thread>.{N+1}.plan/plan.md` is absent. Remediation: run `memo-revise <thread> --plan` first.
 2. **Stale review.** `<thread>.{N}.review/verdict.md`'s mtime is later than `plan.md`'s — i.e., the review was re-run after the plan was written. Remediation: re-run `memo-revise <thread> --plan` to refresh the plan against the new verdict.
 3. **New critic sibling added.** A `<thread>.{N}.<critic>/` directory exists on disk that did not exist when the plan was written (detected by enumerating critic siblings at apply time and comparing against the set recorded in `<thread>.{N+1}.plan/_progress.json.metadata.critic_siblings_at_plan_time`). Remediation: re-run `--plan` to incorporate the new critic.
-4. **Plan too old.** `plan.md`'s mtime is more than `plan_max_age_days` days old (default 7, configurable via `<thread>/.anvil.json` `{"plan_max_age_days": <N>}`). Remediation: re-run `--plan` to confirm the plan is still intended.
+4. **Plan too old.** `plan.md`'s mtime is more than `plan_max_age_days` days old (default 7; consumer override via a future BRIEF.md project-level knob — not yet schema-formalized). Remediation: re-run `--plan` to confirm the plan is still intended.
 5. **Target version already exists.** `<thread>.{N+1}/` already contains a `<thread>.md` — `--apply` already ran, or the operator hand-built a version dir. Remediation: delete or rename the existing version dir, then re-run `--apply`.
 
 Each rejection leaves the thread untouched (no partial output, no `_progress.json` mutation).
@@ -176,7 +176,7 @@ When `--plan` is passed, the reviser executes a plan-only pass that produces `<t
 3. **Iteration cap check.** Same as step 3 of the default path. A `--plan` invocation against a thread at `max_iterations` STILL hits the BLOCKED notice — the plan would describe edits the reviser is not allowed to apply, so the cap fires first.
 4. **Verdict pre-check.** Same as step 4 of the default path. When `--polish` is NOT also passed, an `advance:true` + 0-critical thread is rejected with the standard READY notice (no plan written). When `--polish "<reason>"` IS also passed, the verdict pre-check is bypassed per the existing polish-pass contract.
 5. **Existing-plan check.** If `<thread>.{N+1}.plan/plan.md` already exists, the operator either wants to refresh it or applied it already. Behavior: the new plan OVERWRITES the existing plan (and rewrites the `_progress.json` timestamps). This matches the operator mental model "re-run `--plan` to refresh."
-6. **Read inputs.** Same as step 6 of the default path (prior version's memo, all critic siblings, `<thread>/.anvil.json`, target-length resolution per step 6's rules).
+6. **Read inputs.** Same as step 6 of the default path (prior version's memo, all critic siblings, `<project>/BRIEF.md`, target-length resolution per step 6's rules).
 7. **Build the revision plan.** Same logic as step 7 of the default path: for each rubric dimension below threshold or with a critical flag, enumerate the specific changes; for each `comments.md` entry tagged `blocker` / `major` / `nit` (the `nit` tier ONLY when `--polish` is also passed), plan a concrete change. Resolve conflicting feedback between siblings explicitly per the existing convention.
 8. **Write the plan artifact.** Create `<thread>.{N+1}.plan/` and write:
    - `plan.md` per the shape in `templates/plan.md.template`. The `Revision mode` header field equals `normal` (default) or `polish` (when `--polish` was passed). When `--polish` was passed, write the verbatim operator reason into a header subsection or as a trailing line so `--apply` can read it back. The aggregate footer's `Target-length flag` is computed from the projected new word count vs. the resolved target window.
@@ -194,7 +194,7 @@ When `--apply` is passed, the reviser reads an existing plan and produces `<thre
 2. **Locate the plan.** Find `<thread>.{N+1}.plan/plan.md` where `N` is the highest version with a `<thread>.md` + `verdict.md`. If absent, reject per plan-validity case 1 (no matching plan exists; remediation: run `--plan` first).
 3. **Staleness check — verdict mtime.** Read `<thread>.{N}.review/verdict.md`'s mtime; read `plan.md`'s mtime; if verdict is newer, reject per plan-validity case 2 (stale review; remediation: re-run `--plan`).
 4. **Staleness check — critic siblings.** Enumerate the current set of `<thread>.{N}.<critic>/` directories; compare against `_progress.json.metadata.critic_siblings_at_plan_time` from the plan's `_progress.json`. If a new critic exists, reject per plan-validity case 3 (new critic sibling; remediation: re-run `--plan`).
-5. **Staleness check — plan age.** Read `plan_max_age_days` from `<thread>/.anvil.json` (default 7). If `plan.md`'s mtime is more than `plan_max_age_days` days old, reject per plan-validity case 4 (plan too old; remediation: re-run `--plan`).
+5. **Staleness check — plan age.** Default `plan_max_age_days = 7` (consumer override via a future BRIEF.md project-level knob — not yet schema-formalized). If `plan.md`'s mtime is more than `plan_max_age_days` days old, reject per plan-validity case 4 (plan too old; remediation: re-run `--plan`).
 6. **Existing-target-version check.** If `<thread>.{N+1}/<thread>.md` already exists, reject per plan-validity case 5 (target version already exists; remediation: delete or rename the existing version dir).
 7. **Parse the plan.** Read `plan.md`:
    - Extract the `Revision mode` (one of `normal` / `polish`).
@@ -218,7 +218,7 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/<thread>.md` AND at least `<thread>.{N}.review/verdict.md`. If no review exists, exit with an error ("no review to revise against; run `memo-review` first").
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` and `<thread>.md` + `changelog.md` exist, the revision is complete — exit early with a notice.
-3. **Iteration cap check**: read `metadata.max_iterations` from `<thread>.{N}/_progress.json` (or `<thread>/.anvil.json` override; default 4). If `N + 1 > max_iterations`, exit with a `BLOCKED` notice — human review required.
+3. **Iteration cap check**: read `metadata.max_iterations` from `<thread>.{N}/_progress.json` (default 4; consumer override via a future BRIEF.md project-level knob — not yet schema-formalized). If `N + 1 > max_iterations`, exit with a `BLOCKED` notice — human review required.
 4. **Verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` and there are no critical flags AND `--polish` was NOT passed, exit with a notice: the thread is `READY`, no revision needed. (Default behavior is to refuse to revise an already-passing version.)
 
    **`--polish` bypass.** When `memo-revise <thread> --polish "<reason>"` is invoked, this step is skipped entirely; proceed to step 5 regardless of `advance:true` + 0-critical. The `--polish` flag is the in-band, audit-trailed alternative to the destructive workarounds (deleting `verdict.md`, hand-bumping `metadata.iteration`, force-editing verdict status) the default-refuse path historically forced operators into. Pre-check the flag's reason argument before bypassing: an absent / empty / whitespace-only reason is rejected with a clear error (see §"CLI flags" above); the thread is left untouched. See §"CLI flags" for the full required-reason contract.
@@ -239,14 +239,13 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
      - `<thread>/REVISION_DIRECTIVE.md` (optional) — single-shot per-revision directive from the operator. Always names the *next* revision pass; operators edit in place between revisions or delete the file when the directive no longer applies.
      - `<thread>/_directives/v{N+1}.md` (optional) — versioned per-revision directive targeted at the version about to be produced. Older `_directives/v<K>.md` files (K ≤ N) are historical context preserved for forensic readers; treat as informational only — do NOT read older files as instructions for the current pass.
 
-     When a directive file is present, weave its content into the revision plan at step 7 — content beats are honored, hard rules are obeyed, scope guidance is respected. The directive informs prioritization WITHIN the existing revision-plan contract; it does NOT override critical-flag handling, does NOT bypass the `--scope` filter, and does NOT bypass the rubric `≥35/44` threshold. A directive that asks the reviser to ignore a critical flag is ignored on the critical-flag clause; the reviser still addresses the critical flag. When the directive contradicts a `comments.md` finding that survived the scope filter, prefer the directive (operator intent for v{N+1}) over the critic's prior-pass note (critic intent for v{N}), and surface the contradiction in `changelog.md` per step 9 as a `Resolution: <change> — per directive (overrides <critic> note: <one-line summary>)`. Absence of directive files is silently tolerated — the reviser proceeds with verdict + critic siblings + `.anvil.json` as the sole inputs. See SKILL.md §"Per-revision directives" for the full convention.
-   - `<thread>/.anvil.json` — read the optional `target_length` field per the SKILL.md §Length targets contract and apply the resolution order to the version about to be produced (`N+1`):
-     1. If `target_length.overrides.v{N+1}` is set and well-formed, use that range. Source: `"overrides.v{N+1}"`.
-     2. Else if `target_length.default` is set and well-formed, use that range. Source: `"default"`.
-     3. Else if the top-level `target_length` is the legacy flat shape (`words` or `pages` key directly), use that range. Source: `"legacy_flat"`.
-     4. Else, no target. Source: `"none"`.
+     When a directive file is present, weave its content into the revision plan at step 7 — content beats are honored, hard rules are obeyed, scope guidance is respected. The directive informs prioritization WITHIN the existing revision-plan contract; it does NOT override critical-flag handling, does NOT bypass the `--scope` filter, and does NOT bypass the rubric `≥35/44` threshold. A directive that asks the reviser to ignore a critical flag is ignored on the critical-flag clause; the reviser still addresses the critical flag. When the directive contradicts a `comments.md` finding that survived the scope filter, prefer the directive (operator intent for v{N+1}) over the critic's prior-pass note (critic intent for v{N}), and surface the contradiction in `changelog.md` per step 9 as a `Resolution: <change> — per directive (overrides <critic> note: <one-line summary>)`. Absence of directive files is silently tolerated — the reviser proceeds with verdict + critic siblings + BRIEF.md as the sole inputs. See SKILL.md §"Per-revision directives" for the full convention.
+   - `<project>/BRIEF.md` (the matching `documents:` entry) — read the per-doc `target_length` (and optional `target_length_overrides`) per the SKILL.md §Length targets contract via `anvil/skills/memo/lib/project_brief.py::load_project_brief` + `ProjectBrief.document_for_slug(slug)`, then apply the resolution order to the version about to be produced (`N+1`):
+     1. If `target_length_overrides["<N+1>"]` is set and well-formed, use that range. Source: `"overrides.<N+1>"`.
+     2. Else if the document's `target_length` is set and well-formed, use that range. Source: `"default"`.
+     3. Else, no target. Source: `"none"`.
 
-     Normalize the resolved range as in `memo-draft.md` step 5: `words` taken directly, `pages` converted at 600 words/page, malformed/both-keys-set/`min > max`/absent → no target. A `target_length` with both flat (`words`/`pages`) and extended (`default`/`overrides`) keys at the top level is malformed — source `"none"`, no target.
+     Normalize the resolved range as in `memo-draft.md` step 5: `words` taken directly, `pages` converted at 600 words/page, malformed → no target.
 
      Write the resolved range and its source into `_progress.json.metadata.target_length_resolved` as part of step 5 — shape:
 
@@ -254,7 +253,7 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
      "target_length_resolved": {
        "min_words": 2000,
        "max_words": 2800,
-       "source": "overrides.v10"
+       "source": "overrides.10"
      }
      ```
 
@@ -335,7 +334,7 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
 
    **When to skip the call.** Two cases:
    - If `memo-render` is not on PATH (consumer hasn't installed Anvil's Phase 3 commands yet), the reviser silently skips this step.
-   - If the consumer has explicitly disabled rendering via `<thread>/.anvil.json` `{"render": "skip"}` (a future config knob — NOT shipped in Phase 3), skip the call.
+   - If the consumer has explicitly disabled rendering via a future BRIEF.md project-level knob (e.g., `render: skip` at the top of the frontmatter — NOT shipped in Phase 3), skip the call.
 
    See `commands/memo-render.md` §"Failure modes" and §"Composability with `memo-draft` and `memo-revise`".
 10. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
@@ -387,7 +386,7 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
     "target_length_resolved": {
       "min_words": 2000,
       "max_words": 2800,
-      "source": "overrides.v10"
+      "source": "overrides.10"
     },
     "revision_mode": "polish",
     "revise_force_reason": "Sharpen the conditional terms in Recommendation; reviewer noted dim 4 at 5/6 with specific suggestion."
@@ -395,7 +394,7 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
 }
 ```
 
-`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. `metadata.target_length_resolved` is the resolved target this revision was authored against, with `source` provenance — see step 6 for the resolution rules and the four documented source values (`"overrides.v{N+1}"`, `"default"`, `"legacy_flat"`, `"none"`). The reviewer reads this field rather than re-resolving from `<thread>/.anvil.json`, preventing drift if the JSON is edited between revise and review. The field is optional — its absence is tolerated for legacy version dirs (reviewer falls back to re-resolution). Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
+`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. `metadata.target_length_resolved` is the resolved target this revision was authored against, with `source` provenance — see step 6 for the resolution rules and the three documented source values (`"overrides.<N+1>"`, `"default"`, `"none"`). The reviewer reads this field rather than re-resolving from `<project>/BRIEF.md`, preventing drift if BRIEF.md is edited between revise and review. The field is optional — its absence is tolerated for legacy version dirs (reviewer falls back to re-resolution). Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 
 `metadata.scope` is the resolved `--scope` level for this revision (`"critical-only"`, `"important"` (default), or `"all"`) — see §"CLI flags" §"`--scope <level>`" for the level semantics and step 7 for the filter logic. Absence of the field is tolerated by readers and treated as `"all"` for backwards-compat with pre-this-change memo version dirs. **The field is audit-trail only — not scored, not gating, not state-machine input.** The reviewer at the next pass does NOT read `metadata.scope` and does NOT special-case "the prior revise punted these findings" — it scores `<thread>.{N+1}/` on its own rubric merits.
 

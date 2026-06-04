@@ -24,7 +24,8 @@ version dirs::
 
     <project>/
       BRIEF.md                ← single project brief with documents: list
-      .anvil.json             ← project-level defaults (optional)
+                                 (carries every per-doc and project-level
+                                 anvil config knob; issue #296)
       <slug-a>/
         <slug-a>.1/<slug-a>.md
         <slug-a>.2/<slug-a>.md
@@ -219,7 +220,7 @@ def _extract_frontmatter(text: str) -> Optional[dict]:
     is malformed, or the parsed value isn't a dict. This module is
     intentionally **tolerant** — the layout-dispatch gate degrades to
     "not a project root" when the frontmatter is unparseable, matching
-    the absence-tolerant convention shared by ``anvil_config.py`` and
+    the absence-tolerant convention shared by ``project_brief.py`` and
     ``refs_resolver.py``.
     """
     # The opener must be the first non-empty line. Leading blank lines

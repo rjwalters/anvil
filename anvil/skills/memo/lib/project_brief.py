@@ -1,12 +1,37 @@
 """Typed parser for the project-level ``BRIEF.md`` (issue #285).
 
-Sub-deliverable 2 of #283 — the **typed schema reader** that the upcoming
-rubric overlay selector (#286) and cross-thread reference validator (#287)
-build on. Sub-deliverable 1 of #283 (the dual-layout *discovery* primitive,
-#284 / PR #290) ships at
-``anvil/skills/memo/lib/project_discovery.py``. Discovery answers "where is
-the thread root and which layout matches?"; this module answers "given a
-confirmed project root, what does the BRIEF say?".
+Sub-deliverable 2 of #283 — the **typed schema reader** that the rubric
+overlay selector (#286) and cross-thread reference validator (#287)
+build on. Sub-deliverable 1 of #283 (the project-root *discovery*
+primitive, #284 / PR #290) ships at
+``anvil/skills/memo/lib/project_discovery.py``. Discovery answers "where
+is the thread root and which project owns it?"; this module answers
+"given a confirmed project root, what does the BRIEF say?".
+
+Single source of truth (issue #296)
+-----------------------------------
+Issue #296 (the project-org model lock, part B) **retires** the
+sibling ``.anvil.json`` file and consolidates every project / per-doc
+anvil-config knob into ``BRIEF.md``'s YAML frontmatter. Specifically,
+the BRIEF schema now absorbs:
+
+- Per-doc ``target_length`` (already present; the per-version
+  override surface ``target_length_overrides`` is new — see
+  :class:`BriefDocument`).
+- Per-doc ``rubric_overrides`` (calibration suffix per PR #265 —
+  formerly the ``rubric_overrides`` block at the top level of
+  ``<thread>/.anvil.json``; see :class:`RubricOverrides`).
+- :func:`body_filename_for` — the issue #295 slug-echo helper.
+
+The ``anvil_config`` module is gone. Lifecycle commands, lib modules,
+and tests that previously read ``<thread>/.anvil.json`` now read
+``<project>/BRIEF.md`` via :func:`load_project_brief` (or the strict
+variant) and look up the per-doc entry by slug
+(``ProjectBrief.document_for_slug(slug)``). The
+``rubric_overrides_suffix.py`` module that wires per-dim calibration
+into the reviewer continues to operate against a typed
+:class:`RubricOverrides` instance — the only change is that the
+instance is now sourced from BRIEF.md rather than ``.anvil.json``.
 
 Background — why this exists
 ----------------------------
@@ -15,15 +40,16 @@ single project-level ``BRIEF.md`` lives at the project root and
 enumerates per-document metadata in its YAML frontmatter::
 
     <project>/
-      BRIEF.md                 ← single project brief with documents: list
-      .anvil.json              ← project-level defaults (sub-deliverable 3)
+      BRIEF.md                 ← single project brief; documents: list +
+                                  per-doc target_length, target_length_overrides,
+                                  and rubric_overrides
       <slug-a>/
         <slug-a>.1/ ...
       <slug-b>/
         <slug-b>.1/ ...
       research/                ← shared evidence pool (already shipped, #281)
 
-The project BRIEF frontmatter shape (per #283's refinement comment)::
+The project BRIEF frontmatter shape::
 
     ---
     project: brains-for-robots
@@ -37,10 +63,17 @@ The project BRIEF frontmatter shape (per #283's refinement comment)::
       - slug: investment-memo
         artifact_type: investment-memo
         target_length: { words: [8000, 11000] }
+        target_length_overrides:
+          "1": [8000, 11000]
+          "2": [7500, 10500]
+        rubric_overrides:
+          memo_subtype: synthesis-brief
+          dim_1_calibration: "decision-framework — score on framework clarity"
+          dim_5_calibration: "defers to underlying market models"
+          target_length: { words: [9000, 13000] }
       - slug: latency-wall
         artifact_type: position-paper
         target_length: { words: [5000, 8000] }
-      ...
     ---
 
     # Free-prose project shared context
@@ -58,25 +91,62 @@ Public API
 
 ``BriefDocument``
     Pydantic model for one entry in the ``documents:`` list. Carries
-    ``slug``, ``artifact_type``, and an optional ``target_length`` range.
+    ``slug``, ``artifact_type``, optional ``target_length``, optional
+    ``target_length_overrides`` (per-version), and optional
+    ``rubric_overrides`` (subtype calibration).
+
+``TargetLengthRange``
+    Word-count range. Used for both ``BriefDocument.target_length`` and
+    the inner ``RubricOverrides.target_length``.
+
+``TargetLengthOverrides``
+    Per-version override map. Keys are version numbers (as strings:
+    ``"1"``, ``"2"``, …); values are
+    ``[min_words, max_words]`` ranges. Mirrors the historical
+    ``.anvil.json`` ``target_length.overrides`` shape but lifted to the
+    per-doc surface.
+
+``RubricOverrides``
+    Pydantic model holding the parsed per-doc ``rubric_overrides``
+    block. Optional fields default to ``None`` so callers can check
+    presence with ``is not None`` rather than a sentinel string.
+
+``CalibrationOverride``
+    Per-dimension override: holds the dimension number (1-9) and the
+    calibration prose. Returned by ``RubricOverrides.calibrations``.
 
 ``ProjectBrief``
-    Pydantic model for the parsed BRIEF. Carries ``project``, ``audience``,
-    ``hard_rules``, and ``documents``.
+    Pydantic model for the parsed BRIEF. Carries ``project``,
+    ``audience``, ``hard_rules``, and ``documents``.
 
 ``load_project_brief(project_dir: Path) -> Optional[ProjectBrief]``
-    Lenient loader. Returns ``None`` when ``<project_dir>/BRIEF.md`` does
-    not exist, has no YAML frontmatter, or its frontmatter is malformed.
-    Raises ``ValueError`` for schema violations (the BRIEF is present but
-    structurally wrong — a typo in ``artifact_type``, a duplicate slug,
-    etc.). The "absence → None" / "presence-with-errors → raise" split
-    matches the closed PR #282 ``load_body_filename`` /
-    ``load_body_filename_strict`` shape.
+    Lenient loader. Returns ``None`` when ``<project_dir>/BRIEF.md``
+    does not exist, has no YAML frontmatter, or its frontmatter is
+    malformed. Raises ``ValueError`` for schema violations (the BRIEF
+    is present but structurally wrong — a typo in ``artifact_type``,
+    a duplicate slug, etc.).
 
 ``load_project_brief_strict(project_dir: Path) -> ProjectBrief``
-    Strict loader. Raises ``FileNotFoundError`` when the BRIEF is missing,
-    ``ValueError`` when frontmatter is missing or malformed, and propagates
-    the same schema-violation ``ValueError`` as the lenient form.
+    Strict loader. Raises ``FileNotFoundError`` when the BRIEF is
+    missing, ``ValueError`` when frontmatter is missing or malformed,
+    and propagates the same schema-violation ``ValueError`` as the
+    lenient form.
+
+``load_rubric_overrides_for_slug(project_dir: Path, slug: str) ->``
+``RubricOverrides``
+    Convenience wrapper: read the BRIEF, look up the document by
+    ``slug``, and return its ``rubric_overrides`` block (or an empty
+    :class:`RubricOverrides` when absent / malformed). This is the
+    replacement for the retired
+    ``anvil_config.load_rubric_overrides(thread_dir)`` API. The
+    contract — empty instance on every absence path, never raise —
+    mirrors the prior lenient form exactly.
+
+``body_filename_for(slug: str) -> str``
+    Return the body markdown filename for a thread (``f"{slug}.md"``).
+    Issue #295's slug-echo convention; the only recognized shape. Lives
+    here because it's a one-line helper and ``project_brief.py`` is the
+    project-config schema-of-record after the #296 consolidation.
 
 Slug-directory divergence (Open Question #1 resolution)
 -------------------------------------------------------
@@ -100,21 +170,36 @@ entirely. Lifecycle commands that already know which slug they're
 operating on (e.g., the reviewer with a thread root in hand) can opt into
 the check; pure parser consumers don't need to.
 
-``.anvil.json`` interaction (Open Question #2 resolution)
----------------------------------------------------------
-**Deferred to sub-deliverable 3 (#286).** This module is parser-only: it
-does not read ``<project>/.anvil.json`` and does not resolve the
-project-level config ↔ per-doc BRIEF entry precedence chain. The overlay
-selector in #286 owns that wiring.
-
 Artifact-type enum (Open Question #5 resolution)
 ------------------------------------------------
 **Closed-ended.** Unknown ``artifact_type`` values raise a clear
 ``ValueError`` listing the registered set. This prevents typos silently
 degrading to no-overlay behavior. Adding a new artifact type requires a
 code change here (and a matching overlay landing in the file the overlay
-selector will read in #286). The seed values are
+selector reads in #286). The seed values are
 :data:`REGISTERED_ARTIFACT_TYPES`.
+
+Validation discipline — BRIEF-side is STRICT
+--------------------------------------------
+The BRIEF parser is intentionally STRICT on schema violations (raises
+``ValueError`` with field path + suggested fix). Per-doc metadata is
+load-bearing for overlay selection in #286, so a malformed entry must
+fail loudly rather than degrading silently. This is the opposite of the
+prior ``anvil_config.py`` ``rubric_overrides`` loader, which was
+**lenient** (warned + dropped fields) because ``.anvil.json`` was
+optional config and the lenient form preserved zero-impact backwards
+compat for threads without overrides.
+
+The consolidation under #296 keeps both contracts intact by routing them
+to two different entry points:
+
+- :func:`load_project_brief` (and strict variant): full BRIEF parser,
+  STRICT on every field.
+- :func:`load_rubric_overrides_for_slug`: convenience wrapper, returns
+  an empty :class:`RubricOverrides` on every absence path (missing
+  BRIEF, missing document, missing ``rubric_overrides`` block).
+  Mirrors the prior lenient ``anvil_config.load_rubric_overrides``
+  surface exactly.
 
 No new Python deps
 ------------------
@@ -140,6 +225,7 @@ input. The shared on-disk constants — ``BRIEF_FILENAME`` and
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -214,11 +300,36 @@ class ArtifactType(str, Enum):
 _FRONTMATTER_DELIM = "---"
 
 # Words-per-page conversion factor. Mirrors the 600 wpm proxy
-# documented in ``anvil/skills/memo/SKILL.md`` §"Length targets" and
-# matches the constant in ``anvil_config.py``. Kept local rather than
-# imported so this parser has zero coupling to the rubric_overrides
-# code path.
+# documented in ``anvil/skills/memo/SKILL.md`` §"Length targets".
 _WORDS_PER_PAGE = 600
+
+# Memo rubric dimension range. The memo rubric ships 9 dimensions per
+# ``anvil/skills/memo/rubric.md``; the ``dim_N_calibration`` key range
+# is the closed interval [1, 9]. Other skills' rubrics may differ; if
+# this loader is ever promoted to anvil/lib/ the range must be
+# parameterized.
+MIN_DIM = 1
+MAX_DIM = 9
+
+# `dim_N_calibration` is a templated key; the regex below pins the shape.
+_DIM_CALIBRATION_RE = re.compile(r"^dim_(\d+)_calibration$")
+
+# Recognized top-level keys inside a ``rubric_overrides:`` block.
+# Anything else is preserved verbatim under ``unknown_keys`` (forward-
+# compat surface — a future-shipped ``memo_subtype`` enum or a
+# "Concision Discipline" knob can land in BRIEF.md ahead of loader
+# support without breaking existing consumers).
+_KNOWN_RUBRIC_OVERRIDE_KEYS = {"memo_subtype", "target_length"}
+
+# Recognized keys on a ``BriefDocument`` entry. Anything else is a
+# schema violation (BRIEF-side is STRICT).
+_RECOGNIZED_DOCUMENT_KEYS = {
+    "slug",
+    "artifact_type",
+    "target_length",
+    "target_length_overrides",
+    "rubric_overrides",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -229,16 +340,11 @@ _WORDS_PER_PAGE = 600
 class TargetLengthRange(BaseModel):
     """Word-count range from a BRIEF document entry's ``target_length`` block.
 
-    Mirrors the shape used by ``anvil_config.TargetLengthRange`` for the
-    rubric_overrides surface so a future converger (when sub-deliverable
-    3 wires per-doc length targets through the same resolver) can treat
-    the two as interchangeable. The two types remain distinct because:
+    Used in two places:
 
-    1. This module is independent of ``anvil_config.py``: depending on
-       it would create a dependency-direction issue (project_brief is
-       upstream of the overlay selector in #286).
-    2. The validation surface (this is YAML, the other is JSON) needs
-       its own clean failure messages.
+    1. ``BriefDocument.target_length`` — the per-doc default range.
+    2. ``RubricOverrides.target_length`` — the subtype-calibration
+       override of the per-doc default.
 
     Both bounds are inclusive integers; ``min_words <= max_words`` is
     enforced. A ``pages`` input is converted at
@@ -263,6 +369,176 @@ class TargetLengthRange(BaseModel):
     source_key: str = Field(...)
 
 
+class TargetLengthOverrides(BaseModel):
+    """Per-version target-length override map for a BRIEF document entry.
+
+    Maps version number (as a string: ``"1"``, ``"2"``, …) to a
+    :class:`TargetLengthRange`. The historical ``.anvil.json`` shape was
+    ``target_length.overrides.v1`` / ``v2`` / …; the BRIEF-side shape is
+    a bare-integer-string key per entry because YAML mappings carry no
+    natural ``v`` prefix. Authors who want to be explicit can quote the
+    key (``"1"``) — the YAML parser collapses ``1`` and ``"1"`` to the
+    same string anyway.
+
+    Example::
+
+        target_length_overrides:
+          "1": [8000, 11000]
+          "2": [7500, 10500]
+          "3": [7000, 10000]
+
+    The same per-version resolution order documented in SKILL.md
+    §"Length targets" applies:
+
+    1. If ``target_length_overrides["<N>"]`` is set, use that range.
+    2. Else if ``target_length`` is set, use that.
+    3. Else, no target — fall back to the implicit judgment.
+
+    The resolver lives in the drafter / reviser code path; this module
+    only surfaces the typed dict.
+
+    Attributes
+    ----------
+    overrides
+        Map from version-number string (e.g., ``"1"``) to a
+        :class:`TargetLengthRange`. May be empty.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    overrides: Dict[str, TargetLengthRange] = Field(default_factory=dict)
+
+    def for_version(self, version: int) -> Optional[TargetLengthRange]:
+        """Return the override for ``version`` or ``None``.
+
+        Convenience accessor for the drafter / reviser resolution
+        helper. The key on disk is a string (``"1"``, ``"2"``, …) so
+        the lookup converts ``version`` to its string form.
+        """
+        return self.overrides.get(str(version))
+
+
+class CalibrationOverride(BaseModel):
+    """One per-dimension calibration override.
+
+    Returned by ``RubricOverrides.calibrations`` as a list, sorted by
+    dimension number. The reviewer iterates this list and appends
+    ``"calibration applied: <text>"`` to each affected dimension's
+    justification.
+
+    The ``dimension`` field uses the integer 1-9 namespace from the memo
+    rubric, NOT a string id — the rubric markdown uses ordinal-prefixed
+    dimension labels ("1 Recommendation clarity", ...) but the on-disk
+    override key is ``dim_1_calibration`` etc. and a numeric field is the
+    most direct mapping.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: int = Field(
+        ...,
+        ge=MIN_DIM,
+        le=MAX_DIM,
+        description=(
+            "Memo rubric dimension number (1-9 per "
+            "``anvil/skills/memo/rubric.md``). The on-disk key is "
+            "``dim_<dimension>_calibration``."
+        ),
+    )
+    text: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Calibration prose to append to the dimension's reviewer "
+            "justification. Verbatim text — no rewording, no truncation. "
+            "The author's exact wording is the load-bearing audit trail."
+        ),
+    )
+
+
+class RubricOverrides(BaseModel):
+    """Parsed ``rubric_overrides`` block from a BRIEF document entry.
+
+    All fields are optional. An "empty" instance (every field ``None``)
+    is the canonical no-overrides state and is returned by
+    :func:`load_rubric_overrides_for_slug` for slugs whose BRIEF entry
+    has no ``rubric_overrides`` block (or for projects with no BRIEF
+    at all).
+
+    Callers check presence with ``is not None`` on individual fields, or
+    use the ``is_empty`` property as a fast-path "did the consumer declare
+    any overrides at all" check.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    memo_subtype: Optional[str] = Field(
+        None,
+        description=(
+            "Free-string label naming the memo shape. Opaque to the loader; "
+            "intended for human reference and audit-trail. Two studio-canary "
+            "shapes: ``synthesis-brief`` and ``feedback-memo``."
+        ),
+    )
+    calibrations: List[CalibrationOverride] = Field(
+        default_factory=list,
+        description=(
+            "Per-dimension calibration overrides, sorted by dimension. "
+            "Each entry corresponds to a ``dim_<N>_calibration`` key on disk."
+        ),
+    )
+    target_length: Optional[TargetLengthRange] = Field(
+        None,
+        description=(
+            "Optional override of the document's top-level ``target_length``. "
+            "When set, the drafter / reviser's resolution helper uses this "
+            "value rather than the document's top-level one. Same flat-shape "
+            "semantics as the document-level field; per-version overrides "
+            "remain at ``target_length_overrides`` (the per-doc surface)."
+        ),
+    )
+    unknown_keys: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Forward-compat passthrough: any keys in ``rubric_overrides`` "
+            "that the loader does not recognize land here verbatim. The "
+            "BRIEF-side parser raises on unknown keys for the document "
+            "entry itself, but ``rubric_overrides`` retains the lenient "
+            "forward-compat surface — same as the prior ``.anvil.json`` "
+            "shape did — so a future shipped ``memo_subtype`` enum or a "
+            "Concision-Discipline knob can land in BRIEF.md ahead of "
+            "loader support."
+        ),
+    )
+
+    @property
+    def is_empty(self) -> bool:
+        """Return True when no overrides are declared.
+
+        Useful as a fast-path in the reviewer: a doc with ``is_empty`` true
+        should produce identical output to a doc with no ``rubric_overrides``
+        block at all.
+        """
+        return (
+            self.memo_subtype is None
+            and not self.calibrations
+            and self.target_length is None
+            and not self.unknown_keys
+        )
+
+    def calibration_for(self, dimension: int) -> Optional[str]:
+        """Return the calibration text for ``dimension`` or ``None``.
+
+        Convenience accessor for the reviewer: ``override.calibration_for(1)``
+        returns the calibration prose for memo rubric dim 1, or ``None`` if
+        no override is set for that dim.
+        """
+        for entry in self.calibrations:
+            if entry.dimension == dimension:
+                return entry.text
+        return None
+
+
 class BriefDocument(BaseModel):
     """One entry in the project BRIEF's ``documents:`` frontmatter list.
 
@@ -280,10 +556,21 @@ class BriefDocument(BaseModel):
         :data:`REGISTERED_ARTIFACT_TYPES` — unknown values raise a clear
         error listing the registered set.
     target_length
-        Optional word-count range for this document. When set, sub-
-        deliverable 3's overlay resolver uses it as the document-level
-        length target. When absent, the resolver falls back to the
-        rubric overlay's default range.
+        Optional word-count range for this document. When set, the
+        drafter / reviser's resolution helper uses it as the document-
+        level length target. When absent, the resolver falls back to
+        the rubric overlay's default range.
+    target_length_overrides
+        Optional per-version overrides on top of ``target_length``. Each
+        key is a version-number string (e.g., ``"1"``); each value is a
+        ``[min, max]`` range. Mirrors the historical
+        ``.anvil.json target_length.overrides`` shape (issue #296
+        consolidation moved it here).
+    rubric_overrides
+        Optional :class:`RubricOverrides` block — subtype calibration
+        per PR #265 (issue #233). Mirrors the historical
+        ``.anvil.json rubric_overrides`` shape (issue #296
+        consolidation moved it here).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -291,6 +578,8 @@ class BriefDocument(BaseModel):
     slug: str = Field(..., min_length=1)
     artifact_type: ArtifactType = Field(...)
     target_length: Optional[TargetLengthRange] = Field(default=None)
+    target_length_overrides: Optional[TargetLengthOverrides] = Field(default=None)
+    rubric_overrides: Optional[RubricOverrides] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -329,9 +618,10 @@ class ProjectBrief(BaseModel):
     def document_for_slug(self, slug: str) -> Optional[BriefDocument]:
         """Return the ``BriefDocument`` whose ``slug`` matches, or ``None``.
 
-        Convenience accessor for the overlay selector (#286): given a
-        thread's slug, look up its BRIEF entry to read the
-        ``artifact_type`` and ``target_length`` fields.
+        Convenience accessor for the overlay selector (#286) and the
+        rubric-overrides reader: given a thread's slug, look up its
+        BRIEF entry to read the ``artifact_type``, ``target_length``,
+        ``target_length_overrides``, and ``rubric_overrides`` fields.
         """
         for doc in self.documents:
             if doc.slug == slug:
@@ -421,25 +711,20 @@ def _normalize_string_list(
     return out
 
 
-def _normalize_target_length(
+def _normalize_target_length_range(
     raw: Any, field_path: str
-) -> Optional[TargetLengthRange]:
-    """Convert a raw ``target_length`` dict to a typed ``TargetLengthRange``.
+) -> TargetLengthRange:
+    """Convert a raw ``{words: [...]}`` / ``{pages: [...]}`` to a typed range.
 
-    Returns ``None`` for an absent value (``None``). Raises ``ValueError``
-    for any malformed shape — the project BRIEF parser is STRICT on
-    document entries (unlike the rubric_overrides loader which warns and
-    drops), because per-doc metadata is load-bearing for overlay
-    selection in #286.
+    Raises ``ValueError`` for any malformed shape — the BRIEF parser is
+    STRICT (unlike the prior rubric_overrides loader, which warned).
 
-    Accepts the flat shape only — ``{"words": [min, max]}`` or
-    ``{"pages": [min, max]}``. The extended per-version-override shape
-    documented in SKILL.md §"Length targets" is NOT accepted at the
-    BRIEF level (BRIEF is project-author-written, not per-version).
+    Accepts the **flat shape** only — ``{"words": [min, max]}`` or
+    ``{"pages": [min, max]}``. Extended-shape keys (``default``,
+    ``overrides``) are rejected explicitly — the per-version surface
+    has moved to ``target_length_overrides`` per the #296
+    consolidation.
     """
-    if raw is None:
-        return None
-
     if not isinstance(raw, dict):
         raise ValueError(
             f"BRIEF.{field_path} must be a dict; got "
@@ -448,15 +733,16 @@ def _normalize_target_length(
         )
 
     # Reject extended-shape keys explicitly so a copy-paste from the
-    # per-version surface produces a clear error rather than silent
-    # acceptance.
+    # historical .anvil.json shape produces a clear error rather than
+    # silent acceptance.
     forbidden = {"default", "overrides"} & set(raw.keys())
     if forbidden:
         raise ValueError(
             f"BRIEF.{field_path} does not accept extended-shape keys "
             f"{sorted(forbidden)} — per-doc target_length is flat "
             f'(`{{ words: [min, max] }}` or `{{ pages: [min, max] }}`); '
-            f"the extended per-version shape lives in `.anvil.json`."
+            f"per-version overrides live in `target_length_overrides:` "
+            f"on the document entry."
         )
 
     has_words = "words" in raw
@@ -522,6 +808,176 @@ def _normalize_target_length(
     )
 
 
+def _normalize_target_length_overrides(
+    raw: Any, field_path: str
+) -> Optional[TargetLengthOverrides]:
+    """Convert a raw ``target_length_overrides`` dict to a typed model.
+
+    Accepts a dict whose keys are version-number strings (``"1"``,
+    ``"2"``, …) and values are ``[min, max]``-style range dicts. Empty
+    dict → returns a :class:`TargetLengthOverrides` with empty
+    ``overrides``. Absent (``None``) → returns ``None``.
+
+    Raises ``ValueError`` for malformed shape (non-dict, non-integer-
+    string key, malformed range).
+    """
+    if raw is None:
+        return None
+
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a dict; got "
+            f"{type(raw).__name__} — suggested fix: write each version "
+            f"override on its own line under `target_length_overrides:`."
+        )
+
+    overrides: Dict[str, TargetLengthRange] = {}
+    for key, value in raw.items():
+        # YAML mappings can have int keys; normalize to string and
+        # validate the integer-string shape.
+        if isinstance(key, bool):
+            raise ValueError(
+                f"BRIEF.{field_path} key {key!r} is a boolean; version "
+                f"keys must be positive integers (e.g., `\"1\"`)."
+            )
+        if isinstance(key, int):
+            key_str = str(key)
+        elif isinstance(key, str):
+            key_str = key
+        else:
+            raise ValueError(
+                f"BRIEF.{field_path} key must be a string or integer; "
+                f"got {type(key).__name__}: {key!r}."
+            )
+        if not key_str.isdigit() or int(key_str) < 1:
+            raise ValueError(
+                f"BRIEF.{field_path} key {key_str!r} must be a positive "
+                f"integer string (the version number); suggested fix: "
+                f'write the key as `"1"`, `"2"`, etc.'
+            )
+        range_typed = _normalize_target_length_range(
+            value, field_path=f"{field_path}[{key_str!r}]"
+        )
+        overrides[key_str] = range_typed
+
+    return TargetLengthOverrides(overrides=overrides)
+
+
+def _parse_dim_calibration_key(key: str) -> Optional[int]:
+    """Return the dimension number from a ``dim_<N>_calibration`` key, or ``None``."""
+    m = _DIM_CALIBRATION_RE.match(key)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
+def _normalize_rubric_overrides(
+    raw: Any, field_path: str
+) -> Optional[RubricOverrides]:
+    """Convert a raw ``rubric_overrides`` dict to a typed model.
+
+    BRIEF-side schema is STRICT on shape errors at the dict level
+    (non-dict raises) but tolerant on field-level oddities per the
+    forward-compat contract: unknown keys are preserved verbatim under
+    ``RubricOverrides.unknown_keys``; the parser warns via
+    ``warnings.warn`` but does NOT raise. This is the load-bearing
+    backwards-compat surface from the prior ``.anvil.json`` lenient
+    loader: a future shipped ``concision_discipline`` knob lands in
+    BRIEF.md ahead of loader support without breaking existing
+    consumers.
+
+    Per-field validation is STRICT however: a malformed
+    ``memo_subtype`` (non-string, empty), a ``dim_N_calibration`` with
+    a non-string value, an out-of-range dim number, or a malformed
+    ``target_length`` raises ``ValueError`` with the field path. The
+    BRIEF-side reader is the schema-of-record now — silent drops would
+    confuse the operator.
+
+    Returns ``None`` for an absent value (raw is None). Returns an
+    empty :class:`RubricOverrides` for a non-dict or empty dict (with
+    appropriate diagnostic when non-dict).
+    """
+    if raw is None:
+        return None
+
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a dict; got "
+            f"{type(raw).__name__} — suggested fix: write the overrides "
+            f"as a nested mapping under `rubric_overrides:`."
+        )
+
+    memo_subtype: Optional[str] = None
+    calibrations: List[CalibrationOverride] = []
+    target_length: Optional[TargetLengthRange] = None
+    unknown_keys: Dict[str, Any] = {}
+
+    seen_dims: set[int] = set()
+
+    for key, value in raw.items():
+        if key == "memo_subtype":
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"BRIEF.{field_path}.memo_subtype must be a non-empty "
+                    f"string; got {value!r}."
+                )
+            memo_subtype = value
+            continue
+
+        if key == "target_length":
+            target_length = _normalize_target_length_range(
+                value, field_path=f"{field_path}.target_length"
+            )
+            continue
+
+        dim = _parse_dim_calibration_key(key)
+        if dim is not None:
+            if dim < MIN_DIM or dim > MAX_DIM:
+                raise ValueError(
+                    f"BRIEF.{field_path}.{key}: dimension {dim} out of "
+                    f"range [{MIN_DIM}, {MAX_DIM}]."
+                )
+            if dim in seen_dims:
+                raise ValueError(
+                    f"BRIEF.{field_path}.{key}: dimension {dim} "
+                    f"declared more than once (canonical form is "
+                    f"`dim_{dim}_calibration`)."
+                )
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"BRIEF.{field_path}.{key} must be a non-empty "
+                    f"string; got {value!r}."
+                )
+            seen_dims.add(dim)
+            calibrations.append(CalibrationOverride(dimension=dim, text=value))
+            continue
+
+        # Unknown key — preserve verbatim with a warning so a future
+        # shipped key (e.g. concision_discipline) can land in BRIEF.md
+        # ahead of loader support without breaking existing consumers.
+        unknown_keys[key] = value
+        warnings.warn(
+            f"BRIEF.{field_path}.{key}: unknown key — preserved verbatim "
+            f"under unknown_keys (forward-compat); reviewer will not "
+            f"apply it",
+            UserWarning,
+            stacklevel=4,
+        )
+
+    # Sort calibrations by dimension for deterministic iteration order.
+    calibrations.sort(key=lambda c: c.dimension)
+
+    return RubricOverrides(
+        memo_subtype=memo_subtype,
+        calibrations=calibrations,
+        target_length=target_length,
+        unknown_keys=unknown_keys,
+    )
+
+
 def _validate_artifact_type(raw: Any, field_path: str) -> ArtifactType:
     """Convert a raw ``artifact_type`` string to the typed enum.
 
@@ -557,6 +1013,8 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
     - Each entry has a non-empty string ``slug``.
     - Each entry has a valid ``artifact_type`` (registered enum value).
     - Optional ``target_length`` parses cleanly.
+    - Optional ``target_length_overrides`` parses cleanly.
+    - Optional ``rubric_overrides`` parses cleanly.
     - Slugs are unique across the list (duplicate raises).
     - No unknown keys on entries (``extra="forbid"`` on
       :class:`BriefDocument`).
@@ -590,17 +1048,13 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
                 f"write the entry with `slug:` and `artifact_type:` keys."
             )
 
-        # Recognized keys; reject anything else (extra='forbid' on the
-        # pydantic model would do this automatically, but doing it here
-        # produces a richer error message with the field path.)
-        recognized = {"slug", "artifact_type", "target_length"}
-        unknown = set(entry.keys()) - recognized
+        unknown = set(entry.keys()) - _RECOGNIZED_DOCUMENT_KEYS
         if unknown:
             raise ValueError(
                 f"BRIEF.documents[{i}] has unknown keys "
                 f"{sorted(unknown)} — recognized keys: "
-                f"{sorted(recognized)}. Suggested fix: remove the "
-                f"unknown keys or rename to a recognized key."
+                f"{sorted(_RECOGNIZED_DOCUMENT_KEYS)}. Suggested fix: "
+                f"remove the unknown keys or rename to a recognized key."
             )
 
         slug_raw = entry.get("slug")
@@ -632,9 +1086,23 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
             field_path=f"documents[{i}].artifact_type",
         )
 
-        target_length = _normalize_target_length(
-            entry.get("target_length"),
-            field_path=f"documents[{i}].target_length",
+        raw_tl = entry.get("target_length")
+        target_length = (
+            _normalize_target_length_range(
+                raw_tl, field_path=f"documents[{i}].target_length"
+            )
+            if raw_tl is not None
+            else None
+        )
+
+        target_length_overrides = _normalize_target_length_overrides(
+            entry.get("target_length_overrides"),
+            field_path=f"documents[{i}].target_length_overrides",
+        )
+
+        rubric_overrides = _normalize_rubric_overrides(
+            entry.get("rubric_overrides"),
+            field_path=f"documents[{i}].rubric_overrides",
         )
 
         try:
@@ -642,12 +1110,10 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
                 slug=slug,
                 artifact_type=artifact_type,
                 target_length=target_length,
+                target_length_overrides=target_length_overrides,
+                rubric_overrides=rubric_overrides,
             )
         except ValidationError as exc:
-            # Re-raise as ValueError with the field path for a consistent
-            # exception surface. (Pydantic's ValidationError is fine for
-            # programmatic consumers, but the parser's contract is "raise
-            # ValueError with a clear message".)
             raise ValueError(
                 f"BRIEF.documents[{i}]: validation failed — {exc}"
             ) from exc
@@ -678,9 +1144,7 @@ def _on_disk_slug_dirs(project_dir: Path) -> List[str]:
     pre-draft scaffolding. This narrows the on-disk-vs-BRIEF check to
     "started threads only".
     """
-    import re as _re
-
-    version_re = _re.compile(r"^(?P<stem>.+)\.(?P<num>\d+)$")
+    version_re = re.compile(r"^(?P<stem>.+)\.(?P<num>\d+)$")
     out: List[str] = []
     try:
         children = list(project_dir.iterdir())
@@ -816,7 +1280,8 @@ def load_project_brief(
     - Unknown ``artifact_type``.
     - Duplicate slug.
     - Empty ``documents`` list.
-    - Malformed ``target_length`` shape.
+    - Malformed ``target_length`` / ``target_length_overrides`` /
+      ``rubric_overrides`` shape.
 
     Parameters
     ----------
@@ -924,12 +1389,125 @@ def load_project_brief_strict(
     return brief
 
 
+# ---------------------------------------------------------------------------
+# Rubric-overrides convenience API (replaces anvil_config.load_rubric_overrides)
+# ---------------------------------------------------------------------------
+
+
+def load_rubric_overrides_for_slug(
+    project_dir: Path, slug: str
+) -> RubricOverrides:
+    """Return the ``rubric_overrides`` for ``slug`` from ``<project_dir>/BRIEF.md``.
+
+    Lenient convenience wrapper. Returns an empty
+    :class:`RubricOverrides` for every absence path:
+
+    - ``<project_dir>/BRIEF.md`` does not exist.
+    - The BRIEF has no YAML frontmatter or the frontmatter is malformed.
+    - The BRIEF parses but has no entry for ``slug``.
+    - The matching entry has no ``rubric_overrides:`` block.
+
+    Raises ``ValueError`` only on a structurally invalid BRIEF (the
+    same conditions as :func:`load_project_brief`). This is the
+    replacement for the retired
+    ``anvil_config.load_rubric_overrides(thread_dir)`` API; the
+    ``empty-on-absence`` contract is preserved exactly so the reviewer
+    integration in ``rubric_overrides_suffix.py`` continues to work
+    unchanged.
+
+    Parameters
+    ----------
+    project_dir
+        The project root (the directory containing ``BRIEF.md``). For
+        threads under the project layout, this is the parent of the
+        thread directory: ``thread_dir.parent``.
+    slug
+        The document slug (the name of the thread directory under the
+        project root).
+
+    Returns
+    -------
+    RubricOverrides
+        Parsed overrides. Use ``RubricOverrides.is_empty`` to fast-path
+        the no-overrides case.
+    """
+    try:
+        brief = load_project_brief(project_dir)
+    except ValueError:
+        # The BRIEF exists but is structurally invalid. The lenient
+        # contract says "degrade to empty"; propagating a ValueError
+        # here would break the reviewer's pre-#296 zero-impact
+        # behavior for legacy threads. So we swallow.
+        return RubricOverrides()
+    if brief is None:
+        return RubricOverrides()
+
+    doc = brief.document_for_slug(slug)
+    if doc is None or doc.rubric_overrides is None:
+        return RubricOverrides()
+    return doc.rubric_overrides
+
+
+# ---------------------------------------------------------------------------
+# Body-filename helper (issue #295)
+# ---------------------------------------------------------------------------
+
+
+def body_filename_for(slug: str) -> str:
+    """Return the body markdown filename for a memo thread.
+
+    Issue #295 (project-org model lock) pins the body filename
+    convention: every version directory's body markdown **echoes the
+    thread slug** as ``<slug>.md`` (e.g. ``investment-memo.1/`` carries
+    ``investment-memo.md``, ``latency-wall.1/`` carries
+    ``latency-wall.md``). This is the only recognized shape; there is
+    no override mechanism.
+
+    This helper is the single source of truth so a future shape change
+    (vanishingly unlikely under the slug-echo contract) lands in one
+    place. Lifecycle commands and lib modules that need to read or
+    write the body file should call this helper rather than hard-coding
+    ``f"{slug}.md"`` inline.
+
+    Lives in ``project_brief.py`` after the issue #296 consolidation
+    (its prior home, ``anvil_config.py``, was retired). The helper is a
+    one-line ``f"{slug}.md"`` wrapper; placing it next to the project-
+    config schema keeps every project / per-doc convention in one
+    place.
+
+    Parameters
+    ----------
+    slug
+        The thread slug (the directory name under the project root that
+        holds the thread's version dirs). Non-empty string required.
+
+    Returns
+    -------
+    str
+        ``f"{slug}.md"`` verbatim. Caller is responsible for combining
+        with the version dir path (e.g. ``version_dir / body_filename_for(slug)``).
+    """
+    if not isinstance(slug, str) or not slug:
+        raise ValueError(
+            f"body_filename_for(slug) requires a non-empty string; "
+            f"got {slug!r}"
+        )
+    return f"{slug}.md"
+
+
 __all__ = [
     "ArtifactType",
     "BriefDocument",
+    "CalibrationOverride",
+    "MAX_DIM",
+    "MIN_DIM",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
+    "RubricOverrides",
+    "TargetLengthOverrides",
     "TargetLengthRange",
+    "body_filename_for",
     "load_project_brief",
     "load_project_brief_strict",
+    "load_rubric_overrides_for_slug",
 ]

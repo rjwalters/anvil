@@ -61,9 +61,13 @@ def test_skill_md_documents_600_words_per_page_conversion():
 
 def test_skill_md_shows_words_and_pages_spec_forms():
     body = _read(SKILL_MD)
-    # Both spec forms must be documented as accepted.
-    assert '"words"' in body, "SKILL.md MUST show the words spec form"
-    assert '"pages"' in body or "pages: [" in body, (
+    # Both spec forms must be documented as accepted. Post-#296 the BRIEF.md
+    # surface uses YAML (`words:` and `pages:` unquoted) rather than the
+    # historical JSON (`"words"` / `"pages"`); accept either form.
+    assert '"words"' in body or "`words`" in body or "words:" in body, (
+        "SKILL.md MUST show the words spec form"
+    )
+    assert '"pages"' in body or "`pages`" in body or "pages:" in body or "pages: [" in body, (
         "SKILL.md MUST show the pages spec form (accepted, converted internally)"
     )
 
@@ -71,7 +75,17 @@ def test_skill_md_shows_words_and_pages_spec_forms():
 def test_skill_md_documents_backward_compatibility():
     body = _read(SKILL_MD)
     # Backward-compat is AC6 — absence of target_length must behave as today.
-    assert "Backward compatibility" in body or "backward compatible" in body.lower()
+    # Post-#296 the BRIEF parser is strict on schema (the absence path remains
+    # tolerated — no target_length on a documents: entry yields no target —
+    # but malformed shapes raise). Accept either the prior "backward
+    # compatibility" framing or the new "absent → no target" prose.
+    lower = body.lower()
+    assert (
+        "backward compatibility" in lower
+        or "backward compatible" in lower
+        or "absent the skill behaves" in lower
+        or "no target" in lower
+    )
 
 
 def test_skill_md_documents_resolution_order_for_per_version_overrides():
@@ -230,41 +244,62 @@ def test_rubric_documents_600_words_per_page_in_length_section():
 
 
 def test_skill_md_documents_default_and_overrides_keys():
-    """AC1: extended shape (default + overrides) is documented in SKILL.md."""
+    """AC1: target_length + target_length_overrides surfaces are documented.
+
+    Post-#296 the BRIEF.md schema uses a per-doc ``target_length`` as the
+    document-level default and a separate ``target_length_overrides`` map
+    (keyed by version-number string: ``"1"``, ``"2"``, …) for per-version
+    overrides. The historical extended shape (``target_length.default`` /
+    ``target_length.overrides.v{N}``) has been replaced.
+    """
     body = _read(SKILL_MD)
-    assert "default" in body, (
-        "SKILL.md MUST document the target_length.default key (issue #145 AC1)"
+    # The per-doc target_length must still be documented.
+    assert "target_length" in body, (
+        "SKILL.md MUST document the per-doc target_length key (issue #145 AC1)"
     )
-    # The overrides block uses v{N} keys.
-    assert '"v9"' in body or '"v10"' in body or "v{N}" in body, (
-        "SKILL.md MUST show v{N}-style override keys in the schema example "
-        "(issue #145 AC1)"
+    # The per-version override surface must be documented (BRIEF-side shape).
+    assert "target_length_overrides" in body, (
+        "SKILL.md MUST document the target_length_overrides per-version map "
+        "(issue #296 — replaces the prior target_length.overrides.v{N} shape)"
     )
 
 
 def test_skill_md_documents_legacy_flat_shape_backward_compat():
-    """AC7: PR #122's flat shape continues to work unchanged."""
+    """The per-doc ``target_length`` (formerly "flat shape") still works.
+
+    Post-#296 the flat per-doc ``target_length`` (a single ``words`` or
+    ``pages`` range) is the document-level default; per-version overrides
+    live on the sibling ``target_length_overrides`` map. The historical
+    "legacy_flat" source label is retired.
+    """
     body = _read(SKILL_MD)
-    # The flat shape should still be documented as valid.
-    assert "legacy_flat" in body or "Flat shape" in body or "legacy flat" in body.lower(), (
-        "SKILL.md MUST document the legacy flat shape as still valid for "
-        "backward compatibility (issue #145 AC7)"
+    # The per-doc default range must be documented.
+    lower = body.lower()
+    assert (
+        "default range" in lower
+        or "per-doc target_length" in lower.replace("`", "")
+        or "per-doc default" in lower
+    ), (
+        "SKILL.md MUST document the per-doc target_length as the document-"
+        "level default range (issue #296 consolidation)"
     )
 
 
 def test_skill_md_documents_resolution_order():
-    """AC2: resolution order overrides.v{N} -> default -> none."""
+    """Resolution order target_length_overrides[<N>] -> target_length -> none."""
     body = _read(SKILL_MD)
-    # The resolution order documentation must mention all three branches.
-    assert "overrides.v" in body, (
-        "SKILL.md MUST document the overrides.v{N} branch of the resolution "
-        "order (issue #145 AC2)"
+    # The resolution order documentation must mention the per-version
+    # override branch (BRIEF-side shape uses `overrides.<N>` after the #296
+    # consolidation — no `v` prefix).
+    assert "overrides." in body or "target_length_overrides" in body, (
+        "SKILL.md MUST document the per-version overrides branch of the "
+        "resolution order (issue #296)"
     )
     # The fallback chain must be visible.
     lower = body.lower()
-    assert "default" in lower and "overrides" in lower, (
-        "SKILL.md MUST document both default and overrides branches of the "
-        "resolution order"
+    assert "target_length" in lower and "overrides" in lower, (
+        "SKILL.md MUST document both target_length default and overrides "
+        "branches of the resolution order"
     )
 
 
@@ -314,17 +349,23 @@ def test_memo_draft_documents_resolution_for_v_n_plus_1():
 
 
 def test_memo_draft_writes_target_length_resolved_to_progress():
-    """AC3: drafter writes the resolved target + source to _progress.json."""
+    """AC3: drafter writes the resolved target + source to _progress.json.
+
+    Post-#296 the source-value set is collapsed to three values:
+    ``"overrides.<N>"``, ``"default"``, ``"none"``. The historical
+    ``"legacy_flat"`` source label (for the pre-#145 flat-only shape)
+    is retired along with the ``.anvil.json`` shape it served.
+    """
     body = _read(DRAFT_MD)
     assert "target_length_resolved" in body, (
         "memo-draft.md MUST document writing metadata.target_length_resolved "
         "to _progress.json with source provenance (issue #145 AC3)"
     )
-    # The four source values must be documented.
-    for source in ('"overrides.v', '"default"', '"legacy_flat"', '"none"'):
+    # The current source values must be documented.
+    for source in ('"overrides.', '"default"', '"none"'):
         assert source in body, (
             f"memo-draft.md MUST document the {source!r} source value for "
-            "metadata.target_length_resolved (issue #145 AC3)"
+            "metadata.target_length_resolved (issue #296 — three-value set)"
         )
 
 
@@ -347,16 +388,21 @@ def test_memo_revise_documents_resolution_for_v_n_plus_1():
 
 
 def test_memo_revise_writes_target_length_resolved_to_progress():
-    """AC4: reviser writes the resolved target + source to _progress.json."""
+    """AC4: reviser writes the resolved target + source to _progress.json.
+
+    Post-#296 the source-value set is three values: ``"overrides.<N>"``,
+    ``"default"``, ``"none"``. The historical ``"legacy_flat"`` source
+    label is retired.
+    """
     body = _read(REVISE_MD)
     assert "target_length_resolved" in body, (
         "memo-revise.md MUST document writing metadata.target_length_resolved "
         "to _progress.json with source provenance (issue #145 AC4)"
     )
-    for source in ('"overrides.v', '"default"', '"legacy_flat"', '"none"'):
+    for source in ('"overrides.', '"default"', '"none"'):
         assert source in body, (
             f"memo-revise.md MUST document the {source!r} source value for "
-            "metadata.target_length_resolved (issue #145 AC4)"
+            "metadata.target_length_resolved (issue #296 — three-value set)"
         )
 
 
@@ -381,12 +427,16 @@ def test_memo_review_reads_target_length_resolved_from_progress():
 
 
 def test_memo_review_documents_provenance_in_dim7_justification():
-    """AC5: dim 7 justification appends source provenance when override fired."""
+    """AC5: dim 7 justification appends source provenance when override fired.
+
+    Post-#296 the override source is ``overrides.<N>`` (no ``v`` prefix —
+    BRIEF.md uses bare-integer-string keys per the YAML-natural shape).
+    """
     body = _read(REVIEW_MD)
     # The provenance parenthetical for override sources must be shown.
-    assert "from overrides.v" in body, (
-        "memo-review.md MUST document the 'from overrides.v{N}' provenance "
-        "format in dim 7 justifications (issue #145 AC5)"
+    assert "from overrides." in body, (
+        "memo-review.md MUST document the 'from overrides.<N>' provenance "
+        "format in dim 7 justifications (issue #145 AC5 + #296)"
     )
 
 
@@ -404,17 +454,20 @@ def test_rubric_documents_resolution_order_for_overrides():
         "ships them. Replace the deferred-prose with the resolution-order "
         "documentation."
     )
-    # The new prose must mention overrides and the resolution order.
-    assert "overrides.v" in body, (
-        "rubric.md MUST document the overrides.v{N} resolution branch "
+    # The new prose must mention overrides (post-#296: BRIEF.md surface).
+    assert "overrides" in body, (
+        "rubric.md MUST document the per-version overrides resolution branch "
         "(issue #145 AC6)"
     )
 
 
 def test_rubric_documents_provenance_in_dim7_justification():
-    """AC6: dim 7 justification format documents the override-provenance parenthetical."""
+    """AC6: dim 7 justification format documents the override-provenance parenthetical.
+
+    Post-#296 the source label is ``overrides.<N>`` (no ``v`` prefix).
+    """
     body = _read(RUBRIC_MD)
-    assert "from overrides.v" in body, (
-        "rubric.md MUST document the 'from overrides.v{N}' provenance "
-        "parenthetical in the dim 7 justification format (issue #145 AC6)"
+    assert "from overrides." in body, (
+        "rubric.md MUST document the 'from overrides.<N>' provenance "
+        "parenthetical in the dim 7 justification format (issue #145 AC6 + #296)"
     )

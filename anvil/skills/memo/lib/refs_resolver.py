@@ -20,7 +20,7 @@ treat it as a portfolio-level evidence pool that all sibling threads'
 reviewer back-checks and drafter ingestion resolve against, in addition
 to their own ``<thread>/refs/``. Discovery is **opt-in by directory
 presence** — matches anvil's "absence-tolerant, no-manifest" pattern (see
-``anvil_config.py`` §"Tolerance and validation").
+``project_brief.py`` §"Validation discipline").
 
 Public API
 ----------
@@ -44,8 +44,9 @@ Public API
 Algorithm
 ---------
 
-Given a ``thread_dir`` (the thread root containing ``BRIEF.md`` and
-``.anvil.json``; NOT a version subdirectory like ``thread.1/``):
+Given a ``thread_dir`` (the thread root containing the body's
+parent project ``BRIEF.md``; NOT a version subdirectory like
+``thread.1/``):
 
 1. Start with ``[thread_dir / "refs"]`` if it exists and is a directory.
 2. Walk up to ``thread_dir.parent`` (the portfolio dir). If
@@ -54,13 +55,13 @@ Given a ``thread_dir`` (the thread root containing ``BRIEF.md`` and
    pathological setup where ``thread_dir.parent == thread_dir`` does not
    double-count).
 
-The portfolio-level ``<portfolio>/.anvil.json`` declaration of a
-configurable ``shared_refs:`` path is **deferred to a follow-on issue**
-per the curator's recommendation. Directory-presence is the v1 contract;
-adding a manifest-driven override would couple this module to a new
-schema layer for which no canary has yet asked, contrary to the
-"skill-local first, lib promotion later" pattern and the absence-tolerant
-precedent set by ``anvil_config.py``.
+A future BRIEF-level ``shared_refs:`` key (declaring a configurable
+shared-research path) is **deferred to a follow-on issue** per the
+curator's recommendation. Directory-presence is the v1 contract; adding
+a manifest-driven override would couple this module to a new schema
+layer for which no canary has yet asked, contrary to the "skill-local
+first, lib promotion later" pattern and the absence-tolerant precedent
+set by ``project_brief.py``.
 
 Per-thread precedence on filename collision
 -------------------------------------------
@@ -131,8 +132,8 @@ def resolve_refs_dirs(thread_dir: Path) -> List[Path]:
     Parameters
     ----------
     thread_dir
-        The thread root (the directory containing ``BRIEF.md`` and
-        ``.anvil.json``, NOT a version subdirectory like ``thread.1/``).
+        The thread root (the per-doc sibling under the project root,
+        NOT a version subdirectory like ``thread.1/``).
         The function does not require ``thread_dir`` itself to exist — a
         non-existent ``thread_dir`` yields an empty list, since neither
         ``thread_dir / "refs"`` nor ``thread_dir.parent / "research"``
