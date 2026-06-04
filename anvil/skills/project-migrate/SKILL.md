@@ -141,7 +141,7 @@ Test files:
 - `test_project_migrate_detect.py` — shape detection across all fixtures.
 - `test_project_migrate_plan.py` — per-shape plan generation.
 - `test_project_migrate_apply.py` — apply correctness, atomicity, rollback.
-- `test_project_migrate_dry_run_no_mutations.py` — snapshot-and-diff: dry-run
+- `test_project_migrate_dry_run.py` — snapshot-and-diff: dry-run
   leaves the input byte-identical.
 - `test_project_migrate_idempotent.py` — apply on fully-migrated input is a
   no-op (zero diff).
