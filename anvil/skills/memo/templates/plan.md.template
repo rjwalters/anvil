@@ -68,7 +68,7 @@ operator-use comment at top of file).
 | Total expected words Δ | +160 |
 | Source word count | 2150 |
 | Projected new word count | 2310 |
-| Target length window | 2000–2800 words (source: `overrides.v{N+1}`) |
+| Target length window | 2000–2800 words (source: `overrides.<N+1>`) |
 | Target-length flag | `within_target` |
 
 The `Target-length flag` MUST be one of:

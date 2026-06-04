@@ -329,7 +329,7 @@ def resolve_cross_thread_ref(
     ``OSError`` during traversal degrades to a ``"thread not found"``
     or ``"latest unresolvable"`` reason rather than propagating. This
     mirrors the lenient-form precedent across the memo lib
-    (``refs_resolver``, ``project_discovery``, ``anvil_config``):
+    (``refs_resolver``, ``project_discovery``, ``project_brief``):
     consumer-friendly errors that surface as findings, not exceptions.
     """
     portfolio_root = Path(portfolio_root)

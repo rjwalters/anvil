@@ -25,8 +25,8 @@ A single command that an operator (or orchestrating agent) runs to see the state
    - The latest `N` for which `<slug>.{N}/` exists.
    - Which sibling critic dirs exist at that `N`.
    - The verdict (advance/block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present.
-   - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or from `<slug>/.anvil.json` if the per-thread override is set).
-   - The optional `target_length` from `<slug>/.anvil.json` (informational only — the orchestrator does not enforce; it surfaces the declared target alongside the latest version's word count when both are available, so the operator can see at a glance whether the thread is tracking its target).
+   - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (default 4; consumer overrides are documented in SKILL.md).
+   - The optional `target_length` from the document's matching entry in `<project>/BRIEF.md` (informational only — the orchestrator does not enforce; it surfaces the declared target alongside the latest version's word count when both are available, so the operator can see at a glance whether the thread is tracking its target).
 3. Compute the state-machine position per thread using the table in `SKILL.md`.
 4. Recommend the next command per thread:
 

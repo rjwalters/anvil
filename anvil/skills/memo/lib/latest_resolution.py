@@ -46,7 +46,7 @@ Public API
     resolution is possible. **Non-throwing**: filesystem errors during
     traversal degrade to ``None`` rather than propagating, mirroring the
     lenient-form precedent across the memo lib (``refs_resolver``,
-    ``project_discovery``, ``anvil_config``).
+    ``project_discovery``, ``project_brief``).
 
 ``LATEST``
     The literal string ``"latest"`` — the symbolic version specifier.
@@ -144,7 +144,7 @@ def resolve_latest(thread_dir: Path, slug: str) -> Optional[Path]:
     symlink loop, a permission error, a vanished directory) degrades to
     ``None`` rather than propagating. The lenient-form precedent across
     the memo lib (``refs_resolver``, ``project_discovery``,
-    ``anvil_config``) is the consumer-friendly contract — errors surface
+    ``project_brief``) is the consumer-friendly contract — errors surface
     as findings, not exceptions.
 
     **Symlink precedence**: a symlink at ``<slug>.latest`` wins even if
