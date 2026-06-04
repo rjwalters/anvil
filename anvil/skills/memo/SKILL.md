@@ -112,6 +112,55 @@ This is the **intra-memo** leg of the back-check triangle (memo A summary ↔ me
 
 In addition to the intra-memo back-check above and the refs back-check (memo A claim ↔ memo A `refs/`), the reviewer performs a **cross-thread citation back-check** on every memo that cites other anvil threads — see `rubric.md` §"Cross-thread citation back-check (dim 3)" and `commands/memo-review.md` §Procedure step 4f. The back-check enumerates cross-thread citations in `memo.md` (literal-path / short-form / relative-path / backtick-wrapped shapes), resolves each to the cited thread's latest version, and classifies the section anchor as `ANCHOR-FOUND` / `ANCHOR-MISSING-BUT-THREAD-PRESENT` / `ANCHOR-CONTRADICTED` / `THREAD-NOT-FOUND` with severity `critical` / `important` / `suggestion`. An `ANCHOR-CONTRADICTED` finding at `critical` severity (e.g., a cite whose cited content materially contradicts the claim the citing memo attributes to it) raises a `Cross-thread cite: ANCHOR-CONTRADICTED` critical flag and forces `advance: false` regardless of the rubric total. This closes the **back-check triangle** (memo A claim ↔ memo A `refs/` + memo A summary ↔ memo A §N + memo A claim ↔ memo B §N). Phase A ships as reviewer-prose discipline (no Python detector); a Phase B detector at `anvil/skills/memo/lib/cross_thread_cite.py` is a follow-on gated on a second canary instance. The canary-anchor fixture under `tests/fixtures/cross_thread_cite_consistency/raytheon_brasidas_stale_anchor/` preserves the Studio Raytheon-pitch memo.1 → brasidas-synthesis.2 §3.1 stale-anchor catch as the regression-test anchor for Phase B.
 
+### Project-level `BRIEF.md` (multi-document projects)
+
+Two on-disk layouts are recognized by the memo lifecycle (see `anvil/skills/memo/lib/project_discovery.py` — sub-deliverable 1 of #283):
+
+1. **Classic siblings-under-portfolio.** Each thread is a standalone directory with its own `BRIEF.md` and (optionally) its own `.anvil.json`. This is the documented v0 shape — every existing memo thread uses it and continues to work unchanged.
+2. **Project-as-thread-root.** A single project-level `BRIEF.md` at the project root carries shared context (audience, voice, hard rules) and enumerates per-document metadata in its YAML frontmatter. Per-document slug directories hold version dirs only — no per-thread `BRIEF.md` is required. This is the studio-canary-driven shape for multi-document projects:
+
+   ```
+   <project>/
+     BRIEF.md                ← project-level BRIEF (frontmatter + prose)
+     .anvil.json             ← project-level defaults (sub-deliverable 3 / #286)
+     <slug-a>/
+       <slug-a>.1/ ...
+     <slug-b>/
+       <slug-b>.1/ ...
+     research/               ← shared evidence pool (issue #281)
+   ```
+
+The project BRIEF's frontmatter shape:
+
+```yaml
+---
+project: <name>
+audience: [<primary>, <secondary>, ...]
+hard_rules: [<rule>, <rule>, ...]
+documents:
+  - slug: <slug-a>
+    artifact_type: <one-of-the-registered-types>
+    target_length: { words: [min, max] }
+  - slug: <slug-b>
+    artifact_type: <one-of-the-registered-types>
+    target_length: { pages: [min, max] }
+---
+```
+
+**Registered `artifact_type` values** (closed-ended enum per Open Question #5 of #283):
+
+- `investment-memo` — ranked-recommendation invest / pass / conditional with check size. The default memo shape.
+- `position-paper` — argumentative case for a specific viewpoint (e.g., the canary's "latency wall" thesis).
+- `tactical-plan` — execution plan with prioritized actions and ownership.
+- `vision-document` — long-horizon technical or strategic vision.
+- `descriptive-thesis` — descriptive case for a team / market / shape (e.g., the canary's "team thesis").
+
+Unknown `artifact_type` values are rejected with an error listing the registered set. Adding a new artifact type requires a code change in `anvil/skills/memo/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES`.
+
+**Parser.** The typed parser at `anvil/skills/memo/lib/project_brief.py::load_project_brief(project_dir)` returns a `ProjectBrief` (or `None` if no BRIEF is present). The strict variant `load_project_brief_strict(project_dir)` raises `FileNotFoundError` on absence and `ValueError` on any schema violation (unknown `artifact_type`, duplicate slug, malformed `target_length`, empty `documents` list, etc.). Both loaders accept an optional `validate_dirs=True` flag that walks the project directory and applies the slug-directory divergence rule (Open Question #1 of #283): listed-but-missing slugs warn and proceed (a draft may not have been started yet); on-disk-but-unlisted slugs raise (configuration drift that would break overlay selection downstream).
+
+**Status.** This BRIEF parser is the load-bearing primitive for sub-deliverable 3 of #283 (rubric overlay selection from project BRIEF, #286) and the cross-thread reference validation in #287. It does NOT yet read `<project>/.anvil.json` — that's deferred to #286. Lifecycle commands (`memo-draft`, `memo-review`, etc.) do not yet dispatch on project-BRIEF layout; the wiring lands with #286.
+
 ### Optional `.latest` convenience symlinks
 
 Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`, etc.) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Resolution semantics for the memo lifecycle commands:
