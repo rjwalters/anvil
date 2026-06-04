@@ -2,9 +2,25 @@
 
 ## [Unreleased]
 
-### Added — `anvil:project-migrate` skill (issue #297, bridge for the three-part model lock)
+## [0.3.0] — 2026-06-04
 
-- NEW skill `anvil/skills/project-migrate/` — one-shot bridge tool that migrates existing studio projects to the post-#295 / post-#296 canonical model (project root + `BRIEF.md` absorbing all anvil config + `<slug>.md` body filename + `<project>/<slug>/<slug>.<N>/` shape). Closes the third leg of the three-part model lock (#295 + #296 + #297).
+**Project-organization model lock + canary-driven completion of the multi-thread named-document layout.** v0.3.0 closes out the #283 epic (project-as-thread-root layout discovery, project-level BRIEF.md parser, cross-thread reference validation, `.latest` symlink resolution, rubric overlay selection from BRIEF, shared `research/`) and locks the model with the three-part contract change: body filename echoes doc slug (#295), BRIEF.md absorbs all per-project anvil config (#296), and a new `anvil:project-migrate` skill bridges existing projects (#297). Skill count: 8 → 9.
+
+### Added — Multi-thread named-document project layout (issue #283 epic, 6 sub-deliverables)
+
+The full project-as-thread-root layout shipped across six sub-deliverables, matching the canary's brains-for-robots model where one project (e.g. `bessemer`, `raytheon-pitch-strategy`) holds multiple named documents (`investment-memo`, `team-thesis`, `execution-plan`, `latency-wall`, `technical-vision`) as siblings inside `<project>/<slug>/<slug>.<N>/`.
+
+- **Sub-deliverable 1 — dual-layout thread-root discovery** (#284 / PR #290). `anvil/skills/memo/lib/project_discovery.py` walks upward from any path and recognizes the enclosing thread root. `discover_thread_root()` returns a typed `DiscoveryResult` carrying `thread_root`, `layout`, `project_root`, and `slug`. (The classic-layout dispatch ships here for v0.2.0 back-compat, then is removed in #295 — see Removed below.)
+- **Sub-deliverable 2 — typed project BRIEF parser** (#285 / PR #292). `anvil/skills/memo/lib/project_brief.py` defines pydantic models for the project BRIEF: `ProjectBrief` (`project` / `audience` / `hard_rules` / `documents`) and `BriefDocument` (`slug` / `artifact_type` / `target_length`). Closed-ended `ArtifactType` enum with five seed values (`investment-memo`, `position-paper`, `tactical-plan`, `vision-document`, `descriptive-thesis`) — adding a new type is a documented anvil feature request. Lenient + strict loaders; optional `validate_dirs` flag for slug-vs-directory divergence checking (listed-but-missing → warn, on-disk-but-unlisted → hard error).
+- **Sub-deliverable 3 — rubric overlay selection from BRIEF** (#286 / PR #294, absorbs closed #278). `anvil/skills/memo/lib/rubric_overlays.py` plus per-artifact-type overlay JSONs under `anvil/skills/memo/rubric_overlays/`. The reviewer resolves the active overlay by reading the project BRIEF's `artifact_type` for the current thread's slug and applies the matching overlay on top of the base /44 rubric. Five overlays ship at v0.3.0 matching the five registered artifact types. Closes #278 (per-thread rubric overlays for non-memo artifact types — folded into this issue's BRIEF-driven dispatch).
+- **Sub-deliverable 4 — cross-thread reference validation** (#287 / PR #291). `anvil/skills/memo/lib/cross_thread_refs.py` walks the project's siblings during reviewer back-check (dim 3) and flags broken `see <slug>.<N> §<section>` references: cite-target slug doesn't exist, version doesn't exist, or the cited section anchor is missing. New `_review.json.cross_thread_refs` block carries the audit trail.
+- **Sub-deliverable 5 — canonical `.latest` symlink resolution** (#288 / PR #293). `anvil/skills/memo/lib/latest_resolution.py` resolves `<slug>.latest/` to the highest-numbered concrete version dir, with optional pinned-symlink override. SKILL.md documents the convention; the framework consistently respects whichever version `.latest` points at.
+- **Project-level shared `research/`** (#280 / PR #281). `<project>/research/` is a first-class peer of the document folders — cross-thread evidence pool that any sibling's reviewer can cite. Composes with the existing per-thread `<slug>/refs/`.
+
+### Added — `anvil:project-migrate` skill (issue #297, model-lock bridge)
+
+NEW skill `anvil/skills/project-migrate/` — one-shot bridge tool that migrates existing studio projects to the post-#295 / post-#296 canonical model (project root + `BRIEF.md` absorbing all anvil config + `<slug>.md` body filename + `<project>/<slug>/<slug>.<N>/` shape). Closes the third leg of the three-part model lock (#295 + #296 + #297). Skill count: 8 → 9.
+
 - **Commands**: `/anvil:project-migrate <project-dir>` (dry-run, NO mutations), `/anvil:project-migrate <project-dir> --apply` (execute), `/anvil:project-migrate <project-dir> --report` (markdown report only).
 - **Three recognized current shapes**: pre-#283 classic (`<stem>.N/` sibling version dirs, no project BRIEF), post-#283 with `.anvil.json` (project BRIEF + per-thread `.anvil.json`), fully-migrated (target shape — no-op).
 - **Per-project steps**: detect → plan → (optional) apply → verify. Each `DocumentPlan` is independently applyable; rollback is per-doc via a `<project>/.anvil-migrate-rollback/<slug>/` snapshot.
@@ -14,7 +30,36 @@
 - **Idempotent**: re-running `--apply` on a fully-migrated project is byte-identical zero-diff.
 - **rubric.md OMITTED**: migration output is mechanical; no /40 dimension to score.
 - **`anvil:memo-migrate` carve-out**: the LaTeX bootstrap path continues to write a legacy `.anvil.json`; `project-migrate` runs as the documented post-step that consolidates it into the project BRIEF.
-- Touched: NEW `anvil/skills/project-migrate/SKILL.md`, NEW `anvil/skills/project-migrate/commands/project-migrate.md`, NEW `anvil/skills/project-migrate/lib/` (`__init__.py`, `detect.py`, `plan.py`, `apply.py`, `verify.py`, `orchestrate.py`), NEW `anvil/skills/project-migrate/tests/` (six `test_project_migrate_*.py` files + `_fixtures.py` programmatic fixture builders + `conftest.py`), MODIFIED `anvil/skills/README.md` (skill index), MODIFIED `CLAUDE.md` (skill count 8 → 9).
+- **Per-doc rollback fault-injection test** (#301 / PR #302) exercises the `_restore_doc` branch via `_rename` monkeypatch — verifies failing doc rolls back to pre-migration shape while successfully-migrated prior docs stay migrated.
+- Touched: NEW `anvil/skills/project-migrate/SKILL.md`, NEW `anvil/skills/project-migrate/commands/project-migrate.md`, NEW `anvil/skills/project-migrate/lib/` (`detect.py`, `plan.py`, `apply.py`, `verify.py`, `orchestrate.py`), NEW `anvil/skills/project-migrate/tests/` (seven `test_project_migrate_*.py` files + `_fixtures.py` + `conftest.py`), MODIFIED `anvil/skills/README.md` and top-level `README.md` (skill index), MODIFIED `CLAUDE.md` (skill count 8 → 9).
+
+### Changed — project-organization model lock (issues #295 + #296)
+
+The structural primitives shipped in #283 (sub-deliverables 1–5) get the contracts on top of them tightened to one shape:
+
+- **Body filename echoes doc slug** (#295 / PR #298). The default body is `<slug>.md` (e.g. `investment-memo.md`, `team-thesis.md`), not skill-fixed `memo.md`. Anvil discovery is doc-name-agnostic; macOS Spotlight, "Open Recent", and shell output all carry the document identity. `body_filename_for(slug)` is the single resolution helper (originally added in `anvil_config.py` here, then moved to `project_brief.py` in #296 when `anvil_config.py` was deleted). The override mechanism in the prior `.anvil.json` shape is removed because the new echo default makes it redundant.
+- **BRIEF.md absorbs all per-project anvil config** (#296 / PR #299). `<project>/BRIEF.md` is the single config locus; per-thread `.anvil.json` files are no longer read or written by the live pipeline. `BriefDocument` grows optional `target_length_overrides` (per-version override map) and `rubric_overrides` (preserves PR #265's calibration-suffix shape verbatim) under each `documents:` entry. `anvil/skills/memo/lib/anvil_config.py` is deleted entirely (711 lines); its `load_rubric_overrides(thread_dir)` API is replaced by `project_brief.load_rubric_overrides_for_slug(project_dir, slug)` preserving the empty-on-absence contract. `anvil/skills/memo/templates/BRIEF.rubric-overrides.md.example` ships as the new worked example (replaces the deleted `.anvil.json.synthesis-brief.example` and `.anvil.json.feedback-memo.example`).
+
+### Fixed — `anvil:memo-render` pandoc 3.x compat (issue #277 / PR #289)
+
+`anvil/skills/memo/lib/render_gate.py` and the xelatex template gain a pandoc 3.x emission compat block. Recent pandoc emits LaTeX requiring packages the template didn't load; the fix backstops the canary's render-gate against the regression without pinning pandoc.
+
+### Removed — `LAYOUT_CLASSIC` dual-layout fallback (issue #295)
+
+`anvil/skills/memo/lib/project_discovery.py` no longer returns `LAYOUT_CLASSIC`. The per-thread-BRIEF layout (with no project root) is gone — every memo thread now lives inside a project root with a project-level BRIEF.md. The `LAYOUT_CLASSIC` constant and its branches in `_resolve_layout` / `discover_thread_root` are deleted. Stray threads without an acknowledging project BRIEF return `None` from discovery. The classic-layout test cases were either deleted or converted to the project-brief shape; the `classic-portfolio` fixture under `tests/fixtures/project_brief/` was removed.
+
+### Removed — `.anvil.json` per-thread runtime config (issue #296)
+
+`anvil/skills/memo/lib/anvil_config.py` deleted in full (711 lines), plus its test surface (`test_anvil_config.py`, `test_anvil_json_examples_roundtrip.py`) and the `.anvil.json.*.example` templates. All `anvil_config` consumers now read from BRIEF.md. The one intentional carve-out: `anvil/skills/memo/lib/migrate.py` (the LaTeX bootstrap path) still writes a legacy `.anvil.json` as transient output that `anvil:project-migrate` then consolidates — documented in both `commands/memo-migrate.md` §"`.anvil.json` legacy note" and `project-migrate/SKILL.md` §"Relationship to memo-migrate".
+
+### Maintenance
+
+- **Post-#297 polish bundle** (#301 / PR #302). Top-level `README.md` skill count 8 → 9 and project-migrate skill table row, `project-migrate/SKILL.md` line 144 test-filename drift fix, per-doc rollback fault-injection test (`test_project_migrate_rollback.py`, 4 assertions exercising the `_restore_doc` branch), and `apply.py` `_rewrite_file` count math rewritten with `text.count(old_string)` for clarity.
+- **Convictions ledger residuals cleanup** (#303 / PR #304). Removed three dead references to the killed-by-#229 `_convictions.md` artifact: `memo-revise.md` "Convictions section when `_convictions.md` exists (legacy)" bullet, the `plan.md.template` convictions block, and the `test_template_documents_convictions_section` test. The lightweight `Resolution: declined — see prior conviction at <anchor>` mechanism in the regular `changelog.md` is preserved untouched at `memo-revise.md` lines 49, 265, 366.
+
+### Acknowledged unsolved (architect placeholder)
+
+- **#228 — cross-version conviction carry-forward** remains open as a `loom:architect` placeholder per the curator's 2026-06-03 defer-ratification verdict. The unsolved problem (firm convictions silently re-litigated in subsequent revise passes) is real; the #142 `_convictions.md` primitive was the wrong shape (write-only on advance per #225; wrong trigger per #226); no concrete redesign has emerged and none of the three re-opening triggers from #228's body has fired. v0.3.0 leaves it untouched.
 
 ## [0.2.0] — 2026-06-03
 

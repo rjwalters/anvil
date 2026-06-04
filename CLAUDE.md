@@ -1,6 +1,6 @@
 # Anvil - Repository Guide
 
-**Anvil Version**: 0.2.0
+**Anvil Version**: 0.3.0
 **Status**: v0.2.0 — canary-hardened; 9 skills shipped (8 artifact-class skills + `anvil:project-migrate` bridge tool); memo + proposal rubrics moved to /44 (dim 9 *Rhetorical economy*); proposal synthesis pipeline + memo rubric_overrides ship in this release. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
