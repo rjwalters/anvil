@@ -129,5 +129,6 @@ most likely v10 edits if the bridge closes on the projected timeline.
 - **Compression target.** v9 carries a lot of migration scaffolding (the
   read-order section, the explicit v8 delta callouts). v10 should
   compress these — once the migration is settled, the thread no longer
-  needs to defend the port. Expect a tighter `target_length` in
-  `.anvil.json` for v10.
+  needs to defend the port. Expect a tighter `target_length` (or a
+  per-version override under `target_length_overrides`) on the
+  document's BRIEF entry for v10.

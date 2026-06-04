@@ -36,5 +36,5 @@ three.
 | Total expected words Δ | +290 (gross before declines) / +170 (net after declines) |
 | Source word count | 2400 |
 | Projected new word count | 2570 (after declines) |
-| Target length window | 2200–2600 words (source: `overrides.v4`) |
+| Target length window | 2200–2600 words (source: `overrides.4`) |
 | Target-length flag | `within_target` |

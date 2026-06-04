@@ -1,26 +1,29 @@
 """Calibration-suffix attachment for ``rubric_overrides`` reviewer integration.
 
 Sub-issue 2 of #233 (#265) — the reviewer-integration deliverable. Wires
-``anvil_config.load_rubric_overrides`` into the ``memo-review`` lifecycle so
-that any per-dimension ``dim_N_calibration`` value declared in
-``<thread>/.anvil.json`` appears as a verbatim suffix on that dimension's
-justification in both ``_review.json`` and ``scoring.md``.
+the per-doc ``rubric_overrides`` block from ``BRIEF.md`` (issue #296) into
+the ``memo-review`` lifecycle so that any per-dimension
+``dim_N_calibration`` value declared on a document's BRIEF entry appears
+as a verbatim suffix on that dimension's justification in both
+``_review.json`` and ``scoring.md``.
 
-The schema-of-record for the loader is ``anvil/skills/memo/lib/anvil_config.py``
-(sub-issue 1 / PR #267). This module is the thin glue between the loader and
-the reviewer's per-dimension scoring write path: it accepts a
+The schema-of-record for the loader is
+``anvil/skills/memo/lib/project_brief.py`` (issue #296 consolidation of
+the prior ``anvil_config.py``). This module is the thin glue between the
+loader and the reviewer's per-dimension scoring write path: it accepts a
 ``RubricOverrides`` instance (or ``None``) and a justification string, and
-returns the suffix-appended justification when a calibration applies, or the
-input justification unchanged otherwise.
+returns the suffix-appended justification when a calibration applies, or
+the input justification unchanged otherwise.
 
 Why this lives in its own module
 --------------------------------
-``anvil_config.py`` is the schema + reader and is intentionally side-effect-
-free — it knows nothing about reviewer output. This module owns the suffix
-formatting contract (the verbatim ``"calibration applied: <override text>"``
-shape) and the per-dimension dispatch. Splitting the two preserves the
-schema-reader / consumer separation that lets sub-issue 1 stay
-reviewer-agnostic and lets this module stay independently testable.
+``project_brief.py`` is the schema + reader and is intentionally
+side-effect-free — it knows nothing about reviewer output. This module
+owns the suffix formatting contract (the verbatim ``"calibration applied:
+<override text>"`` shape) and the per-dimension dispatch. Splitting the
+two preserves the schema-reader / consumer separation that lets the
+loader stay reviewer-agnostic and lets this module stay independently
+testable.
 
 The split mirrors the existing precedent in this skill: ``memo_image_refs.py``
 (the lint detector) and the reviewer's ``_summary.md`` write path are
@@ -65,10 +68,11 @@ calibration text remains the verbatim record.
 Zero-impact when overrides absent
 ---------------------------------
 When ``rubric_overrides`` is ``None`` (the empty-state from the loader for
-threads without a ``.anvil.json``, without a ``rubric_overrides`` block, or
-with a malformed block) the helper returns the input justification
-unchanged. The reviewer's per-dimension write path is **byte-identical** to
-its pre-#233 behavior. This is the AC3 zero-impact contract from #265.
+threads without a project BRIEF, without a matching ``documents:`` entry,
+or whose entry has no ``rubric_overrides:`` block) the helper returns the
+input justification unchanged. The reviewer's per-dimension write path is
+**byte-identical** to its pre-#233 behavior. This is the AC3 zero-impact
+contract from #265.
 
 This same zero-impact behavior applies dimension-by-dimension: a dimension
 without a ``dim_<N>_calibration`` declared returns the input justification
@@ -100,7 +104,7 @@ This module is intentionally **skill-local** under
 ``anvil/skills/memo/lib/`` per the CLAUDE.md "skill-local first, lib
 promotion later" pattern. Promotion to ``anvil/lib/`` is queued for the
 second-consumer trigger (likely ``anvil:report`` or ``anvil:pub`` if they
-adopt subtype calibration), same as the loader at ``anvil_config.py``.
+adopt subtype calibration), same as the loader at ``project_brief.py``.
 """
 
 from __future__ import annotations
@@ -108,15 +112,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-# anvil_config is a sibling module under anvil/skills/memo/lib/. Import using
-# the package-relative form so tests under tests/test_*.py and the production
-# reviewer code path both resolve the same module.
+# project_brief is a sibling module under anvil/skills/memo/lib/ (it owns
+# the typed ``RubricOverrides`` model after the issue #296 consolidation).
+# Import using the package-relative form so tests under tests/test_*.py
+# and the production reviewer code path both resolve the same module.
 try:
     # Production: ``anvil`` is on PYTHONPATH as an installable package.
-    from anvil.skills.memo.lib.anvil_config import RubricOverrides
+    from anvil.skills.memo.lib.project_brief import RubricOverrides
 except ImportError:  # pragma: no cover
     # Test / standalone path: the tests add the lib dir to sys.path directly.
-    from anvil_config import RubricOverrides  # type: ignore[no-redef]
+    from project_brief import RubricOverrides  # type: ignore[no-redef]
 
 
 # The verbatim suffix prefix shape. Per the issue body of #233 and AC2 of
@@ -169,8 +174,9 @@ def format_calibration_suffix(text: str) -> str:
 
     This is a pure function; it does not touch any I/O and does not validate
     ``text`` beyond the type contract. The loader at
-    ``anvil_config.load_rubric_overrides`` is responsible for rejecting
-    empty / non-string override values; this helper trusts its input.
+    ``project_brief.load_rubric_overrides_for_slug`` is responsible for
+    rejecting empty / non-string override values; this helper trusts its
+    input.
 
     Parameters
     ----------
@@ -220,8 +226,8 @@ def apply_calibration_to_justification(
         empty when not yet written.
     overrides
         The parsed ``RubricOverrides`` from
-        ``anvil_config.load_rubric_overrides``, or ``None`` when no
-        overrides are configured for this thread.
+        ``project_brief.load_rubric_overrides_for_slug``, or ``None``
+        when no overrides are configured for this thread.
     dimension
         The memo rubric dimension number (1-9). Out-of-range values silently
         return the input justification — the loader already validates the

@@ -1,8 +1,9 @@
 """Tests for the rubric_overrides reviewer-integration helper (issue #265).
 
 Covers sub-issue 2 of #233 — the reviewer-side suffix attachment that wires
-the typed loader at ``anvil/skills/memo/lib/anvil_config.py`` (sub-issue 1 /
-PR #267, commit fd14997) into the ``memo-review`` lifecycle.
+the typed loader at ``anvil/skills/memo/lib/project_brief.py`` (absorbed the
+schema from the prior ``anvil_config.py`` under the issue #296
+consolidation) into the ``memo-review`` lifecycle.
 
 The four AC scenarios from #265 each have a dedicated test class:
 
@@ -18,8 +19,9 @@ The four AC scenarios from #265 each have a dedicated test class:
    identical to their inputs.
 4. **Zero-impact when overrides absent** — ``TestZeroImpactAbsent``: when
    the loader returns ``None`` or an empty ``RubricOverrides`` (no
-   ``.anvil.json``, no ``rubric_overrides`` block, or a malformed block),
-   the helper is a byte-identical pass-through across all 9 dimensions.
+   ``BRIEF.md``, no per-doc ``rubric_overrides:`` block, no matching
+   document entry, or a malformed BRIEF), the helper is a byte-identical
+   pass-through across all 9 dimensions.
 
 A fifth class — ``TestVerbatimContract`` — pins the load-bearing audit-
 trail contract: the override text is reproduced verbatim with no rewording,
@@ -37,6 +39,7 @@ or ``pytest anvil/skills/memo/tests/``.
 from __future__ import annotations
 
 import sys
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -44,12 +47,12 @@ from pathlib import Path
 # The memo skill keeps its lib modules under its own ``lib/`` per the
 # CLAUDE.md "skill-local first, lib promotion later" pattern. Add it to
 # ``sys.path`` so tests import without a package install step — mirrors
-# ``test_anvil_config.py`` and ``test_memo_image_refs.py`` exactly.
+# ``test_brief_rubric_overrides.py`` and ``test_memo_image_refs.py``.
 _HERE = Path(__file__).resolve().parent
 _LIB = _HERE.parent / "lib"
 sys.path.insert(0, str(_LIB))
 
-from anvil_config import (  # noqa: E402
+from project_brief import (  # noqa: E402
     CalibrationOverride,
     RubricOverrides,
 )
@@ -343,7 +346,7 @@ class TestZeroImpactAbsent(unittest.TestCase):
         per-version target). The reviewer's calibration-suffix path is
         scoped to ``dim_N_calibration`` only.
         """
-        from anvil_config import TargetLengthRange
+        from project_brief import TargetLengthRange
 
         overrides = RubricOverrides(
             target_length=TargetLengthRange(
@@ -422,54 +425,59 @@ class TestLoaderIntegration(unittest.TestCase):
 
     These tests exercise the full pipeline a reviewer agent runs:
 
-    1. Read ``<thread>/.anvil.json`` via ``load_rubric_overrides``.
+    1. Read ``<project>/BRIEF.md`` via ``load_rubric_overrides_for_slug``.
     2. Apply the returned ``RubricOverrides`` to a list of per-dim scores
        via ``apply_calibrations_to_scores``.
 
     This is the integration test for the AC contract:
-    *"reads ``rubric_overrides`` from ``.anvil.json`` and applies per-
-    dimension calibration prose as a suffix to each affected dimension's
-    justification"*.
+    *"reads ``rubric_overrides`` from the matching ``documents:`` entry
+    of the project BRIEF and applies per-dimension calibration prose as
+    a suffix to each affected dimension's justification"* — updated from
+    PR #265's prior ``.anvil.json`` reader contract by the issue #296
+    consolidation.
     """
+
+    def _write_brief(self, project_dir: Path, frontmatter: str) -> None:
+        project_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "BRIEF.md").write_text(
+            f"---\n{frontmatter}\n---\n\n# Project BRIEF\n",
+            encoding="utf-8",
+        )
 
     def test_full_synthesis_brief_pipeline(self) -> None:
         """The brasidas-synthesis canary shape (issue #233 worked example)
         produces the expected per-dim suffix attachments."""
-        import json
         from tempfile import TemporaryDirectory
 
-        from anvil_config import load_rubric_overrides
+        from project_brief import load_rubric_overrides_for_slug
 
         with TemporaryDirectory() as td:
-            thread_dir = Path(td) / "brasidas-synthesis"
-            thread_dir.mkdir()
-            payload = {
-                "rubric_overrides": {
-                    "memo_subtype": "synthesis-brief",
-                    "dim_1_calibration": (
-                        "decision-framework — score on framework clarity + "
-                        "sub-recommendation sharpness, not on single ranked "
-                        "recommendation"
-                    ),
-                    "dim_5_calibration": (
-                        "defers to underlying market models — score on "
-                        "integration quality not on fresh sizing"
-                    ),
-                    "dim_6_calibration": (
-                        "defers to underlying market models — score on "
-                        "whether financial framing supports positioning"
-                    ),
-                    "dim_7_calibration": (
-                        "target length 9000-13000 words; score against "
-                        "declared target"
-                    ),
-                }
-            }
-            (thread_dir / ".anvil.json").write_text(
-                json.dumps(payload), encoding="utf-8"
-            )
+            project_dir = Path(td) / "studio-canary"
+            frontmatter = textwrap.dedent(
+                """\
+                project: studio-canary
+                audience: [studio]
+                hard_rules: []
+                documents:
+                  - slug: brasidas-synthesis
+                    artifact_type: descriptive-thesis
+                    rubric_overrides:
+                      memo_subtype: synthesis-brief
+                      dim_1_calibration: >-
+                        decision-framework — score on framework clarity + sub-recommendation sharpness, not on single ranked recommendation
+                      dim_5_calibration: >-
+                        defers to underlying market models — score on integration quality not on fresh sizing
+                      dim_6_calibration: >-
+                        defers to underlying market models — score on whether financial framing supports positioning
+                      dim_7_calibration: >-
+                        target length 9000-13000 words; score against declared target
+                """
+            ).rstrip()
+            self._write_brief(project_dir, frontmatter)
 
-            overrides = load_rubric_overrides(thread_dir)
+            overrides = load_rubric_overrides_for_slug(
+                project_dir, "brasidas-synthesis"
+            )
             self.assertFalse(overrides.is_empty)
 
             # Build all 9 per-dim scores with placeholder prose.
@@ -508,23 +516,24 @@ class TestLoaderIntegration(unittest.TestCase):
                     f"dim {n} should be unchanged",
                 )
 
-    def test_thread_without_anvil_json_is_zero_impact(self) -> None:
-        """A thread with no ``.anvil.json`` produces byte-identical output.
+    def test_project_without_brief_is_zero_impact(self) -> None:
+        """A project with no ``BRIEF.md`` produces byte-identical output.
 
-        This is the load-bearing pre-#233 compat contract: existing memos
-        with no ``.anvil.json`` see no behavior change after the reviewer
-        is wired to load rubric_overrides.
+        Load-bearing pre-#233 compat: existing memos that live outside a
+        project layout (or under a project root that does not carry a
+        BRIEF) see no behavior change after the reviewer is wired to
+        load rubric_overrides.
         """
         from tempfile import TemporaryDirectory
 
-        from anvil_config import load_rubric_overrides
+        from project_brief import load_rubric_overrides_for_slug
 
         with TemporaryDirectory() as td:
-            thread_dir = Path(td) / "legacy-thread"
-            thread_dir.mkdir()
-            # No .anvil.json written.
+            project_dir = Path(td) / "legacy-project"
+            project_dir.mkdir()
+            # No BRIEF.md written.
 
-            overrides = load_rubric_overrides(thread_dir)
+            overrides = load_rubric_overrides_for_slug(project_dir, "some-slug")
             self.assertTrue(overrides.is_empty)
 
             scores = [
@@ -535,29 +544,33 @@ class TestLoaderIntegration(unittest.TestCase):
             for orig, new in zip(scores, result):
                 self.assertEqual(orig.justification, new.justification)
 
-    def test_thread_with_anvil_json_but_no_rubric_overrides_block_is_zero_impact(
+    def test_project_with_brief_but_no_rubric_overrides_block_is_zero_impact(
         self,
     ) -> None:
-        """A thread that has ``.anvil.json`` for other purposes (e.g.,
-        ``max_iterations``, ``target_length``) but no ``rubric_overrides``
+        """A project BRIEF with a document entry but no ``rubric_overrides:``
         block sees zero suffix attachments."""
-        import json
         from tempfile import TemporaryDirectory
 
-        from anvil_config import load_rubric_overrides
+        from project_brief import load_rubric_overrides_for_slug
 
         with TemporaryDirectory() as td:
-            thread_dir = Path(td) / "thread-with-config"
-            thread_dir.mkdir()
-            payload = {
-                "max_iterations": 8,
-                "target_length": {"words": [1800, 2400]},
-            }
-            (thread_dir / ".anvil.json").write_text(
-                json.dumps(payload), encoding="utf-8"
-            )
+            project_dir = Path(td) / "uncalibrated-project"
+            frontmatter = textwrap.dedent(
+                """\
+                project: uncalibrated-project
+                audience: [me]
+                hard_rules: []
+                documents:
+                  - slug: thread-with-config
+                    artifact_type: investment-memo
+                    target_length: { words: [1800, 2400] }
+                """
+            ).rstrip()
+            self._write_brief(project_dir, frontmatter)
 
-            overrides = load_rubric_overrides(thread_dir)
+            overrides = load_rubric_overrides_for_slug(
+                project_dir, "thread-with-config"
+            )
             self.assertTrue(overrides.is_empty)
 
             scores = [

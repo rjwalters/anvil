@@ -16,7 +16,7 @@ Composition order (top-to-bottom precedence, last-wins):
 
     base /44 rubric (rubric.md)
         + artifact-type overlay (this module)
-            + per-thread rubric_overrides (anvil_config.py / issue #233)
+            + per-doc rubric_overrides (project_brief.py / issue #233 + #296)
 
 The investment-memo overlay is identity (zero adjustments) — a thread
 with ``artifact_type: investment-memo`` in its project BRIEF behaves

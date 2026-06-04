@@ -125,5 +125,5 @@ most likely next-version edits.
   into a watch-list with named triggers (e.g. "revisit if DTC repeat
   rate clears 35% at $40 AOV").
 - Either way, expect v2 to compress: v1 is the exploratory pass, v2 is
-  the disciplined pass. Target length will narrow accordingly via
-  `<thread>/.anvil.json`.
+  the disciplined pass. Target length will narrow accordingly via the
+  document's `target_length_overrides` map on `<project>/BRIEF.md`.

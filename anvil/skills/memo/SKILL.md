@@ -17,7 +17,6 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
 ```
 <project>/                 Project root (carries the project BRIEF; see §"Project root")
   BRIEF.md                 Project-level brief (frontmatter `documents:` list + prose)
-  .anvil.json              Project-level defaults (optional)
   research/                Shared evidence pool across documents (optional, issue #281)
   <thread>/                Thread directory (named for the slug)
     refs/                  Optional reference material (decks, transcripts, data); also the home for drafter-written citation stubs created during draft (see memo-draft Evidence contract and §Citation stubs below)
@@ -79,7 +78,7 @@ The list is illustrative, not exhaustive. The contract is: *"if a claim's eviden
 
 Accepted file shapes for source-of-truth materials in v0: markdown (`.md`), plain text (`.txt`), JSON (`.json`), PDFs (`.pdf`), images (`.png`, `.jpg`, `.jpeg`). The drafter **reads text-readable files** (markdown, text, JSON) into context as authoritative. **When `pdftotext` is available** (preflighted via `anvil/skills/memo/lib/refs_pdf.py::check_pdftotext_available()` — issue #167), the drafter ALSO extracts PDF text via `extract_pdf_text(...)` and reads it as authoritative source-of-truth content alongside the text-readable path; see `commands/memo-draft.md` step 3 for the drafter contract and `commands/memo-review.md` step 5 for the reviewer-side back-check. When `pdftotext` is absent, PDFs degrade to **presence-only signals** — the drafter is aware they exist by filename and respects the rule that claims about the subject of the file SHOULD NOT be made unless backed by content the drafter can verify; the reviewer records an info-level lint entry in `_summary.md.lint.refs_pdf_extraction` with the install story so the consumer sees how to enable the opt-in path. Images (`.png`, `.jpg`, `.jpeg`) remain presence-only in all v0 paths — OCR / vision back-check is deferred.
 
-**Portfolio-level shared evidence** (issue #280): when `<thread>/` lives under a portfolio dir that ALSO carries a sibling `<portfolio>/research/` directory (the canary-surfaced multi-thread shape — five memo threads sharing one body of vertical briefs, comp matrices, and case studies), `<portfolio>/research/` is treated as a portfolio-level evidence pool that EVERY sibling thread's drafter ingestion and reviewer back-check resolve against, in addition to their own `<thread>/refs/`. Discovery is **opt-in by directory presence** (no manifest required), matching anvil's absence-tolerant pattern. The resolution helper is `anvil/skills/memo/lib/refs_resolver.py::resolve_refs_dirs(thread_dir)`; it returns the ordered list `[<thread>/refs/, <portfolio>/research/]` (each entry omitted when the corresponding directory does not exist). **Per-thread precedence on filename collision**: `<thread>/refs/` always comes first in the resolved list, so a thread that wants to override a portfolio-level fact with its own copy (e.g., a per-thread `cv.pdf` that supersedes a portfolio-level `cv.pdf`) wins via pick-first iteration. **Citation-token convention extension**: the existing `[refs/<file>]` citation token (for per-thread hits) is joined by `[research/<file>]` for portfolio-level hits — the reviewer's `comments.md` verdict-tag prose extends from `-> refs/<file>` to `-> <refs-dir-basename>/<file>` so the audit trail surfaces WHICH layer of the resolved list the evidence came from. **Backwards compatibility**: a thread without a sibling `<portfolio>/research/` directory produces a one-entry resolved list (`[<thread>/refs/]`), byte-identical to the pre-#280 behavior. Future-deferred: a portfolio-level `<portfolio>/.anvil.json` with a configurable `shared_refs:` path; v1 ships directory-presence-only per the absence-tolerant precedent set by `lib/anvil_config.py`.
+**Portfolio-level shared evidence** (issue #280): when `<thread>/` lives under a portfolio dir that ALSO carries a sibling `<portfolio>/research/` directory (the canary-surfaced multi-thread shape — five memo threads sharing one body of vertical briefs, comp matrices, and case studies), `<portfolio>/research/` is treated as a portfolio-level evidence pool that EVERY sibling thread's drafter ingestion and reviewer back-check resolve against, in addition to their own `<thread>/refs/`. Discovery is **opt-in by directory presence** (no manifest required), matching anvil's absence-tolerant pattern. The resolution helper is `anvil/skills/memo/lib/refs_resolver.py::resolve_refs_dirs(thread_dir)`; it returns the ordered list `[<thread>/refs/, <portfolio>/research/]` (each entry omitted when the corresponding directory does not exist). **Per-thread precedence on filename collision**: `<thread>/refs/` always comes first in the resolved list, so a thread that wants to override a portfolio-level fact with its own copy (e.g., a per-thread `cv.pdf` that supersedes a portfolio-level `cv.pdf`) wins via pick-first iteration. **Citation-token convention extension**: the existing `[refs/<file>]` citation token (for per-thread hits) is joined by `[research/<file>]` for portfolio-level hits — the reviewer's `comments.md` verdict-tag prose extends from `-> refs/<file>` to `-> <refs-dir-basename>/<file>` so the audit trail surfaces WHICH layer of the resolved list the evidence came from. **Backwards compatibility**: a thread without a sibling `<portfolio>/research/` directory produces a one-entry resolved list (`[<thread>/refs/]`), byte-identical to the pre-#280 behavior. Future-deferred: a project-BRIEF-level `shared_refs:` field (declaring a configurable shared-research path); v1 ships directory-presence-only per the absence-tolerant precedent set by `lib/project_brief.py`.
 
 See `commands/memo-draft.md` §Procedure step 3 for the drafter contract (ingestion of `refs/` source-of-truth materials), `commands/memo-review.md` §Procedure step 5 for the reviewer back-check sub-step, and `rubric.md` §"Refs back-check (dim 3)" for the per-instance deduction rule. The contract degrades gracefully: when `refs/` contains no source-of-truth materials (only citation stubs, or empty), the back-check is inactive and dim 3 falls back to the citation-hook behavior alone.
 
@@ -123,7 +122,6 @@ Every memo thread lives inside a **project root** that carries a project-level `
 ```
 <project>/
   BRIEF.md                ← project-level BRIEF (frontmatter + prose)
-  .anvil.json             ← project-level defaults (optional)
   <slug-a>/
     <slug-a>.1/<slug-a>.md
     <slug-a>.2/<slug-a>.md
@@ -165,7 +163,7 @@ Unknown `artifact_type` values are rejected with an error listing the registered
 
 **Parser.** The typed parser at `anvil/skills/memo/lib/project_brief.py::load_project_brief(project_dir)` returns a `ProjectBrief` (or `None` if no BRIEF is present). The strict variant `load_project_brief_strict(project_dir)` raises `FileNotFoundError` on absence and `ValueError` on any schema violation (unknown `artifact_type`, duplicate slug, malformed `target_length`, empty `documents` list, etc.). Both loaders accept an optional `validate_dirs=True` flag that walks the project directory and applies the slug-directory divergence rule (Open Question #1 of #283): listed-but-missing slugs warn and proceed (a draft may not have been started yet); on-disk-but-unlisted slugs raise (configuration drift that would break overlay selection downstream).
 
-**Status.** This BRIEF parser is the load-bearing primitive for sub-deliverable 3 of #283 (rubric overlay selection from project BRIEF, #286) and the cross-thread reference validation in #287. It does NOT yet read `<project>/.anvil.json` — that's deferred to #286. Lifecycle commands (`memo-draft`, `memo-review`, etc.) do not yet dispatch on project-BRIEF layout; the wiring lands with #286.
+**Status.** This BRIEF parser is the load-bearing primitive for the rubric overlay selector (#286) and the cross-thread reference validation in #287. Issue #296 grew the schema to absorb every project-level and per-doc anvil config knob (target_length, target_length_overrides, rubric_overrides) — the sibling `.anvil.json` file is retired. Lifecycle commands (`memo-draft`, `memo-review`, etc.) read target-length and rubric_overrides directly from the matching `documents:` entry on `<project>/BRIEF.md`.
 
 ### Artifact-type rubric overlays (issue #286, sub-deliverable 3 of #283; absorbs closed #278)
 
@@ -179,12 +177,12 @@ When a thread under the project-as-thread-root layout has its `artifact_type` de
 ```
 base /44 rubric (rubric.md)
   + artifact-type overlay         (this section — selected from project BRIEF's artifact_type)
-    + per-thread rubric_overrides  (anvil_config.py — issue #233; per-thread dim_N_calibration)
+    + per-doc rubric_overrides  (project_brief.py — issues #233 + #296; per-doc dim_N_calibration)
 ```
 
 The `investment-memo` overlay is **identity** (zero adjustments, empty prose) so a thread with `artifact_type: investment-memo` is byte-identical to a thread with no project BRIEF at all — the v0 status quo. The four non-investment-memo overlays (`position-paper`, `tactical-plan`, `vision-document`, `descriptive-thesis`) carry the seed weight choices and calibration prose originally drafted under closed issue #278; see each overlay JSON's `description` field for the per-shape rationale.
 
-**Selection contract.** `select_overlay_for_thread` returns `None` for any of: thread that does not live inside a project root (no project BRIEF on the walk-upward path), thread slug not listed in the BRIEF's `documents:` block, or BRIEF that fails to parse. In all cases the reviewer behaves byte-identically to the pre-#286 status quo (no overlay applied). The selection is **discovery-driven**, not flag-driven — the operator selects an artifact type by writing it into the project BRIEF, not by toggling a config knob in the thread's `.anvil.json`.
+**Selection contract.** `select_overlay_for_thread` returns `None` for any of: thread that does not live inside a project root (no project BRIEF on the walk-upward path), thread slug not listed in the BRIEF's `documents:` block, or BRIEF that fails to parse. In all cases the reviewer behaves byte-identically to the pre-#286 status quo (no overlay applied). The selection is **discovery-driven**, not flag-driven — the operator selects an artifact type by writing it into the project BRIEF.
 
 ### Optional `.latest` convenience symlinks
 
@@ -207,7 +205,7 @@ Per the curator's recommendation in #288 — **option (c): pure tolerance** — 
 3. **Walk-to-highest fallback.** No `.latest` of any shape → enumerate `<thread_dir>/<slug>.<N>/` for all integer `N`, pick the highest, and return it. The load-bearing path for the canary's common case (operator never created the symlink).
 4. **No resolution.** None of the above → return `None`. The caller surfaces a clean "no version dirs" error to the operator.
 
-Precedence is fixed: 1 > 2 > 3 > 4. The helper is **non-throwing**: filesystem errors during traversal degrade to `None` rather than propagating, mirroring the lenient-form precedent across the memo lib (`refs_resolver`, `project_discovery`, `anvil_config`). Errors surface as findings, not exceptions.
+Precedence is fixed: 1 > 2 > 3 > 4. The helper is **non-throwing**: filesystem errors during traversal degrade to `None` rather than propagating, mirroring the lenient-form precedent across the memo lib (`refs_resolver`, `project_discovery`, `project_brief`). Errors surface as findings, not exceptions.
 
 The helper does NOT auto-create symlinks (option (a) was deferred — promote only if canary feedback shows option (c) is too magic) and does NOT ship a maintenance script (option (b) was rejected). The Python module `lib/cross_thread_refs.py` re-exports `resolve_latest` and the `LATEST = "latest"` constant from `latest_resolution` so callers that already use the cross-thread import path do not need to migrate.
 
@@ -236,7 +234,7 @@ Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short
 
 **Plan siblings do NOT advance state.** A `<thread>.{N+1}.plan/` directory (written by `memo-revise <thread> --plan` — see §"Operator-confirmable change-set preview" below) is a critic-sibling-shaped artifact, NOT a version dir. Its presence does NOT advance the thread to `REVISED`: the state stays `REVIEWED` until `memo-revise <thread> --apply` writes the matching `<thread>.{N+1}/<thread>.md` body file. The state-machine derivation table above continues to use `<thread>.{N+1}/` presence as the `REVISED` evidence; plan siblings are invisible to it. This preserves the existing immutability contract (a half-built version dir without a body markdown file is never `REVISED`) and keeps the two-phase flow audit-trailable on disk.
 
-Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Consumer overrides land via a future BRIEF.md project-level knob (not yet schema-formalized; the prior `<thread>/.anvil.json` carrier was retired under issue #296). Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
 ### Operator-initiated polish passes
 
@@ -253,7 +251,7 @@ The polish-pass output is a normal `<thread>.{N+1}/` version dir (immutable, fol
 - `metadata.revision_mode = "polish"` (default is `"normal"` or absent).
 - `metadata.revise_force_reason = "<verbatim operator-supplied reason>"` (default is `null` or absent).
 
-The reason argument to `--polish` is **required**: empty, whitespace-only, or missing values are rejected with a clear error and the thread is left untouched. This mirrors the deck skill's `iteration_cap_rationale` rejection pattern at §"Per-thread override contract" (around line 182) — an unjustified override is treated as malformed. Unlike the deck override (which lives in `<thread>/.anvil.json`), `--polish` is a CLI flag because the polish pass is a per-invocation operator decision, not a per-thread configuration.
+The reason argument to `--polish` is **required**: empty, whitespace-only, or missing values are rejected with a clear error and the thread is left untouched. This mirrors the deck skill's `iteration_cap_rationale` rejection pattern at §"Per-thread override contract" (around line 182) — an unjustified override is treated as malformed. Unlike the deck override (which still uses the deck-skill `.anvil.json`), `--polish` is a CLI flag because the polish pass is a per-invocation operator decision, not a per-thread configuration.
 
 What `--polish` bypasses: **step 4 (verdict pre-check) only.** The iteration-cap check (step 3) still applies — a polish pass against a thread at `max_iterations` still hits the BLOCKED notice. The "fresh review required" check (step 1) still applies — running `--polish` twice in a row without an intervening `memo-review` is rejected (no fresh review to polish against). The flag is single-pass: it produces exactly one `<thread>.{N+1}/`, never loops, never consults a target score, never re-invokes itself.
 
@@ -277,7 +275,7 @@ A normal `memo-revise` invocation produces `<thread>.{N+1}/<thread>.md` directly
 
 Declined items become `Resolution: declined — <reason>` rows in `<thread>.{N+1}/changelog.md`. The reason flows verbatim — `--apply` MUST NOT paraphrase or shorten. This is the in-band, durable, git-diffable alternative to an out-of-band AskUserQuestion prompt; the plan artifact is reviewable after the fact, archivable in git history, and portable across orchestrators (Studio, raw `claude` CLI, future TUI, batch CI).
 
-**Plan validity.** `--apply` REFUSES the plan in five cases: no matching plan exists, the source review verdict was re-run after the plan was written, a new critic sibling was added since the plan was written, the plan is older than `plan_max_age_days` (default 7, configurable via `<thread>/.anvil.json` `{"plan_max_age_days": <N>}`), or `<thread>.{N+1}/` already exists. Each rejection points at remediation (typically: re-run `--plan` to refresh).
+**Plan validity.** `--apply` REFUSES the plan in five cases: no matching plan exists, the source review verdict was re-run after the plan was written, a new critic sibling was added since the plan was written, the plan is older than `plan_max_age_days` (default 7; consumer override via a future BRIEF.md project-level knob), or `<thread>.{N+1}/` already exists. Each rejection points at remediation (typically: re-run `--plan` to refresh).
 
 **Composition with `--polish`.** `memo-revise <thread> --polish "<reason>" --plan` writes a polish-pass plan; `memo-revise <thread> --apply` against a polish-mode plan threads the polish-pass `revision_mode` + `revise_force_reason` audit trail through to the produced version dir. The operator does NOT re-pass `--polish "<reason>"` on the `--apply` invocation — the plan IS the audit trail. The composed flow produces `metadata.revision_mode = "polish_plan_then_apply"`.
 
@@ -287,43 +285,38 @@ See `commands/memo-revise.md` §"Plan-then-apply mode" for the full reviser-side
 
 ## Length targets
 
-A memo thread can declare an optional **target length** in `<thread>/.anvil.json`. The drafter and reviser pass this target into the LLM prompt as a soft length budget, and the reviewer uses it as the comparison anchor for rubric dim 7 (*Scope discipline*). When `target_length` is absent the skill behaves exactly as it does without the field — the reviewer falls back to the implicit "reasonable for the decision being made" judgment.
+A document can declare an optional **target length** on its matching entry in `<project>/BRIEF.md`'s `documents:` list. The drafter and reviser pass this target into the LLM prompt as a soft length budget, and the reviewer uses it as the comparison anchor for rubric dim 7 (*Scope discipline*). When `target_length` is absent the skill behaves exactly as it does without the field — the reviewer falls back to the implicit "reasonable for the decision being made" judgment.
 
-`target_length` accepts **two schema shapes** — both produce the same `(min_words, max_words)` resolved target. Authors pick whichever shape fits their authoring cadence:
+A document entry on `BRIEF.md` supports the per-doc default range AND an optional per-version overrides map:
 
-### Flat shape (legacy, simple thread-level target)
+### Per-doc target_length (default range)
 
-```json
-{
-  "max_iterations": 4,
-  "target_length": { "words": [1800, 2400] }
-}
+```yaml
+documents:
+  - slug: investment-memo
+    artifact_type: investment-memo
+    target_length: { words: [1800, 2400] }
 ```
 
-The flat shape applies to every version of the thread. This is the shape PR #122 shipped and continues to work unchanged — no migration required.
+The per-doc default applies to every version of the document unless a per-version override fires.
 
-### Extended shape (per-version overrides)
+### Per-version overrides (`target_length_overrides`)
 
-```json
-{
-  "max_iterations": 12,
-  "target_length": {
-    "default": { "words": [1800, 2400] },
-    "overrides": {
-      "v9":  { "pages":  [5, 7] },
-      "v10": { "words": [2000, 2800] }
-    }
-  }
-}
+```yaml
+documents:
+  - slug: investment-memo
+    artifact_type: investment-memo
+    target_length: { words: [1800, 2400] }
+    target_length_overrides:
+      "9":  { pages: [5, 7] }
+      "10": { words: [2000, 2800] }
 ```
 
-`default` is the fallback used when no override matches the current version. `overrides` is a map from version key (`v{N}` where `N` is the positive integer matching the version dir suffix — e.g., `v9` matches `<thread>.9/`) to a `{ words: [min, max] }` or `{ pages: [min, max] }` range. Each override fully replaces `default` for its version — no partial-merge semantics; if you want a different range, write the full range.
+`target_length_overrides` is a map from version-number string (`"1"`, `"2"`, …) to a `{ words: [min, max] }` or `{ pages: [min, max] }` range. Each override fully replaces the per-doc default for its version — no partial-merge semantics; if you want a different range, write the full range. Versions not listed fall back to the per-doc `target_length`.
 
-Either `default` or `overrides` may be omitted. A thread that declares only `default` behaves identically to the legacy flat shape; a thread that declares only `overrides` falls back to no target for versions not in the override map.
+### Range shape (used by every range surface)
 
-### Range shape (both flat and extended forms)
-
-Inside any `default` block, override value, or legacy flat `target_length`, the range is an object with **exactly one** of two keys:
+Inside any `target_length`, `target_length_overrides["<N>"]`, or `rubric_overrides.target_length`, the range is an object with **exactly one** of two keys:
 
 | Key | Shape | Meaning |
 |---|---|---|
@@ -338,41 +331,23 @@ Both `min` and `max` are integers; `min <= max`. The range is inclusive on both 
 
 When `memo-draft` or `memo-revise` is about to produce version `N+1`, or when `memo-review` is about to review version `N`, the resolution helper applies the following order with the target version number as input:
 
-1. If `target_length.overrides.v{N}` is set (and well-formed), use that range.
-2. Else if `target_length.default` is set (and well-formed), use that range.
-3. Else (the legacy flat shape), use the top-level `target_length` directly.
-4. Else, no target — fall back to the implicit "reasonable for the decision being made" behavior.
+1. If `target_length_overrides["<N>"]` is set (and well-formed), use that range.
+2. Else if the per-doc `target_length` is set (and well-formed), use that range.
+3. Else, no target — fall back to the implicit "reasonable for the decision being made" behavior.
 
-The resolved `(min_words, max_words)` is recorded in the version dir's `_progress.json.metadata.target_length_resolved` with a `source` field naming which branch fired (`"overrides.v{N}"`, `"default"`, `"legacy_flat"`, or `"none"`). The drafter and reviser write this field when initializing the version dir; the reviewer reads it rather than re-resolving — this prevents drift between the target the artifact was authored against and the target it is scored against. See `commands/memo-draft.md` step 4, `commands/memo-revise.md` step 5, and `commands/memo-review.md` step 4 for the per-command plumbing.
+The resolved `(min_words, max_words)` is recorded in the version dir's `_progress.json.metadata.target_length_resolved` with a `source` field naming which branch fired (`"overrides.<N>"`, `"default"`, or `"none"`). The drafter and reviser write this field when initializing the version dir; the reviewer reads it rather than re-resolving — this prevents drift between the target the artifact was authored against and the target it is scored against. See `commands/memo-draft.md` step 4, `commands/memo-revise.md` step 5, and `commands/memo-review.md` step 4 for the per-command plumbing.
 
-### Backward compatibility
+### Strict validation
 
-`target_length` and the new `overrides` block are purely additive. A thread with no `.anvil.json`, an `.anvil.json` missing `target_length`, or a malformed `target_length` falls back to the implicit "reasonable for the decision" behavior. Specifically the following are treated as malformed (no target set, no exception raised):
-
-- A `target_length` with both flat keys (`words`/`pages`) AND extended keys (`default`/`overrides`) — ambiguous shape, fall back to no target.
-- A range with both `words` and `pages` set, or with non-integer values, or with `min > max`.
-- An `overrides` value that is not a dict, or an override key that does not match `v{positive integer}`.
-- An override value that is itself malformed by the rules above.
-
-Parse errors are tolerated, never fatal — this mirrors the precedent set by `_read_anvil_json` in `anvil/lib/rubric.py`. A thread written for PR #122's flat shape continues to produce identical behavior under the resolution helper; no consumer needs to migrate.
+The BRIEF parser at `anvil/skills/memo/lib/project_brief.py` is **strict** on schema violations — a malformed `target_length`, a non-positive-integer key in `target_length_overrides`, or a range with `min > max` raises `ValueError` with a field path and suggested fix. This is intentional: per-doc metadata is load-bearing for overlay selection and target-length resolution, so a typo must fail loudly rather than silently degrading to no-target behavior. (The retired `.anvil.json` loader degraded on malformed shapes; the consolidated BRIEF reader fails fast.)
 
 ### Render-gate `words_per_page` override (per-thread page_cap calibration)
 
 The `memo-render` command's render gate uses a **600 words-per-page (wpp)** proxy to convert a `target_length.words` range into a derived page-count range for the advisory `memo_page_fit` warning. 600 wpp is calibrated for **dense-prose** memo bodies (the canary's investment-memo example); table-dense memos (financial models, comp tables, sensitivity matrices) typically run effective ~300-400 wpp once table whitespace is accounted for, and the 600-wpp default systematically over-derives the page range on those threads.
 
-A thread can opt into a per-thread calibration via the optional `render_gate.words_per_page` field:
+A per-thread calibration knob (`render_gate.words_per_page`) is queued for a future BRIEF.md project-level field — the prior carrier (`<thread>/.anvil.json`'s `render_gate` block) was retired under issue #296. Until the BRIEF schema is grown to carry it, the 600-wpp default applies uniformly. The render gate's graceful-degradation contract (silently accepting the default when no override is found) is preserved.
 
-```json
-{
-  "max_iterations": 4,
-  "target_length": { "words": [9000, 13000] },
-  "render_gate": {
-    "words_per_page": 400
-  }
-}
-```
-
-Field rules:
+Once the BRIEF schema is grown to carry the field, the planned shape will be:
 
 - **Type**: positive number (int or float). Non-numeric / boolean / `<= 0` values silently fall back to the 600-wpp default (no error raised; mirrors the malformed-shape contract above).
 - **Scope**: only affects the `target_length.words → derived page range` conversion in the render gate's `memo_page_fit` dimension. When `target_length.pages` is declared directly, the override is a no-op.
@@ -476,58 +451,75 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 - `voice.md` (optional) — Author or fund voice/style guidance the drafter reads in addition to its base prompt.
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any-deal-breaker" instruction.
 - Reference brief shapes: `templates/BRIEF.fresh.md.example` (new-thread case — no prior version, no migration context, idea seed only) and `templates/BRIEF.migration.md.example` (migrate-from-prior-pipeline case — carries forward a prior version body, prior critic siblings, and a named delta to land). Both are freeform prose with optional YAML frontmatter. Copy whichever shape matches the thread state into `<thread>/BRIEF.md` and edit in place.
-- Reference rubric-override shapes (issue #233): `templates/.anvil.json.synthesis-brief.example` and `templates/.anvil.json.feedback-memo.example` are full, copy-and-edit `.anvil.json` configs calibrated from the two canary threads documented below. Copy whichever shape matches your memo into `<thread>/.anvil.json` and tune the calibration prose from there.
+- Reference rubric-override shape (issues #233 + #296): `templates/BRIEF.rubric-overrides.md.example` is a worked-example project `BRIEF.md` calibrated against both canary subtypes (`synthesis-brief` and `feedback-memo`) documented below. Copy it into `<project>/BRIEF.md`, trim or extend the `documents:` list to match your project, and tune the per-doc `rubric_overrides:` blocks (and `target_length_overrides:` for per-version targets) from there.
 
 ## Rubric overrides and non-investment-memo shapes
 
 `anvil:memo` ships a single rubric calibrated for **investment memos** — Recommendation clarity = "single unambiguous recommendation with check size" (dim 1), Market & competitive framing = "TAM/SAM/SOM sized to the artifact" (dim 5), Financial reasoning = "unit economics + scenario math" (dim 6), Scope discipline = "2000–3000 word memo expectation" (dim 7). Studio canary use (2026-06-02) surfaced two READY threads at 39/40 that are **not** investment memos: a decision-framework portfolio synthesis (~11K words across 5 vertical sub-recommendations) and a studio-side feedback memo TO a third party (~5K words validating + sharpening another document). Both threads worked around the rubric mismatch via per-dimension reviewer-guidance prose telling the reviewer how to interpret dims 1, 5, 6, 7 for the non-standard shape.
 
-Two consumer surfaces support this calibration. The **structured config** (recommended) is the `rubric_overrides` block in `<thread>/.anvil.json`; the **unstructured fallback** (legacy) is a "Critical reviewer guidance" section in `BRIEF.md`. When BOTH surfaces are present the structured config wins — see `commands/memo-review.md` §"Reader dispatch order" for the precedence contract.
+Two consumer surfaces support this calibration. The **structured config** (recommended) is the `rubric_overrides:` block on the document's `documents:` entry in the project-level `BRIEF.md` (issue #296 — formerly a sibling `<thread>/.anvil.json`, retired); the **unstructured fallback** (legacy) is a "Critical reviewer guidance" section in `BRIEF.md`'s free prose. When BOTH surfaces are present the structured config wins — see `commands/memo-review.md` §"Reader dispatch order" for the precedence contract.
 
-### Structured config: `rubric_overrides` in `<thread>/.anvil.json`
+### Structured config: per-doc `rubric_overrides:` on `BRIEF.md`
 
-Per-thread rubric calibration lives in the `rubric_overrides` block of `<thread>/.anvil.json`. The block is **optional**: when absent, the memo skill behaves exactly as it does today (investment-memo rubric, no calibration suffixes — zero-impact for existing consumers). The full schema-of-record is the module docstring of `anvil/skills/memo/lib/anvil_config.py`; the on-disk shape is:
+Per-document rubric calibration lives in the `rubric_overrides:` block on each `documents:` entry in `BRIEF.md`'s YAML frontmatter. The block is **optional**: when absent, the memo skill behaves exactly as it does today (investment-memo rubric, no calibration suffixes — zero-impact for existing consumers). The full schema-of-record is the module docstring of `anvil/skills/memo/lib/project_brief.py`; the on-disk shape is:
 
-```json
-{
-  "max_iterations": 8,
-  "target_length": { "words": [9000, 13000] },
-  "rubric_overrides": {
-    "memo_subtype": "synthesis-brief",
-    "dim_1_calibration": "decision-framework — score on framework clarity + sub-recommendation sharpness, not on single ranked recommendation",
-    "dim_5_calibration": "defers to underlying market models — score on integration quality not on fresh sizing",
-    "dim_6_calibration": "defers to underlying market models — score on whether financial framing supports positioning",
-    "dim_7_calibration": "target length 9000-13000 words; score against declared target",
-    "target_length": { "words": [9000, 13000] }
-  }
-}
+```yaml
+---
+project: studio-2026-q2
+audience: [Studio CEO]
+hard_rules: []
+documents:
+  - slug: brasidas-synthesis
+    artifact_type: descriptive-thesis
+    target_length: { words: [9000, 13000] }
+    target_length_overrides:
+      "1": { words: [10000, 14000] }
+      "2": { words: [9000, 13000] }
+    rubric_overrides:
+      memo_subtype: synthesis-brief
+      dim_1_calibration: >-
+        decision-framework — score on framework clarity + sub-recommendation
+        sharpness, not on single ranked recommendation
+      dim_5_calibration: >-
+        defers to underlying market models — score on integration quality
+        not on fresh sizing
+      dim_6_calibration: >-
+        defers to underlying market models — score on whether financial
+        framing supports positioning
+      dim_7_calibration: >-
+        target length 9000-13000 words; score against declared target
+      target_length: { words: [9000, 13000] }
+---
 ```
 
-Recognized keys (all optional; absent keys yield byte-identical-to-pre-#233 reviewer behavior):
+Recognized keys on a `documents:` entry (all optional except `slug` and `artifact_type`; absent keys yield byte-identical-to-pre-#233 reviewer behavior):
 
-- **`memo_subtype`** (`string`) — Free-string label naming the shape (e.g., `"synthesis-brief"`, `"feedback-memo"`, `"decision-framework"`). Opaque to the loader and the reviewer logic; intended for human reference and audit-trail visibility in `_summary.md.rubric_overrides.memo_subtype`. Anvil does NOT ship a fixed `memo_subtype` enum in v0 — the canary subtypes documented below are conventions, not contracts. A future shipped enum (Option C in #233) is deferred until 3–4 more non-investment-memo threads accumulate.
-- **`dim_N_calibration`** (`string`, `N` in 1–9) — Per-dimension calibration prose. The reviewer appends the verbatim text as a `"calibration applied: <text>"` suffix to that dimension's `scoring.md` justification (see `commands/memo-review.md` step 5 §"Rubric overrides (rubric_overrides) — calibration suffixes"). The author's exact wording is the load-bearing audit trail — no rewording, no truncation, no normalization. Only dimensions with a `dim_N_calibration` declared carry a suffix; other dimensions are byte-identical to their pre-#233 form.
-- **`target_length`** (object with `words` or `pages` range) — Optional per-thread length-target override. Same flat-shape semantics as the top-level `target_length` field (see §"Length targets" above); per-version overrides are NOT supported inside `rubric_overrides` (use the top-level extended shape for that). The reviewer does NOT consume `rubric_overrides.target_length` directly for dim 7 scoring — the dim 7 anchor is the resolved range cached in `_progress.json.metadata.target_length_resolved` by the drafter / reviser. `rubric_overrides.target_length` is the **drafter / reviser** consumer surface; the reviewer's `_summary.md` records its presence as `target_length_present: bool` for the audit trail.
+- **`target_length`** (object with `words` or `pages` range) — Document-level default length target. Same flat-shape semantics as documented in §"Length targets" above.
+- **`target_length_overrides`** (map of version-string → range) — Per-version overrides applied on top of `target_length`. Each key is a version-number string (`"1"`, `"2"`, …); each value is a flat `{ words: [min, max] }` or `{ pages: [min, max] }` range. Resolution order: `target_length_overrides["<N>"]` first, then `target_length`, then the implicit fallback. Mirrors the historical `.anvil.json target_length.overrides` shape (issue #296 consolidation moved it to the per-doc surface).
+- **`rubric_overrides`** — Subtype-calibration block. Recognized inner keys:
+  - **`memo_subtype`** (`string`) — Free-string label naming the shape (e.g., `synthesis-brief`, `feedback-memo`, `decision-framework`). Opaque to the loader and the reviewer logic; intended for human reference and audit-trail visibility in `_summary.md.rubric_overrides.memo_subtype`. Anvil does NOT ship a fixed `memo_subtype` enum in v0 — the canary subtypes documented below are conventions, not contracts.
+  - **`dim_N_calibration`** (`string`, `N` in 1–9) — Per-dimension calibration prose. The reviewer appends the verbatim text as a `"calibration applied: <text>"` suffix to that dimension's `scoring.md` justification (see `commands/memo-review.md` step 5 §"Rubric overrides (rubric_overrides) — calibration suffixes"). The author's exact wording is the load-bearing audit trail — no rewording, no truncation, no normalization. Only dimensions with a `dim_N_calibration` declared carry a suffix; other dimensions are byte-identical to their pre-#233 form.
+  - **`target_length`** (object with `words` or `pages` range) — Optional subtype-scoped override of the document-level `target_length`. Same flat-shape semantics; per-version overrides remain on the per-doc `target_length_overrides` surface (not nested here). The reviewer does NOT consume `rubric_overrides.target_length` directly for dim 7 scoring — the dim 7 anchor is the resolved range cached in `_progress.json.metadata.target_length_resolved` by the drafter / reviser. `rubric_overrides.target_length` is the **drafter / reviser** consumer surface; the reviewer's `_summary.md` records its presence as `target_length_present: bool` for the audit trail.
 
-Tolerance and validation (lenient by default — parse errors degrade to "no overrides" rather than raising). A missing `.anvil.json`, malformed JSON, a non-dict `rubric_overrides`, or a per-field validation failure all yield an empty `RubricOverrides` and the reviewer's behavior is byte-identical to the pre-#233 status quo. Per-field validation warnings (non-string `memo_subtype`, out-of-range dim number, non-string calibration value, malformed `target_length`) are emitted via `warnings.warn` (category `UserWarning`) but never block the lifecycle. **Unknown keys** in `rubric_overrides` (anything that is not `memo_subtype`, `dim_N_calibration`, or `target_length`) are preserved verbatim under `RubricOverrides.unknown_keys` and surfaced in `_summary.md.rubric_overrides.unknown_keys` — this is the forward-compat path: a future shipped `memo_subtype` enum, a "Concision Discipline" knob, or any other key can land in `.anvil.json` ahead of loader support without breaking existing consumers.
+Validation discipline. The BRIEF parser is **strict** on schema errors (malformed shape, wrong type, unknown `artifact_type`, malformed range, etc.) — these fail loudly at parse time because per-doc metadata is load-bearing for overlay selection (`select_overlay_for_thread`) and length-target resolution. The convenience wrapper `project_brief.load_rubric_overrides_for_slug(project_dir, slug)` (used by the reviewer's calibration-suffix path) however degrades to an empty `RubricOverrides` on every absence-or-malformed path — the load-bearing zero-impact contract from PR #265 is preserved: a consumer typo in BRIEF.md never breaks the reviewer's per-dim suffix attachment. **Unknown keys** inside `rubric_overrides` (anything that is not `memo_subtype`, `dim_N_calibration`, or `target_length`) are preserved verbatim under `RubricOverrides.unknown_keys` and surfaced in `_summary.md.rubric_overrides.unknown_keys` — forward-compat surface for a future shipped `memo_subtype` enum, a "Concision Discipline" knob, or any other key landing in BRIEF.md ahead of loader support.
 
 ### Worked example: `synthesis-brief` (brasidas-synthesis canary)
 
 A decision-framework portfolio synthesis that reads across an analytical bundle and is deliberately **non-prescriptive** on the portfolio-shape choice. The reader is expected to extract the framework and apply judgment; the memo commits clearly to several sub-recommendations but explicitly defers the portfolio-shape choice to the reader. The bundle is large (~75K words of source material); the synthesis is correspondingly longer than a typical investment memo (~11K words). Without calibration, the reviewer would deduct on dim 1 ("no single recommendation"), dims 5/6 ("under-developed market/financial framing"), and dim 7 ("doc is 3–5× too long for an investment memo").
 
-Drop `templates/.anvil.json.synthesis-brief.example` into `<thread>/.anvil.json` and tune from there. The example calibrates dims 1, 5, 6, 7 (the canary's load-bearing recalibrations) with prose drawn directly from the canary thread's `BRIEF.md` "Critical reviewer guidance" section, and sets `target_length` to `[9000, 13000]` words.
+See the `brasidas-synthesis` entry in `templates/BRIEF.rubric-overrides.md.example` for a copy-and-edit reference. The entry calibrates dims 1, 5, 6, 7 (the canary's load-bearing recalibrations) and sets `target_length` to `[9000, 13000]` words.
 
 ### Worked example: `feedback-memo` (raytheon-pitch-strategy canary)
 
 A studio-side feedback memo TO a third party on a draft roadmap thesis (~5K words). The memo engages another document directly, validates parts, recommends sharpening, and proposes a concrete pitch backbone. There is **no "the company," no ask, no founder section** — the recommendation target is **positional** (sharpen the thesis, adopt the pitch backbone), not financial. Forceful brevity is load-bearing for this shape; every other rubric dim rewards additions, so the calibration prose tells the reviewer to score on positional clarity rather than investment-memo coverage. Without calibration, the reviewer would deduct on dim 1 ("no invest/pass recommendation"), dims 5/6 ("missing TAM/SAM/SOM and unit economics"), and dim 7 ("too short for a real investment memo").
 
-Drop `templates/.anvil.json.feedback-memo.example` into `<thread>/.anvil.json` and tune from there. The example calibrates dims 1, 4, 5, 6, 7 with prose framed around the positional-recommendation shape, and sets `target_length` to `[4000, 6000]` words.
+See the `raytheon-pitch-strategy` entry in `templates/BRIEF.rubric-overrides.md.example` for a copy-and-edit reference. The entry calibrates dims 1, 4, 5, 6, 7 with prose framed around the positional-recommendation shape, and sets `target_length` to `[4000, 6000]` words.
 
-### Unstructured fallback: `BRIEF.md` "Critical reviewer guidance" (Option A)
+### Unstructured fallback: `BRIEF.md` "Critical reviewer guidance" prose (Option A)
 
-Before the structured config shipped, the two canary threads carried per-dimension reviewer guidance as a prose section inside `BRIEF.md` — a section titled something like "Critical reviewer guidance" or "Reviewer guidance" telling the reviewer how to interpret specific dimensions for the non-standard shape. The convention works because the reviewer is briefed to read `BRIEF.md` early in `memo-review` and respects the guidance inline. Reviewer's `commands/memo-review.md` step 4g §"Reader dispatch order" formalizes this fallback: when `.anvil.json` carries no `rubric_overrides` block (or no `.anvil.json` at all), the reviewer reads any `BRIEF.md` reviewer-guidance section and respects it inline in its `scoring.md` justifications — no suffix mechanism is applied because the prose is author-written prose, not loader-typed data. When **both** sources are present, the structured config wins and the `BRIEF.md` guidance is treated as documented fallback / context only (the reviewer does NOT re-apply its prose as a suffix — that would double-count the calibration in the audit trail).
+Before the structured config shipped, the two canary threads carried per-dimension reviewer guidance as a prose section inside `BRIEF.md` (the free body below the frontmatter) — a section titled something like "Critical reviewer guidance" or "Reviewer guidance" telling the reviewer how to interpret specific dimensions for the non-standard shape. The convention works because the reviewer is briefed to read `BRIEF.md` early in `memo-review` and respects the guidance inline. Reviewer's `commands/memo-review.md` step 4g §"Reader dispatch order" formalizes this fallback: when the matching `documents:` entry carries no `rubric_overrides:` block (or no project BRIEF is found at all), the reviewer reads any `BRIEF.md` reviewer-guidance prose and respects it inline in its `scoring.md` justifications — no suffix mechanism is applied because the prose is author-written prose, not loader-typed data. When **both** sources are present, the structured config wins and the `BRIEF.md` guidance is treated as documented fallback / context only (the reviewer does NOT re-apply its prose as a suffix — that would double-count the calibration in the audit trail).
 
-Typical `BRIEF.md` guidance shape (verbatim from the studio canary):
+Typical `BRIEF.md` prose guidance shape (verbatim from the studio canary):
 
 > **Dim 1 (Recommendation clarity).** This brief is *intentionally non-prescriptive on the strategic shape choice*. The brief commits clearly to several sub-recommendations [...] but explicitly defers the portfolio-shape choice [...] to the studio CEO. **Do not score down dim 1 for "no single recommendation" — score dim 1 on whether the decision framework itself is clearly stated and whether the sub-recommendations are sharp.**
 >
@@ -535,4 +527,4 @@ Typical `BRIEF.md` guidance shape (verbatim from the studio canary):
 >
 > **Dim 7 (Scope discipline).** Target length is [9000, 13000] words. This is materially longer than the typical investment-memo target because the brief synthesizes ~75K words of source material. **Score dim 7 against the declared target, not against a 2000-3000 word memo expectation.**
 
-The structured `rubric_overrides` block is the recommended steady-state surface for new threads; the `BRIEF.md` convention is documented here so legacy threads continue to read correctly and so consumers who prefer the prose surface have an authoritative reference. See `commands/memo-review.md` §"Reader dispatch order: `.anvil.json` vs `BRIEF.md` 'Critical reviewer guidance'" for the full precedence contract.
+The structured `rubric_overrides:` block is the recommended steady-state surface for new threads; the `BRIEF.md` prose convention is documented here so legacy threads continue to read correctly and so consumers who prefer the prose surface have an authoritative reference. See `commands/memo-review.md` §"Reader dispatch order: structured `rubric_overrides` vs unstructured BRIEF.md prose" for the full precedence contract.
