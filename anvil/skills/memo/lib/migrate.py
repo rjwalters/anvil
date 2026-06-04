@@ -1735,8 +1735,10 @@ def migrate_thread(
     metricbox_warnings = _detect_metricbox_tables(md_body)
     notes.extend(metricbox_warnings)
 
-    # --- Step 6: write memo.md.
-    memo_md = version_dir / "memo.md"
+    # --- Step 6: write the body markdown.
+    # Body filename echoes the thread slug per the issue #295 project-org
+    # model lock (``<thread>/<thread>.{N}/<thread>.md``).
+    memo_md = version_dir / f"{thread_slug}.md"
     memo_md.write_text(md_body.lstrip("\n"), encoding="utf-8")
 
     # --- Step 7: refs preservation (copy memo.tex + memo.pdf + figures/).

@@ -619,7 +619,11 @@ def lint_deck_memo_parity(
         )
 
     deck_path = deck_version_dir / "deck.md"
-    memo_path = memo_version_dir / "memo.md"
+    # Memo body filename echoes the memo thread slug per the issue #295
+    # project-org model lock (``<memo-thread>/<memo-thread>.{N}/<memo-thread>.md``).
+    # The memo thread slug is the memo version dir's parent directory name.
+    memo_body_filename = f"{memo_version_dir.parent.name}.md"
+    memo_path = memo_version_dir / memo_body_filename
 
     if not deck_path.is_file():
         return LintResult(
@@ -630,7 +634,7 @@ def lint_deck_memo_parity(
     if not memo_path.is_file():
         return LintResult(
             skipped=True,
-            reason=f"memo.md not found at {memo_path}",
+            reason=f"{memo_body_filename} not found at {memo_path}",
             memo_sibling=str(memo_version_dir.resolve()),
         )
 

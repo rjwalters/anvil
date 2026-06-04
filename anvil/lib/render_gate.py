@@ -624,7 +624,7 @@ def gate(
         if version_dir is None:
             raise ValueError(
                 "gate(kind='memo') requires version_dir (the "
-                "<thread>.{N}/ directory containing memo.md)."
+                "<thread>.{N}/ directory containing <thread>.md)."
             )
         return _gate_memo(
             version_dir=Path(version_dir),
@@ -868,12 +868,26 @@ def _select_memo_engine() -> Optional[str]:
     return None
 
 
+def _memo_body_filename(version_dir: Path) -> str:
+    """Return the body markdown filename for a memo version directory.
+
+    Body filename echoes the thread slug per the issue #295 project-org
+    model lock: the on-disk shape is ``<thread>/<thread>.{N}/<thread>.md``,
+    so the body filename is ``<version_dir.parent.name>.md``.
+    """
+    return f"{version_dir.parent.name}.md"
+
+
 def _render_memo_source(
     version_dir: Path,
     out_pdf: Path,
 ) -> tuple[str, int, str, str]:
-    """Run pandoc → (weasyprint OR wkhtmltopdf OR xelatex) over
-    ``version_dir/memo.md`` and write ``out_pdf``.
+    """Run pandoc → (weasyprint OR wkhtmltopdf OR xelatex) over the
+    version dir's body markdown and write ``out_pdf``.
+
+    Body filename echoes the thread slug per #295 — for a
+    ``investment-memo/investment-memo.1/`` version dir the body is
+    ``investment-memo.md``.
 
     This is the memo-side analog of :func:`compile_and_gate`'s LaTeX
     invocation: a single deterministic shell-out that the gate then
@@ -885,7 +899,8 @@ def _render_memo_source(
     Parameters
     ----------
     version_dir:
-        ``<thread>.{N}/`` directory containing ``memo.md``.
+        ``<thread>.{N}/`` directory containing ``<thread>.md`` (body
+        filename echoes the thread slug per #295).
     out_pdf:
         Output PDF path. Parent directory must exist.
 
@@ -912,11 +927,12 @@ def _render_memo_source(
     # Lazy import — see :func:`_select_memo_engine`.
     from anvil.lib import render as _render
 
-    memo_md = version_dir / "memo.md"
+    body_filename = _memo_body_filename(version_dir)
+    memo_md = version_dir / body_filename
     if not memo_md.is_file():
         # Missing source — surrogate "failed" outcome so the compile gate
         # fires for the right reason without a Python exception.
-        return (COMPILE_FAILED, -1, "", f"memo.md not found at {memo_md}")
+        return (COMPILE_FAILED, -1, "", f"{body_filename} not found at {memo_md}")
 
     if not _render.check_pandoc_available():
         return (COMPILE_UNAVAILABLE, -1, "", "")
@@ -1214,7 +1230,9 @@ def _gate_memo(
     independently, no short-circuit" contract.
     """
     if out_pdf is None:
-        out_pdf = version_dir / "memo.pdf"
+        # PDF output basename echoes the thread slug per #295 (e.g.
+        # ``investment-memo.1/investment-memo.pdf``).
+        out_pdf = version_dir / f"{version_dir.parent.name}.pdf"
     out_pdf = Path(out_pdf)
 
     findings: list[GateFinding] = []
@@ -1409,6 +1427,8 @@ def _gate_memo(
         from anvil.skills.memo.lib import memo_image_refs as _img_refs
 
         lint_result = _img_refs.lint_memo_image_refs(version_dir)
+        # Body filename echoes the thread slug per #295.
+        body_filename = _memo_body_filename(version_dir)
         if lint_result.errors:
             failed.add(DIM_MEMO_IMAGE_REFS)
             reasons.append(
@@ -1421,7 +1441,7 @@ def _gate_memo(
                         gate=DIM_MEMO_IMAGE_REFS,
                         severity="error",
                         message=err.message,
-                        location=f"{version_dir / 'memo.md'}:L{err.line}",
+                        location=f"{version_dir / body_filename}:L{err.line}",
                     )
                 )
         # Surface suppressed (info) hits too so the reviewer sees what
@@ -1432,7 +1452,7 @@ def _gate_memo(
                     gate=DIM_MEMO_IMAGE_REFS,
                     severity="info",
                     message=info.message,
-                    location=f"{version_dir / 'memo.md'}:L{info.line}",
+                    location=f"{version_dir / body_filename}:L{info.line}",
                 )
             )
     except ImportError:
@@ -1446,10 +1466,12 @@ def _gate_memo(
         )
 
     # --- Check 5: memo_placeholder_scan ------------------------------------
-    memo_md = version_dir / "memo.md"
+    # Body filename echoes the thread slug per #295.
+    body_filename = _memo_body_filename(version_dir)
+    memo_md = version_dir / body_filename
     if not memo_md.is_file():
         reasons.append(
-            f"{DIM_MEMO_PLACEHOLDERS}: memo.md not found; placeholder "
+            f"{DIM_MEMO_PLACEHOLDERS}: {body_filename} not found; placeholder "
             "scan skipped."
         )
     else:
@@ -1466,7 +1488,7 @@ def _gate_memo(
             failed.add(DIM_MEMO_PLACEHOLDERS)
             reasons.append(
                 f"{DIM_MEMO_PLACEHOLDERS}: {len(active_hits)} placeholder "
-                "hit(s) in memo.md."
+                f"hit(s) in {body_filename}."
             )
             for hit in active_hits:
                 findings.append(
