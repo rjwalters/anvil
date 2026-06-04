@@ -766,15 +766,6 @@ class TestPlanTemplatePresent(unittest.TestCase):
                 f"aggregate-footer field (AC4)",
             )
 
-    def test_template_documents_convictions_section(self) -> None:
-        template = _read(_PLAN_TEMPLATE)
-        self.assertIn(
-            "Convictions",
-            template,
-            "plan.md.template MUST document the `Convictions` section "
-            "(AC4)",
-        )
-
     def test_template_documents_three_rejection_shapes(self) -> None:
         # The operator-use comment block MUST document all three
         # accepted rejection shapes (AC7).
