@@ -1,13 +1,13 @@
 # Anvil - Repository Guide
 
 **Anvil Version**: 0.2.0
-**Status**: v0.2.0 — canary-hardened; 8 skills shipped; memo + proposal rubrics moved to /44 (dim 9 *Rhetorical economy*); proposal synthesis pipeline + memo rubric_overrides ship in this release. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
+**Status**: v0.2.0 — canary-hardened; 9 skills shipped (8 artifact-class skills + `anvil:project-migrate` bridge tool); memo + proposal rubrics moved to /44 (dim 9 *Rhetorical economy*); proposal synthesis pipeline + memo rubric_overrides ship in this release. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
 
 Anvil is a sibling framework to [Loom](https://github.com/rjwalters/loom). Where Loom orchestrates AI code development using GitHub/Gitea as the coordination layer, Anvil orchestrates AI artifact creation using the **filesystem** as the coordination layer.
 
-Eight artifact classes ship as v0 skills (`anvil:memo`, `anvil:pub`, `anvil:report`, `anvil:deck`, `anvil:slides`, `anvil:ip-uspto`, `anvil:installation`, `anvil:proposal`). Each composes a `draft → review → revise → (audit) → figures` lifecycle, a tunable 8-dimension /40 rubric, opinionated templates, and a worked example. See `README.md` for the consumer-facing install + usage guide.
+Eight artifact classes ship as v0 skills (`anvil:memo`, `anvil:pub`, `anvil:report`, `anvil:deck`, `anvil:slides`, `anvil:ip-uspto`, `anvil:installation`, `anvil:proposal`). Each composes a `draft → review → revise → (audit) → figures` lifecycle, a tunable 8-dimension /40 rubric, opinionated templates, and a worked example. See `README.md` for the consumer-facing install + usage guide. A ninth skill, `anvil:project-migrate` (issue #297), is a one-shot bridge tool that migrates existing studio projects to the post-#295 / post-#296 model (project root + `BRIEF.md` absorbing all config + `<slug>.md` body filename).
 
 ## Pattern overview
 
@@ -30,9 +30,9 @@ This is a general pattern for rigorous review/revise loops, designed for AI-agen
 ```
 anvil/
   skills/        Per-artifact-type skills (memo, pub, report, deck, slides,
-                 ip-uspto, installation, proposal). Each has SKILL.md +
-                 commands/ + rubric.md + (optional) templates/, assets/,
-                 examples/, tests/, lib/.
+                 ip-uspto, installation, proposal) plus the project-migrate
+                 bridge tool. Each has SKILL.md + commands/ + (optional)
+                 rubric.md, templates/, assets/, examples/, tests/, lib/.
   lib/           Shared framework primitives.
     snippets/    Pure-markdown conventions every skill reads.
     review_schema.py + .json    Typed _review.json contract.
