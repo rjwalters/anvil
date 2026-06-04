@@ -4,7 +4,7 @@
 
 Anvil orchestrates iterative drafting, review, and revision of long-form artifacts — investment memos, patent applications, research papers, pitch decks, technical reports, art installations, customer proposals. Each artifact lives in an immutable versioned directory; review passes write to read-only sibling directories; revisions consume both and produce the next version. The version history *is* the audit trail.
 
-**Status:** v0.0.1. Installable. Eight skills shipped. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
+**Status:** v0.0.1. Installable. Nine skills shipped. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
 
 **Sibling project:** [Loom](https://github.com/rjwalters/loom) does this for code (issues, PRs, forge coordination). Anvil does this for prose-and-graphics artifacts (filesystem coordination, no forge required). Both can be installed in the same repository.
 
@@ -20,6 +20,7 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 | `anvil:ip-uspto` | USPTO non-provisional utility patent applications | LaTeX → PDF |
 | `anvil:installation` | Experiential / installation artwork (concept proposals) | LaTeX → PDF |
 | `anvil:proposal` | Buildable-system proposals (pre-contract pitch to a customer or budget sponsor; pre-contract bookend to `anvil:report`) | LaTeX → PDF |
+| `anvil:project-migrate` | One-shot bridge tool: migrates pre-#283 / post-#283 studio projects to the post-#295 / post-#296 model (project root + `BRIEF.md` + `<slug>.md` body filename) | Filesystem migration |
 
 Each skill ships a complete lifecycle (`draft → review → revise → audit → figures`, with some variants), a tunable 8-dimension scoring rubric, opinionated templates, and a worked example thread. Consumers extend them per-project via `.anvil/skills/<name>/` in the consumer repo.
 
