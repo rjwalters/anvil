@@ -1,9 +1,17 @@
-"""Typed loader for ``<thread>/.anvil.json`` ``rubric_overrides`` block.
+"""Typed loader for ``<thread>/.anvil.json`` ``rubric_overrides`` block,
+plus the canonical body-filename helper.
 
 This module is the schema-of-record for the *non-investment-memo shape* contract
 shipped under issue #233. It is the **sub-issue 1 of 3** deliverable: schema +
 reader only. Reviewer integration (sub-issue 2 / #265) and documentation +
 worked-example templates (sub-issue 3 / #266) follow in separate PRs.
+
+It also ships :func:`body_filename_for` — the single source of truth for
+the issue #295 (project-org model lock) body-filename convention. The body
+markdown inside every memo version directory echoes the thread slug
+(``<slug>.md``). There is no override mechanism; the helper is a thin
+``f"{slug}.md"`` wrapper that lifecycle commands and downstream lib
+modules call instead of hard-coding the literal inline.
 
 Background — why this exists
 ----------------------------
@@ -651,12 +659,53 @@ def load_rubric_overrides_strict(thread_dir: Path) -> RubricOverrides:
     return parsed
 
 
+def body_filename_for(slug: str) -> str:
+    """Return the body markdown filename for a memo thread.
+
+    Issue #295 (project-org model lock) pins the body filename
+    convention: every version directory's body markdown **echoes the
+    thread slug** as ``<slug>.md`` (e.g. ``investment-memo.1/`` carries
+    ``investment-memo.md``, ``latency-wall.1/`` carries
+    ``latency-wall.md``). This is the only recognized shape; there is
+    no override mechanism. The override surface from the closed
+    follow-on PR #282 (``load_body_filename`` /
+    ``load_body_filename_strict`` + ``body_filename`` key in
+    ``<thread>/.anvil.json``) is intentionally not shipped — the new
+    default makes it redundant.
+
+    This helper is the single source of truth so a future shape change
+    (vanishingly unlikely under the slug-echo contract) lands in one
+    place. Lifecycle commands and lib modules that need to read or
+    write the body file should call this helper rather than hard-coding
+    ``f"{slug}.md"`` inline.
+
+    Parameters
+    ----------
+    slug
+        The thread slug (the directory name under the project root that
+        holds the thread's version dirs). Non-empty string required.
+
+    Returns
+    -------
+    str
+        ``f"{slug}.md"`` verbatim. Caller is responsible for combining
+        with the version dir path (e.g. ``version_dir / body_filename_for(slug)``).
+    """
+    if not isinstance(slug, str) or not slug:
+        raise ValueError(
+            f"body_filename_for(slug) requires a non-empty string; "
+            f"got {slug!r}"
+        )
+    return f"{slug}.md"
+
+
 __all__ = [
     "CalibrationOverride",
     "MAX_DIM",
     "MIN_DIM",
     "RubricOverrides",
     "TargetLengthRange",
+    "body_filename_for",
     "load_rubric_overrides",
     "load_rubric_overrides_strict",
 ]

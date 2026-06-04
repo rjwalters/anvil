@@ -201,9 +201,13 @@ def _is_only_in_one_body(result: LintResult, token: str) -> bool:
 def test_graceful_skip_when_deck_version_dir_is_None(tmp_path: Path):
     """When the caller passes ``deck_version_dir=None``, the lint records
     a skip with a clear reason and zero findings — AC6."""
-    memo_version_dir = tmp_path / "thread.1"
+    # Body filename echoes thread slug per #295 — version dir is
+    # ``thread/thread.1/`` and body is ``thread/thread.1/thread.md``.
+    thread = tmp_path / "thread"
+    thread.mkdir()
+    memo_version_dir = thread / "thread.1"
     memo_version_dir.mkdir()
-    (memo_version_dir / "memo.md").write_text("# Memo\n")
+    (memo_version_dir / "thread.md").write_text("# Memo\n")
 
     result = lint_memo_deck_parity(memo_version_dir, None)
 
@@ -219,11 +223,15 @@ def test_graceful_skip_when_deck_version_dir_is_None(tmp_path: Path):
 def test_graceful_skip_when_deck_md_missing(tmp_path: Path):
     """When the deck_version_dir exists but contains no ``deck.md``, the
     lint skips with a reason that names the missing path — AC6."""
-    memo_dir = tmp_path / "thread.1m"
-    deck_dir = tmp_path / "thread.1"
+    memo_thread = tmp_path / "thread-m"
+    memo_thread.mkdir()
+    memo_dir = memo_thread / "thread-m.1"
+    deck_thread = tmp_path / "thread-d"
+    deck_thread.mkdir()
+    deck_dir = deck_thread / "thread-d.1"
     memo_dir.mkdir()
     deck_dir.mkdir()
-    (memo_dir / "memo.md").write_text("# Memo\n")
+    (memo_dir / "thread-m.md").write_text("# Memo\n")
     # NOTE: deck.md deliberately not written.
 
     result = lint_memo_deck_parity(memo_dir, deck_dir)
@@ -234,29 +242,35 @@ def test_graceful_skip_when_deck_md_missing(tmp_path: Path):
 
 
 def test_graceful_skip_when_memo_md_missing(tmp_path: Path):
-    """When the memo_version_dir exists but contains no ``memo.md``, the
-    lint skips with a reason that names the missing path — AC6."""
-    memo_dir = tmp_path / "thread.1m"
-    deck_dir = tmp_path / "thread.1"
+    """When the memo_version_dir exists but contains no body markdown,
+    the lint skips with a reason that names the missing path — AC6."""
+    memo_thread = tmp_path / "thread-m"
+    memo_thread.mkdir()
+    memo_dir = memo_thread / "thread-m.1"
+    deck_thread = tmp_path / "thread-d"
+    deck_thread.mkdir()
+    deck_dir = deck_thread / "thread-d.1"
     memo_dir.mkdir()
     deck_dir.mkdir()
     (deck_dir / "deck.md").write_text("# Deck\n")
-    # NOTE: memo.md deliberately not written.
+    # NOTE: body markdown (``thread-m.md``) deliberately not written.
 
     result = lint_memo_deck_parity(memo_dir, deck_dir)
 
     assert result.skipped is True
     assert result.deck_sibling == str(deck_dir.resolve())
-    assert "memo.md not found" in result.reason
+    assert "thread-m.md not found" in result.reason
 
 
 def test_graceful_skip_summary_shape_is_structured(tmp_path: Path):
     """The graceful-skip path must serialize an ``_summary.md`` block with
     ``ran: false`` and ``deck_sibling: null`` per the issue body — the
     operator sees WHY the check didn't fire (AC5 / AC6)."""
-    memo_version_dir = tmp_path / "thread.1"
+    thread = tmp_path / "thread"
+    thread.mkdir()
+    memo_version_dir = thread / "thread.1"
     memo_version_dir.mkdir()
-    (memo_version_dir / "memo.md").write_text("# Memo\n")
+    (memo_version_dir / "thread.md").write_text("# Memo\n")
 
     result = lint_memo_deck_parity(memo_version_dir, None)
     summary = result.to_summary()
@@ -451,13 +465,24 @@ def test_unit_int_extractor():
 
 
 def test_lint_memo_deck_parity_with_real_files(tmp_path: Path):
-    """End-to-end exercise of the file wrapper: lay down memo.md + deck.md
-    inside two version dirs, verify the citation-clear canary fires."""
-    memo_dir = tmp_path / "citation-clear.4"
-    deck_dir = tmp_path / "citation-clear.3"
+    """End-to-end exercise of the file wrapper: lay down the memo body
+    markdown + deck.md inside two version dirs, verify the
+    citation-clear canary fires.
+
+    Under issue #295 the memo body filename echoes the memo thread slug
+    (``<thread>/<thread>.{N}/<thread>.md``), so the test fixtures wrap
+    each version dir in a slug-named thread directory.
+    """
+    memo_thread = tmp_path / "citation-clear-memo"
+    deck_thread = tmp_path / "citation-clear-deck"
+    memo_thread.mkdir()
+    deck_thread.mkdir()
+    memo_dir = memo_thread / "citation-clear-memo.4"
+    deck_dir = deck_thread / "citation-clear-deck.3"
     memo_dir.mkdir()
     deck_dir.mkdir()
-    (memo_dir / "memo.md").write_text(CITATION_CLEAR_MEMO_BODY)
+    # Body filename echoes the memo thread slug per #295.
+    (memo_dir / "citation-clear-memo.md").write_text(CITATION_CLEAR_MEMO_BODY)
     (deck_dir / "deck.md").write_text(CITATION_CLEAR_DECK_BODY)
 
     result = lint_memo_deck_parity(memo_dir, deck_dir)

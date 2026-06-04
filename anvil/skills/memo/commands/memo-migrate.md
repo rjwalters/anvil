@@ -1,23 +1,23 @@
 ---
 name: memo-migrate
-description: One-shot LaTeX → anvil:memo thread converter. Reads a legacy memo.tex (the source body from a prior LaTeX-based memo pipeline) and produces a DRAFTED-state anvil:memo thread (BRIEF.md + .anvil.json + <thread>.1/ with memo.md + exhibits/ + _progress.json + changelog.md) that re-enters the standard memo lifecycle.
+description: One-shot LaTeX → anvil:memo thread converter. Reads a legacy memo.tex (the source body from a prior LaTeX-based memo pipeline) and produces a DRAFTED-state anvil:memo thread (BRIEF.md + .anvil.json + <thread>.1/ with <thread>.md + exhibits/ + _progress.json + changelog.md) that re-enters the standard memo lifecycle.
 ---
 
 # memo-migrate — Legacy-LaTeX → anvil:memo migrator
 
 **Role**: migrator (one-shot, idempotent on resume, NOT in the standard `draft → review → revise → figures` lifecycle).
-**Reads**: a legacy `memo.tex` source file and any sibling `memo.pdf` / `figures/*.pdf`.
-**Writes**: a new thread root containing `BRIEF.md` (stub), `.anvil.json`, `refs/prior-pipeline/v0/`, and `<thread>.1/` (memo.md, exhibits/, _progress.json with `draft.state == done`, changelog.md).
+**Reads**: a legacy `memo.tex` source file and any sibling `<thread>.pdf` / `figures/*.pdf`.
+**Writes**: a new thread root containing `BRIEF.md` (stub), `.anvil.json`, `refs/prior-pipeline/v0/`, and `<thread>.1/` (<thread>.md, exhibits/, _progress.json with `draft.state == done`, changelog.md).
 
 This command exists because Studio's 2026-06-01 portfolio review surfaced 14 legacy LaTeX threads that each required the same hand-rolled migration. The most consequential bug in the hand migrations was `\textasciitilde` getting silently dropped by pandoc — which turns hedged values (`~$50K`) into asserted values (`$50K`) in financial prose. This command codifies the migration pattern so the bug is impossible to ship.
 
 **State-machine status**: `memo-migrate` is a **one-shot entry point**, NOT a lifecycle phase. It produces a thread in `DRAFTED` state (derived from `<thread>.1/_progress.json.phases.draft == done` per SKILL.md §"State machine") and then exits. The operator runs `memo-review <thread>` next, exactly as if `memo-draft` had produced the version. The output thread is indistinguishable from a freshly-drafted one — only `refs/prior-pipeline/v0/` and the `migrated_from` `_progress.json` metadata field distinguish a migrated thread from a clean one.
 
-**Composability**: `memo-migrate` is **single-shot** — it is run once per legacy `.tex` source. There is no re-run case; if the migration produced a broken `memo.md`, the operator either (a) hand-edits `<thread>.1/memo.md` and proceeds normally, or (b) deletes the entire thread root and re-runs `memo-migrate`. The command does not attempt to merge into an existing thread. **Step 13 (issue #203)** auto-invokes the standalone `anvil:memo-migrate-refs` helper to seed `<thread>/refs/<key>.md` stubs from the `BRIEF.md` §Sources section; that command is independently re-runnable after the operator edits BRIEF.md §Sources (idempotent by default; `--force` to overwrite). See `commands/memo-migrate-refs.md` for the standalone re-run path.
+**Composability**: `memo-migrate` is **single-shot** — it is run once per legacy `.tex` source. There is no re-run case; if the migration produced a broken `<thread>.md`, the operator either (a) hand-edits `<thread>.1/<thread>.md` and proceeds normally, or (b) deletes the entire thread root and re-runs `memo-migrate`. The command does not attempt to merge into an existing thread. **Step 13 (issue #203)** auto-invokes the standalone `anvil:memo-migrate-refs` helper to seed `<thread>/refs/<key>.md` stubs from the `BRIEF.md` §Sources section; that command is independently re-runnable after the operator edits BRIEF.md §Sources (idempotent by default; `--force` to overwrite). See `commands/memo-migrate-refs.md` for the standalone re-run path.
 
 ## Inputs
 
-- **Source LaTeX file** (positional argument): path to the legacy `memo.tex`. The thread's parent directory and any sibling `memo.pdf` are inferred from this path.
+- **Source LaTeX file** (positional argument): path to the legacy `memo.tex`. The thread's parent directory and any sibling `<thread>.pdf` are inferred from this path.
 - **`--thread-slug=<slug>`** (optional): overrides the auto-derived slug. Default: the parent-dir name of the source `.tex` file. Use this when the source `.tex` lives in a directory named differently from the desired thread slug (e.g., `legacy/memo.tex` should produce thread `acme-seed/`, not `legacy/`).
 - **`--target-length=words:<min>-<max>`** (optional): writes through to the generated `<thread>/.anvil.json` `target_length.words` field. Format: `words:<min>-<max>` (e.g., `words:1800-2400`). Matches the legacy flat shape documented in `anvil/skills/memo/SKILL.md` §"Length targets". When omitted the field is left unset (operator can add it later by editing `.anvil.json`).
 
@@ -36,10 +36,10 @@ Mirrors the migration-thread shape documented in `anvil/skills/memo/SKILL.md` §
                             Empty when BRIEF.md has no §Sources section (graceful).
     prior-pipeline/v0/
       memo.tex              Copy of the original .tex source (read-only reference)
-      memo.pdf              Original rendered PDF (if found alongside .tex)
+      <thread>.pdf              Original rendered PDF (if found alongside .tex)
       figures/              Copy of the original figures/ directory (if present)
   <thread>.1/
-    memo.md                 Converted markdown body (pandoc + LaTeX pattern handling)
+    <thread>.md                 Converted markdown body (pandoc + LaTeX pattern handling)
     exhibits/               PDF → PNG converted figures (one PNG per source PDF)
     _progress.json          { phases.draft: { state: "done", ... },
                               metadata: { iteration: 1, max_iterations: 4 } }
@@ -47,12 +47,12 @@ Mirrors the migration-thread shape documented in `anvil/skills/memo/SKILL.md` §
                             "N refs/ stubs seeded from BRIEF.md §Sources" line)
 ```
 
-The "v0 starts at `<thread>.1/`" convention matches `anvil/skills/memo/SKILL.md` §"State machine" — `DRAFTED` is derived from "latest `<thread>.{N}/` exists with `memo.md` and `_progress.json.draft == done`". The operator then runs `memo-review <thread>` against `<thread>.1/` normally — the migration produces a `DRAFTED`-state thread that re-enters the standard memo lifecycle.
+The "v0 starts at `<thread>.1/`" convention matches `anvil/skills/memo/SKILL.md` §"State machine" — `DRAFTED` is derived from "latest `<thread>.{N}/` exists with `<thread>.md` and `_progress.json.draft == done`". The operator then runs `memo-review <thread>` against `<thread>.1/` normally — the migration produces a `DRAFTED`-state thread that re-enters the standard memo lifecycle.
 
 ## Procedure
 
 1. **Preflight: pandoc**. Check `anvil/skills/memo/lib/migrate.py::check_pandoc_available()`. When pandoc is absent, raise `MigrateError(PANDOC_REMEDIATION)` and exit non-zero. This is a **hard fail** — unlike `memo-render`, the migration cannot synthesize a markdown body without pandoc. The remediation message names the install paths (`brew install pandoc` / `apt-get install pandoc`).
-2. **Preflight: pdftoppm** (soft). Check `check_pdftoppm_available()`. When pdftoppm is absent, log the `PDFTOPPM_REMEDIATION` note and continue: the `\includegraphics` refs in `memo.md` are still rewritten to `exhibits/<basename>.png`, but the PNGs are not produced (the operator can run pdftoppm by hand later or install poppler-utils and re-run figure conversion).
+2. **Preflight: pdftoppm** (soft). Check `check_pdftoppm_available()`. When pdftoppm is absent, log the `PDFTOPPM_REMEDIATION` note and continue: the `\includegraphics` refs in `<thread>.md` are still rewritten to `exhibits/<basename>.png`, but the PNGs are not produced (the operator can run pdftoppm by hand later or install poppler-utils and re-run figure conversion).
 3. **Validate source**. Confirm the source `.tex` exists and is readable. Raise `MigrateError` if not. (Mirrors the precedent in `anvil/lib/render.py::render_pdf_to_pngs` which raises `FileNotFoundError` for a missing input PDF.)
 4. **Resolve thread slug**. If `--thread-slug` is provided, use it; otherwise use the parent-directory name of the source `.tex`. Example: `legacy/acme-seed/memo.tex` → slug `acme-seed`.
 5. **Resolve target_length**. Parse `--target-length=words:<min>-<max>` if provided. Validate `min <= max` and both are integers. When malformed or absent, no target is written (matches the SKILL.md §"Length targets" "no target — fall back to implicit behavior" branch).
@@ -60,14 +60,14 @@ The "v0 starts at `<thread>.1/`" convention matches `anvil/skills/memo/SKILL.md`
    - **Strip preamble**: drop everything before `\begin{document}` and after `\end{document}` (per the v0 must-have spec in issue #202). If neither delimiter is present (body-only fragment), the source is passed through unchanged.
    - **Substitute load-bearing patterns** (this is the 5c safeguard): replace `\textasciitilde` (with or without trailing `{}`) with an ASCII sentinel that pandoc is guaranteed not to touch. Replace `\EUR{X}` and `\EUR{}` with a sentinel + content pair (same rationale). The sentinels are post-substituted back to canonical markdown after pandoc runs.
 7. **Invoke pandoc**. Subprocess: `pandoc -f latex -t markdown_strict`, source-in via stdin (no temp file round-trip). Capture stdout. Non-zero exit raises `MigrateError` with the captured stderr.
-8. **Post-substitute sentinels.** Walk the pandoc output and replace the tilde sentinel with a literal `~` and the EUR sentinel with `€`. **This is the load-bearing step that fixes sub-issue 5c**: a fixture `memo.tex` containing `\textasciitilde\$50K` produces `memo.md` containing literal `~$50K` (the hedged value), not `$50K` (the asserted value pandoc would have produced by silently dropping `\textasciitilde`).
+8. **Post-substitute sentinels.** Walk the pandoc output and replace the tilde sentinel with a literal `~` and the EUR sentinel with `€`. **This is the load-bearing step that fixes sub-issue 5c**: a fixture `memo.tex` containing `\textasciitilde\$50K` produces `<thread>.md` containing literal `~$50K` (the hedged value), not `$50K` (the asserted value pandoc would have produced by silently dropping `\textasciitilde`).
 9. **Rewrite figure refs.** Walk the markdown for `![alt](path)` image refs. For each non-URL, non-absolute, non-`exhibits/` ref:
    - Strip the alt text (anvil:memo prefers empty alt with surrounding prose carrying the caption).
    - Strip the `figures/` prefix and switch the extension to `.png`: `figures/fig1.pdf` → `exhibits/fig1.png`.
    - Collect the `(source_pdf_relative_path, target_png_basename)` tuple for the figure-conversion step.
 10. **Pair orphan footnotes** (sub-issue 5d). Find `[^N]` references that have no matching `[^N]: ...` definition. For each orphan, emit a placeholder `[^N]: TODO: migration recovered orphan footnote — verify text against refs/prior-pipeline/v0/memo.tex` definition at the end of the document. This keeps the markdown well-formed (no broken refs) and surfaces the orphan as a TODO for the operator's first revise pass.
-11. **Write `memo.md`**. Persist the post-processed markdown body to `<thread>.1/memo.md`.
-12. **Preserve refs** (acceptance criterion 6). Copy the original `memo.tex` and any sibling `memo.pdf` to `<thread>/refs/prior-pipeline/v0/`. Also copy the sibling `figures/` directory (if present) so the raw PDFs are archived alongside the source LaTeX for audit-trail purposes.
+11. **Write `<thread>.md`**. Persist the post-processed markdown body to `<thread>.1/<thread>.md`.
+12. **Preserve refs** (acceptance criterion 6). Copy the original `memo.tex` and any sibling `<thread>.pdf` to `<thread>/refs/prior-pipeline/v0/`. Also copy the sibling `figures/` directory (if present) so the raw PDFs are archived alongside the source LaTeX for audit-trail purposes.
 13. **Convert figures** (acceptance criterion 5; sub-issue 5a). When `pdftoppm` is available, for each collected `(source_pdf, basename)` tuple:
     - Resolve the source PDF by checking `<source.tex>/<path>`, `<source.tex>/figures/<basename>.pdf`, and the archived `<thread>/refs/prior-pipeline/v0/figures/<basename>.pdf` (so the conversion works even after the source moved).
     - Invoke `pdftoppm -r 150 -png <pdf> <exhibits_dir>/<basename>` (reuses the same flags as `anvil/lib/render.py::render_pdf_to_pngs`).
@@ -95,7 +95,7 @@ The "v0 starts at `<thread>.1/`" convention matches `anvil/skills/memo/SKILL.md`
 
 ## Idempotence and resume semantics
 
-`memo-migrate` is **not idempotent in the lifecycle sense** — re-running it against the same source `.tex` while the thread root already exists will **overwrite** `<thread>.1/memo.md`, `BRIEF.md` (clobbering operator edits!), and `.anvil.json`. The intended re-run path is: delete `<thread>/` entirely and re-run. This is the "single-shot entry point" contract — once the operator has started editing `BRIEF.md` or `<thread>.1/memo.md`, the canonical re-edit path is `memo-revise`, not `memo-migrate`.
+`memo-migrate` is **not idempotent in the lifecycle sense** — re-running it against the same source `.tex` while the thread root already exists will **overwrite** `<thread>.1/<thread>.md`, `BRIEF.md` (clobbering operator edits!), and `.anvil.json`. The intended re-run path is: delete `<thread>/` entirely and re-run. This is the "single-shot entry point" contract — once the operator has started editing `BRIEF.md` or `<thread>.1/<thread>.md`, the canonical re-edit path is `memo-revise`, not `memo-migrate`.
 
 This is a deliberate departure from the `draft → review → revise` commands' idempotent-on-resume contract: those commands assume the operator wants to continue from where the prior run left off. `memo-migrate` is a fresh-import operation — there is no "resume" semantic to preserve.
 
@@ -140,7 +140,7 @@ The four subsections below cover 5b / 5e / 5g / 5h; the two deeper helpers (5f s
 **Warning shape.** Per-cell `MigrationResult.notes` entry:
 
 ```
-Packed tabularx cell detected at memo.md table (cell preview: "<first 60 chars>..."): N chars, M '$-$' glyphs. Likely needs manual unfold into a multi-row table during first memo-revise pass. See refs/prior-pipeline/v0/memo.tex for source layout.
+Packed tabularx cell detected at <thread>.md table (cell preview: "<first 60 chars>..."): N chars, M '$-$' glyphs. Likely needs manual unfold into a multi-row table during first memo-revise pass. See refs/prior-pipeline/v0/memo.tex for source layout.
 ```
 
 Thread-level changelog summary line:
@@ -149,7 +149,7 @@ Thread-level changelog summary line:
 - Detected N packed table cell(s); see notes for unfold guidance.
 ```
 
-**Operator response.** During the first `memo-revise` pass, unfold the offending cell into a multi-row markdown table. The cell preview in the warning is the grep key — search `memo.md` for the leading ~60 chars to locate the table quickly, then cross-reference `refs/prior-pipeline/v0/memo.tex` for the source layout the operator likely intended.
+**Operator response.** During the first `memo-revise` pass, unfold the offending cell into a multi-row markdown table. The cell preview in the warning is the grep key — search `<thread>.md` for the leading ~60 chars to locate the table quickly, then cross-reference `refs/prior-pipeline/v0/memo.tex` for the source layout the operator likely intended.
 
 **Known limitations.** Detect-only by design (per issue #202 §5b explicit deferral): auto-splitting on `$-$` is unsafe because the glyph is also legitimate currency-range syntax (`$3M-$5M ARR`) and math em-dash. The single-`$-$` case is intentionally excluded from the multi-glyph heuristic to suppress that false-positive class; the long-cell heuristic catches purely-prose-packed cells that don't use glyph separators. Header rows are not disambiguated from body rows — a packed cell in either fires the warning.
 
@@ -171,7 +171,7 @@ Thread-level changelog summary line:
 - Detected N orphan figure(s) in source figures/ never referenced by \includegraphics: figures/<...>. Preserved at refs/prior-pipeline/v0/figures/; not converted to PNG (no markdown ref points at them).
 ```
 
-**Operator response.** Per orphan, confirm intent during the first `memo-revise` pass: either (a) add a markdown image ref to embed it in `memo.md` (and re-run figure conversion by hand against the preserved PDF), or (b) accept that the orphan was authoring debris — it stays archived in `refs/prior-pipeline/v0/figures/` for audit but never appears in the rendered memo. There is no auto-fix because the answer is operator-judgement: the source-pipeline workflow sometimes intentionally archived alternates.
+**Operator response.** Per orphan, confirm intent during the first `memo-revise` pass: either (a) add a markdown image ref to embed it in `<thread>.md` (and re-run figure conversion by hand against the preserved PDF), or (b) accept that the orphan was authoring debris — it stays archived in `refs/prior-pipeline/v0/figures/` for audit but never appears in the rendered memo. There is no auto-fix because the answer is operator-judgement: the source-pipeline workflow sometimes intentionally archived alternates.
 
 **Known limitations.** Detection is by basename match between the markdown image refs and `figures/*.pdf` stems; a `\includegraphics{figures/fig1}` (no `.pdf` extension) and a `figures/fig1.pdf` on disk pair correctly because the rewriter computes `Path(src).stem`. Non-PDF files in `figures/` (`.png`, `.svg`) are ignored — the detector is PDF-specific because the legacy pipeline output PDFs.
 
@@ -184,7 +184,7 @@ Thread-level changelog summary line:
 **Warning shape.** Per-table `MigrationResult.notes` entry:
 
 ```
-4-column key/value metricbox detected at memo.md table (first-row preview: "<col1> | <col2> | <col3> | <col4>"): N body rows match label/value/label/value pattern. Consider reshaping to definition-list style (**label**: value, one per line) or a 2-column metric/value table during first memo-revise pass. See refs/prior-pipeline/v0/memo.tex for source layout.
+4-column key/value metricbox detected at <thread>.md table (first-row preview: "<col1> | <col2> | <col3> | <col4>"): N body rows match label/value/label/value pattern. Consider reshaping to definition-list style (**label**: value, one per line) or a 2-column metric/value table during first memo-revise pass. See refs/prior-pipeline/v0/memo.tex for source layout.
 ```
 
 Thread-level changelog summary line:
@@ -193,7 +193,7 @@ Thread-level changelog summary line:
 - Detected N 4-column key/value metricbox table(s); see notes for reshape guidance.
 ```
 
-**Operator response.** During the first `memo-revise` pass, reshape the offending table into either a definition-list style (`**Revenue**: $1.2M`, one per line) or a 2-column `Metric | Value` table. The first-row preview in the warning is the grep key — search `memo.md` for the four pipe-separated cells to locate the table.
+**Operator response.** During the first `memo-revise` pass, reshape the offending table into either a definition-list style (`**Revenue**: $1.2M`, one per line) or a 2-column `Metric | Value` table. The first-row preview in the warning is the grep key — search `<thread>.md` for the four pipe-separated cells to locate the table.
 
 **Known limitations.** The col-2/col-4 NOT-label guard suppresses financial-quarter tables (`Q1 2026 | $1.2M | Q2 2026 | $1.5M`) — `$1.2M` starts with `$` which is not an uppercase letter, so the cell does not satisfy the label heuristic and the row is correctly skipped. **However**, tables whose value cells are *also* short-and-capitalized in a label-satisfying way (e.g., `Status: | OK | Phase: | DONE`) will false-fire and produce a warning; this is the documented limitation cited in PR #219. The operator simply ignores the warning in that case. Ragged-width row blocks (rare — pandoc normalizes) are silently skipped. Tables with ≠4 columns are never inspected.
 

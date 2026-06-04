@@ -38,6 +38,7 @@ from anvil_config import (  # noqa: E402
     MIN_DIM,
     RubricOverrides,
     TargetLengthRange,
+    body_filename_for,
     load_rubric_overrides,
     load_rubric_overrides_strict,
 )
@@ -565,6 +566,33 @@ class TestSchemaConstraints(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             RubricOverrides(memo_subtype="x", undeclared_field=1)
+
+
+class TestBodyFilenameFor(unittest.TestCase):
+    """Tests for ``body_filename_for`` — the #295 slug-echo helper.
+
+    Body filename echoes the thread slug under issue #295 (project-org
+    model lock); there is no override mechanism. This test class pins
+    the contract.
+    """
+
+    def test_simple_slug_echoes(self) -> None:
+        self.assertEqual(body_filename_for("investment-memo"), "investment-memo.md")
+        self.assertEqual(body_filename_for("latency-wall"), "latency-wall.md")
+        self.assertEqual(body_filename_for("acme-seed"), "acme-seed.md")
+
+    def test_slug_with_underscores_and_digits_echoes(self) -> None:
+        self.assertEqual(body_filename_for("q3_thesis_update_2"), "q3_thesis_update_2.md")
+
+    def test_empty_slug_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            body_filename_for("")
+
+    def test_non_string_slug_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            body_filename_for(None)  # type: ignore[arg-type]
+        with self.assertRaises(ValueError):
+            body_filename_for(42)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":  # pragma: no cover

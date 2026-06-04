@@ -7,7 +7,7 @@ Covers:
 - The investment-memo overlay is identity (all-zero adjustments,
   empty calibration prose).
 - :func:`select_overlay_for_thread` resolves correctly for both layouts
-  (classic → None; project-brief → matching overlay; unlisted slug → None).
+  (no project BRIEF → None; project-brief → matching overlay; unlisted slug → None).
 - :class:`OverlayLoadError` fires on:
   - missing file
   - invalid JSON
@@ -184,9 +184,12 @@ class TestSelectOverlayForThread(unittest.TestCase):
         self.assertIsNotNone(overlay)
         self.assertTrue(overlay.is_identity())
 
-    def test_classic_layout_thread_resolves_to_none(self) -> None:
-        # A classic-layout thread has no project BRIEF on the walk-upward
-        # path → no overlay selected.
+    def test_thread_without_project_brief_resolves_to_none(self) -> None:
+        # A thread with no project BRIEF on the walk-upward path → no
+        # overlay selected. Under #295 every thread is expected to live
+        # under a project root; a stray thread that does not satisfy
+        # that contract returns None here (and is non-discoverable per
+        # project_discovery.discover_thread_root).
         thread_root = self.tmp_path / "standalone-thread"
         thread_root.mkdir()
         (thread_root / "standalone-thread.1").mkdir()

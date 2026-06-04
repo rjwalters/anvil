@@ -1,75 +1,71 @@
-"""Dual-layout thread-root discovery for the memo skill (issue #284).
+"""Project-as-thread-root discovery for the memo skill (issue #284, #295).
 
 Sub-deliverable 1 of #283 — the **foundational** discovery primitive that
 later sub-deliverables (BRIEF parser #285, rubric overlay selection #286,
 cross-thread ref validation #287) depend on knowing where to look.
 
-Background — two on-disk layouts
---------------------------------
-The pre-#283 ``anvil:memo`` contract recognized exactly one on-disk shape:
-the **classic siblings-under-portfolio** layout, where each thread is a
-standalone directory carrying its own ``BRIEF.md`` and (optionally) its
-own ``.anvil.json``::
+Simplification under issue #295
+-------------------------------
+Originally (PR #290) this module shipped **dual-layout** discovery,
+recognizing both a "classic siblings-under-portfolio" layout and a
+"project-as-thread-root" layout. Issue #295 retires the classic layout:
+every memo thread now lives inside a project root with a project-level
+``BRIEF.md``. The ``LAYOUT_CLASSIC`` constant, its branch in
+``_resolve_layout``, and the layout-precedence reasoning are removed.
+The discovery surface shrinks to "find the project root; identify the
+thread slug within it".
 
-    <portfolio>/
-      <thread-a>/
-        BRIEF.md              ← per-thread brief
-        .anvil.json           ← per-thread config (optional)
-        <thread-a>.1/
-        <thread-a>.2/
-        ...
-      <thread-b>/
-        BRIEF.md
-        <thread-b>.1/
-        ...
-
-The Studio canary surfaced a **project-as-thread-root** layout where a
-single project-level BRIEF carries shared context (audience, voice, hard
-rules) and enumerates per-document metadata in a ``documents:``
-frontmatter list. The per-thread BRIEFs collapse into the single project
-BRIEF, and the per-document slug directories hold version dirs only::
+Background — the canonical layout
+---------------------------------
+A **project root** carries a project-level ``BRIEF.md`` whose YAML
+frontmatter enumerates per-document metadata in a ``documents:`` list.
+Each entry names a slug; that slug names a sibling directory that holds
+version dirs::
 
     <project>/
       BRIEF.md                ← single project brief with documents: list
       .anvil.json             ← project-level defaults (optional)
       <slug-a>/
-        <slug-a>.1/
-        <slug-a>.2/
+        <slug-a>.1/<slug-a>.md
+        <slug-a>.2/<slug-a>.md
         ...
       <slug-b>/
-        <slug-b>.1/
+        <slug-b>.1/<slug-b>.md
         ...
       research/               ← shared evidence pool (already shipped, #281)
+      refs/                   ← shared per-project references (optional)
 
-See parent issue #283 and the [curator scope confirmation](
-https://github.com/rjwalters/anvil/issues/283#issuecomment-4618645809)
-for the consolidated model. This module is **scoped to discovery only**:
-it recognizes which of the two layouts a path lives in and returns the
-thread root + layout marker. Full BRIEF schema parsing is sub-deliverable
-2 (#285); rubric overlay selection is sub-deliverable 3 (#286).
+The body filename inside a version directory **echoes** the slug
+(``<slug>.md``) — see SKILL.md §"Artifact contract" for the on-disk
+contract documented under issue #295.
+
+See parent issue #283 and #295 for the consolidated model. This module
+is **scoped to discovery only**: it identifies the project root and the
+thread slug for any path under a project. Full BRIEF schema parsing is
+sub-deliverable 2 (#285); rubric overlay selection is sub-deliverable 3
+(#286).
 
 Public API
 ----------
 
 ``discover_thread_root(path: Path) -> Optional[DiscoveryResult]``
-    Walk upward from ``path`` until a thread root is identified. Returns
-    a typed result carrying the thread root, the matched layout (``"classic"``
-    or ``"project-brief"``), and — for the project-brief layout — the
-    project root and the thread's slug.
+    Walk upward from ``path`` until the project root and thread slug
+    are identified. Returns a typed result with the thread root, the
+    project root, and the thread's slug.
 
 ``DiscoveryResult`` (dataclass)
-    Typed return value. ``layout`` is one of :data:`LAYOUT_CLASSIC` or
-    :data:`LAYOUT_PROJECT_BRIEF`. ``project_root`` and ``slug`` are
-    populated only for the project-brief layout.
+    Typed return value. ``project_root`` and ``slug`` are always
+    populated for any successful match (the project-brief layout is
+    the only recognized shape).
 
-``LAYOUT_CLASSIC`` / ``LAYOUT_PROJECT_BRIEF``
-    String constants for the two recognized layouts. Surfaced so callers
-    (the upcoming BRIEF parser, the overlay selector) dispatch on the
-    same source-of-truth literals.
+``LAYOUT_PROJECT_BRIEF``
+    String constant for the recognized layout. Retained as a sentinel
+    so downstream consumers (and the audit trail) dispatch on a
+    source-of-truth literal even though there's only one shape.
 
 ``BRIEF_FILENAME`` / ``DOCUMENTS_FRONTMATTER_KEY``
     Module constants for the on-disk filename (``"BRIEF.md"``) and the
-    YAML frontmatter key (``"documents"``) that gates the project-brief
+    YAML frontmatter key (``"documents"``) that gates the project
     layout. Surfaced as constants so the layout contract has a single
     source of truth across this module, its tests, and downstream
     consumers.
@@ -77,15 +73,16 @@ Public API
 ``has_project_brief(directory: Path) -> bool``
     Cheap predicate: returns True when ``<directory>/BRIEF.md`` exists
     AND its YAML frontmatter has a non-empty ``documents:`` list.
-    Surfaced as a standalone helper so the layout-precedence rule
-    (project-brief wins when the list is non-empty) is independently
+    Surfaced as a standalone helper so the layout-gate rule (project
+    BRIEF must have a non-empty ``documents:`` list) is independently
     testable and reusable.
 
 Algorithm
 ---------
 
 Given a ``path`` (file or directory; may be a version dir, a thread
-root, a project root, or any nested artifact like ``thread.1/memo.md``):
+root, a project root, or any nested artifact like
+``<slug>.1/<slug>.md``):
 
 1. Normalize: start from ``path`` if it's a directory, else from
    ``path.parent``. Resolve to an absolute path to make the walk
@@ -93,13 +90,12 @@ root, a project root, or any nested artifact like ``thread.1/memo.md``):
 2. Walk upward. At each candidate directory ``D``:
 
    a. **Version-dir check:** if ``D.name`` matches ``<parent>.<N>`` for
-      some integer ``N`` (the version-dir naming convention), the thread
-      root is ``D.parent``. Resolve layout by checking ``D.parent.parent``
-      for a project BRIEF that lists ``D.parent.name`` as a slug.
+      some integer ``N`` (the version-dir naming convention), the
+      thread root is ``D.parent``. The project root is ``D.parent.parent``
+      iff it has a project BRIEF listing the slug.
    b. **Thread-root check:** if ``D`` contains any subdirectory matching
       ``<D.name>.<N>`` (i.e., version dirs whose stem matches ``D``'s
-      basename), ``D`` is the thread root. Resolve layout by checking
-      ``D.parent`` for a project BRIEF.
+      basename), ``D`` is the thread root.
    c. **Project-root check:** if ``D`` has ``BRIEF.md`` with a non-empty
       ``documents:`` list AND the original ``path`` lives inside
       ``D/<slug>/`` for one of the slugs we can recognize from the path
@@ -107,55 +103,20 @@ root, a project root, or any nested artifact like ``thread.1/memo.md``):
 3. Stop at the filesystem root. Return ``None`` if no thread root
    identified.
 
-Layout precedence
------------------
+Layout gate
+-----------
 
-Per the issue body's resolution of Open Question #6 from the curator
-analysis: when **both** the classic and project-brief layouts could
-match (e.g., a project has only one document and the author authored
-both a per-thread BRIEF and a project BRIEF), prefer the **project-brief
-layout when its ``documents:`` list is non-empty**, fall back to classic
-otherwise.
-
-This precedence is enforced **at the parent check**: once we've
-identified a thread root candidate, we ask ``has_project_brief(parent)``.
-If that returns True AND the thread's slug appears in the documents
-list, the result is project-brief. Otherwise, classic — even when the
-thread itself carries a BRIEF.
+The project-brief layout matches when the parent of the candidate
+thread root has a project BRIEF whose ``documents:`` list names the
+thread's slug. A stray subdirectory inside a project (not listed in
+``documents:``) returns ``None`` rather than being silently promoted
+to a thread — discovery is conservative under configuration drift.
 
 A project BRIEF with an **empty** ``documents:`` list (``documents: []``
-or ``documents:`` with no value) does NOT win the precedence check —
-``has_project_brief`` returns False, the classic layout is used, and
-downstream parsing (sub-deliverable 2) is not triggered. This matches
-the issue body's contract: "BRIEF exists with a **non-empty**
-``documents:`` list" is the dispatch gate.
-
-Backwards compatibility
------------------------
-
-For any path under a thread that does NOT have a project BRIEF at its
-parent (i.e., every classic thread that exists today), the returned
-``DiscoveryResult`` is::
-
-    DiscoveryResult(
-        thread_root=<thread_dir>,
-        layout=LAYOUT_CLASSIC,
-        project_root=None,
-        slug=<thread_dir.name>,
-    )
-
-This is the v1 contract for the classic layout. Consumers that only
-care about ``thread_root`` ignore the layout marker and behave
-byte-identically to a pre-#284 ``thread_root`` resolver. The slug field
-is populated for convenience (it matches ``thread_root.name`` in the
-classic layout) so a single accessor pattern works across both layouts.
-
-A future commands integration (sub-deliverables 2 + 3) will branch on
-``layout`` to route BRIEF parsing and rubric overlay selection. The
-commands shipped before this module — ``memo-draft``, ``memo-review``,
-``memo-revise``, ``memo-audit``, ``memo-figures`` — do NOT yet consume
-this utility. The wiring lands when the BRIEF parser and overlay
-selector need to dispatch on layout.
+or ``documents:`` with no value) does NOT satisfy ``has_project_brief``
+— discovery returns ``None`` for any path under such a directory. A
+project must enumerate at least one document for any thread under it to
+be discoverable.
 
 No new Python deps
 ------------------
@@ -188,19 +149,19 @@ import yaml
 
 # On-disk filename for the brief. Surfaced as a constant so the layout
 # contract has a single source of truth across this module, its tests,
-# and downstream consumers (BRIEF parser in sub-deliverable 2 will share
+# and downstream consumers (BRIEF parser in sub-deliverable 2 shares
 # this literal).
 BRIEF_FILENAME = "BRIEF.md"
 
-# YAML frontmatter key that gates the project-brief layout. When this
-# key is present AND its value is a non-empty list, the BRIEF is a
-# project-level BRIEF (not a per-thread BRIEF) and the project-brief
-# layout dispatch is triggered.
+# YAML frontmatter key that gates the project layout. When this key is
+# present AND its value is a non-empty list, the BRIEF is a project-level
+# BRIEF that enumerates per-document metadata and discovery dispatches
+# from it.
 DOCUMENTS_FRONTMATTER_KEY = "documents"
 
-# Layout marker strings. Use these constants — not the string literals —
-# in downstream consumers so a rename here propagates automatically.
-LAYOUT_CLASSIC = "classic"
+# Layout marker string. Retained as a sentinel so the audit trail and
+# downstream dispatch surfaces have a stable literal to read; with the
+# classic layout retired under #295 there is only one value.
 LAYOUT_PROJECT_BRIEF = "project-brief"
 
 # Compiled regex for version-dir naming: <stem>.<N> where N is an
@@ -224,27 +185,25 @@ class DiscoveryResult:
     ----------
     thread_root
         The directory that holds (or would hold) the version dirs
-        ``<thread_root.name>.N/`` for this thread. Always populated.
-        For the classic layout this is ``<portfolio>/<thread>/``; for
-        the project-brief layout this is ``<project>/<slug>/``.
+        ``<thread_root.name>.N/`` for this thread. Always populated;
+        equals ``<project_root>/<slug>/``.
     layout
-        Either :data:`LAYOUT_CLASSIC` or :data:`LAYOUT_PROJECT_BRIEF`.
-        Downstream consumers dispatch on this value to decide whether
-        to look for a per-thread BRIEF (classic) or a project-level
-        BRIEF (project-brief).
+        Always :data:`LAYOUT_PROJECT_BRIEF`. The field is retained
+        (rather than removed) so the dataclass shape stays stable for
+        downstream consumers and the audit trail records a single
+        source-of-truth literal.
     project_root
-        For the project-brief layout, the directory containing the
-        project BRIEF (``<project>/``). ``None`` for the classic layout.
+        The directory containing the project BRIEF (``<project>/``).
+        Always populated.
     slug
         The thread's slug as it appears in the project BRIEF's
-        ``documents:`` list (project-brief layout) or as the thread
-        directory's basename (classic layout). Always populated; matches
-        ``thread_root.name`` in both layouts.
+        ``documents:`` list. Always populated; matches
+        ``thread_root.name``.
     """
 
     thread_root: Path
     layout: str
-    project_root: Optional[Path]
+    project_root: Path
     slug: str
 
 
@@ -259,8 +218,8 @@ def _extract_frontmatter(text: str) -> Optional[dict]:
     Returns ``None`` when the text has no frontmatter, the frontmatter
     is malformed, or the parsed value isn't a dict. This module is
     intentionally **tolerant** — the layout-dispatch gate degrades to
-    classic when the frontmatter is unparseable, matching the
-    absence-tolerant convention shared by ``anvil_config.py`` and
+    "not a project root" when the frontmatter is unparseable, matching
+    the absence-tolerant convention shared by ``anvil_config.py`` and
     ``refs_resolver.py``.
     """
     # The opener must be the first non-empty line. Leading blank lines
@@ -312,9 +271,8 @@ def has_project_brief(directory: Path) -> bool:
 
     Returns False for every other shape (missing BRIEF, no frontmatter,
     malformed YAML, ``documents:`` absent, ``documents:`` empty list,
-    ``documents:`` non-list value). This is the layout-precedence gate:
-    the project-brief layout wins only when ``documents:`` is non-empty,
-    per the resolution of Open Question #6 from the curator analysis.
+    ``documents:`` non-list value). This is the layout gate: discovery
+    only matches when the documents list is non-empty.
 
     The function does NOT validate the per-entry schema of the
     ``documents:`` list — that's sub-deliverable 2 (#285). It only
@@ -432,35 +390,30 @@ def _contains_version_dirs(directory: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_layout(thread_root: Path) -> DiscoveryResult:
-    """Build a :class:`DiscoveryResult` for a confirmed ``thread_root``.
+def _resolve_layout(thread_root: Path) -> Optional[DiscoveryResult]:
+    """Build a :class:`DiscoveryResult` for a candidate ``thread_root``.
 
-    Applies the layout-precedence rule: project-brief wins when the
-    parent directory has a project BRIEF whose ``documents:`` list
-    includes this thread's slug. Otherwise classic.
+    Returns the discovery result iff the parent directory carries a
+    project BRIEF whose ``documents:`` list names this thread's slug.
+    Otherwise returns ``None`` — every thread root must be acknowledged
+    by a project BRIEF under #295.
 
-    The slug-in-documents check (not just "parent has project BRIEF")
-    is load-bearing: a project BRIEF with a ``documents:`` list that
-    happens to NOT name this slug means this thread is a stray
-    (perhaps a classic thread that landed inside a project dir by
-    mistake, or a thread that hasn't been added to the project BRIEF
-    yet). The conservative choice is to treat such a thread as
-    classic — it's not formally part of the project from the BRIEF's
-    perspective.
+    The slug-in-documents check is load-bearing: a candidate thread
+    that has version dirs but whose parent does not list its slug is a
+    stray (perhaps a draft that hasn't been added to the project BRIEF
+    yet, or a directory that landed under a project by mistake). The
+    conservative choice under #295 is to treat such a thread as
+    not-yet-discoverable rather than silently returning a result with
+    no project context.
     """
     slug = thread_root.name
     parent = thread_root.parent
-    if _project_brief_lists_slug(parent, slug):
-        return DiscoveryResult(
-            thread_root=thread_root,
-            layout=LAYOUT_PROJECT_BRIEF,
-            project_root=parent,
-            slug=slug,
-        )
+    if not _project_brief_lists_slug(parent, slug):
+        return None
     return DiscoveryResult(
         thread_root=thread_root,
-        layout=LAYOUT_CLASSIC,
-        project_root=None,
+        layout=LAYOUT_PROJECT_BRIEF,
+        project_root=parent,
         slug=slug,
     )
 
@@ -473,13 +426,11 @@ def _resolve_layout(thread_root: Path) -> DiscoveryResult:
 def discover_thread_root(path: Path) -> Optional[DiscoveryResult]:
     """Walk upward from ``path`` and return the enclosing thread root.
 
-    Recognizes both the classic siblings-under-portfolio layout and the
-    project-as-thread-root layout per the dual-layout discovery
-    contract documented in this module's docstring.
+    Recognizes the project-as-thread-root layout: every thread lives
+    inside a project root with a project-level ``BRIEF.md`` whose
+    ``documents:`` list names the thread's slug.
 
-    The walk terminates at the first thread root encountered. The
-    layout marker on the returned result indicates which on-disk shape
-    matched.
+    The walk terminates at the first thread root encountered.
 
     Parameters
     ----------
@@ -495,10 +446,10 @@ def discover_thread_root(path: Path) -> Optional[DiscoveryResult]:
     -------
     Optional[DiscoveryResult]
         ``None`` when no thread root is identifiable — the walk
-        reached the filesystem root without finding either a version
-        dir pattern or a project BRIEF that contextualizes ``path``.
-        Otherwise a typed result carrying the thread root, layout,
-        project root (project-brief layout only), and slug.
+        reached the filesystem root without finding a version dir
+        pattern under an acknowledging project BRIEF. Otherwise a
+        typed result carrying the thread root, layout marker, project
+        root, and slug.
 
     Algorithm
     ---------
@@ -513,14 +464,14 @@ def discover_thread_root(path: Path) -> Optional[DiscoveryResult]:
          thread root is ``D``.
        - Else if ``D`` is a project root (has a project BRIEF), and
          the original ``path`` lives inside ``D/<slug>/`` for some
-         slug, the thread root is ``D/<slug>/``.
+         listed slug, the thread root is ``D/<slug>/``.
 
     3. Stop at the first match, or at the filesystem root.
 
-    Layout precedence (Open Question #6 resolution): the project-brief
-    layout wins when the parent of a thread root has a project BRIEF
-    whose ``documents:`` list names this thread's slug. Otherwise
-    classic.
+    Discovery only returns a match when the candidate thread root's
+    parent has a project BRIEF whose ``documents:`` list names the
+    thread's slug. Stray subdirectories inside a project (not listed)
+    return ``None``.
     """
     # Normalize to a directory. A non-existent path is tolerated; the
     # walk uses Path arithmetic and only consults the filesystem at
@@ -596,7 +547,6 @@ __all__ = [
     "BRIEF_FILENAME",
     "DOCUMENTS_FRONTMATTER_KEY",
     "DiscoveryResult",
-    "LAYOUT_CLASSIC",
     "LAYOUT_PROJECT_BRIEF",
     "discover_thread_root",
     "has_project_brief",

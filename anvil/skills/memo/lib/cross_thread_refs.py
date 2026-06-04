@@ -196,9 +196,9 @@ class CrossThreadRef:
         to int) so the ``.latest`` symbolic form round-trips cleanly.
     file
         The file inside the version directory, when the reference points
-        at a specific file (e.g., ``"memo.md"`` or
-        ``"exhibits/figure.png"``). ``None`` when the reference points
-        at the version dir root.
+        at a specific file (e.g., the body markdown ``"<other-slug>.md"``
+        echoing the slug per #295, or ``"exhibits/figure.png"``).
+        ``None`` when the reference points at the version dir root.
     """
 
     line: int

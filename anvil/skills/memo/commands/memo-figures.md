@@ -6,14 +6,14 @@ description: Figurer command for the memo skill. Generates supporting charts, ta
 # memo-figures — Figurer
 
 **Role**: figurer.
-**Reads**: latest `<thread>.{N}/memo.md` and `<thread>.{N}/exhibits/`.
+**Reads**: latest `<thread>.{N}/<thread>.md` and `<thread>.{N}/exhibits/`.
 **Writes**: chart/table files into `<thread>.{N}/exhibits/`. Idempotent.
 
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/memo.md` existing.
-- **Exhibit specifications**: extracted from `memo.md` by scanning for exhibit references (e.g., `![Exhibit 1: Unit economics scenarios](exhibits/fig-1.png)` or inline references like `see Exhibit 2`).
+- **Latest version directory**: highest `N` with `<thread>.{N}/<thread>.md` existing.
+- **Exhibit specifications**: extracted from `<thread>.md` by scanning for exhibit references (e.g., `![Exhibit 1: Unit economics scenarios](exhibits/fig-1.png)` or inline references like `see Exhibit 2`).
 
 ## Outputs
 
@@ -28,11 +28,11 @@ description: Figurer command for the memo skill. Generates supporting charts, ta
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/memo.md`. Read `<thread>.{N}/_progress.json` to see if `phases.figures.state == done`.
-2. **Resume check**: enumerate exhibit references in `memo.md`. For each referenced exhibit, check if the file exists in `exhibits/`. If all referenced exhibits exist AND `phases.figures.state == done`, exit early — no work needed.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/<thread>.md`. Read `<thread>.{N}/_progress.json` to see if `phases.figures.state == done`.
+2. **Resume check**: enumerate exhibit references in `<thread>.md`. For each referenced exhibit, check if the file exists in `exhibits/`. If all referenced exhibits exist AND `phases.figures.state == done`, exit early — no work needed.
 3. **Initialize `_progress.json`**: write `phases.figures.state = in_progress`, `phases.figures.started = <ISO>`.
 4. **For each missing or stale exhibit**:
-   - **Markdown tables** (`.md`): generate from inline data in the memo body or from a co-located `.csv`. Tables that fit comfortably inline (≤10 rows, ≤6 columns) should be inlined in `memo.md` rather than externalized; only externalize when the table is large enough that inlining hurts readability.
+   - **Markdown tables** (`.md`): generate from inline data in the memo body or from a co-located `.csv`. Tables that fit comfortably inline (≤10 rows, ≤6 columns) should be inlined in `<thread>.md` rather than externalized; only externalize when the table is large enough that inlining hurts readability.
    - **Data-driven charts** (`.png` / `.svg`): if a `.csv` source exists, render it. If not, the figurer should refuse and request that the reviser add the source data — the figurer does not invent data.
    - **Source data** (`.csv`): if a chart is requested without source data and the memo body contains the data inline, extract it to a `.csv` first, then render.
 5. **Tooling**: the figurer SHOULD prefer self-contained tools (matplotlib, plotly-static, pandoc) over network-dependent services. Failing renders should produce a stub `.md` placeholder noting what was attempted and why it failed, rather than silently leaving a broken reference.
@@ -47,7 +47,7 @@ description: Figurer command for the memo skill. Generates supporting charts, ta
 
 ## Validation by file existence
 
-The reviewer scores Dimension 8 (Prose & structure) in part on whether exhibits referenced from the body are actually present. The figurer's job is to make that check pass. Validation: for every `![...](exhibits/<filename>)` and `(see Exhibit N)` reference in `memo.md`, the file `exhibits/<filename>` must exist. The figurer enumerates and fills this list.
+The reviewer scores Dimension 8 (Prose & structure) in part on whether exhibits referenced from the body are actually present. The figurer's job is to make that check pass. Validation: for every `![...](exhibits/<filename>)` and `(see Exhibit N)` reference in `<thread>.md`, the file `exhibits/<filename>` must exist. The figurer enumerates and fills this list.
 
 ## Notes for the figurer agent
 

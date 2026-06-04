@@ -263,10 +263,16 @@ class _FakeCompletedProcess:
 
 @pytest.fixture
 def memo_version_dir(tmp_path):
-    """Build a minimal version directory with a non-empty memo.md."""
-    vd = tmp_path / "anvil.1"
+    """Build a minimal version directory with a non-empty body markdown.
+
+    Body filename echoes the thread slug per #295 — for an ``anvil``
+    thread the body is ``anvil.md`` inside ``anvil/anvil.1/``.
+    """
+    thread = tmp_path / "anvil"
+    thread.mkdir()
+    vd = thread / "anvil.1"
     vd.mkdir()
-    (vd / "memo.md").write_text(
+    (vd / "anvil.md").write_text(
         "# Investment memo\n\nSome ~~strikethrough~~ prose.\n",
         encoding="utf-8",
     )
