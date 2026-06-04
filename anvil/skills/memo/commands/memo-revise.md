@@ -147,7 +147,6 @@ The `plan.md` file shape is documented in `templates/plan.md.template` and conta
 - **Header table** with the thread slug, source/target version paths, source review verdict + total /44, ISO-8601 timestamp, and the `Revision mode` (one of `normal` / `polish`).
 - **Planned edits table** with one row per planned change: `ID`, `Source` (critic sibling + tag), `Priority` (one of `critical` / `major` / `nit` / `declined`), `Insertion site` (§N.M ¶X anchor in source memo), `Summary` (one-line description), `Words Δ` (signed integer), `Dim Δ` (e.g., `+1 dim 3`).
 - **Aggregate footer table** with `Items planned`, `Items by priority`, total `Words Δ`, source/projected word counts, the resolved target-length window (per the same resolution rules as step 6 below), and a `Target-length flag` of `within_target` / `exceeds_max` / `under_min` / `no_target`.
-- **Convictions section** when `<thread>.{N}/_convictions.md` exists (legacy — the convictions primitive was reverted via #227); each conviction is labelled `honored` or `reopened by item <ID>`.
 
 ### Per-item rejection
 
