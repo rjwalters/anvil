@@ -58,6 +58,48 @@
   citecolor=black,
 }
 
+% --- Pandoc 3.x emission compatibility ----------------------------------
+% Pandoc 3.x's default LaTeX template assumes these packages are loaded.
+% The shipped minimal preamble above (geometry/fontspec/fancyhdr/lastpage/
+% hyperref) is intentionally lean; this block tracks the additional
+% emission-time packages modern pandoc expects when the template doesn't
+% supply its own. ``\IfFileExists`` guards (mirroring the
+% ``check_*_available`` graceful-degrade precedent in
+% ``anvil/lib/render.py``) keep thin TeX Live installs renderable —
+% missing-package consumers get a slightly worse memo (e.g.
+% strikethrough passes through unstyled) rather than a hard compile
+% failure on ``\Undefined control sequence``.
+%
+% Maintainer policy: this block tracks pandoc's default-template
+% emission, not aesthetics. Consumers overriding template.tex SHOULD
+% preserve this block. See issue #277 for the canary reproducer
+% (pandoc 3.9.0.2 + MacTeX xelatex, undefined ``\st``).
+\usepackage{xcolor}
+\usepackage{iftex}
+\ifPDFTeX\else
+  \IfFileExists{lua-ul.sty}{\usepackage[soul]{lua-ul}}{}
+\fi
+\IfFileExists{soul.sty}{\usepackage{soul}}{}
+% Fallback: when soul.sty is absent the strikethrough macro is
+% undefined; \providecommand keeps the document compiling by passing
+% the content through unstyled. The HTML chain remains the canonical
+% strikethrough rendering path.
+\providecommand{\st}[1]{#1}
+\usepackage{fancyvrb}
+\usepackage{longtable,booktabs,array}
+\usepackage{calc}
+\usepackage{etoolbox}
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\usepackage{bookmark}
+% \newcounter{none} backs the \noalign{} hooks pandoc 3.x emits for
+% unnumbered tables; the counter is referenced but never advanced.
+\newcounter{none}
+% \tightlist is pandoc's spacing macro for lists with no blank line
+% between items. \providecommand keeps the document compiling even when
+% an upstream package already defines it.
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
 % --- Pandoc-supplied preamble blocks ------------------------------------
 $if(highlighting-macros)$
 $highlighting-macros$
