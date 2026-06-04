@@ -6,19 +6,19 @@ description: PDF renderer for the memo skill. Reads the latest memo.md and produ
 # memo-render — PDF renderer
 
 **Role**: PDF renderer (asset-producing, optional, non-blocking).
-**Reads**: latest `<thread>.{N}/memo.md`.
-**Writes**: `<thread>.{N}/memo.pdf` (on success), `<thread>.{N}/_progress.json` (always).
+**Reads**: latest `<thread>.{N}/<body_filename>` (default `memo.md`; per-thread override via `body_filename` in `<thread>/.anvil.json` — see SKILL.md §"Body filename customization").
+**Writes**: `<thread>.{N}/<body_basename>.pdf` (e.g. `memo.md` → `memo.pdf`, `paper.md` → `paper.pdf`) on success, `<thread>.{N}/_progress.json` (always).
 
-This command is the memo-skill analog of `deck-figures`: an **optional, asset-producing lifecycle step** that runs after the drafter or reviser writes the latest `memo.md` and produces the rendered PDF alongside it. It is **non-blocking** by design — a missing renderer, a render-gate finding, or even a hard pandoc failure does NOT abort the upstream draft / revise flow. Failures land as `_progress.json.phases.render` state + `_progress.json.render_gate` findings, and the operator can still ship the markdown memo.
+This command is the memo-skill analog of `deck-figures`: an **optional, asset-producing lifecycle step** that runs after the drafter or reviser writes the latest body markdown (`<body_filename>`, default `memo.md`) and produces the rendered PDF alongside it. It is **non-blocking** by design — a missing renderer, a render-gate finding, or even a hard pandoc failure does NOT abort the upstream draft / revise flow. Failures land as `_progress.json.phases.render` state + `_progress.json.render_gate` findings, and the operator can still ship the markdown memo.
 
 **State-machine status**: render is a **sub-step** of `DRAFTED` and `REVISED`, NOT a new state. `_progress.json.phases.render` records whether the phase ran; absence of the phase means it never ran (a fully legal pre-render state for backward-compat with memo versions written before this command shipped). The state-machine derivation in SKILL.md §"State machine" does NOT inspect `phases.render` — `DRAFTED` is still derived from `phases.draft == done`, `REVISED` from the presence of `<thread>.{N+1}/` after a prior review, etc. See SKILL.md §"Rendering" for the full optional-render contract.
 
-**Composability**: `memo-render` is **independently re-runnable**. The consumer can hand-edit the `<thread>/.anvil/anvil/lib/memo/styles.css` override (or the framework `anvil/lib/memo/styles.css`), then re-invoke `memo-render <thread>` without going through draft / revise. Each invocation regenerates `memo.pdf` from the current `memo.md` and current styles; `memo.pdf` is a **derived artifact** and MUST NEVER be hand-edited. See §"Re-run pattern" below.
+**Composability**: `memo-render` is **independently re-runnable**. The consumer can hand-edit the `<thread>/.anvil/anvil/lib/memo/styles.css` override (or the framework `anvil/lib/memo/styles.css`), then re-invoke `memo-render <thread>` without going through draft / revise. Each invocation regenerates the body PDF from the current body markdown and current styles; the rendered PDF is a **derived artifact** and MUST NEVER be hand-edited. See §"Re-run pattern" below.
 
 ## Inputs
 
 - **Thread slug** (positional argument): identifies the thread within the cwd portfolio.
-- **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/memo.md` existing. If no such version exists, exit with a notice (no work to do).
+- **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/<body_filename>` existing. The body filename is resolved at command start via `load_body_filename(<thread_dir>)` — see step 1b below. If no such version exists, exit with a notice (no work to do).
 - **Target length** (optional): read from `<thread>.{N}/_progress.json.metadata.target_length_resolved` (the field the drafter or reviser wrote when producing v{N}, per `memo-draft.md` step 5 / `memo-revise.md` step 6). The resolved `(min_words, max_words)` is converted into the `target_length` arg passed to `render_gate.gate(kind="memo")`: if the resolved range is present, pass `{"words": [min_words, max_words]}`; if absent or `source == "none"`, pass `None`. Reading the resolved field — rather than re-resolving from `<thread>/.anvil.json` — pins the render gate's page-fit anchor to the same range the drafter/reviser authored against (mirrors the `memo-review` step 4 convention).
 - **Framework substrate** (read-only): `anvil/lib/memo/template.html`, `anvil/lib/memo/styles.css`, and `anvil/lib/memo/template.tex` (the pinned render-chain config from Epic #158 Phase 1, PR #172). In an installed consumer repo (issue #230 uv-runnable layout) these resolve under `<consumer>/.anvil/anvil/lib/memo/` — the importable `anvil.lib.memo` package directory. Consumers override the relevant file at `<consumer>/.anvil/anvil/lib/memo/styles.css` etc. per `anvil/lib/memo/README.md` §"Override discipline"; this command picks them up unchanged. (Pre-#230 installs placed these files under `.anvil/lib/memo/`; that path is no longer load-bearing for runtime invocation. The installer surfaces a one-line migration warning when the legacy directory is still on disk.)
 
@@ -26,8 +26,11 @@ This command is the memo-skill analog of `deck-figures`: an **optional, asset-pr
 
 ```
 <thread>.{N}/
-  memo.pdf            Rendered PDF (on success). Regenerated on every run; NEVER manually edited.
-  _progress.json      Updated with phases.render and render_gate blocks.
+  <body_basename>.pdf  Rendered PDF (on success). Filename derives from
+                       <body_filename> with the .md suffix replaced by .pdf
+                       (e.g. memo.md → memo.pdf, paper.md → paper.pdf).
+                       Regenerated on every run; NEVER manually edited.
+  _progress.json       Updated with phases.render and render_gate blocks.
 ```
 
 `_progress.json` carries the render outcome under two keys (both initialized by this command, neither read or mutated by `memo-draft` / `memo-review` / `memo-revise` in Phase 3 — reviewer-side wiring lands in Phase 4):
@@ -39,11 +42,12 @@ The `render_gate` block is **always written** (whether the gate passed or failed
 
 ## Procedure
 
-1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `memo.md` present. If no such version exists, exit with a notice (`No memo version found; nothing to render.`).
+1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `<body_filename>` present (default `memo.md`; resolved per step 1b). If no such version exists, exit with a notice (`No memo version found; nothing to render.`).
+1b. **Resolve body filename**: invoke `anvil/skills/memo/lib/anvil_config.py::load_body_filename(<thread_dir>)`. The returned string is the body markdown filename for this thread (default `"memo.md"`; per-thread override via top-level `body_filename` in `<thread>/.anvil.json` — see SKILL.md §"Body filename customization"). Derive the PDF basename by stripping the `.md` suffix: `paper.md` → `paper.pdf`, `memo.md` → `memo.pdf`. All subsequent references to `<body_filename>` and `<body_basename>.pdf` in this procedure resolve to these values. Pass the resolved string through to `render_gate.gate(kind="memo", body_filename=<resolved>, ...)` in step 5 so the gate's compile + placeholder-scan paths operate on the correct source file.
 2. **Resume check** + idempotence:
-   - If `<thread>.{N}/_progress.json.phases.render.state == done` AND `memo.pdf` exists AND `memo.pdf` is newer than `memo.md`, exit early with a notice — the rendered artifact is up to date.
-   - If `phases.render.state == done` but `memo.pdf` is missing OR older than `memo.md`, treat as stale and re-render.
-   - If `phases.render.state == in_progress` (crashed prior run), treat as crashed: re-render from scratch. Any partial `memo.pdf` is overwritten in step 5.
+   - If `<thread>.{N}/_progress.json.phases.render.state == done` AND `<body_basename>.pdf` exists AND `<body_basename>.pdf` is newer than `<body_filename>`, exit early with a notice — the rendered artifact is up to date.
+   - If `phases.render.state == done` but `<body_basename>.pdf` is missing OR older than `<body_filename>`, treat as stale and re-render.
+   - If `phases.render.state == in_progress` (crashed prior run), treat as crashed: re-render from scratch. Any partial `<body_basename>.pdf` is overwritten in step 5.
 3. **Initialize `_progress.json`**: read existing `_progress.json` (per the read-merge-write recipe in `anvil/lib/snippets/progress.md`), set `phases.render.state = in_progress`, `phases.render.started = <ISO>` (per `anvil/lib/snippets/timestamp.md`). Preserve every other phase and all `metadata` fields.
 4. **Resolve target_length**: read `metadata.target_length_resolved` from the same `_progress.json`. If present and `source != "none"`, build `target_length = {"words": [metadata.target_length_resolved.min_words, metadata.target_length_resolved.max_words]}`. Otherwise pass `target_length = None` to the gate (the page-fit dimension graceful-degrades — see `render_gate.py` `_gate_memo` step 2).
 4b. **Resolve the `words_per_page` override** (optional, per-thread page_cap calibration): read `render_gate.words_per_page` from `<thread>/.anvil.json`. If present and a positive number (int or float), pass it through as `words_per_page=<value>`; otherwise omit the kwarg (the gate's default `MEMO_WORDS_PER_PAGE = 600` applies). Malformed values (non-numeric, `<= 0`, boolean) silently fall back to the default per the gate's graceful-degrade contract — no error raised. The override **only affects the `target_length.words → page range` conversion**: when `target_length.pages` is declared directly, the override is a no-op. See `anvil/lib/render_gate.py` module docstring §"page_cap calibration" for the calibration story (600 wpp is the dense-prose default; table-dense memos typically want ~300-400 wpp).
@@ -55,15 +59,16 @@ The `render_gate` block is **always written** (whether the gate passed or failed
    result = gate(
        kind="memo",
        version_dir=<thread>.{N}/,
-       out_pdf=<thread>.{N}/memo.pdf,
+       out_pdf=<thread>.{N}/<body_basename>.pdf,  # e.g. memo.pdf / paper.pdf
        target_length=target_length,
-       words_per_page=words_per_page,  # omit when not set in .anvil.json
+       words_per_page=words_per_page,             # omit when not set in .anvil.json
+       body_filename=<body_filename>,             # default "memo.md"; passes the resolved value through
    )
    ```
 
    The gate owns the full render chain (pandoc → weasyprint OR wkhtmltopdf OR xelatex) plus the five deterministic memo checks (`memo_compile_success`, `memo_page_fit`, `memo_overfull_check`, `memo_image_refs_exist`, `memo_placeholder_scan`). See `anvil/lib/render_gate.py` module docstring for the full check list and severity model. The gate is **graceful-degrading** on missing renderer: when pandoc and/or the HTML/PDF engines are absent on PATH, the gate returns `compile_status == "unavailable"` and records the `MEMO_RENDERER_REMEDIATION` install story in `result.reasons` (NOT a hard failure — see `_gate_memo` Check 1).
 
-   `out_pdf` defaults to `<version_dir>/memo.pdf`; the explicit form is documented here so the contract is visible at the command surface. The PDF lands **alongside `memo.md`** in the version directory — NOT in a separate `render/` subdir — so downstream tooling (vision critics, `pdftoppm`, manual review) can find it without path conventions.
+   `out_pdf` defaults to `<version_dir>/<body_basename>.pdf` (e.g. `memo.pdf` / `paper.pdf`); the explicit form is documented here so the contract is visible at the command surface. The PDF lands **alongside `<body_filename>`** in the version directory — NOT in a separate `render/` subdir — so downstream tooling (vision critics, `pdftoppm`, manual review) can find it without path conventions. The `body_filename` kwarg defaults to `"memo.md"` for backward compatibility; callers using per-thread `body_filename` customization (issue #279) pass the resolved string from step 1b so the gate's compile + placeholder-scan paths operate on the correct source file.
 6. **Persist results to `_progress.json`** — independent of gate outcome:
    - Write `render_gate = result.to_json()` (the full JSON shape from `GateResult.to_json()`) into the version dir's `_progress.json` as a top-level key (sibling to `phases` and `metadata`). The shape is `{gate, pdf_path, pages, page_cap, overfull_boxes, compile, placeholders, findings, pass, reasons}` — see `render_gate.py::GateResult.to_json` for the canonical shape.
    - Set `phases.render.completed = <ISO>`.
@@ -121,8 +126,8 @@ Both calls produce the same `_progress.json.phases.render` + `_progress.json.ren
 
 ## Idempotence and resumability
 
-- A completed render (`phases.render.state == done` AND `memo.pdf` exists AND newer than `memo.md`) is a no-op with a notice — the rendered artifact is up to date.
-- A stale render (`memo.pdf` older than `memo.md`) re-renders. The mtime check is the load-bearing freshness signal; `phases.render` alone is not sufficient (the markdown could have changed under a `done` state).
+- A completed render (`phases.render.state == done` AND `<body_basename>.pdf` exists AND newer than `<body_filename>`) is a no-op with a notice — the rendered artifact is up to date.
+- A stale render (`<body_basename>.pdf` older than `<body_filename>`) re-renders. The mtime check is the load-bearing freshness signal; `phases.render` alone is not sufficient (the markdown could have changed under a `done` state).
 - A crashed render (`phases.render.state == in_progress`) is re-runnable; the partial PDF (if any) is overwritten in step 5.
 - A render that failed due to renderer unavailability (`compile.status == "unavailable"`) is re-runnable after the operator installs the toolchain — no state cleanup needed.
 

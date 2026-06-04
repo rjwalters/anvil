@@ -1,0 +1,8 @@
+{
+  "max_iterations": 8,
+  "body_filename": "paper.md",
+  "rubric_overrides": {
+    "memo_subtype": "latency-wall",
+    "dim_1_calibration": "position paper — score on positional clarity + thesis sharpness, not on a single ranked recommendation"
+  }
+}

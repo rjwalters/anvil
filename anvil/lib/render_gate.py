@@ -548,6 +548,7 @@ def gate(
     out_pdf: Optional[Path] = None,
     target_length: Optional[dict] = None,
     words_per_page: Optional[int] = None,
+    body_filename: str = "memo.md",
     log_path: Optional[Path] = None,
     source_paths: Optional[list[Path]] = None,
     page_cap: Optional[int] = None,
@@ -569,17 +570,21 @@ def gate(
       ``compile_exit_code``) is preserved verbatim.
     - ``kind="memo"``: the five-dimension memo gate (Epic #158 / Phase 2).
       Requires ``version_dir``; ``out_pdf`` defaults to
-      ``<version_dir>/memo.pdf``. ``target_length`` is the resolved
-      ``{"words": [min, max]}`` or ``{"pages": [min, max]}`` dict (per
-      ``SKILL.md`` §Length targets). Optional ``words_per_page`` is the
-      per-thread override for the words→pages conversion factor (see
-      module docstring §"page_cap calibration"); ``None`` uses
-      :data:`MEMO_WORDS_PER_PAGE` (600). Malformed overrides
-      (non-numeric or ``<= 0``) silently fall back to the default.
-      Routes through :func:`_gate_memo` which invokes
-      :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
-      engine, then runs the five memo-specific checks. See module
-      docstring for the full check list.
+      ``<version_dir>/<body_basename>.pdf`` (e.g. ``memo.md`` →
+      ``memo.pdf``, ``paper.md`` → ``paper.pdf``). ``target_length`` is
+      the resolved ``{"words": [min, max]}`` or
+      ``{"pages": [min, max]}`` dict (per ``SKILL.md`` §Length targets).
+      Optional ``words_per_page`` is the per-thread override for the
+      words→pages conversion factor (see module docstring §"page_cap
+      calibration"); ``None`` uses :data:`MEMO_WORDS_PER_PAGE` (600).
+      Malformed overrides (non-numeric or ``<= 0``) silently fall back to
+      the default. Optional ``body_filename`` (issue #279) selects the
+      source markdown filename within ``version_dir``; defaults to
+      ``"memo.md"`` for backward compatibility. Routes through
+      :func:`_gate_memo` which invokes :func:`_render_memo_source` for
+      pandoc + the preferred HTML/PDF engine, then runs the five
+      memo-specific checks. See module docstring for the full check
+      list.
 
     Parameters (kind="latex")
     -------------------------
@@ -624,7 +629,7 @@ def gate(
         if version_dir is None:
             raise ValueError(
                 "gate(kind='memo') requires version_dir (the "
-                "<thread>.{N}/ directory containing memo.md)."
+                "<thread>.{N}/ directory containing the memo body markdown)."
             )
         return _gate_memo(
             version_dir=Path(version_dir),
@@ -633,6 +638,7 @@ def gate(
             placeholder_patterns=placeholder_patterns,
             pdfinfo_path=pdfinfo_path,
             words_per_page=words_per_page,
+            body_filename=body_filename,
         )
     if kind != "latex":
         raise ValueError(
@@ -871,9 +877,10 @@ def _select_memo_engine() -> Optional[str]:
 def _render_memo_source(
     version_dir: Path,
     out_pdf: Path,
+    body_filename: str = "memo.md",
 ) -> tuple[str, int, str, str]:
     """Run pandoc → (weasyprint OR wkhtmltopdf OR xelatex) over
-    ``version_dir/memo.md`` and write ``out_pdf``.
+    ``version_dir/<body_filename>`` and write ``out_pdf``.
 
     This is the memo-side analog of :func:`compile_and_gate`'s LaTeX
     invocation: a single deterministic shell-out that the gate then
@@ -885,9 +892,16 @@ def _render_memo_source(
     Parameters
     ----------
     version_dir:
-        ``<thread>.{N}/`` directory containing ``memo.md``.
+        ``<thread>.{N}/`` directory containing the memo body markdown.
     out_pdf:
         Output PDF path. Parent directory must exist.
+    body_filename:
+        Filename of the memo body markdown within ``version_dir`` (issue
+        #279). Defaults to ``"memo.md"`` for backward compatibility with
+        every memo thread written before per-thread body-filename
+        customization shipped. Consumers using shape-specific filenames
+        (e.g. ``"paper.md"`` for position papers) pass the value resolved
+        from ``<thread>/.anvil.json`` ``body_filename`` field.
 
     Returns
     -------
@@ -912,11 +926,11 @@ def _render_memo_source(
     # Lazy import — see :func:`_select_memo_engine`.
     from anvil.lib import render as _render
 
-    memo_md = version_dir / "memo.md"
+    memo_md = version_dir / body_filename
     if not memo_md.is_file():
         # Missing source — surrogate "failed" outcome so the compile gate
         # fires for the right reason without a Python exception.
-        return (COMPILE_FAILED, -1, "", f"memo.md not found at {memo_md}")
+        return (COMPILE_FAILED, -1, "", f"{body_filename} not found at {memo_md}")
 
     if not _render.check_pandoc_available():
         return (COMPILE_UNAVAILABLE, -1, "", "")
@@ -1206,15 +1220,27 @@ def _gate_memo(
     placeholder_patterns: Optional[tuple[str, ...]],
     pdfinfo_path: Optional[str],
     words_per_page: Optional[int] = None,
+    body_filename: str = "memo.md",
 ) -> GateResult:
     """Five-dimension memo render-gate (kind="memo").
 
     See the module docstring for the dimension list and severity model.
     The function is structured to mirror the LaTeX gate's "all checks run
     independently, no short-circuit" contract.
+
+    The ``body_filename`` parameter (issue #279) selects the source
+    markdown filename within ``version_dir``. Defaults to ``"memo.md"``
+    for backward compatibility; callers using per-thread body filenames
+    (e.g. ``"paper.md"``) pass the value resolved from
+    ``<thread>/.anvil.json``. The PDF output path derives from
+    ``body_filename`` (e.g. ``paper.md`` → ``paper.pdf``) when
+    ``out_pdf`` is not explicitly supplied.
     """
     if out_pdf is None:
-        out_pdf = version_dir / "memo.pdf"
+        # Derive PDF name from body filename: paper.md → paper.pdf,
+        # plan.md → plan.pdf, memo.md → memo.pdf (the default + canary).
+        body_basename = body_filename[:-3] if body_filename.endswith(".md") else body_filename
+        out_pdf = version_dir / f"{body_basename}.pdf"
     out_pdf = Path(out_pdf)
 
     findings: list[GateFinding] = []
@@ -1223,7 +1249,7 @@ def _gate_memo(
 
     # --- Step 1: invoke the renderer ---------------------------------------
     compile_status, exit_code, engine_used, stderr_text = _render_memo_source(
-        version_dir, out_pdf
+        version_dir, out_pdf, body_filename=body_filename
     )
 
     # --- Check 1: memo_compile_success -------------------------------------
@@ -1421,7 +1447,7 @@ def _gate_memo(
                         gate=DIM_MEMO_IMAGE_REFS,
                         severity="error",
                         message=err.message,
-                        location=f"{version_dir / 'memo.md'}:L{err.line}",
+                        location=f"{version_dir / body_filename}:L{err.line}",
                     )
                 )
         # Surface suppressed (info) hits too so the reviewer sees what
@@ -1432,7 +1458,7 @@ def _gate_memo(
                     gate=DIM_MEMO_IMAGE_REFS,
                     severity="info",
                     message=info.message,
-                    location=f"{version_dir / 'memo.md'}:L{info.line}",
+                    location=f"{version_dir / body_filename}:L{info.line}",
                 )
             )
     except ImportError:
@@ -1446,10 +1472,10 @@ def _gate_memo(
         )
 
     # --- Check 5: memo_placeholder_scan ------------------------------------
-    memo_md = version_dir / "memo.md"
+    memo_md = version_dir / body_filename
     if not memo_md.is_file():
         reasons.append(
-            f"{DIM_MEMO_PLACEHOLDERS}: memo.md not found; placeholder "
+            f"{DIM_MEMO_PLACEHOLDERS}: {body_filename} not found; placeholder "
             "scan skipped."
         )
     else:
@@ -1466,7 +1492,7 @@ def _gate_memo(
             failed.add(DIM_MEMO_PLACEHOLDERS)
             reasons.append(
                 f"{DIM_MEMO_PLACEHOLDERS}: {len(active_hits)} placeholder "
-                "hit(s) in memo.md."
+                f"hit(s) in {body_filename}."
             )
             for hit in active_hits:
                 findings.append(

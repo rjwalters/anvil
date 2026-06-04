@@ -444,9 +444,18 @@ def test_memo_revise_render_call_is_non_blocking():
 
 
 def test_memo_revise_preserves_existing_steps():
-    """Backwards-compat invariant: the prior memo-revise procedure steps survive."""
+    """Backwards-compat invariant: the prior memo-revise procedure steps survive.
+
+    The body-filename placeholder ``<body_filename>`` (issue #279) is
+    tolerated here as an equivalent of literal ``memo.md`` — the step
+    label was generalized from ``Produce `memo.md` `` to
+    ``Produce `<body_filename>` `` when per-thread body-filename
+    customization shipped. The step still exists; only the placeholder
+    syntax changed.
+    """
     body = _read(REVISE_MD)
-    for marker in (
+    # Markers that are byte-identical pre/post issue #279.
+    invariant_markers = (
         "Discover state",
         "Resume check",
         "Iteration cap check",
@@ -454,14 +463,22 @@ def test_memo_revise_preserves_existing_steps():
         "Initialize `_progress.json`",
         "Read inputs",
         "Build a revision plan",
-        "Produce `memo.md`",
         "Write `changelog.md`",
         "Update `_progress.json`",
-    ):
+    )
+    for marker in invariant_markers:
         assert marker in body, (
             f"memo-revise.md MUST preserve the {marker!r} step (issue #190 "
             "backwards-compat AC)"
         )
+    # The "Produce" step was generalized in issue #279 — accept either the
+    # legacy literal-`memo.md` form OR the new `<body_filename>` placeholder
+    # form (both preserve the step's existence; only the body filename
+    # reference changed).
+    assert ("Produce `memo.md`" in body) or ("Produce `<body_filename>`" in body), (
+        "memo-revise.md MUST preserve the 'Produce' step (issue #190 "
+        "backwards-compat AC; issue #279 generalized to <body_filename>)"
+    )
 
 
 # ---------------------------------------------------------------------------

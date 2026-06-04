@@ -6,8 +6,8 @@ description: Drafter command for the memo skill. Produces a new memo version dir
 # memo-draft — Drafter
 
 **Role**: drafter.
-**Reads**: `<thread>/BRIEF.md` (if present), `<thread>/refs/**` (if present). For revise-from-feedback path: also the latest `<thread>.{N}/` and all `<thread>.{N}.*/` critic siblings.
-**Writes**: `<thread>.{N+1}/` containing `memo.md`, optional `exhibits/`, and `_progress.json`.
+**Reads**: `<thread>/BRIEF.md` (if present), `<thread>/refs/**` (if present), `<thread>/.anvil.json` (optional `body_filename` field — see step 1b below). For revise-from-feedback path: also the latest `<thread>.{N}/` and all `<thread>.{N}.*/` critic siblings.
+**Writes**: `<thread>.{N+1}/` containing `<body_filename>` (default `memo.md`), optional `exhibits/`, and `_progress.json`.
 
 ## Inputs
 
@@ -23,8 +23,11 @@ A new version directory:
 
 ```
 <thread>.{N+1}/
-  memo.md            Memo body (markdown)
-  exhibits/          Inline tables, charts, source data referenced from memo.md (created as needed)
+  <body_filename>    Memo body (markdown). Default `memo.md`; per-thread override
+                     via `body_filename` in `<thread>/.anvil.json` (see SKILL.md
+                     §"Body filename customization"). Worked examples: `paper.md`
+                     for position papers, `plan.md` for execution plans.
+  exhibits/          Inline tables, charts, source data referenced from `<body_filename>` (created as needed)
   _progress.json     Phase state with draft: done after successful write
 ```
 
@@ -33,7 +36,8 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
 ## Procedure
 
 1. **Discover thread state**: enumerate existing `<thread>.{N}/` dirs. Compute the next `N`.
-2. **Resume check**: if `<thread>.{N+1}/_progress.json` exists with `draft.state == in_progress`, treat as a crashed prior run. Delete any partial `memo.md` and re-draft. If `draft.state == done`, the version is already drafted — exit early with a notice (this command is idempotent: it does not overwrite a completed draft).
+1b. **Resolve body filename**: invoke `anvil/skills/memo/lib/anvil_config.py::load_body_filename(<thread_dir>)`. The returned string is the body markdown filename for this thread (default `"memo.md"`; per-thread override via top-level `body_filename` in `<thread>/.anvil.json` — see SKILL.md §"Body filename customization"). All subsequent steps that reference `<body_filename>` use this resolved value. The loader is lenient: a missing `.anvil.json`, an absent `body_filename` key, or a malformed value all degrade to the default `"memo.md"` with a `UserWarning`. The drafter does not need to special-case the default — `"memo.md"` flows through every step identically to a custom value.
+2. **Resume check**: if `<thread>.{N+1}/_progress.json` exists with `draft.state == in_progress`, treat as a crashed prior run. Delete any partial `<body_filename>` and re-draft. If `draft.state == done`, the version is already drafted — exit early with a notice (this command is idempotent: it does not overwrite a completed draft).
 3. **Read inputs**: load `BRIEF.md` (if present) and enumerate `refs/`. **Read all text-readable files in `<thread>/refs/` (markdown `.md`, plain text `.txt`, JSON `.json`) into context as source-of-truth for claims in their domain** (CVs for biographical claims, filings for sized public claims, papers for technical-claim citations, transcripts for quotation/tone, emails for traction claims). If a claim conflicts with the content of a `refs/` source-of-truth document, **the `refs/` document wins** — the drafter MUST either rewrite the claim to agree with the source or flag the conflict explicitly in prose. For **PDF refs** (`.pdf`), call `anvil/skills/memo/lib/refs_pdf.py::check_pdftotext_available()`; when it returns `True`, also extract each PDF's text via `extract_pdf_text(<thread>/refs/<file>.pdf)` and read the extracted text into context **as authoritative source-of-truth content** alongside the `.md` / `.txt` / `.json` path above. When `check_pdftotext_available()` returns `False` — or when extraction returns an empty string (image-based / scanned PDF) — the drafter falls back to the **v0 presence-only path** described next, **exactly** as if the PDF had been an image: this is the load-bearing graceful-degradation contract documented in `anvil/skills/memo/lib/refs_pdf.py` and SKILL.md §"Source-of-truth materials". For non-text files (images `.png` / `.jpg`, and PDFs when the optional extraction path above is unavailable), the drafter is informed of their presence by filename and respects the rule: "if you make a claim about the subject of `refs/<file>`, you SHOULD NOT make it unless you can verify it against `BRIEF.md` content the operator has surfaced; otherwise add a `# TODO: verify against refs/<file>` note in prose." Cite `refs/` source-of-truth files inline as `[refs/<file>]` so the reviewer can trace them; this hook is honored as if it were an inline footnote (see step 6 *Evidence* below). The presence of citation-stub-shaped files (`<key>.md` carrying `# TODO: source for <claim>`) in the same directory is unaffected — both file-roles coexist per SKILL.md §"Source-of-truth materials". **Optional perspective context**: enumerate `<thread>.*.perspective/` siblings and, if any exist, load the latest one's `notes.md` and `candidates.md` as **load-bearing context** for the Market & competitive framing, Evidence, Risks, and Financial reasoning sections — anchor ids in `candidates.md` (e.g., `#acme-series-a-2024`) are stable references the drafter can cite in prose ("comparable framing from perspective `#acme-series-a-2024`") or surface to the reviewer via inline `[refs/<file>]`-shaped pointers when the candidate's source field names a refs document. The perspective sibling does NOT extend the no-fabrication contract — entries the drafter pulls into memo prose must still respect the brief-vs-refs precedence above (refs wins on contradiction); the perspective sibling is a verified-substrate aid that helps the drafter cite candidates the brief or refs already attest to. If no perspective sibling exists, proceed normally: drafting is non-gating on perspective per `anvil/lib/snippets/perspective.md` §"State-machine non-gating". If revising from feedback, also load the prior version's `memo.md` and concatenate all critic siblings' `verdict.md` + `scoring.md` + `comments.md`.
 4. **Initialize `_progress.json`**: write `phases.draft.state = in_progress`, `phases.draft.started = <ISO timestamp>`, `metadata.iteration = N+1`, `metadata.max_iterations` (inherit from `<thread>/.anvil.json` if set, else 4). Also resolve and record `metadata.target_length_resolved` per step 5 — the resolution must happen before the prompt is built so the resolved range is in scope for both the prompt injection and the `_progress.json` provenance write.
 5. **Resolve `target_length` for v{N+1}**: if `<thread>/.anvil.json` exists, read the optional `target_length` field per the SKILL.md §Length targets contract and apply the resolution order to the version about to be produced (`N+1`):
@@ -60,7 +64,7 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
    When the source is `"none"`, write `{"source": "none"}` (omit `min_words`/`max_words`) or omit the field entirely; consumers tolerate both shapes.
 
    If a target is set, inject it into the drafting prompt as a soft target using the exact wording: **"Target length: <min>–<max> words (~<min_pages>–<max_pages> pages at 600 words/page). Treat as a soft budget — material that earns its space may exceed; pad-prose that fills space MUST be cut."** Where the absent `pages` form is set, derive the page approximation from the word range (`min_pages = round(min_words/600)`, `max_pages = round(max_words/600)`). Where no target is set, omit this line from the prompt entirely.
-6. **Draft the memo**: produce `memo.md` with:
+6. **Draft the memo**: produce `<body_filename>` (default `memo.md`; e.g. `paper.md` for position papers) with:
    - **Header**: thread slug, date, iteration, author (model identifier).
    - **Executive summary** (3–5 sentences): the recommendation + the one-sentence ask.
    - **Thesis** (named, falsifiable): what must be true for the recommendation to hold.
@@ -81,7 +85,7 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
    - **Recommendation**: the explicit ask, restated, with check size or scope.
 7. **Create exhibits** (inline only — full figure generation belongs to `memo-figures`): any tables or simple inline data structures referenced from the body should land in `exhibits/` as `.md` or `.csv` files. Image generation is deferred to `memo-figures`.
 8. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO timestamp>`.
-9. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted acme-seed.1/ (memo.md: 1240 words, 2 exhibits)`). When `target_length` is set, also report whether the produced word count falls in-range (e.g., `... 1240 words, target 1800–2400 — under target`).
+9. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted acme-seed.1/ (memo.md: 1240 words, 2 exhibits)`; for a thread with `body_filename: "paper.md"`, `Drafted latency-wall.1/ (paper.md: 11420 words, 2 exhibits)`). When `target_length` is set, also report whether the produced word count falls in-range (e.g., `... 1240 words, target 1800–2400 — under target`).
 9.5. **Invoke `memo-render` (optional, non-blocking)**: after the draft is written and `phases.draft.state == done` is recorded (step 8), invoke `memo-render <thread>` to render `memo.md` → `memo.pdf` and write the render-gate findings into `_progress.json.phases.render` + `_progress.json.render_gate`. This step is the lifecycle wiring shipped by Epic #158 Phase 3 (issue #190).
 
    **Non-blocking by design.** A missing renderer (no pandoc on PATH, no HTML/PDF engine), a render-gate finding (placeholder hit, missing image ref, overflow warning, page-fit out of range), or even a hard pandoc failure does NOT abort `memo-draft`. The drafter still reports `Drafted <thread>.{N}/...` per step 9. The render outcome is recorded in `_progress.json.phases.render` and `_progress.json.render_gate` for the operator to surface and for the Phase 4 reviewer to read in `_summary.md.render_gate`.
@@ -100,9 +104,9 @@ If `.anvil/skills/memo/voice.md` exists in the consumer repo, load it and apply 
 
 ## Idempotence and resumability
 
-- A completed draft (`_progress.json.draft.state == done` AND `memo.md` exists) is never overwritten. Re-running `memo-draft <thread>` on a `DRAFTED` thread is a no-op with a notice.
-- A crashed draft (`_progress.json.draft.state == in_progress` with no complete `memo.md`) is re-runnable after deleting any partial output.
-- Validation is by file existence (does `memo.md` exist? is it non-empty?), not solely by the progress flag.
+- A completed draft (`_progress.json.draft.state == done` AND `<body_filename>` exists) is never overwritten. Re-running `memo-draft <thread>` on a `DRAFTED` thread is a no-op with a notice.
+- A crashed draft (`_progress.json.draft.state == in_progress` with no complete `<body_filename>`) is re-runnable after deleting any partial output.
+- Validation is by file existence (does `<body_filename>` exist? is it non-empty?), not solely by the progress flag. For the default `memo.md` body, this is the historical check; for a thread with `body_filename: "paper.md"`, the check looks for `paper.md` instead.
 
 ## `_progress.json` snippet
 

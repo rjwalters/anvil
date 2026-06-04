@@ -989,3 +989,170 @@ def test_gate_memo_internal_smoke(monkeypatch, memo_version_dir, fake_pdfinfo_pa
     assert r.pages == 3
     # Default out_pdf is <version_dir>/memo.pdf.
     assert r.pdf_path.endswith("memo.pdf")
+
+
+# ---------------------------------------------------------------------------
+# body_filename customization (issue #279)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def paper_version_dir(tmp_path):
+    """Build a version dir whose body markdown is paper.md (NOT memo.md).
+
+    Mirrors ``memo_version_dir`` but uses ``paper.md`` to exercise the
+    issue #279 body_filename customization path. The shape is otherwise
+    identical so the same render-chain mocks apply.
+    """
+    vd = tmp_path / "latency-wall.1"
+    vd.mkdir()
+    (vd / "paper.md").write_text(
+        "# Latency-wall position paper\n\n"
+        "## Position\n\nThe wall is real.\n\n"
+        "## Thesis\n\nRedesign the workload.\n",
+        encoding="utf-8",
+    )
+    return vd
+
+
+def test_render_memo_source_default_body_filename(monkeypatch, memo_version_dir):
+    """``_render_memo_source`` with default ``body_filename`` reads memo.md."""
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(subprocess, "run", _fake_pandoc(returncode=0, stderr=""))
+    out_pdf = memo_version_dir / "memo.pdf"
+    # Call without body_filename — should use the default "memo.md".
+    status, exit_code, engine, stderr = _render_memo_source(
+        memo_version_dir, out_pdf
+    )
+    assert status == COMPILE_OK
+    assert out_pdf.exists()
+
+
+def test_render_memo_source_custom_body_filename(monkeypatch, paper_version_dir):
+    """``_render_memo_source`` with ``body_filename="paper.md"`` reads paper.md."""
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(subprocess, "run", _fake_pandoc(returncode=0, stderr=""))
+    out_pdf = paper_version_dir / "paper.pdf"
+    status, exit_code, engine, stderr = _render_memo_source(
+        paper_version_dir, out_pdf, body_filename="paper.md"
+    )
+    assert status == COMPILE_OK
+    assert out_pdf.exists()
+
+
+def test_render_memo_source_missing_custom_body(tmp_path):
+    """Missing ``<body_filename>`` surfaces the resolved name in the error."""
+    vd = tmp_path / "ghost.1"
+    vd.mkdir()
+    out_pdf = vd / "paper.pdf"
+    status, exit_code, engine, stderr = _render_memo_source(
+        vd, out_pdf, body_filename="paper.md"
+    )
+    assert status == COMPILE_FAILED
+    # The error message names the resolved body filename (NOT a hard-coded
+    # "memo.md") so the operator sees the right file to create.
+    assert "paper.md not found" in stderr
+
+
+def test_gate_memo_body_filename_kwarg_accepted(
+    monkeypatch, paper_version_dir, fake_pdfinfo_path
+):
+    """The public ``gate(kind="memo", body_filename=...)`` kwarg threads through to _gate_memo."""
+    _mock_full_render_chain(monkeypatch)
+    r = gate(
+        kind="memo",
+        version_dir=paper_version_dir,
+        body_filename="paper.md",
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    assert isinstance(r, GateResult)
+    assert r.passed is True
+    # Default out_pdf for paper.md derives the basename: paper.pdf.
+    assert r.pdf_path.endswith("paper.pdf")
+    # And the placeholder scan ran against paper.md (no errors expected).
+    assert DIM_MEMO_PLACEHOLDERS not in r.failed_gates
+
+
+def test_gate_memo_default_body_filename_kwarg(
+    monkeypatch, memo_version_dir, fake_pdfinfo_path
+):
+    """The default ``body_filename="memo.md"`` is byte-identical to omitting the kwarg."""
+    _mock_full_render_chain(monkeypatch)
+    # Call WITHOUT body_filename.
+    r1 = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    _mock_full_render_chain(monkeypatch)
+    # Call WITH explicit default.
+    r2 = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        body_filename="memo.md",
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    # Both must succeed; the pdf_path / passed contract must match.
+    assert r1.passed == r2.passed
+    assert r1.pdf_path == r2.pdf_path
+    assert r1.pdf_path.endswith("memo.pdf")
+
+
+def test_gate_memo_pdf_basename_derives_from_body_filename(
+    monkeypatch, paper_version_dir, fake_pdfinfo_path
+):
+    """When ``out_pdf`` is not given, the PDF basename derives from ``body_filename``."""
+    _mock_full_render_chain(monkeypatch)
+    # Default out_pdf path: <version_dir>/<body_basename>.pdf
+    r = _gate_memo(
+        version_dir=paper_version_dir,
+        out_pdf=None,
+        target_length=None,
+        placeholder_patterns=None,
+        pdfinfo_path=fake_pdfinfo_path,
+        body_filename="paper.md",
+    )
+    assert r.passed is True
+    assert r.pdf_path.endswith("paper.pdf")
+    # The explicit out_pdf override still wins.
+    explicit_pdf = paper_version_dir / "custom.pdf"
+    _mock_full_render_chain(monkeypatch)
+    r2 = _gate_memo(
+        version_dir=paper_version_dir,
+        out_pdf=explicit_pdf,
+        target_length=None,
+        placeholder_patterns=None,
+        pdfinfo_path=fake_pdfinfo_path,
+        body_filename="paper.md",
+    )
+    assert r2.pdf_path.endswith("custom.pdf")
+
+
+def test_gate_memo_placeholder_scan_uses_body_filename(
+    monkeypatch, paper_version_dir, fake_pdfinfo_path
+):
+    """The placeholder-scan dim reads ``<body_filename>`` (here: paper.md)."""
+    # Inject a TODO marker into paper.md so the scan fires (TODO matches
+    # the \bTODO\b pattern in DEFAULT_MEMO_PLACEHOLDER_PATTERNS).
+    paper_md = paper_version_dir / "paper.md"
+    paper_md.write_text(
+        paper_md.read_text(encoding="utf-8") + "\n\nTODO: fill in market sizing.\n",
+        encoding="utf-8",
+    )
+    _mock_full_render_chain(monkeypatch)
+    r = _gate_memo(
+        version_dir=paper_version_dir,
+        out_pdf=None,
+        target_length=None,
+        placeholder_patterns=None,
+        pdfinfo_path=fake_pdfinfo_path,
+        body_filename="paper.md",
+    )
+    # The placeholder scan ran against paper.md and caught the TODO marker.
+    assert DIM_MEMO_PLACEHOLDERS in r.failed_gates
+    # And the failure reason names paper.md, not a hardcoded memo.md.
+    assert any("paper.md" in reason for reason in r.reasons), (
+        f"placeholder reason must name paper.md, got: {r.reasons}"
+    )

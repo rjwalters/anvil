@@ -1,9 +1,15 @@
-"""Typed loader for ``<thread>/.anvil.json`` ``rubric_overrides`` block.
+"""Typed loader for ``<thread>/.anvil.json`` ``rubric_overrides`` block + ``body_filename`` key.
 
 This module is the schema-of-record for the *non-investment-memo shape* contract
 shipped under issue #233. It is the **sub-issue 1 of 3** deliverable: schema +
 reader only. Reviewer integration (sub-issue 2 / #265) and documentation +
 worked-example templates (sub-issue 3 / #266) follow in separate PRs.
+
+Issue #279 adds the top-level ``body_filename`` field (sibling to
+``rubric_overrides``) so a thread can declare a non-``memo.md`` body filename
+(e.g. ``paper.md`` for position papers, ``plan.md`` for execution plans). The
+default remains ``memo.md`` for backward compatibility. See
+``load_body_filename`` below.
 
 Background — why this exists
 ----------------------------
@@ -140,6 +146,13 @@ from pydantic import BaseModel, ConfigDict, Field
 # must be parameterized.
 MIN_DIM = 1
 MAX_DIM = 9
+
+# Default body filename for memo threads. Backward-compat constant: any thread
+# that does not declare `body_filename` in `.anvil.json` (the ~100% common case
+# for existing threads) reads and writes `memo.md`. Issue #279 / per-thread
+# `body_filename` overrides this for shape-specific naming (e.g. `paper.md`
+# for position papers, `plan.md` for execution plans).
+DEFAULT_BODY_FILENAME = "memo.md"
 
 # Keys recognized at the top level of `rubric_overrides`. Anything else is
 # preserved verbatim under `unknown_keys` with a forward-compat warning.
@@ -651,12 +664,166 @@ def load_rubric_overrides_strict(thread_dir: Path) -> RubricOverrides:
     return parsed
 
 
+# ---------------------------------------------------------------------------
+# body_filename loader (issue #279)
+# ---------------------------------------------------------------------------
+
+
+def _validate_body_filename(value: Any, ctx: _ParseContext) -> Optional[str]:
+    """Validate a candidate ``body_filename`` value; return verbatim or ``None``.
+
+    The validation rules (per issue #279 curator brief):
+
+    - Must be a non-empty string (after strip).
+    - Must NOT contain ``/`` or ``\\`` (anti-path-traversal — body filenames
+      are version-dir-local, not paths).
+    - Must NOT contain ``..`` (anti-path-traversal complement).
+    - Must end in ``.md`` (the renderer and placeholder-scan paths assume
+      markdown source).
+
+    Violations append a warning to ``ctx`` and return ``None`` so the caller
+    falls back to :data:`DEFAULT_BODY_FILENAME`. The validation discipline
+    mirrors ``_normalize_target_length`` — lenient and graceful, never fatal.
+    """
+    if not isinstance(value, str):
+        ctx.warn(
+            f"body_filename must be a string; got {type(value).__name__} — "
+            f"using default {DEFAULT_BODY_FILENAME!r}"
+        )
+        return None
+    if not value.strip():
+        ctx.warn(
+            f"body_filename must be a non-empty string; got {value!r} — "
+            f"using default {DEFAULT_BODY_FILENAME!r}"
+        )
+        return None
+    if "/" in value or "\\" in value:
+        ctx.warn(
+            f"body_filename must not contain '/' or '\\\\' (must be a "
+            f"version-dir-local filename, not a path); got {value!r} — "
+            f"using default {DEFAULT_BODY_FILENAME!r}"
+        )
+        return None
+    if ".." in value:
+        ctx.warn(
+            f"body_filename must not contain '..' (anti-path-traversal); "
+            f"got {value!r} — using default {DEFAULT_BODY_FILENAME!r}"
+        )
+        return None
+    if not value.endswith(".md"):
+        ctx.warn(
+            f"body_filename must end in '.md' (renderer + placeholder scan "
+            f"assume markdown); got {value!r} — using default "
+            f"{DEFAULT_BODY_FILENAME!r}"
+        )
+        return None
+    return value
+
+
+def load_body_filename(thread_dir: Path) -> str:
+    """Load the per-thread ``body_filename`` for a memo thread.
+
+    Reads ``<thread_dir>/.anvil.json`` and returns the validated
+    ``body_filename`` value, or :data:`DEFAULT_BODY_FILENAME` (``"memo.md"``)
+    when:
+
+    - ``.anvil.json`` is missing.
+    - ``.anvil.json`` exists but has no ``body_filename`` key.
+    - ``body_filename`` is a non-string, empty string, contains ``/`` /
+      ``\\`` / ``..``, or does not end in ``.md``.
+
+    This is the **lenient** form used by lifecycle commands. A consumer typo
+    in ``.anvil.json`` never breaks the lifecycle — the loader emits a
+    ``UserWarning`` and degrades to the default. The strict form
+    (:func:`load_body_filename_strict`) raises on the same conditions and is
+    used by the test suite to assert specific validation behavior.
+
+    The ``body_filename`` field is a **top-level** key in ``.anvil.json``
+    (sibling to ``rubric_overrides`` and ``target_length``), NOT nested
+    inside ``rubric_overrides``. The body filename is a per-thread
+    structural choice independent of rubric calibration; keeping them
+    orthogonal preserves the principle that ``rubric_overrides`` is the
+    *scoring* surface and ``body_filename`` is the *output-naming* surface.
+
+    Example ``.anvil.json``::
+
+        {
+          "max_iterations": 8,
+          "body_filename": "paper.md",
+          "rubric_overrides": { "memo_subtype": "latency-wall" }
+        }
+
+    Parameters
+    ----------
+    thread_dir
+        The memo thread root (the directory containing ``BRIEF.md`` and the
+        ``.anvil.json`` file, NOT a version subdirectory like
+        ``thread.1/``).
+
+    Returns
+    -------
+    str
+        The validated body filename (e.g. ``"paper.md"``, ``"plan.md"``),
+        or :data:`DEFAULT_BODY_FILENAME` (``"memo.md"``) when the key is
+        absent, malformed, or fails validation.
+    """
+    data = _read_anvil_json(thread_dir)
+    raw = data.get("body_filename")
+    if raw is None:
+        return DEFAULT_BODY_FILENAME
+
+    ctx = _ParseContext(warnings=[])
+    validated = _validate_body_filename(raw, ctx)
+    _emit_warnings(ctx.warnings)
+    if validated is None:
+        return DEFAULT_BODY_FILENAME
+    return validated
+
+
+def load_body_filename_strict(thread_dir: Path) -> str:
+    """Strict variant of :func:`load_body_filename`.
+
+    Raises ``FileNotFoundError`` when ``<thread_dir>/.anvil.json`` is missing,
+    ``json.JSONDecodeError`` on malformed JSON, ``ValueError`` on a non-dict
+    top-level, and ``ValueError`` on any ``body_filename`` validation
+    failure (with the full validation message in the exception).
+
+    When ``body_filename`` is absent from a present, well-formed
+    ``.anvil.json``, returns :data:`DEFAULT_BODY_FILENAME` (this is not a
+    validation failure — absence is the expected backward-compat shape).
+
+    This is the form the test suite uses to assert that specific malformed
+    inputs produce specific diagnostic messages. Lifecycle commands MUST
+    NOT use this form — they use the lenient :func:`load_body_filename` so
+    a consumer typo in ``.anvil.json`` never breaks the lifecycle.
+    """
+    data = _read_anvil_json_strict(thread_dir)
+    raw = data.get("body_filename")
+    if raw is None:
+        return DEFAULT_BODY_FILENAME
+
+    ctx = _ParseContext(warnings=[])
+    validated = _validate_body_filename(raw, ctx)
+    if ctx.warnings:
+        joined = "\n  - ".join(ctx.warnings)
+        raise ValueError(
+            f"body_filename validation failed at {thread_dir / '.anvil.json'}:\n  - {joined}"
+        )
+    # validated is non-None when ctx.warnings is empty — every validation
+    # path that returns None also appends to ctx.warnings. Belt-and-suspenders.
+    assert validated is not None
+    return validated
+
+
 __all__ = [
     "CalibrationOverride",
+    "DEFAULT_BODY_FILENAME",
     "MAX_DIM",
     "MIN_DIM",
     "RubricOverrides",
     "TargetLengthRange",
+    "load_body_filename",
+    "load_body_filename_strict",
     "load_rubric_overrides",
     "load_rubric_overrides_strict",
 ]
