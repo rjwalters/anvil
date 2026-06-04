@@ -350,9 +350,16 @@ MEMO_RENDERER_REMEDIATION = (
     "`brew install --cask wkhtmltopdf` (macOS) or "
     "`apt-get install wkhtmltopdf` (Debian/Ubuntu);\n"
     "  - xelatex (last resort — TeX Live engine): "
-    "`brew install --cask mactex-no-gui` (macOS) or "
-    "`apt-get install texlive-xetex texlive-fonts-recommended` "
-    "(Debian/Ubuntu)."
+    "`brew install --cask mactex` (macOS; the trimmed `mactex-no-gui` "
+    "omits `soul.sty` / `footnotehyper.sty` that pandoc 3.x emission "
+    "requires — see issue #277) or "
+    "`apt-get install texlive-xetex texlive-fonts-recommended "
+    "texlive-latex-extra` (Debian/Ubuntu; `texlive-latex-extra` carries "
+    "`soul`, `footnotehyper`, `bookmark`, and the booktabs/longtable "
+    "set pandoc 3.x emits by default). The shipped "
+    "`anvil/lib/memo/template.tex` `\\IfFileExists`-guards the optional "
+    "packages so a thin TeX Live install still renders something, but "
+    "the full install set above is the working recipe."
 )
 
 
