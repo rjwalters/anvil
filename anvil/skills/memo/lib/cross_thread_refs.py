@@ -83,20 +83,13 @@ Public API
 
 Per the AC: "must tolerate either a real directory like ``<slug>.3`` or
 a ``.latest`` symlink pointing at one." Sub-deliverable 5 (#288) ships
-the ``.latest`` symlink convention itself; this module must work today
-regardless. The resolver tries the symlink first, then walks to the
-highest-numbered ``<slug>.<N>/`` directory:
-
-1. If ``<portfolio>/<other-slug>/<other-slug>.latest`` exists (as a
-   symlink OR a real directory), resolve to it.
-2. Else, enumerate ``<portfolio>/<other-slug>/<other-slug>.<N>/`` for
-   all integer ``N``, pick the highest, and resolve to that.
-3. Else, the version is unresolvable — return ``resolved=False`` with
-   ``reason="latest unresolvable"``.
-
-The fallback is permissive on purpose — the operator can ship cross-
-thread refs to ``.latest`` from day one even without the symlink
-contract sub-deliverable 5 will add later.
+the canonical resolver at
+``anvil/skills/memo/lib/latest_resolution.py::resolve_latest`` and
+**this module delegates** to it for the four-step rule (symlink wins;
+real ``.latest/`` directory; walk-to-highest; ``None`` when nothing
+matches). The fallback is permissive on purpose — the operator can ship
+cross-thread refs to ``.latest`` regardless of whether they have
+adopted the symlink convention.
 
 Why a separate module from ``refs_resolver``
 -------------------------------------------
@@ -138,12 +131,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-
-# Reference-shape constants. The literal ``"latest"`` is the symbolic
-# version specifier sub-deliverable 5 (#288) will codify as the
-# ``.latest`` symlink convention; this module accepts it today via
-# walk-to-highest fallback.
-LATEST = "latest"
+# Re-export the canonical ``LATEST`` constant + resolver from the
+# sibling ``latest_resolution`` module (sub-deliverable 5 of #283,
+# issue #288). Local re-export preserves the historical import path
+# (``cross_thread_refs.LATEST``) so downstream callers keep working
+# unchanged.
+from latest_resolution import LATEST, resolve_latest
 
 # Regex for the two shipped cross-thread reference shapes:
 #
@@ -303,58 +296,6 @@ def find_cross_thread_refs(text: str) -> List[CrossThreadRef]:
     return refs
 
 
-def _resolve_latest_version_dir(other_thread_dir: Path, other_slug: str) -> Optional[Path]:
-    """Resolve the ``.latest`` symbolic version for ``other_thread_dir``.
-
-    Tolerates the two on-disk shapes per the issue body's AC:
-
-    1. ``<other_thread_dir>/<other_slug>.latest`` exists as a symlink
-       OR a real directory — return it.
-    2. Else, walk the children of ``<other_thread_dir>`` for any
-       ``<other_slug>.<N>/`` directory and return the highest-numbered
-       one.
-
-    Returns ``None`` when neither resolution succeeds. The caller turns
-    a ``None`` return into a ``"latest unresolvable"`` reason on the
-    :class:`CrossThreadResolution`.
-    """
-    if not other_thread_dir.is_dir():
-        return None
-
-    # Step 1: try the .latest symlink/directory directly.
-    latest_path = other_thread_dir / f"{other_slug}.{LATEST}"
-    if latest_path.is_dir():
-        return latest_path
-
-    # Step 2: walk-to-highest fallback. Enumerate all
-    # ``<other_slug>.<N>/`` children and pick the highest N.
-    version_re = re.compile(rf"^{re.escape(other_slug)}\.(\d+)$")
-    candidates: List[tuple[int, Path]] = []
-    try:
-        children = list(other_thread_dir.iterdir())
-    except OSError:
-        return None
-    for child in children:
-        if not child.is_dir():
-            continue
-        match = version_re.match(child.name)
-        if match is None:
-            continue
-        try:
-            n = int(match.group(1))
-        except ValueError:
-            # Defensive — the regex only matches digits, so int() should
-            # not fail. Skip on the off-chance the platform / encoding
-            # surfaces a surprising digit class.
-            continue
-        candidates.append((n, child))
-
-    if not candidates:
-        return None
-    candidates.sort(key=lambda pair: pair[0], reverse=True)
-    return candidates[0][1]
-
-
 def resolve_cross_thread_ref(
     ref: CrossThreadRef, portfolio_root: Path
 ) -> CrossThreadResolution:
@@ -404,7 +345,12 @@ def resolve_cross_thread_ref(
 
     # Resolve the version directory.
     if ref.version == LATEST:
-        version_dir = _resolve_latest_version_dir(other_thread_dir, ref.other_slug)
+        # Delegate to the canonical resolver from latest_resolution.py
+        # (sub-deliverable 5 / #288). Same four-step rule (symlink >
+        # real .latest/ dir > walk-to-highest > None) the legacy
+        # private helper implemented, now shared with intra-thread
+        # callers.
+        version_dir = resolve_latest(other_thread_dir, ref.other_slug)
         if version_dir is None:
             return CrossThreadResolution(
                 ref=ref,
@@ -478,4 +424,8 @@ __all__ = [
     "find_cross_thread_refs",
     "resolve_cross_thread_ref",
     "resolve_cross_thread_refs",
+    # Re-exported from latest_resolution (sub-deliverable 5 / #288).
+    # Kept on the public surface so callers that already import from
+    # cross_thread_refs do not need to migrate.
+    "resolve_latest",
 ]

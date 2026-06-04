@@ -128,6 +128,7 @@ def test_no_shipped_command_writes_or_requires_latest_symlinks():
         "does not follow",
         "do not dereference",
         "consumer-side",
+        "tolerates",
     )
 
     matches: list[tuple[Path, str]] = []

@@ -171,6 +171,21 @@ Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}
 
 The symlinks are therefore **purely advisory** — supported in the sense that nothing anvil does will remove or break them, but not produced or consumed by the framework. If consumers want anvil:memo to auto-update `<thread>.latest` after each revise, file a follow-on issue.
 
+### Canonical `.latest` resolution (issue #288, sub-deliverable 5 of #283)
+
+When any anvil-shipped memo code path (today: the cross-thread reference resolver in `lib/cross_thread_refs.py`; future: any intra-thread or downstream tool that needs to dereference `<slug>.latest`) needs to resolve a symbolic `<slug>.latest` reference to a concrete version directory on disk, it MUST go through the single source of truth at `anvil/skills/memo/lib/latest_resolution.py::resolve_latest(thread_dir, slug)`.
+
+Per the curator's recommendation in #288 — **option (c): pure tolerance** — anvil-shipped commands do NOT auto-create or maintain `<slug>.latest` symlinks. The convention is consumer-maintained (see `anvil/lib/snippets/version_layout.md` §"Convenience `.latest` symlinks" above). The framework tolerates four on-disk shapes via a fixed four-step rule:
+
+1. **Symlink wins.** `<thread_dir>/<slug>.latest` is a symlink (whether resolvable or dangling) → return the symlink path. An author can intentionally pin `.latest` to a non-highest version (e.g., "publish `.latest` against the reviewed-and-AUDITED v3 even though v4 is in progress"). This is the load-bearing AC from #288: pinned symlinks are honored.
+2. **Real `.latest/` directory.** `<thread_dir>/<slug>.latest` is a real directory (not a symlink) → return it. The rarer case — typically the operator hasn't migrated to the symlink convention yet, or is on Windows without WSL.
+3. **Walk-to-highest fallback.** No `.latest` of any shape → enumerate `<thread_dir>/<slug>.<N>/` for all integer `N`, pick the highest, and return it. The load-bearing path for the canary's common case (operator never created the symlink).
+4. **No resolution.** None of the above → return `None`. The caller surfaces a clean "no version dirs" error to the operator.
+
+Precedence is fixed: 1 > 2 > 3 > 4. The helper is **non-throwing**: filesystem errors during traversal degrade to `None` rather than propagating, mirroring the lenient-form precedent across the memo lib (`refs_resolver`, `project_discovery`, `anvil_config`). Errors surface as findings, not exceptions.
+
+The helper does NOT auto-create symlinks (option (a) was deferred — promote only if canary feedback shows option (c) is too magic) and does NOT ship a maintenance script (option (b) was rejected). The Python module `lib/cross_thread_refs.py` re-exports `resolve_latest` and the `LATEST = "latest"` constant from `latest_resolution` so callers that already use the cross-thread import path do not need to migrate.
+
 ## State machine
 
 Per-thread state, derived from on-disk evidence (not flags):
