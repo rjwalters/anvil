@@ -150,15 +150,10 @@ def _rewrite_file(
     text = file_path.read_text(encoding="utf-8")
     if old_string not in text:
         return 0
-    # Count occurrences before replacing so we can return an accurate
-    # replacement count.
+    # Count occurrences in the original text before replacing. `str.count`
+    # is non-overlapping, which matches `str.replace` semantics.
+    count = text.count(old_string)
     new_text = text.replace(old_string, new_string)
-    count = (len(text) - len(new_text)) // (len(old_string) - len(new_string)) \
-        if len(old_string) != len(new_string) else text.count(old_string)
-    if count == 0:
-        # Fallback when old_string == new_string length (shouldn't happen
-        # in practice for our use case but defend against it).
-        count = text.count(old_string)
     file_path.write_text(new_text, encoding="utf-8")
     return count
 
