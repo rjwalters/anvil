@@ -128,10 +128,16 @@ def fake_pdfinfo_5pages(tmp_path):
 
 @pytest.fixture
 def memo_version_dir(tmp_path):
-    """Build a minimal version directory with a non-empty memo.md."""
-    vd = tmp_path / "bessemer.1"
+    """Build a minimal version directory with a non-empty body markdown.
+
+    Body filename echoes the thread slug per #295 — for a ``bessemer``
+    thread the body is ``bessemer.md`` inside ``bessemer/bessemer.1/``.
+    """
+    thread_root = tmp_path / "bessemer"
+    thread_root.mkdir()
+    vd = thread_root / "bessemer.1"
     vd.mkdir()
-    (vd / "memo.md").write_text(
+    (vd / "bessemer.md").write_text(
         "# Investment memo\n\n"
         "## Recommendation\n\n"
         "Pass.\n\n"
@@ -186,21 +192,27 @@ def test_select_memo_engine_returns_none_when_nothing_available(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_render_memo_source_missing_memo_md(tmp_path):
-    """Missing memo.md → ``COMPILE_FAILED`` surrogate, no exception."""
-    vd = tmp_path / "ghost.1"
+def test_render_memo_source_missing_body_md(tmp_path):
+    """Missing body markdown → ``COMPILE_FAILED`` surrogate, no exception.
+
+    Body filename echoes the thread slug per #295 — the renderer looks
+    for ``ghost.md`` inside ``ghost/ghost.1/``.
+    """
+    thread = tmp_path / "ghost"
+    thread.mkdir()
+    vd = thread / "ghost.1"
     vd.mkdir()
-    out_pdf = vd / "memo.pdf"
+    out_pdf = vd / "ghost.pdf"
     status, exit_code, engine, stderr = _render_memo_source(vd, out_pdf)
     assert status == COMPILE_FAILED
     assert exit_code == -1
-    assert "memo.md not found" in stderr
+    assert "ghost.md not found" in stderr
 
 
 def test_render_memo_source_missing_pandoc(monkeypatch, memo_version_dir):
     """Missing pandoc → ``COMPILE_UNAVAILABLE``, no engine ran."""
     monkeypatch.setattr(_render, "check_pandoc_available", lambda: False)
-    out_pdf = memo_version_dir / "memo.pdf"
+    out_pdf = memo_version_dir / "bessemer.pdf"
     status, exit_code, engine, stderr = _render_memo_source(
         memo_version_dir, out_pdf
     )
@@ -215,7 +227,7 @@ def test_render_memo_source_no_pdf_engine(monkeypatch, memo_version_dir):
     monkeypatch.setattr(_render, "check_weasyprint_available", lambda: False)
     monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: False)
     monkeypatch.setattr(shutil, "which", lambda name: None)
-    out_pdf = memo_version_dir / "memo.pdf"
+    out_pdf = memo_version_dir / "bessemer.pdf"
     status, _, engine, _ = _render_memo_source(memo_version_dir, out_pdf)
     assert status == COMPILE_UNAVAILABLE
     assert engine == ""
@@ -235,7 +247,7 @@ def test_render_memo_source_happy_path_writes_pdf(
     # Pandoc-which lookup is bypassed in _render_memo_source via the
     # check_pandoc_available indirection, so no shutil.which monkeypatch
     # needed for the front-end check.
-    out_pdf = memo_version_dir / "memo.pdf"
+    out_pdf = memo_version_dir / "bessemer.pdf"
     status, exit_code, engine, stderr = _render_memo_source(
         memo_version_dir, out_pdf
     )
@@ -254,7 +266,7 @@ def test_render_memo_source_pandoc_failure(monkeypatch, memo_version_dir):
         "run",
         _fake_pandoc(returncode=1, stderr="syntax error at line 4"),
     )
-    out_pdf = memo_version_dir / "memo.pdf"
+    out_pdf = memo_version_dir / "bessemer.pdf"
     status, exit_code, engine, stderr = _render_memo_source(
         memo_version_dir, out_pdf
     )
@@ -801,7 +813,7 @@ def test_gate_memo_image_refs_broken(
     """memo.md references a missing image → memo_image_refs_exist fails."""
     _mock_full_render_chain(monkeypatch)
     # Add an image reference to a non-existent file.
-    memo_md = memo_version_dir / "memo.md"
+    memo_md = memo_version_dir / "bessemer.md"
     memo_md.write_text(
         memo_md.read_text() + "\n![chart](exhibits/missing.png)\n",
         encoding="utf-8",
@@ -832,7 +844,7 @@ def test_gate_memo_placeholder_scan_fires(
 ):
     """memo.md containing TODO / TKTKTK → placeholder dim fails."""
     _mock_full_render_chain(monkeypatch)
-    memo_md = memo_version_dir / "memo.md"
+    memo_md = memo_version_dir / "bessemer.md"
     memo_md.write_text(
         "# Memo\nProse with TODO and _TKTKTK_.\n",
         encoding="utf-8",
@@ -850,7 +862,7 @@ def test_gate_memo_placeholder_scan_suppressed(
 ):
     """Inline ``anvil-lint-disable`` directive downgrades hit to info."""
     _mock_full_render_chain(monkeypatch)
-    memo_md = memo_version_dir / "memo.md"
+    memo_md = memo_version_dir / "bessemer.md"
     memo_md.write_text(
         "# Memo\nProse with TODO. "
         "<!-- anvil-lint-disable: memo_placeholder_scan -->\n",
@@ -882,7 +894,7 @@ def test_gate_memo_all_checks_run_independently(
     """A memo with placeholder + broken image ref + page over-range fails
     three dimensions; the gate enumerates them all without short-circuit."""
     _mock_full_render_chain(monkeypatch)
-    memo_md = memo_version_dir / "memo.md"
+    memo_md = memo_version_dir / "bessemer.md"
     memo_md.write_text(
         "# Memo with TODO\n"
         "Some prose.\n"
@@ -909,7 +921,7 @@ def test_gate_memo_to_review_emits_critical_flags(
 ):
     """Failed memo gate → Review.critical_flags carries one per dim."""
     _mock_full_render_chain(monkeypatch)
-    memo_md = memo_version_dir / "memo.md"
+    memo_md = memo_version_dir / "bessemer.md"
     memo_md.write_text(
         "# Memo with TODO\n",
         encoding="utf-8",
@@ -987,5 +999,6 @@ def test_gate_memo_internal_smoke(monkeypatch, memo_version_dir, fake_pdfinfo_pa
     )
     assert r.passed is True
     assert r.pages == 3
-    # Default out_pdf is <version_dir>/memo.pdf.
-    assert r.pdf_path.endswith("memo.pdf")
+    # Default out_pdf is <version_dir>/<slug>.pdf — for the ``bessemer``
+    # thread fixture the basename is ``bessemer.pdf`` per #295.
+    assert r.pdf_path.endswith("bessemer.pdf")

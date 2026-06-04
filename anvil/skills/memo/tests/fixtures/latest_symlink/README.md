@@ -10,9 +10,9 @@ children, pick highest):
 
 ```
 walk-to-highest/
-  walk-to-highest.1/memo.md
-  walk-to-highest.2/memo.md
-  walk-to-highest.3/memo.md
+  walk-to-highest.1/walk-to-highest.md
+  walk-to-highest.2/walk-to-highest.md
+  walk-to-highest.3/walk-to-highest.md
 ```
 
 `resolve_latest(walk-to-highest, "walk-to-highest")` returns
@@ -25,9 +25,9 @@ non-highest version):
 
 ```
 pinned-symlink/
-  pinned-symlink.1/memo.md
-  pinned-symlink.2/memo.md       <- symlink target (operator pin)
-  pinned-symlink.3/memo.md       <- highest N, but symlink overrides
+  pinned-symlink.1/pinned-symlink.md
+  pinned-symlink.2/pinned-symlink.md       <- symlink target (operator pin)
+  pinned-symlink.3/pinned-symlink.md       <- highest N, but symlink overrides
   pinned-symlink.latest -> pinned-symlink.2
 ```
 

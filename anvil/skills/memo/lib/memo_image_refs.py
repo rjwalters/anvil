@@ -327,17 +327,23 @@ def lint_source(source: str, version_dir: Path) -> LintResult:
 
 
 def lint_memo_image_refs(version_dir: Path) -> LintResult:
-    """Run the lint against the ``memo.md`` inside a version directory.
+    """Run the lint against the body markdown inside a version directory.
 
-    ``version_dir`` is a ``<thread>.{N}/`` directory containing ``memo.md``
-    (and typically an ``exhibits/`` subdirectory). If ``memo.md`` does not
-    exist, returns an empty ``LintResult`` — the absence of the source is
-    not a lint error (the orchestrator surfaces that separately as a
-    discovery error).
+    ``version_dir`` is a ``<thread>.{N}/`` directory containing the body
+    markdown ``<thread>.md`` — the body filename echoes the thread slug
+    per the issue #295 project-org model lock (e.g. an
+    ``investment-memo.1/`` directory's body is ``investment-memo.md``).
+    If the body markdown does not exist, returns an empty ``LintResult``
+    — the absence of the source is not a lint error (the orchestrator
+    surfaces that separately as a discovery error).
     """
     if not isinstance(version_dir, Path):
         version_dir = Path(version_dir)
-    memo_path = version_dir / "memo.md"
+    # The body filename echoes the thread slug. The thread slug is the
+    # version dir's parent directory name (the on-disk shape is
+    # ``<thread>/<thread>.{N}/<thread>.md``).
+    body_filename = f"{version_dir.parent.name}.md"
+    memo_path = version_dir / body_filename
     if not memo_path.is_file():
         return LintResult()
     source = memo_path.read_text(encoding="utf-8")

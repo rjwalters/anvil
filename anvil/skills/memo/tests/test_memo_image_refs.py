@@ -4,7 +4,7 @@ Each test exercises one fixture under ``tests/fixtures/memo_image_refs/``
 against ``lint_memo_image_refs``. The fixtures correspond to the seven ACs
 on issue #146:
 
-- ``canary_footgun/`` — AC2: memo.md says ``exhibits/fig_a.png`` but
+- ``canary_footgun/`` — AC2: body markdown says ``exhibits/fig_a.png`` but
   ``fig_a.png`` is at the version-dir root (the ``cp -r`` footgun shape).
 - ``clean_all_present/`` — AC3: every ref resolves; no findings.
 - ``urls_and_abs_paths_skipped/`` — AC4: ``http://``, ``https://``, ``/abs``,
@@ -52,14 +52,15 @@ _FIXTURES = _HERE / "fixtures" / "memo_image_refs"
 class TestCanaryFootgun(unittest.TestCase):
     """AC2 — Bessemer v11 ``cp -r`` footgun.
 
-    ``memo.md`` says ``![x](exhibits/fig_a.png)`` and ``fig_a.png`` is at the
+    The body markdown (``canary_footgun.md`` per the slug-echo convention
+    of #295) says ``![x](exhibits/fig_a.png)`` and ``fig_a.png`` is at the
     version-dir root (not inside ``exhibits/``). The lint must emit exactly
     one error with ``rule="memo_image_refs_exist"`` whose message names the
     ref ``exhibits/fig_a.png`` and the resolved path.
     """
 
     def test_one_error_for_missing_ref(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "canary_footgun")
+        result = lint_memo_image_refs(_FIXTURES / "canary_footgun" / "canary_footgun.1")
         self.assertEqual(len(result.errors), 1)
         self.assertEqual(len(result.warnings), 0)
         finding = result.errors[0]
@@ -72,7 +73,7 @@ class TestCanaryFootgun(unittest.TestCase):
     def test_message_includes_cp_r_footgun_hint(self) -> None:
         """When a same-basename file exists at the version root, the message
         names the cp-r footgun shape so the reviser knows exactly what to fix."""
-        result = lint_memo_image_refs(_FIXTURES / "canary_footgun")
+        result = lint_memo_image_refs(_FIXTURES / "canary_footgun" / "canary_footgun.1")
         msg = result.errors[0].message
         # Message must surface the resolved path AND the version-root hint.
         self.assertIn("exhibits/fig_a.png", msg)
@@ -83,7 +84,7 @@ class TestCleanAllPresent(unittest.TestCase):
     """AC3 — every ref resolves; no findings."""
 
     def test_no_findings(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "clean_all_present")
+        result = lint_memo_image_refs(_FIXTURES / "clean_all_present" / "clean_all_present.1")
         self.assertEqual(len(result.errors), 0)
         self.assertEqual(len(result.warnings), 0)
         self.assertEqual(len(result.infos), 0)
@@ -97,7 +98,7 @@ class TestUrlsAndAbsPathsSkipped(unittest.TestCase):
     """
 
     def test_no_findings(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "urls_and_abs_paths_skipped")
+        result = lint_memo_image_refs(_FIXTURES / "urls_and_abs_paths_skipped" / "urls_and_abs_paths_skipped.1")
         self.assertEqual(len(result.errors), 0)
         self.assertEqual(len(result.warnings), 0)
         self.assertEqual(len(result.infos), 0)
@@ -108,7 +109,7 @@ class TestSuppressedWithDirective(unittest.TestCase):
     a missing-image error to ``info``."""
 
     def test_finding_downgraded_to_info(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "suppressed_with_directive")
+        result = lint_memo_image_refs(_FIXTURES / "suppressed_with_directive" / "suppressed_with_directive.1")
         self.assertEqual(len(result.errors), 0)
         self.assertEqual(len(result.warnings), 0)
         self.assertEqual(len(result.infos), 1)
@@ -119,7 +120,7 @@ class TestSuppressedWithDirective(unittest.TestCase):
         """When the directive suppresses the only finding, ``errors`` is
         empty — which is the signal the review machinery uses to force
         ``advance: false``. With errors empty, advance is not forced false."""
-        result = lint_memo_image_refs(_FIXTURES / "suppressed_with_directive")
+        result = lint_memo_image_refs(_FIXTURES / "suppressed_with_directive" / "suppressed_with_directive.1")
         self.assertEqual(len(result.errors), 0)
 
 
@@ -131,14 +132,14 @@ class TestHtmlImgParity(unittest.TestCase):
     """
 
     def test_one_error_for_html_only(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "html_img_parity")
+        result = lint_memo_image_refs(_FIXTURES / "html_img_parity" / "html_img_parity.1")
         self.assertEqual(len(result.errors), 1)
         self.assertEqual(result.errors[0].ref, "exhibits/fig_b.png")
         self.assertEqual(result.errors[0].rule, "memo_image_refs_exist")
 
     def test_single_quoted_html_also_matches(self) -> None:
         """Single-quoted ``src`` attribute should also be detected."""
-        memo_dir = _FIXTURES / "html_img_parity"
+        memo_dir = _FIXTURES / "html_img_parity" / "html_img_parity.1"
         source = "<img src='exhibits/missing.png'>"
         result = lint_source(source, memo_dir)
         self.assertEqual(len(result.errors), 1)
@@ -150,7 +151,7 @@ class TestMissingFileNoRootMatch(unittest.TestCase):
     a generic ``does not exist`` diagnostic without the cp-r hint."""
 
     def test_message_omits_cp_r_hint(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "missing_file_no_root_match")
+        result = lint_memo_image_refs(_FIXTURES / "missing_file_no_root_match" / "missing_file_no_root_match.1")
         self.assertEqual(len(result.errors), 1)
         msg = result.errors[0].message
         # The resolved path is still surfaced.
@@ -167,7 +168,7 @@ class TestLintResultShape(unittest.TestCase):
     consumers."""
 
     def test_finding_fields(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "canary_footgun")
+        result = lint_memo_image_refs(_FIXTURES / "canary_footgun" / "canary_footgun.1")
         finding = result.errors[0]
         self.assertIsInstance(finding, Finding)
         self.assertIsInstance(finding.line, int)
@@ -180,7 +181,7 @@ class TestLintResultShape(unittest.TestCase):
         self.assertGreaterEqual(finding.line, 1)
 
     def test_to_summary_shape(self) -> None:
-        result = lint_memo_image_refs(_FIXTURES / "canary_footgun")
+        result = lint_memo_image_refs(_FIXTURES / "canary_footgun" / "canary_footgun.1")
         summary = result.to_summary()
         self.assertTrue(summary["ran"])
         self.assertEqual(summary["errors"], 1)
@@ -193,11 +194,19 @@ class TestLintResultShape(unittest.TestCase):
     def test_rules_advertises_memo_image_refs_exist(self) -> None:
         self.assertIn("memo_image_refs_exist", RULES)
 
-    def test_lint_memo_image_refs_returns_empty_when_memo_md_absent(self) -> None:
-        """Missing ``memo.md`` is not a lint error — return an empty result.
+    def test_lint_memo_image_refs_returns_empty_when_body_md_absent(self) -> None:
+        """Missing body markdown is not a lint error — return an empty result.
         The orchestrator surfaces source-absence as a discovery error
-        separately."""
-        result = lint_memo_image_refs(_FIXTURES)  # no memo.md at this level
+        separately.
+
+        Body filename echoes the parent directory name per #295; passing
+        a directory with no version-dir-shaped parent / no matching
+        ``<parent>.md`` body returns an empty result.
+        """
+        # Pass _FIXTURES itself; the function looks for
+        # ``<parent>.md`` (here: ``memo_image_refs/<grandparent>.md``)
+        # which does not exist.
+        result = lint_memo_image_refs(_FIXTURES)
         self.assertIsInstance(result, LintResult)
         self.assertEqual(len(result.errors), 0)
         self.assertEqual(len(result.warnings), 0)
@@ -210,7 +219,7 @@ class TestSuppressionDirectiveAboveRef(unittest.TestCase):
     per-slide directive shape."""
 
     def test_directive_on_line_above_suppresses(self) -> None:
-        memo_dir = _FIXTURES / "html_img_parity"  # only exhibits/fig_c.png exists
+        memo_dir = _FIXTURES / "html_img_parity" / "html_img_parity.1"  # only exhibits/fig_c.png exists
         source = (
             "# Memo\n"
             "\n"

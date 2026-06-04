@@ -12,40 +12,44 @@ The `memo` skill produces defensible investment memos (and structurally similar 
 
 ## Artifact contract
 
-A **memo thread** is a single decision artifact (typically: invest / pass / conditional on terms) authored across one or more revisions. A thread is identified by a slug (e.g., `acme-seed`, `q3-thesis-update`). Each thread occupies a portfolio directory that contains:
+A **memo thread** is a single decision artifact (typically: invest / pass / conditional on terms) authored across one or more revisions. A thread is identified by a slug (e.g., `acme-seed`, `q3-thesis-update`, `investment-memo`). Each thread lives inside a **project root** that carries a project-level `BRIEF.md` (see §"Project root" below). Within the project root, each thread occupies a sibling directory named for its slug; the body markdown inside each version directory **echoes the slug** (`<thread>.md`) per the issue #295 project-org model lock:
 
 ```
-<portfolio>/
-  <thread>/                Optional thread root with brief and reference material
-    BRIEF.md               Optional structured or freeform brief (frontmatter + prose)
+<project>/                 Project root (carries the project BRIEF; see §"Project root")
+  BRIEF.md                 Project-level brief (frontmatter `documents:` list + prose)
+  .anvil.json              Project-level defaults (optional)
+  research/                Shared evidence pool across documents (optional, issue #281)
+  <thread>/                Thread directory (named for the slug)
     refs/                  Optional reference material (decks, transcripts, data); also the home for drafter-written citation stubs created during draft (see memo-draft Evidence contract and §Citation stubs below)
-  <thread>.0.perspective/  Optional pre-draft external-substrate sibling (read-only)
-    notes.md               Narrative synthesis: comparable / market positioning + gaps
-    candidates.md          Structured candidates (comparables, cited research, market reports, customer evidence, regulatory) with source URLs
-    _meta.json             { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
-    _progress.json         Phase state (phase: perspective)
-  <thread>.1/              First drafted version (immutable once written)
-    memo.md                Memo body
-    exhibits/              Inline exhibits referenced from body
-    _progress.json         Phase state for this version
-    changelog.md           (revisions only) Maps prior critic notes to changes
-  <thread>.1.review/       Reviewer output for version 1 (read-only)
-    verdict.md             Top-level decision (advance / block) + total /44
-    scoring.md             Per-dimension scores against the memo rubric
-    comments.md            Line-level comments keyed to memo.md
-    _meta.json             scorecard kind + provenance; full required field set in lib/snippets/scorecard_kind.md
-    _progress.json         Phase state for the reviewer
-  <thread>.1.audit/        Optional auditor critic sibling (fact-check)
-  <thread>.1.critic/       Optional substantive critic sibling
-  <thread>.2.plan/         Optional change-set preview written by `memo-revise <thread> --plan`
-    plan.md                Per-item planned-edit table (operator edits in place to decline items)
-    _meta.json             { critic: plan, scorecard_kind: planner }
-    _progress.json         Phase state for the plan (phase: plan)
-  <thread>.2/              Revised version (after revise consumes v1 + all critic siblings; or `--apply` against `<thread>.2.plan/`)
-  <thread>.2.review/
-  ...
-  <thread>.{N}/            Terminal version, marked READY in its _progress.json
+    <thread>.0.perspective/  Optional pre-draft external-substrate sibling (read-only)
+      notes.md               Narrative synthesis: comparable / market positioning + gaps
+      candidates.md          Structured candidates (comparables, cited research, market reports, customer evidence, regulatory) with source URLs
+      _meta.json             { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
+      _progress.json         Phase state (phase: perspective)
+    <thread>.1/              First drafted version (immutable once written)
+      <thread>.md            Memo body (filename echoes the thread slug per #295)
+      exhibits/              Inline exhibits referenced from body
+      _progress.json         Phase state for this version
+      changelog.md           (revisions only) Maps prior critic notes to changes
+    <thread>.1.review/       Reviewer output for version 1 (read-only)
+      verdict.md             Top-level decision (advance / block) + total /44
+      scoring.md             Per-dimension scores against the memo rubric
+      comments.md            Line-level comments keyed to the body markdown
+      _meta.json             scorecard kind + provenance; full required field set in lib/snippets/scorecard_kind.md
+      _progress.json         Phase state for the reviewer
+    <thread>.1.audit/        Optional auditor critic sibling (fact-check)
+    <thread>.1.critic/       Optional substantive critic sibling
+    <thread>.2.plan/         Optional change-set preview written by `memo-revise <thread> --plan`
+      plan.md                Per-item planned-edit table (operator edits in place to decline items)
+      _meta.json             { critic: plan, scorecard_kind: planner }
+      _progress.json         Phase state for the plan (phase: plan)
+    <thread>.2/              Revised version (after revise consumes v1 + all critic siblings; or `--apply` against `<thread>.2.plan/`)
+    <thread>.2.review/
+    ...
+    <thread>.{N}/            Terminal version, marked READY in its _progress.json
 ```
+
+**Body filename convention (#295).** Inside each `<thread>.{N}/` version directory the body markdown filename **echoes the thread slug**: a thread named `investment-memo` writes its body to `investment-memo.1/investment-memo.md`, a thread named `latency-wall` writes to `latency-wall.1/latency-wall.md`, and so on. This is the only recognized shape — there is no `body_filename` override mechanism, no skill-fixed `memo.md` default. The echo convention makes the file identifiable on disk (Spotlight, shell output, "Open Recent" all show the slug rather than the same `memo.md` for every thread in every project).
 
 Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
 
@@ -110,25 +114,27 @@ This is the **intra-memo** leg of the back-check triangle (memo A summary ↔ me
 
 ### Cross-thread citation back-check
 
-In addition to the intra-memo back-check above and the refs back-check (memo A claim ↔ memo A `refs/`), the reviewer performs a **cross-thread citation back-check** on every memo that cites other anvil threads — see `rubric.md` §"Cross-thread citation back-check (dim 3)" and `commands/memo-review.md` §Procedure step 4f. The back-check enumerates cross-thread citations in `memo.md` (literal-path / short-form / relative-path / backtick-wrapped shapes), resolves each to the cited thread's latest version, and classifies the section anchor as `ANCHOR-FOUND` / `ANCHOR-MISSING-BUT-THREAD-PRESENT` / `ANCHOR-CONTRADICTED` / `THREAD-NOT-FOUND` with severity `critical` / `important` / `suggestion`. An `ANCHOR-CONTRADICTED` finding at `critical` severity (e.g., a cite whose cited content materially contradicts the claim the citing memo attributes to it) raises a `Cross-thread cite: ANCHOR-CONTRADICTED` critical flag and forces `advance: false` regardless of the rubric total. This closes the **back-check triangle** (memo A claim ↔ memo A `refs/` + memo A summary ↔ memo A §N + memo A claim ↔ memo B §N). Phase A ships as reviewer-prose discipline (no Python detector); a Phase B detector at `anvil/skills/memo/lib/cross_thread_cite.py` is a follow-on gated on a second canary instance. The canary-anchor fixture under `tests/fixtures/cross_thread_cite_consistency/raytheon_brasidas_stale_anchor/` preserves the Studio Raytheon-pitch memo.1 → brasidas-synthesis.2 §3.1 stale-anchor catch as the regression-test anchor for Phase B.
+In addition to the intra-memo back-check above and the refs back-check (memo A claim ↔ memo A `refs/`), the reviewer performs a **cross-thread citation back-check** on every memo that cites other anvil threads — see `rubric.md` §"Cross-thread citation back-check (dim 3)" and `commands/memo-review.md` §Procedure step 4f. The back-check enumerates cross-thread citations in the body markdown (literal-path / short-form / relative-path / backtick-wrapped shapes), resolves each to the cited thread's latest version, and classifies the section anchor as `ANCHOR-FOUND` / `ANCHOR-MISSING-BUT-THREAD-PRESENT` / `ANCHOR-CONTRADICTED` / `THREAD-NOT-FOUND` with severity `critical` / `important` / `suggestion`. An `ANCHOR-CONTRADICTED` finding at `critical` severity (e.g., a cite whose cited content materially contradicts the claim the citing memo attributes to it) raises a `Cross-thread cite: ANCHOR-CONTRADICTED` critical flag and forces `advance: false` regardless of the rubric total. This closes the **back-check triangle** (memo A claim ↔ memo A `refs/` + memo A summary ↔ memo A §N + memo A claim ↔ memo B §N). Phase A ships as reviewer-prose discipline (no Python detector); a Phase B detector at `anvil/skills/memo/lib/cross_thread_cite.py` is a follow-on gated on a second canary instance. The canary-anchor fixture under `tests/fixtures/cross_thread_cite_consistency/raytheon_brasidas_stale_anchor/` preserves the Studio Raytheon-pitch memo.1 → brasidas-synthesis.2 §3.1 stale-anchor catch as the regression-test anchor for Phase B.
 
-### Project-level `BRIEF.md` (multi-document projects)
+### Project root
 
-Two on-disk layouts are recognized by the memo lifecycle (see `anvil/skills/memo/lib/project_discovery.py` — sub-deliverable 1 of #283):
+Every memo thread lives inside a **project root** that carries a project-level `BRIEF.md`. The BRIEF's YAML frontmatter enumerates per-document metadata in a `documents:` list; each entry names a slug, and the slug names a sibling directory under the project root that holds the thread's version dirs. The body filename inside each version dir echoes the slug (see §"Body filename convention (#295)" above) — `<project>/<slug>/<slug>.{N}/<slug>.md`.
 
-1. **Classic siblings-under-portfolio.** Each thread is a standalone directory with its own `BRIEF.md` and (optionally) its own `.anvil.json`. This is the documented v0 shape — every existing memo thread uses it and continues to work unchanged.
-2. **Project-as-thread-root.** A single project-level `BRIEF.md` at the project root carries shared context (audience, voice, hard rules) and enumerates per-document metadata in its YAML frontmatter. Per-document slug directories hold version dirs only — no per-thread `BRIEF.md` is required. This is the studio-canary-driven shape for multi-document projects:
+```
+<project>/
+  BRIEF.md                ← project-level BRIEF (frontmatter + prose)
+  .anvil.json             ← project-level defaults (optional)
+  <slug-a>/
+    <slug-a>.1/<slug-a>.md
+    <slug-a>.2/<slug-a>.md
+    ...
+  <slug-b>/
+    <slug-b>.1/<slug-b>.md
+    ...
+  research/               ← shared evidence pool (issue #281)
+```
 
-   ```
-   <project>/
-     BRIEF.md                ← project-level BRIEF (frontmatter + prose)
-     .anvil.json             ← project-level defaults (sub-deliverable 3 / #286)
-     <slug-a>/
-       <slug-a>.1/ ...
-     <slug-b>/
-       <slug-b>.1/ ...
-     research/               ← shared evidence pool (issue #281)
-   ```
+The dual-layout dispatch shipped under #284 was retired in #295: the classic siblings-under-portfolio layout is gone, every thread lives inside a project root, and `anvil/skills/memo/lib/project_discovery.py` recognizes one shape.
 
 The project BRIEF's frontmatter shape:
 
@@ -178,7 +184,7 @@ base /44 rubric (rubric.md)
 
 The `investment-memo` overlay is **identity** (zero adjustments, empty prose) so a thread with `artifact_type: investment-memo` is byte-identical to a thread with no project BRIEF at all — the v0 status quo. The four non-investment-memo overlays (`position-paper`, `tactical-plan`, `vision-document`, `descriptive-thesis`) carry the seed weight choices and calibration prose originally drafted under closed issue #278; see each overlay JSON's `description` field for the per-shape rationale.
 
-**Selection contract.** `select_overlay_for_thread` returns `None` for any of: classic-layout thread with no project BRIEF on the walk-upward path, thread slug not listed in the BRIEF's `documents:` block, or BRIEF that fails to parse. In all cases the reviewer behaves byte-identically to the pre-#286 status quo. The selection is **discovery-driven**, not flag-driven — the operator selects an artifact type by writing it into the project BRIEF, not by toggling a config knob in the thread's `.anvil.json`.
+**Selection contract.** `select_overlay_for_thread` returns `None` for any of: thread that does not live inside a project root (no project BRIEF on the walk-upward path), thread slug not listed in the BRIEF's `documents:` block, or BRIEF that fails to parse. In all cases the reviewer behaves byte-identically to the pre-#286 status quo (no overlay applied). The selection is **discovery-driven**, not flag-driven — the operator selects an artifact type by writing it into the project BRIEF, not by toggling a config knob in the thread's `.anvil.json`.
 
 ### Optional `.latest` convenience symlinks
 
@@ -220,7 +226,7 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | State | Evidence |
 |---|---|
 | `EMPTY` | No `<thread>.{N}/` directories exist |
-| `DRAFTED` | Latest `<thread>.{N}/` exists with `memo.md` and `_progress.json.draft == done`; no sibling review at the same `N` |
+| `DRAFTED` | Latest `<thread>.{N}/` exists with `<thread>.md` (body filename echoes the slug per #295) and `_progress.json.draft == done`; no sibling review at the same `N` |
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` |
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag |
@@ -228,7 +234,7 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 
 Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short-circuits regardless of total — block until addressed.
 
-**Plan siblings do NOT advance state.** A `<thread>.{N+1}.plan/` directory (written by `memo-revise <thread> --plan` — see §"Operator-confirmable change-set preview" below) is a critic-sibling-shaped artifact, NOT a version dir. Its presence does NOT advance the thread to `REVISED`: the state stays `REVIEWED` until `memo-revise <thread> --apply` writes the matching `<thread>.{N+1}/memo.md`. The state-machine derivation table above continues to use `<thread>.{N+1}/` presence as the `REVISED` evidence; plan siblings are invisible to it. This preserves the existing immutability contract (a half-built version dir without a `memo.md` is never `REVISED`) and keeps the two-phase flow audit-trailable on disk.
+**Plan siblings do NOT advance state.** A `<thread>.{N+1}.plan/` directory (written by `memo-revise <thread> --plan` — see §"Operator-confirmable change-set preview" below) is a critic-sibling-shaped artifact, NOT a version dir. Its presence does NOT advance the thread to `REVISED`: the state stays `REVIEWED` until `memo-revise <thread> --apply` writes the matching `<thread>.{N+1}/<thread>.md` body file. The state-machine derivation table above continues to use `<thread>.{N+1}/` presence as the `REVISED` evidence; plan siblings are invisible to it. This preserves the existing immutability contract (a half-built version dir without a body markdown file is never `REVISED`) and keeps the two-phase flow audit-trailable on disk.
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
@@ -257,11 +263,11 @@ See `commands/memo-revise.md` §"CLI flags" for the full reviser-side contract.
 
 ### Operator-confirmable change-set preview
 
-A normal `memo-revise` invocation produces `<thread>.{N+1}/memo.md` directly — the reviser picks the revision plan, applies the edits, and writes the version dir in a single pass. Operators MAY instead invoke a **two-phase** revision via `memo-revise <thread> --plan` followed by `memo-revise <thread> --apply` to materialize a change-set preview before any edit is committed. The two-phase mode exists because the studio canary surfaced a structural gap (issue #243): the default-path reviser produces a defensible higher-scoring version that nonetheless drifts away from operator intent ("clean and forceful presentation" — the rubric scores defensibility, the operator scores clarity), and the drift surfaces only after the edit is written.
+A normal `memo-revise` invocation produces `<thread>.{N+1}/<thread>.md` directly — the reviser picks the revision plan, applies the edits, and writes the version dir in a single pass. Operators MAY instead invoke a **two-phase** revision via `memo-revise <thread> --plan` followed by `memo-revise <thread> --apply` to materialize a change-set preview before any edit is committed. The two-phase mode exists because the studio canary surfaced a structural gap (issue #243): the default-path reviser produces a defensible higher-scoring version that nonetheless drifts away from operator intent ("clean and forceful presentation" — the rubric scores defensibility, the operator scores clarity), and the drift surfaces only after the edit is written.
 
-**Phase 1 — `--plan`.** `memo-revise <thread> --plan` writes a change-set preview at `<thread>.{N+1}.plan/plan.md` and exits WITHOUT producing `<thread>.{N+1}/memo.md`. The plan describes each planned edit (source critic, priority, insertion site, one-line summary, expected words delta, expected dim delta) plus an aggregate footer with the projected new word count and a target-length flag (`within_target` / `exceeds_max` / `under_min` / `no_target`). The canonical shape is documented in `templates/plan.md.template`.
+**Phase 1 — `--plan`.** `memo-revise <thread> --plan` writes a change-set preview at `<thread>.{N+1}.plan/plan.md` and exits WITHOUT producing `<thread>.{N+1}/<thread>.md`. The plan describes each planned edit (source critic, priority, insertion site, one-line summary, expected words delta, expected dim delta) plus an aggregate footer with the projected new word count and a target-length flag (`within_target` / `exceeds_max` / `under_min` / `no_target`). The canonical shape is documented in `templates/plan.md.template`.
 
-**Phase 2 — `--apply`.** `memo-revise <thread> --apply` reads `<thread>.{N+1}.plan/plan.md`, validates that the plan is still fresh (verdict mtime, critic-sibling set, age cap), and produces `<thread>.{N+1}/memo.md` + `changelog.md` per the existing reviser contract. The status line is annotated `(via plan)` so downstream tooling sees the two-phase path was taken.
+**Phase 2 — `--apply`.** `memo-revise <thread> --apply` reads `<thread>.{N+1}.plan/plan.md`, validates that the plan is still fresh (verdict mtime, critic-sibling set, age cap), and produces `<thread>.{N+1}/<thread>.md` + `changelog.md` per the existing reviser contract. The status line is annotated `(via plan)` so downstream tooling sees the two-phase path was taken.
 
 **Per-item rejection.** Operators reject planned items by **editing `plan.md` in place** between `--plan` and `--apply`. Three accepted edit shapes — pick whichever fits the editor flow:
 
@@ -321,7 +327,7 @@ Inside any `default` block, override value, or legacy flat `target_length`, the 
 
 | Key | Shape | Meaning |
 |---|---|---|
-| `words` | `[min, max]` | Target word count for `memo.md` (primary, deterministic, no rendering required). |
+| `words` | `[min, max]` | Target word count for the body markdown (primary, deterministic, no rendering required). |
 | `pages` | `[min, max]` | Target rendered page count. Converted internally at **600 words/page** (so `pages: [3, 4]` becomes `words: [1800, 2400]`). |
 
 `words` is the primary spec form. `pages` is accepted as ergonomic shorthand for authors who think in pages, but the comparison logic always operates on word count — anvil:memo is markdown-first (no native page count without rendering) and the 600-words/page conversion is the documented, stable proxy.
@@ -377,15 +383,15 @@ See `anvil/lib/render_gate.py` module docstring §"page_cap calibration" for the
 
 ## Rendering
 
-Memo threads can OPTIONALLY render `memo.md` → `memo.pdf` via `memo-render`. Rendering is an **opt-in, asset-producing sub-step** of the canonical `draft → review → revise → figures` lifecycle — it does NOT add a new state, it does NOT add a required phase, and it is fully backward-compat with memo versions written before the renderer shipped.
+Memo threads can OPTIONALLY render the body markdown (`<thread>.md`) → `<thread>.pdf` via `memo-render`. Rendering is an **opt-in, asset-producing sub-step** of the canonical `draft → review → revise → figures` lifecycle — it does NOT add a new state, it does NOT add a required phase, and it is fully backward-compat with memo versions written before the renderer shipped.
 
 The optional-render contract:
 
 - **Sub-step of `DRAFTED` and `REVISED`, not a new state.** `_progress.json.phases.render` records whether the renderer ran for a given version directory. Absence of the `phases.render` block is **fully legal** — it means the version was never rendered (the case for every legacy memo, and for consumers who run without pandoc / weasyprint installed). The state-machine derivation in §"State machine" above is **unchanged**: `DRAFTED` is still derived from `phases.draft == done` regardless of whether render ran; `REVISED` is still derived from the presence of `<thread>.{N+1}/` after a prior review.
 - **Non-blocking on failure.** A missing renderer, a render-gate finding, or even a hard pandoc failure does NOT abort `memo-draft` or `memo-revise`. The failure is recorded in `_progress.json.phases.render` and `_progress.json.render_gate`, and the upstream command completes normally. See `commands/memo-render.md` §"Failure modes" for the full table.
-- **Markdown-first; PDF is derived.** `memo.md` is the source-of-truth. `memo.pdf` is a one-way derivation produced by `memo-render`; it is **regenerated on every render** and MUST NEVER be hand-edited. If the rendered output looks wrong, fix the markdown or the styles, never the PDF.
+- **Markdown-first; PDF is derived.** The body markdown (`<thread>.md` per the slug-echo convention of #295) is the source-of-truth. `<thread>.pdf` is a one-way derivation produced by `memo-render`; it is **regenerated on every render** and MUST NEVER be hand-edited. If the rendered output looks wrong, fix the markdown or the styles, never the PDF.
 - **Lifecycle wiring.** `memo-draft` and `memo-revise` call `memo-render` after their respective writing pass (drafter step 9.5; reviser step 9.7). Both calls are non-blocking. The drafter / reviser still report success even when render is unavailable or the gate finds issues; the render outcome is for the operator and the Phase 4 reviewer-side integration to surface.
-- **Composable re-run.** `memo-render <thread>` is independently re-runnable. The consumer can tweak `<consumer>/.anvil/lib/memo/styles.css` (or the framework `anvil/lib/memo/styles.css`) and re-invoke the command WITHOUT going through draft / revise. The PDF picks up the new styles; `memo.md` is untouched. See `commands/memo-render.md` §"Re-run pattern".
+- **Composable re-run.** `memo-render <thread>` is independently re-runnable. The consumer can tweak `<consumer>/.anvil/lib/memo/styles.css` (or the framework `anvil/lib/memo/styles.css`) and re-invoke the command WITHOUT going through draft / revise. The PDF picks up the new styles; the body markdown is untouched. See `commands/memo-render.md` §"Re-run pattern".
 - **Render gate.** The five-dimension `render_gate.gate(kind="memo")` (Phase 2 / PR #185) runs as part of every render — `memo_compile_success`, `memo_page_fit`, `memo_overfull_check`, `memo_image_refs_exist`, `memo_placeholder_scan`. Findings land in `_progress.json.render_gate.findings`. Phase 4 will wire the reviewer to surface them in `_summary.md.render_gate`; in Phase 3 the findings are recorded but not yet read by the reviewer.
 
 The full command contract — preflight, gate invocation, `_progress.json` shape, failure modes, re-run pattern — lives in `commands/memo-render.md`. The render-chain dependencies (pandoc + weasyprint / wkhtmltopdf / xelatex + optional pdfinfo) and the renderer-detection priority order are documented in `anvil/lib/memo/README.md` §"The rendering chain" and surfaced via `MEMO_RENDERER_REMEDIATION` in `anvil/lib/render.py`.
@@ -395,12 +401,12 @@ The full command contract — preflight, gate invocation, `_progress.json` shape
 | Command | Role | Reads | Writes |
 |---|---|---|---|
 | `memo` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
-| `memo-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/memo.md` and `.review/comments.md` evidence / market / comparables / risk findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating; may side-effect-write to `<thread>/refs/<key>.md` citation stubs |
+| `memo-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/<thread>.md` (body filename echoes the slug per #295) and `.review/comments.md` evidence / market / comparables / risk findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating; may side-effect-write to `<thread>/refs/<key>.md` citation stubs |
 | `memo-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ `<thread>/refs/`), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `memo-revise`) |
 | `memo-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `memo-revise <thread> [--polish "<reason>"] [--plan|--apply]` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings (and `<thread>.{N+1}.plan/` on `--apply`) | `<thread>.{N+1}/` with `changelog.md` (default path; `--apply` path); OR `<thread>.{N+1}.plan/plan.md` only (on `--plan`); with `--polish`, also `metadata.revision_mode = "polish"` + `metadata.revise_force_reason` audit trail; with `--plan`/`--apply`, also `metadata.revision_mode = "plan_then_apply"` (or `"polish_plan_then_apply"` when composed with `--polish`). `--plan` and `--apply` are mutually exclusive. See §"Operator-confirmable change-set preview" + §"Operator-initiated polish passes" for the full two-phase + polish-pass contracts. |
-| `memo-render <thread>` | PDF renderer (optional, non-blocking) | latest `<thread>.{N}/memo.md`, `<thread>.{N}/_progress.json.metadata.target_length_resolved` | `<thread>.{N}/memo.pdf` (on success); `<thread>.{N}/_progress.json.phases.render` + `_progress.json.render_gate` always |
-| `memo-figures <thread>` | figurer | latest `<thread>.{N}/memo.md` | figures/tables under `<thread>.{N}/exhibits/` |
+| `memo-render <thread>` | PDF renderer (optional, non-blocking) | latest `<thread>.{N}/<thread>.md`, `<thread>.{N}/_progress.json.metadata.target_length_resolved` | `<thread>.{N}/<thread>.pdf` (on success); `<thread>.{N}/_progress.json.phases.render` + `_progress.json.render_gate` always |
+| `memo-figures <thread>` | figurer | latest `<thread>.{N}/<thread>.md` | figures/tables under `<thread>.{N}/exhibits/` |
 | `memo-migrate-refs <thread>` | refs/ seeder (idempotent re-run path; auto-invoked as step 13 by `memo-migrate`) | `<thread>/BRIEF.md` (specifically the `## Sources` section) | `<thread>/refs/<key>.md` stubs (one per §Sources entry; idempotent by default — existing stubs skipped; `--force` overwrites) |
 
 The portfolio orchestrator is the user-facing entry point for status; the four lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
@@ -439,7 +445,7 @@ Critic-sibling sample (adds `for_version` naming the version critiqued):
 }
 ```
 
-Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does `memo.md` exist? does the exhibit referenced as `exhibits/fig-1.png` exist?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
+Phase states: `pending`, `in_progress`, `done`, `failed`. Validation is **by file existence** (does the body markdown `<thread>.md` exist? does the exhibit referenced as `exhibits/fig-1.png` exist?), not by flag — `_progress.json` is a resume hint, not a source of truth. A phase that crashed mid-write should be re-runnable from `pending` after deleting any partial output.
 
 Critic siblings (e.g., `<thread>.{N}.review/`) follow the `human-verdict` scorecard kind documented in `anvil/lib/snippets/scorecard_kind.md`: they emit `verdict.md` + `scoring.md` + `comments.md` for human consumption. A `_meta.json` with `{"scorecard_kind": "human-verdict"}` is recommended for discovery purposes (other agents can detect the scorecard kind without inspecting filenames; absence defaults to `human-verdict`), but it is a **required output** of the `memo-review` command — the reviewer always writes it.
 
@@ -457,7 +463,7 @@ A pre-flight lint runs as part of `memo-review` (step 4b) before the LLM-judgmen
 
 | Lint | Module | Rule | What it catches |
 |---|---|---|---|
-| `memo_image_refs_exist` | `anvil/skills/memo/lib/memo_image_refs.py` | `memo_image_refs_exist` | Every markdown `![alt](path)` and HTML `<img src="...">` reference in `memo.md` resolves to an existing file relative to the version directory. URL refs and absolute filesystem paths are skipped. Suppression directive: `<!-- anvil-lint-disable: memo_image_refs_exist -->` on the same line as a ref or on the line immediately above. The canary mode is the `cp -r .../old/exhibits .../new/` footgun (issue #146) — when a missing ref names a subdirectory and a same-basename file exists at the version-dir root, the diagnostic surfaces this shape explicitly. |
+| `memo_image_refs_exist` | `anvil/skills/memo/lib/memo_image_refs.py` | `memo_image_refs_exist` | Every markdown `![alt](path)` and HTML `<img src="...">` reference in the body markdown (`<thread>.md`, filename echoes the slug per #295) resolves to an existing file relative to the version directory. URL refs and absolute filesystem paths are skipped. Suppression directive: `<!-- anvil-lint-disable: memo_image_refs_exist -->` on the same line as a ref or on the line immediately above. The canary mode is the `cp -r .../old/exhibits .../new/` footgun (issue #146) — when a missing ref names a subdirectory and a same-basename file exists at the version-dir root, the diagnostic surfaces this shape explicitly. |
 
 When the lint reports `errors > 0`, `memo-review` forces `advance: false` and lists `Memo image refs (lint)` under the verdict's critical flags. The lint result is written to the review sibling's `_summary.md` under a `lint.memo_image_refs` block; see `commands/memo-review.md` step 9 for the JSON shape.
 

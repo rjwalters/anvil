@@ -117,18 +117,24 @@ def test_memo_render_invokes_render_gate_kind_memo():
 
 
 def test_memo_render_writes_pdf_alongside_md():
-    """Issue #190 AC: memo.pdf lands alongside memo.md, NOT in a separate dir."""
+    """Issue #190 AC (+ #295): the rendered PDF lands alongside the body
+    markdown, NOT in a separate dir. The body and PDF filenames echo the
+    thread slug per #295 (e.g. ``<thread>.md`` and ``<thread>.pdf``)."""
     body = _read(RENDER_MD)
-    assert "memo.pdf" in body, (
-        "memo-render.md MUST document writing memo.pdf"
+    # A PDF write must be documented — accept either the slug-echo shape
+    # (``<thread>.pdf``) or a concrete example PDF basename, whichever
+    # the command prose uses.
+    assert ".pdf" in body, (
+        "memo-render.md MUST document writing a rendered PDF artifact"
     )
-    # The "alongside memo.md" / "in the version directory" framing must be present.
+    # The "alongside" / "in the version directory" framing must be present.
     lowered = body.lower()
     assert "alongside" in lowered or "in the version dir" in lowered or (
         "in the version directory" in lowered
     ), (
-        "memo-render.md MUST document that memo.pdf lands alongside memo.md "
-        "in the version directory (NOT a separate render dir) — issue #190 AC"
+        "memo-render.md MUST document that the rendered PDF lands alongside "
+        "the body markdown in the version directory (NOT a separate render "
+        "dir) — issue #190 AC"
     )
 
 
@@ -164,17 +170,17 @@ def test_memo_render_documents_graceful_degrade():
 
 
 def test_memo_render_documents_re_run_pattern():
-    """Issue #190 AC: memo.pdf is regenerated on every render, NEVER manually
-    edited; the command is independently composable."""
+    """Issue #190 AC: the rendered PDF is regenerated on every render,
+    NEVER manually edited; the command is independently composable."""
     body = _read(RENDER_MD)
     lowered = body.lower()
     assert "never" in lowered and ("hand-edit" in lowered or "manually edit" in lowered or "hand edit" in lowered or "hand-editing" in lowered), (
-        "memo-render.md MUST document that memo.pdf is NEVER manually edited "
-        "(derived artifact, regenerated on every render) — issue #190 AC"
+        "memo-render.md MUST document that the rendered PDF is NEVER manually "
+        "edited (derived artifact, regenerated on every render) — issue #190 AC"
     )
     assert "regenerated" in lowered or "regeneration" in lowered, (
-        "memo-render.md MUST document that memo.pdf is regenerated on every "
-        "render — issue #190 AC"
+        "memo-render.md MUST document that the rendered PDF is regenerated "
+        "on every render — issue #190 AC"
     )
 
 
@@ -208,7 +214,7 @@ def test_memo_render_documents_idempotence_and_mtime_check():
     )
     # The mtime / staleness comparison is load-bearing for the re-run pattern.
     assert "mtime" in lowered or "newer than" in lowered or "older than" in lowered, (
-        "memo-render.md MUST document the memo.md ↔ memo.pdf mtime/freshness "
+        "memo-render.md MUST document the body markdown ↔ PDF mtime/freshness "
         "check (re-render on stale PDF)"
     )
 
@@ -444,7 +450,13 @@ def test_memo_revise_render_call_is_non_blocking():
 
 
 def test_memo_revise_preserves_existing_steps():
-    """Backwards-compat invariant: the prior memo-revise procedure steps survive."""
+    """Backwards-compat invariant: the prior memo-revise procedure steps survive.
+
+    The "Produce the body" step accepts either the slug-echo phrasing
+    ("Produce `<thread>.md`") or the legacy literal ("Produce `memo.md`"),
+    so this regression guard stays meaningful through the issue #295
+    project-org model lock.
+    """
     body = _read(REVISE_MD)
     for marker in (
         "Discover state",
@@ -454,7 +466,6 @@ def test_memo_revise_preserves_existing_steps():
         "Initialize `_progress.json`",
         "Read inputs",
         "Build a revision plan",
-        "Produce `memo.md`",
         "Write `changelog.md`",
         "Update `_progress.json`",
     ):
@@ -462,6 +473,13 @@ def test_memo_revise_preserves_existing_steps():
             f"memo-revise.md MUST preserve the {marker!r} step (issue #190 "
             "backwards-compat AC)"
         )
+    # The "Produce <body>" step accepts the slug-echo shape per #295
+    # ("Produce `<thread>.md`") or the legacy literal ("Produce `memo.md`").
+    assert "Produce `<thread>.md`" in body or "Produce `memo.md`" in body, (
+        "memo-revise.md MUST preserve the 'Produce <body markdown>' step "
+        "(issue #190 backwards-compat AC); slug-echo phrasing per #295 is "
+        "accepted in addition to the legacy literal."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -510,13 +528,16 @@ def _fake_pandoc(
 
 @pytest.fixture
 def memo_fixture_dir(tmp_path):
-    """Build a minimal `<thread>.{N}/` directory with a non-empty memo.md.
+    """Build a minimal `<thread>/<thread>.{N}/` directory with a non-empty body.
 
-    Mirrors the fixture in `tests/lib/test_render_gate_memo.py` but renamed
-    to avoid any collision; the fixture is local to this module."""
-    vd = tmp_path / "acme-seed.1"
+    Body filename echoes the thread slug per #295 — for the ``acme-seed``
+    thread the body is ``acme-seed.md`` inside ``acme-seed/acme-seed.1/``.
+    """
+    thread = tmp_path / "acme-seed"
+    thread.mkdir()
+    vd = thread / "acme-seed.1"
     vd.mkdir()
-    (vd / "memo.md").write_text(
+    (vd / "acme-seed.md").write_text(
         "# Investment memo — acme-seed v1\n"
         "\n"
         "## Recommendation\n"
@@ -561,7 +582,7 @@ def test_smoke_synthesized_memo_renders_with_mocked_chain(
     result = gate(
         kind="memo",
         version_dir=memo_fixture_dir,
-        out_pdf=memo_fixture_dir / "memo.pdf",
+        out_pdf=memo_fixture_dir / "acme-seed.pdf",
         target_length={"words": [1800, 2400]},
         pdfinfo_path=fake_pdfinfo_3pages,
     )
@@ -569,10 +590,11 @@ def test_smoke_synthesized_memo_renders_with_mocked_chain(
     # The gate returns a typed GateResult — the shape the command persists
     # into _progress.json.render_gate via to_json().
     assert isinstance(result, GateResult)
-    # PDF lands at the expected path alongside memo.md (AC: same dir, NOT a
-    # separate render dir).
-    assert result.pdf_path == str(memo_fixture_dir / "memo.pdf")
-    assert (memo_fixture_dir / "memo.pdf").exists()
+    # PDF lands at the expected path alongside the body markdown
+    # (``acme-seed.md`` per the slug-echo convention of #295) — AC: same
+    # dir, NOT a separate render dir.
+    assert result.pdf_path == str(memo_fixture_dir / "acme-seed.pdf")
+    assert (memo_fixture_dir / "acme-seed.pdf").exists()
     # Page-count introspection worked via the fake pdfinfo.
     assert result.pages == 3
     # Compile status reflects a clean render.
@@ -613,7 +635,7 @@ def test_smoke_graceful_degrade_when_pandoc_absent(
     result = gate(
         kind="memo",
         version_dir=memo_fixture_dir,
-        out_pdf=memo_fixture_dir / "memo.pdf",
+        out_pdf=memo_fixture_dir / "acme-seed.pdf",
     )
 
     # The gate returned a GateResult — no exception was raised. This is the
@@ -622,7 +644,7 @@ def test_smoke_graceful_degrade_when_pandoc_absent(
     assert isinstance(result, GateResult)
     assert result.compile_status == COMPILE_UNAVAILABLE
     # No PDF was produced.
-    assert not (memo_fixture_dir / "memo.pdf").exists()
+    assert not (memo_fixture_dir / "acme-seed.pdf").exists()
     # The MEMO_RENDERER_REMEDIATION install story is surfaced in reasons so
     # the operator sees how to recover.
     assert any("PATH" in reason for reason in result.reasons), (
@@ -643,9 +665,13 @@ def test_smoke_existing_memo_version_without_pdf_is_legal_pre_render_state(
     `phases.draft == done` but no `memo.pdf` and no `phases.render` block
     is a valid pre-render state (every legacy memo has this shape).
     """
-    vd = tmp_path / "legacy.1"
+    # Body filename echoes the thread slug per #295 — for ``legacy``
+    # thread the body is ``legacy.md`` inside ``legacy/legacy.1/``.
+    thread = tmp_path / "legacy"
+    thread.mkdir()
+    vd = thread / "legacy.1"
     vd.mkdir()
-    (vd / "memo.md").write_text(
+    (vd / "legacy.md").write_text(
         "# Legacy memo\n\nThis was drafted before Phase 3.\n",
         encoding="utf-8",
     )
@@ -673,11 +699,13 @@ def test_smoke_existing_memo_version_without_pdf_is_legal_pre_render_state(
         "Legacy memo version MUST NOT carry render_gate top-level block "
         "(pre-Phase-3 shape)"
     )
-    assert (vd / "memo.md").exists()
-    assert not (vd / "memo.pdf").exists(), (
-        "Legacy memo version's pre-render state MUST be a memo.md without a "
-        "memo.pdf — the state machine MUST treat this as DRAFTED, NOT as "
-        "blocked (issue #190 backwards-compat AC)"
+    # Body filename echoes the slug per #295: ``legacy.md`` inside
+    # ``legacy/legacy.1/``.
+    assert (vd / "legacy.md").exists()
+    assert not (vd / "legacy.pdf").exists(), (
+        "Legacy memo version's pre-render state MUST be a body markdown "
+        "without a PDF — the state machine MUST treat this as DRAFTED, NOT "
+        "as blocked (issue #190 backwards-compat AC)"
     )
 
 
@@ -699,7 +727,7 @@ def test_smoke_render_gate_kind_memo_signature_unchanged(memo_fixture_dir, monke
     result = gate(
         kind="memo",
         version_dir=memo_fixture_dir,
-        out_pdf=memo_fixture_dir / "memo.pdf",
+        out_pdf=memo_fixture_dir / "acme-seed.pdf",
         target_length={"words": [1800, 2400]},
     )
     assert isinstance(result, GateResult)
