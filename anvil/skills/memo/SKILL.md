@@ -161,6 +161,25 @@ Unknown `artifact_type` values are rejected with an error listing the registered
 
 **Status.** This BRIEF parser is the load-bearing primitive for sub-deliverable 3 of #283 (rubric overlay selection from project BRIEF, #286) and the cross-thread reference validation in #287. It does NOT yet read `<project>/.anvil.json` — that's deferred to #286. Lifecycle commands (`memo-draft`, `memo-review`, etc.) do not yet dispatch on project-BRIEF layout; the wiring lands with #286.
 
+### Artifact-type rubric overlays (issue #286, sub-deliverable 3 of #283; absorbs closed #278)
+
+When a thread under the project-as-thread-root layout has its `artifact_type` declared in the project BRIEF's `documents:` list, `memo-review` loads a matching **rubric overlay** from `anvil/skills/memo/rubric_overlays/<artifact-type>.json` via `anvil/skills/memo/lib/rubric_overlays.py::select_overlay_for_thread(<thread_dir>)`. The overlay carries two fields:
+
+- **`weight_adjustments`** — sparse `dim_N → int` dict (e.g. `{"dim_1": -3, "dim_6": -4}` for `position-paper`) applied as deltas to the base `rubric.md` weights. The reviewer clamps to non-negative integers; no shipped overlay drives any dim below 0.
+- **`calibration_prose`** — sparse `dim_N → str` dict the reviewer appends to its `scoring.md` justifications as a verbatim suffix (the same shape as the per-thread `rubric_overrides.dim_N_calibration` mechanism from issue #233).
+
+**Composition order** (top-to-bottom precedence, last-wins on the same dim, suffixes accumulate):
+
+```
+base /44 rubric (rubric.md)
+  + artifact-type overlay         (this section — selected from project BRIEF's artifact_type)
+    + per-thread rubric_overrides  (anvil_config.py — issue #233; per-thread dim_N_calibration)
+```
+
+The `investment-memo` overlay is **identity** (zero adjustments, empty prose) so a thread with `artifact_type: investment-memo` is byte-identical to a thread with no project BRIEF at all — the v0 status quo. The four non-investment-memo overlays (`position-paper`, `tactical-plan`, `vision-document`, `descriptive-thesis`) carry the seed weight choices and calibration prose originally drafted under closed issue #278; see each overlay JSON's `description` field for the per-shape rationale.
+
+**Selection contract.** `select_overlay_for_thread` returns `None` for any of: classic-layout thread with no project BRIEF on the walk-upward path, thread slug not listed in the BRIEF's `documents:` block, or BRIEF that fails to parse. In all cases the reviewer behaves byte-identically to the pre-#286 status quo. The selection is **discovery-driven**, not flag-driven — the operator selects an artifact type by writing it into the project BRIEF, not by toggling a config knob in the thread's `.anvil.json`.
+
 ### Optional `.latest` convenience symlinks
 
 Consumers may add per-project convenience symlinks (`memo.latest -> memo.{max_N}`, `memo.latest.review -> memo.{max_N}.review`, etc.) so that downstream tooling — cross-artifact citations, share scripts, `pdfinfo` checks in CI — can target a stable path without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Resolution semantics for the memo lifecycle commands:
