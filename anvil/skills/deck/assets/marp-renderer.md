@@ -220,7 +220,7 @@ themselves. See `slide-archetypes.md` "Figure layout idioms → Custom
 layouts beyond `.row` / `.split`" for the worked frontmatter example.
 
 The deck skill ships an `inline-display-style-dropped` lint rule
-(`anvil/skills/deck/lib/marp_lint.py`, severity `warning`) that detects the
+(`anvil/lib/marp_lint.py`, severity `warning`) that detects the
 broken pattern in `deck.md` source and suggests the class-based replacement.
 The rule supports the standard per-slide escape hatch:
 
@@ -241,7 +241,7 @@ For the worked two-column / figure-left + text-right idiom, see
   mirrors the config-file pin.
 - `anvil/skills/deck/commands/deck-figures.md` — full figure pipeline
   including the `mmdc → PNG` diagram path and the required-`mmdc` preflight.
-- `anvil/skills/deck/lib/marp_lint.py` — `slide-content-overflow` lint that
+- `anvil/lib/marp_lint.py` — `slide-content-overflow` lint that
   runs on the resulting markdown source (catches the figure + bullets + footer
   pattern that mermaid auto-layout cannot save), plus the
   `figure-italic-supporting-line-too-long` and `inline-display-style-dropped`

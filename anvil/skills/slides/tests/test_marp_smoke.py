@@ -4,10 +4,18 @@ The smoke-test logic (frontmatter parsing, lint assertions, conditional
 Marp CLI render) is identical between deck and slides — only the fixture
 content differs (talk-flavored theorem + sequence diagram vs. deck-flavored
 investor-MathJax + sequence diagram). To prevent drift between the two
-sides, this module **does not duplicate the test logic**; instead it loads
-the deck-side test module via the same ``importlib.util.spec_from_file_location``
-mechanism PR #38 established for ``marp_lint.py``, then re-runs the test
-classes against the slides-side fixture.
+sides, this module **does not duplicate the test logic**; instead it imports
+the deck-side test classes directly (``anvil.skills.deck.tests`` is an
+importable package because the ``__init__.py`` chain is in place), then
+re-runs them against the slides-side fixture by rebinding the deck module's
+``_FIXTURE`` constant before test discovery.
+
+Post-#318 this file is a normal direct import — no ``importlib.util.spec_from_file_location``
+shim. The previous shim existed to bridge the file-path-resolution era of
+``marp_lint`` (when slides' ``lib/marp_lint.py`` itself loaded the deck
+module by file path); after ``marp_lint`` was promoted to ``anvil/lib/`` in
+#318, both sides import the canonical module directly and no file-path
+gymnastics are needed.
 
 The deck-side ``test_marp_smoke`` module exposes:
 
@@ -18,6 +26,7 @@ The deck-side ``test_marp_smoke`` module exposes:
   the load-bearing keys.
 - ``TestFixturePassesLint`` — asserts the fixture passes ``slide-content-overflow``.
 - ``TestMarpRenders`` — conditional render test (skipped without Marp CLI).
+- ``TestMermaidDiagramDoesNotLeakAsRawCode`` — #65 regression guard.
 
 This mirror re-runs each of these against the slides-side fixture by
 rebinding the module-level ``_FIXTURE`` constant before unittest discovery.
@@ -25,50 +34,13 @@ rebinding the module-level ``_FIXTURE`` constant before unittest discovery.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 import unittest
 from pathlib import Path
 
+from anvil.skills.deck.tests import test_marp_smoke as _deck_module
 
-# Resolve the canonical deck-side test module by file path. Mirrors the
-# pattern in ``anvil/skills/slides/lib/marp_lint.py``.
+
 _HERE = Path(__file__).resolve().parent
-_DECK_SMOKE_TEST_PATH = (
-    _HERE.parents[1] / "deck" / "tests" / "test_marp_smoke.py"
-)
-
-if not _DECK_SMOKE_TEST_PATH.is_file():
-    raise ImportError(
-        f"anvil:slides test_marp_smoke cannot locate the canonical "
-        f"deck-side implementation at {_DECK_SMOKE_TEST_PATH}. The "
-        f"slides-side smoke test is a re-export of the deck-side; both "
-        f"must be installed."
-    )
-
-# Ensure the slides-side ``lib/`` is on ``sys.path`` BEFORE we load the
-# deck-side test module. The deck-side module imports ``marp_lint``; when
-# loaded under the slides-side test runner we want it to resolve to the
-# slides-side re-export, which in turn loads the canonical deck-side
-# ``marp_lint`` via the same file-path mechanism. (The slides-side
-# ``lib/marp_lint.py`` is itself a re-export per PR #38, so behaviour is
-# identical regardless.)
-_SLIDES_LIB = _HERE.parent / "lib"
-sys.path.insert(0, str(_SLIDES_LIB))
-
-_spec = importlib.util.spec_from_file_location(
-    "anvil_deck_test_marp_smoke", _DECK_SMOKE_TEST_PATH
-)
-if _spec is None or _spec.loader is None:  # pragma: no cover — defensive
-    raise ImportError(
-        f"anvil:slides test_marp_smoke failed to build an import spec for "
-        f"{_DECK_SMOKE_TEST_PATH}."
-    )
-
-_deck_module = importlib.util.module_from_spec(_spec)
-sys.modules["anvil_deck_test_marp_smoke"] = _deck_module
-_spec.loader.exec_module(_deck_module)
-
 
 # Rebind the fixture path to the slides-side fixture so the inherited test
 # classes exercise slides content (theorem statement + sequence diagram)
@@ -76,10 +48,10 @@ _spec.loader.exec_module(_deck_module)
 _SLIDES_FIXTURE = _HERE / "fixtures" / "marp-smoke" / "deck.md"
 
 
-# Re-export the test classes under the slides namespace. Subclassing with
-# an overridden ``_FIXTURE`` would also work, but the deck-side module
-# references the fixture at module scope; the cleanest mirror is to
-# monkeypatch the module-level constant and re-export the test classes.
+# Subclassing with an overridden ``_FIXTURE`` would also work, but the
+# deck-side module references the fixture at module scope; the cleanest
+# mirror is to monkeypatch the module-level constant and re-export the
+# test classes.
 _deck_module._FIXTURE = _SLIDES_FIXTURE
 
 

@@ -2,7 +2,7 @@
 
 The reference implementation pattern (``Finding`` / ``LintResult`` /
 ``_LINT_DISABLE_RE`` / ``lint_source`` / ``lint_<artifact>``) is intentionally
-mirrored from ``anvil/skills/deck/lib/marp_lint.py`` so that promoting this
+mirrored from ``anvil/lib/marp_lint.py`` so that promoting this
 module to ``anvil/lib/`` later (per the CLAUDE.md "skill-local first, lib
 promotion later" pattern) is a one-line import-path swap.
 

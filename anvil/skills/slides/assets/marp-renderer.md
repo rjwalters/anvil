@@ -230,9 +230,9 @@ constraint is on the *inline* `style="..."` attribute specifically, not on
 the CSS properties themselves.
 
 The slides skill ships an `inline-display-style-dropped` lint rule
-(re-exported from `anvil/skills/deck/lib/marp_lint.py` via the slides-side
-shim, severity `warning`) that detects the broken pattern in `deck.md`
-source and suggests the class-based replacement. The rule supports the
+(imports `anvil/lib/marp_lint.py` directly, severity `warning`) that
+detects the broken pattern in `deck.md` source and suggests the class-based
+replacement. The rule supports the
 standard per-slide escape hatch:
 
 ```markdown
@@ -251,9 +251,9 @@ standard per-slide escape hatch:
   including the `mmdc → PNG` diagram path.
 - `anvil/skills/slides/commands/slides-handout.md` — handout exporter
   using the same canonical render line.
-- `anvil/skills/slides/lib/marp_lint.py` — `slide-content-overflow` lint
-  (re-exported from the deck-side single source of truth) that runs on the
-  resulting markdown source, plus the `figure-italic-supporting-line-too-long`
+- `anvil/lib/marp_lint.py` — `slide-content-overflow` lint
+  that runs on the resulting markdown source, plus the
+  `figure-italic-supporting-line-too-long`
   and `inline-display-style-dropped` rules (the latter catches the
   foreignObject-SVG inline-`display:` trap documented in "Layout patterns"
   above).
