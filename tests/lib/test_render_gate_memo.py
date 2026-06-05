@@ -293,7 +293,7 @@ def test_resolve_target_length_pages_form():
 
 
 def test_resolve_target_length_words_form_uses_wpp_proxy():
-    """{'words': [1800, 2400]} → derived page range via 600-wpp proxy."""
+    """{'words': [1800, 2400]} → derived page range via 400-wpp proxy."""
     pr, wr, src, wpp = _resolve_target_length({"words": [1800, 2400]})
     assert pr == (1800 // MEMO_WORDS_PER_PAGE, 2400 // MEMO_WORDS_PER_PAGE)
     assert wr == (1800, 2400)
@@ -381,12 +381,12 @@ def test_resolve_target_length_override_changes_derived_range():
 
 
 def test_resolve_target_length_override_none_uses_default():
-    """words_per_page=None → default 600 wpp applied. Regression guard."""
+    """words_per_page=None → default 400 wpp applied. Regression guard."""
     pr, wr, src, wpp = _resolve_target_length(
         {"words": [9000, 13000]}, words_per_page=None
     )
-    # 9000 // 600 = 15; ceil(13000 / 600) = 22.
-    assert pr == (15, 22)
+    # 9000 // 400 = 22; ceil(13000 / 400) = 33.
+    assert pr == (22, 33)
     assert wpp == MEMO_WORDS_PER_PAGE
 
 
@@ -405,31 +405,31 @@ def test_resolve_target_length_override_ignored_for_pages_form():
 def test_gate_memo_words_per_page_override_default_preserved(
     monkeypatch, memo_version_dir, fake_pdfinfo_5pages
 ):
-    """No words_per_page kwarg → default 600 wpp behavior is unchanged.
+    """No words_per_page kwarg → default 400 wpp behavior is unchanged.
 
     Regression guard for AC 1 ("default behavior preserved when absent").
-    target_length.words=[1800, 2400] derives [3, 4]; rendered 5 pages
-    fires the warning (same as today).
+    target_length.words=[800, 1600] derives [2, 4]; rendered 5 pages
+    fires the warning (outside range at the new 400-wpp default).
     """
     _mock_full_render_chain(monkeypatch)
     r = gate(
         kind="memo",
         version_dir=memo_version_dir,
         pdfinfo_path=fake_pdfinfo_5pages,
-        target_length={"words": [1800, 2400]},
+        target_length={"words": [800, 1600]},
         # words_per_page omitted on purpose.
     )
     assert DIM_MEMO_PAGE_FIT in r.failed_gates
     findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
     assert len(findings) == 1
-    # Message surfaces the 600-wpp default.
-    assert "@ 600 wpp" in findings[0].message
+    # Message surfaces the 400-wpp default.
+    assert "@ 400 wpp" in findings[0].message
 
 
 def test_gate_memo_words_per_page_override_widens_range(
     monkeypatch, memo_version_dir, fake_pdfinfo_5pages
 ):
-    """words_per_page=400 widens the derived range so 5 pages passes.
+    """words_per_page=400 (matching the 400-wpp default) → 5 pages passes.
 
     AC 8 mirror: target_length.words=[1800, 2400] at 400 wpp derives
     [4, 6]; rendered 5 is in range → page-fit does NOT fire.
@@ -454,7 +454,7 @@ def test_gate_memo_words_per_page_message_surfaces_override(
     monkeypatch, memo_version_dir, fake_pdfinfo_5pages
 ):
     """When the override is set and the page-fit warning STILL fires, the
-    finding message records the effective wpp (not hard-coded 600).
+    finding message records the effective wpp (not the default 400).
 
     AC 2 + AC 5: ``memo_page_fit`` finding records the effective wpp used.
     """
@@ -471,15 +471,15 @@ def test_gate_memo_words_per_page_message_surfaces_override(
     findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
     assert len(findings) == 1
     assert "@ 300 wpp" in findings[0].message
-    # The hard-coded 600 should NOT appear (regression guard).
-    assert "@ 600 wpp" not in findings[0].message
+    # The default 400 wpp should NOT appear (regression guard).
+    assert "@ 400 wpp" not in findings[0].message
 
 
 def test_gate_memo_words_per_page_malformed_falls_back_silently(
     monkeypatch, memo_version_dir, fake_pdfinfo_5pages
 ):
     """Malformed overrides (0, negative, non-numeric, bool) → silent
-    fall back to 600 wpp; no exception raised. AC 4 + curation
+    fall back to 400 wpp; no exception raised. AC 4 + curation
     graceful-degrade contract."""
     _mock_full_render_chain(monkeypatch)
     for bad in [0, -1, -400, "400", True, False, [400], {"wpp": 400}]:
@@ -487,15 +487,15 @@ def test_gate_memo_words_per_page_malformed_falls_back_silently(
             kind="memo",
             version_dir=memo_version_dir,
             pdfinfo_path=fake_pdfinfo_5pages,
-            target_length={"words": [1800, 2400]},
+            target_length={"words": [800, 1600]},
             words_per_page=bad,
         )
-        # Default 600 wpp behavior: derived [3, 4], 5 pages out of range.
+        # Default 400 wpp behavior: derived [2, 4], 5 pages out of range.
         assert DIM_MEMO_PAGE_FIT in r.failed_gates, (
             f"Bad words_per_page={bad!r} did not fall back to default"
         )
         findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
-        assert "@ 600 wpp" in findings[0].message, (
+        assert "@ 400 wpp" in findings[0].message, (
             f"Bad words_per_page={bad!r} did not produce default-wpp message"
         )
 
@@ -724,12 +724,12 @@ def test_gate_memo_page_fit_words_form_warning(
 ):
     """target_length.words set and rendered count outside derived range → warning."""
     _mock_full_render_chain(monkeypatch)
-    # 1800-2400 words → derived range [3, 4]; rendered 5 → out of range.
+    # 1200-1600 words → derived range [3, 4] at 400 wpp; rendered 5 → out of range.
     r = gate(
         kind="memo",
         version_dir=memo_version_dir,
         pdfinfo_path=fake_pdfinfo_5pages,
-        target_length={"words": [1800, 2400]},
+        target_length={"words": [1200, 1600]},
     )
     assert DIM_MEMO_PAGE_FIT in r.failed_gates
     page_fit_findings = [f for f in r.findings if f.gate == DIM_MEMO_PAGE_FIT]
