@@ -1030,38 +1030,69 @@ def scan_version_dir(
 # ---------------------------------------------------------------------------
 
 
+def _write_review_dir(version_dir: Path, result: "CoverageResult") -> Path:
+    """Write ``<version_dir>.citations/_review.json`` (+ ``_findings.json``).
+
+    Mirrors the convention used by
+    :func:`anvil.skills.memo.lib.hyperlink_resolver.write_review_dir`
+    (Phase 2, #338): a typed ``_review.json`` for the critics aggregator
+    plus a ``_findings.json`` companion with the structured payload from
+    :meth:`CoverageResult.to_json`. Auto-discovery happens via the
+    ``<version_dir>.<tag>/`` pattern in
+    :func:`anvil.lib.critics.discover_critics` — no aggregator change.
+
+    Returns the path to the written ``_review.json``.
+    """
+    import json
+
+    out_dir = version_dir.parent / f"{version_dir.name}.{CRITIC_ID}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    review = result.to_review(version_dir=version_dir.name)
+    review_path = out_dir / "_review.json"
+    review_path.write_text(
+        review.model_dump_json(indent=2) + "\n", encoding="utf-8"
+    )
+    (out_dir / "_findings.json").write_text(
+        json.dumps(result.to_json(), indent=2) + "\n", encoding="utf-8"
+    )
+    return review_path
+
+
 def _cli_main(argv: Optional[list[str]] = None) -> int:
     """Module-runner entry point.
 
     Usage::
 
-        python -m anvil.skills.memo.lib.citation_coverage <version_dir>
+        python -m anvil.skills.memo.lib.citation_coverage <version_dir> [--write-review]
 
-    Writes ``<version_dir>.citations/_review.json`` (creating the
-    sibling dir if needed) plus a ``_findings.json`` companion with
-    the structured payload from :meth:`CoverageResult.to_json`. The
-    sibling dir name is the same shape as ``<version_dir>.review/`` so
-    :func:`anvil.lib.critics.discover_critics` picks it up without
-    aggregator changes.
+    Always prints the structured payload from :meth:`CoverageResult.to_json`
+    to stdout. When ``--write-review`` is passed, also writes
+    ``<version_dir>.citations/_review.json`` (typed) and
+    ``<version_dir>.citations/_findings.json`` (companion) into the sibling
+    critic dir for auto-discovery by
+    :func:`anvil.lib.critics.discover_critics`.
 
-    Returns the process exit code: ``0`` on a successful scan
-    (regardless of finding count — findings are not errors at the
-    process level), ``2`` on a usage error, ``1`` on an IO error.
+    Mirrors the contract of the sibling
+    :mod:`anvil.skills.memo.lib.hyperlink_resolver` (Phase 2, #338): the
+    write step is **opt-in** via ``--write-review`` and the exit code is
+    **non-zero on findings** so CI / shell pipelines can branch on it.
 
-    If Phase 2 (``hyperlink_resolver``) lands first with a different
-    runner shape (e.g. an ``argparse`` subcommand or a different output
-    layout), this function is the one place to mirror it.
+    Exit codes:
+
+    - ``0``: clean scan, zero findings.
+    - ``1``: one or more findings (unhooked claims or broken citations).
+    - ``2``: invocation error (``version_dir`` missing or not a directory).
     """
     import argparse
     import json
+    import sys
 
     parser = argparse.ArgumentParser(
         prog="python -m anvil.skills.memo.lib.citation_coverage",
         description=(
             "Citation-coverage critic for the anvil:memo skill. Scans "
             "the body markdown in <version_dir> for unhooked load-"
-            "bearing claims and broken \\cite{} / [@] keys, then "
-            "writes _review.json into <version_dir>.citations/."
+            "bearing claims and broken \\cite{} / [@] keys."
         ),
     )
     parser.add_argument(
@@ -1077,24 +1108,34 @@ def _cli_main(argv: Optional[list[str]] = None) -> int:
             "<version_dir.parent.name>.md per the #295 contract."
         ),
     )
+    parser.add_argument(
+        "--write-review",
+        action="store_true",
+        help=(
+            "Also write <version_dir>.citations/_review.json (typed) and "
+            "<version_dir>.citations/_findings.json (companion) for "
+            "critic-sibling auto-discovery by aggregate()."
+        ),
+    )
     args = parser.parse_args(argv)
 
     version_dir: Path = args.version_dir
     if not version_dir.is_dir():
-        parser.error(f"version_dir does not exist: {version_dir}")
+        print(
+            f"error: version_dir does not exist: {version_dir}",
+            file=sys.stderr,
+        )
+        return 2
 
     result = scan_version_dir(version_dir, body_filename=args.body_filename)
 
-    out_dir = version_dir.parent / f"{version_dir.name}.{CRITIC_ID}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    review = result.to_review(version_dir=version_dir.name)
-    (out_dir / "_review.json").write_text(
-        review.model_dump_json(indent=2) + "\n", encoding="utf-8"
-    )
-    (out_dir / "_findings.json").write_text(
-        json.dumps(result.to_json(), indent=2) + "\n", encoding="utf-8"
-    )
-    return 0
+    print(json.dumps(result.to_json(), indent=2))
+
+    if args.write_review:
+        out = _write_review_dir(version_dir, result)
+        print(f"wrote {out}", file=sys.stderr)
+
+    return 0 if result.total_findings == 0 else 1
 
 
 if __name__ == "__main__":  # pragma: no cover

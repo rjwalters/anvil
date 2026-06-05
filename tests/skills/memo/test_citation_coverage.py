@@ -226,6 +226,31 @@ def test_false_positive_section_reference_does_not_fire():
     assert all(c.claim_class != "numeric" for c in result.unhooked_claims)
 
 
+def test_false_positive_table_reference_does_not_fire():
+    """``Table 2 reports the breakdown`` is a structural self-reference.
+
+    Lock-in test: a standalone ``Table N`` (no leading "see/in/per") is
+    suppressed by ``_STRUCTURAL_REFERENCE_RE``. The number is a pointer
+    to a document element, not a load-bearing claim.
+    """
+    body = "Table 2 reports the breakdown by segment.\n"
+    result = scan(body, refs_keys=set())
+    assert not result.unhooked_claims
+
+
+def test_false_positive_page_reference_does_not_fire():
+    """``see page 12 for details`` is a self-reference — no finding.
+
+    Lock-in test: ``page N`` is a pointer to document structure, not a
+    claim. The detector must suppress it. (``12`` is a bare integer not
+    matching any numeric regex, but this test pins down the prose shape
+    so a future regex expansion cannot accidentally regress it.)
+    """
+    body = "Full results in see page 12 for details.\n"
+    result = scan(body, refs_keys=set())
+    assert not result.unhooked_claims
+
+
 def test_false_positive_hedged_numeric_claim_does_not_fire():
     """``roughly 30 customers`` is hedged — no numeric finding."""
     body = "We talked to roughly 30 customers in the discovery phase.\n"
@@ -287,6 +312,33 @@ def test_line_with_cite_marker_suppresses_numeric_claim():
     body = "The market is $2.3B \\cite{realsource2024}.\n"
     result = scan(body, refs_keys={"realsource2024"})
     assert not result.unhooked_claims
+
+
+def test_line_with_two_claims_one_cite_suppresses_both():
+    """Multi-claim-one-cite edge case: line-level hook is intentional.
+
+    A single line carries two distinct numeric claims (``$2.3B``,
+    ``42 %``); only one has a ``\\cite{}`` marker. The current
+    line-level hook treats the citation as covering every claim on the
+    line — so BOTH claims are suppressed.
+
+    This is the documented behavior (per the module's "line-level hook
+    granularity" design note): per-claim hook resolution would over-fit
+    on the current canary surface. The test pins the behavior so
+    reviewers and future contributors see it explicitly; reading prose
+    like "$2.3B market grew 42 % YoY \\cite{src}" produces zero
+    findings even though only one of the two numbers is technically
+    sourced by that citation.
+
+    If a future iteration tightens the hook to per-claim resolution,
+    this test will fail loudly and the change can be documented.
+    """
+    body = "The $2.3B market grew 42 % YoY \\cite{realsource2024}.\n"
+    result = scan(body, refs_keys={"realsource2024"})
+    assert not result.unhooked_claims, (
+        "line-level hook should suppress every claim on a cited line "
+        "(documented behavior — see citation_coverage.py module docstring)"
+    )
 
 
 def test_multi_key_latex_cite_resolves_each_key():
@@ -558,16 +610,22 @@ def test_aggregate_picks_up_citations_sibling(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_cli_main_writes_review_json(tmp_path: Path):
-    """``python -m anvil.skills.memo.lib.citation_coverage <dir>`` works."""
+def test_cli_main_with_write_review_writes_sibling(tmp_path: Path):
+    """``--write-review`` opts in to writing the sibling critic dir.
+
+    Mirrors PR #338's ``hyperlink_resolver`` CLI contract: writes are
+    opt-in via the ``--write-review`` flag. Exit code is non-zero when
+    findings exist so CI pipelines can branch on it.
+    """
     from anvil.skills.memo.lib.citation_coverage import _cli_main
 
     slug = "demo"
     body = "Smith (2023) showed a clear trend.\n"
     version_dir = _write_memo_version(tmp_path, slug, body)
 
-    rc = _cli_main([str(version_dir)])
-    assert rc == 0
+    rc = _cli_main([str(version_dir), "--write-review"])
+    # Named-author claim is a finding → exit non-zero (per #338 contract).
+    assert rc == 1
 
     sibling = version_dir.parent / f"{version_dir.name}.{CRITIC_ID}"
     review_path = sibling / "_review.json"
@@ -588,6 +646,46 @@ def test_cli_main_writes_review_json(tmp_path: Path):
     findings_data = json.loads(findings_path.read_text())
     assert findings_data["critic"] == "citations"
     assert findings_data["total_findings"] >= 1
+
+
+def test_cli_main_without_write_review_does_not_write_sibling(tmp_path: Path):
+    """Without ``--write-review`` the sibling critic dir is NOT created.
+
+    Mirrors #338's opt-in write semantics — the default invocation is a
+    pure scan that emits findings to stdout, no filesystem side effects.
+    """
+    from anvil.skills.memo.lib.citation_coverage import _cli_main
+
+    slug = "demo"
+    body = "Smith (2023) showed a clear trend.\n"
+    version_dir = _write_memo_version(tmp_path, slug, body)
+
+    rc = _cli_main([str(version_dir)])
+    # Findings present → exit non-zero.
+    assert rc == 1
+
+    sibling = version_dir.parent / f"{version_dir.name}.{CRITIC_ID}"
+    assert not sibling.exists()
+
+
+def test_cli_main_clean_scan_exits_zero(tmp_path: Path):
+    """A clean body (no findings) exits 0 — mirrors #338's pass/fail semantics."""
+    from anvil.skills.memo.lib.citation_coverage import _cli_main
+
+    slug = "demo"
+    body = "This is a plain prose paragraph with no claims.\n"
+    version_dir = _write_memo_version(tmp_path, slug, body)
+
+    rc = _cli_main([str(version_dir)])
+    assert rc == 0
+
+
+def test_cli_main_missing_version_dir_exits_two(tmp_path: Path):
+    """A non-existent ``version_dir`` exits 2 (invocation error)."""
+    from anvil.skills.memo.lib.citation_coverage import _cli_main
+
+    rc = _cli_main([str(tmp_path / "does-not-exist")])
+    assert rc == 2
 
 
 # ---------------------------------------------------------------------------

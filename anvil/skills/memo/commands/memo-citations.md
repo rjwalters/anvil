@@ -7,7 +7,7 @@ description: Deterministic citation-coverage critic for the memo skill. Scans th
 
 **Role**: Deterministic tool-evidence critic (pre-flight detector, optional, non-blocking).
 **Reads**: latest `<thread>.{N}/<thread>.md` + refs sources resolved by `anvil/skills/memo/lib/refs_resolver.py`.
-**Writes**: `<thread>.{N}.citations/_review.json` (always), `<thread>.{N}.citations/_findings.json` (companion JSON).
+**Writes**: `<thread>.{N}.citations/_review.json` and `<thread>.{N}.citations/_findings.json` — only when invoked with `--write-review` (opt-in, mirroring the Phase 2 `hyperlink_resolver` CLI contract from #338). Default invocation is a pure scan that prints the structured payload to stdout.
 
 This command is the memo-skill analog of `memo-render` for the citation-coverage Track B detector shipped under Epic #328 Phase 3 (issue #336). It runs a deterministic pass over the body markdown and emits a typed `Review` (`kind=tool_evidence`) that the standard `critics.aggregate` pipeline merges into the verdict alongside the standard `memo-review` judgment critic.
 
@@ -118,12 +118,20 @@ No aggregator change is required to wire this critic in. The first invocation of
 ## CLI entry point
 
 ```bash
-python -m anvil.skills.memo.lib.citation_coverage <version_dir> [--body-filename <name>]
+python -m anvil.skills.memo.lib.citation_coverage <version_dir> [--write-review] [--body-filename <name>]
 ```
 
-The `<version_dir>` is the memo version directory (e.g. `acme-seed/acme-seed.2/`). The runner writes `<version_dir>.citations/_review.json` and `<version_dir>.citations/_findings.json`.
+The `<version_dir>` is the memo version directory (e.g. `acme-seed/acme-seed.2/`). The runner always prints the structured payload (`CoverageResult.to_json()`) to stdout. When `--write-review` is passed, it additionally writes `<version_dir>.citations/_review.json` (typed) and `<version_dir>.citations/_findings.json` (companion) into the sibling critic dir for auto-discovery by `anvil/lib/critics.py::discover_critics`.
 
-**Coordination with Phase 2 (`hyperlink_resolver`, #335)**: until Phase 2 lands and a sibling convention is documented, the `python -m anvil.skills.memo.lib.<module> <version_dir>` shape is the default. If Phase 2 lands first with a different runner shape (e.g. an `argparse` subcommand or a different output layout), the `_cli_main` function in `citation_coverage.py` is the one place to mirror it.
+**Exit codes** (mirror Phase 2 `hyperlink_resolver`, #338):
+
+- `0`: clean scan — zero findings.
+- `1`: one or more findings (unhooked claims or broken citations).
+- `2`: invocation error (missing `version_dir`).
+
+The non-zero-on-findings semantics let CI / shell pipelines branch on the result without parsing the JSON.
+
+**Coordination with Phase 2 (`hyperlink_resolver`, #335 / #338)**: the CLI shape — opt-in write via `--write-review`, exit non-zero on findings — is **identical** to the Phase 2 sibling so the two Track B critics feel interchangeable from a consumer / CI perspective.
 
 ## Failure modes
 
