@@ -47,6 +47,7 @@ The `render_gate` block is **always written** (whether the gate passed or failed
 3. **Initialize `_progress.json`**: read existing `_progress.json` (per the read-merge-write recipe in `anvil/lib/snippets/progress.md`), set `phases.render.state = in_progress`, `phases.render.started = <ISO>` (per `anvil/lib/snippets/timestamp.md`). Preserve every other phase and all `metadata` fields.
 4. **Resolve target_length**: read `metadata.target_length_resolved` from the same `_progress.json`. If present and `source != "none"`, build `target_length = {"words": [metadata.target_length_resolved.min_words, metadata.target_length_resolved.max_words]}`. Otherwise pass `target_length = None` to the gate (the page-fit dimension graceful-degrades — see `render_gate.py` `_gate_memo` step 2).
 4b. **Resolve the `words_per_page` override** (optional, per-thread page_cap calibration): a future BRIEF.md project-level knob is the intended home for the `render_gate.words_per_page` value (not yet schema-formalized; the field was historically on `<thread>/.anvil.json` and is queued for migration). Until the BRIEF schema is grown to carry it, omit the `words_per_page=` kwarg and the gate's default `MEMO_WORDS_PER_PAGE = 400` applies. The override (when implemented) **only affects the `target_length.words → page range` conversion**: when `target_length.pages` is declared directly, the override is a no-op. See `anvil/lib/render_gate.py` module docstring §"page_cap calibration" for the calibration story (400 wpp is the mixed-content default; table-dense memos typically want ~300-350 wpp; pure dense-prose memos may want 500-600 wpp).
+4c. **Resolve the `render_engine` override** (issue #320, optional per-document HTML/PDF engine pin): read `metadata.render_engine_requested` from the same `_progress.json`. When present (one of `"weasyprint"`, `"xelatex"`, `"wkhtmltopdf"` — the drafter / reviser wrote it from `BriefDocument.render_engine` at draft/revise time), pass `render_engine="<value>"` to the gate. When absent (legacy version dirs or BRIEFs without the knob), omit the kwarg — the gate's default auto-priority (`weasyprint > wkhtmltopdf > xelatex`) applies. The gate honors the request when the named binary is on PATH; otherwise it gracefully falls through to auto-priority and records the fallthrough in `render_gate.reasons` (silent-with-record per architect Q7).
 5. **Invoke the render gate**: call
 
    ```python
@@ -58,6 +59,7 @@ The `render_gate` block is **always written** (whether the gate passed or failed
        out_pdf=<thread>.{N}/<thread>.pdf,
        target_length=target_length,
        words_per_page=words_per_page,  # omit when not set in BRIEF.md (knob queued for migration)
+       render_engine=render_engine,    # omit when metadata.render_engine_requested is absent (issue #320)
    )
    ```
 

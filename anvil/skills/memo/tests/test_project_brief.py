@@ -932,6 +932,132 @@ class TestUnknownDocumentKeys(_TmpProjectBase):
 
 
 # ---------------------------------------------------------------------------
+# Per-document render_engine override (issue #320)
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentRenderEngine(_TmpProjectBase):
+    """Per-document ``render_engine`` knob (issue #320).
+
+    The BRIEF parser enforces a closed allowlist of three values
+    (``"weasyprint"``, ``"xelatex"``, ``"wkhtmltopdf"``). The actual
+    runtime fallthrough (requested-but-unavailable-on-PATH) lives in
+    ``anvil.lib.render_gate._select_memo_engine`` — these tests pin
+    the parse-time contract only.
+    """
+
+    def test_brief_document_accepts_render_engine_weasyprint(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                render_engine: weasyprint
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(len(brief.documents), 1)
+        self.assertEqual(brief.documents[0].render_engine, "weasyprint")
+
+    def test_brief_document_accepts_render_engine_xelatex(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                render_engine: xelatex
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(brief.documents[0].render_engine, "xelatex")
+
+    def test_brief_document_accepts_render_engine_wkhtmltopdf(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                render_engine: wkhtmltopdf
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(brief.documents[0].render_engine, "wkhtmltopdf")
+
+    def test_brief_document_rejects_invalid_render_engine(self) -> None:
+        """Unknown engine value → ``ValueError`` listing the valid set."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                render_engine: foo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        msg = str(cm.exception)
+        # Error must name the offending value AND surface the valid set
+        # so the operator can self-correct without reading source.
+        self.assertIn("render_engine", msg)
+        self.assertIn("foo", msg)
+        self.assertIn("weasyprint", msg)
+        self.assertIn("xelatex", msg)
+        self.assertIn("wkhtmltopdf", msg)
+
+    def test_brief_document_render_engine_optional(self) -> None:
+        """Entries without ``render_engine:`` parse cleanly (back-compat).
+
+        Every existing BRIEF in the canary continues to load without
+        change after #320 — the field is purely additive.
+        """
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertIsNone(brief.documents[0].render_engine)
+
+    def test_brief_document_render_engine_persists_to_model(self) -> None:
+        """Round-trip: ``render_engine: xelatex`` in YAML frontmatter →
+        ``BriefDocument.render_engine == 'xelatex'`` on the parsed model.
+
+        Regression anchor for the plumbing into
+        ``_progress.json.metadata.render_engine_requested`` at draft and
+        revise time: the value the drafter / reviser reads off the
+        BRIEF document model must equal the value the operator wrote
+        in the BRIEF frontmatter (no normalization, no coercion).
+        """
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                render_engine: xelatex
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        doc = brief.document_for_slug("doc")
+        self.assertIsNotNone(doc)
+        assert doc is not None  # type narrowing
+        self.assertEqual(doc.render_engine, "xelatex")
+
+
+# ---------------------------------------------------------------------------
 # On-disk fixture (the brains-for-robots canary shape)
 # ---------------------------------------------------------------------------
 
