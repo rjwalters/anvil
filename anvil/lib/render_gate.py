@@ -25,7 +25,7 @@ rendering pipeline shipped by Epic #158. The five memo checks are:
 1. ``memo_compile_success`` — pandoc exited 0, the PDF exists, and the
    page count is positive.
 2. ``memo_page_fit`` — rendered page count vs ``target_length.pages``
-   (error) or the 600-wpp-converted ``target_length.words`` range
+   (error) or the 400-wpp-converted ``target_length.words`` range
    (warning). Not run when ``target_length`` is absent.
 3. ``memo_overfull_check`` — pandoc / weasyprint / wkhtmltopdf stderr
    warnings about lines that don't break cleanly (warning severity;
@@ -59,13 +59,13 @@ page_cap calibration
 The memo gate's ``memo_page_fit`` dimension converts
 ``target_length.words`` into a rendered-page-count range via a
 words-per-page (wpp) proxy. The default is :data:`MEMO_WORDS_PER_PAGE`
-(**600 wpp**), which is calibrated for the **dense-prose** memo body
-the canary's investment-memo example assumes. Table-dense memos
-(financial models, comp tables, sensitivity matrices) run effectively
-~300-400 wpp once the table whitespace is accounted for — applying the
-default 600-wpp conversion to those memos systematically produces a
-derived page range that the rendered PDF will overrun, even when the
-memo is on-target by word count.
+(**400 wpp**), which is calibrated for the **mixed-content** memo the
+canary's investment-memo example assumes (prose body with occasional
+tables). Pure dense-prose memos (no tables) run closer to 500-600 wpp,
+while table-heavy memos (financial models, comp tables, sensitivity
+matrices) run effectively ~300-350 wpp once the table whitespace is
+accounted for — the 400-wpp default is the practical midpoint that
+avoids systematically misfiring on table-dense memos.
 
 The override hook is per-thread: callers can pass
 ``words_per_page=<positive number>`` to :func:`gate` (when
@@ -199,7 +199,7 @@ MEMO_ENGINE_XELATEX = "xelatex"
 # rendered-page-count range when ``target_length.pages`` is not declared
 # explicitly. Mirrors the constant documented in
 # ``anvil/skills/memo/SKILL.md`` §"Length targets" and used by the rubric.
-MEMO_WORDS_PER_PAGE = 600
+MEMO_WORDS_PER_PAGE = 400
 
 # Default placeholder patterns for the memo gate. Adapted from
 # ``DEFAULT_PLACEHOLDER_PATTERNS`` for markdown comment syntax and the
@@ -574,7 +574,7 @@ def gate(
       ``SKILL.md`` §Length targets). Optional ``words_per_page`` is the
       per-thread override for the words→pages conversion factor (see
       module docstring §"page_cap calibration"); ``None`` uses
-      :data:`MEMO_WORDS_PER_PAGE` (600). Malformed overrides
+      :data:`MEMO_WORDS_PER_PAGE` (400). Malformed overrides
       (non-numeric or ``<= 0``) silently fall back to the default.
       Routes through :func:`_gate_memo` which invokes
       :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
@@ -1143,7 +1143,7 @@ def _resolve_target_length(
     ``commands/memo-draft.md`` step 5):
 
     - ``{"words": [min, max]}`` — word-count range; the gate computes a
-      page-count range via the wpp proxy (default 600, overridable via
+      page-count range via the wpp proxy (default 400, overridable via
       ``words_per_page``).
     - ``{"pages": [min, max]}`` — page-count range; the gate uses it
       directly. ``source`` is ``"pages"`` so the gate fires errors
@@ -1207,7 +1207,7 @@ def _resolve_target_length(
             # comparison is inclusive both sides so a memo word-count
             # that converts to exactly N pages should pass an [N, N+k]
             # range. ``effective_wpp`` is the override when set,
-            # otherwise the 600-wpp default.
+            # otherwise the 400-wpp default.
             min_pages = max(1, min_w // effective_wpp)
             max_pages = max(1, (max_w + effective_wpp - 1) // effective_wpp)
             return ((min_pages, max_pages), (min_w, max_w), "words", effective_wpp)
@@ -1361,7 +1361,7 @@ def _gate_memo(
             # Out of range. Severity = error if source="pages" (the
             # author declared the page range explicitly); warning if
             # source="words" (the page range is derived via the
-            # 600-wpp proxy and dim 7 word-count is authoritative).
+            # 400-wpp proxy and dim 7 word-count is authoritative).
             severity = "error" if target_source == "pages" else "warning"
             failed.add(DIM_MEMO_PAGE_FIT)
             if target_source == "words" and word_range is not None:
