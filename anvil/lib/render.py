@@ -389,7 +389,19 @@ def check_pandoc_available() -> bool:
 
 
 def check_weasyprint_available() -> bool:
-    """Return ``True`` if the ``weasyprint`` binary is on PATH.
+    """Return ``True`` if ``weasyprint`` is on PATH AND passes a runtime smoke test.
+
+    The smoke test runs ``weasyprint --version`` and treats a non-zero exit as
+    unavailable. This catches cases where the binary is on PATH but runtime
+    deps (libgobject-2.0-0 / cairo / pango) are missing — which causes exit 43
+    at render time without a useful error message.
+
+    Two-stage check:
+    1. ``shutil.which`` — fast binary-presence test (existing pattern)
+    2. ``subprocess.run(["weasyprint", "--version"])`` — runtime viability check
+
+    A ``TimeoutExpired`` (5 s) or ``OSError`` on the smoke test returns ``False``
+    rather than raising, matching the graceful-degrade contract of this family.
 
     ``weasyprint`` is the PREFERRED HTML-to-PDF engine for the anvil:memo
     render chain (see ``anvil/lib/memo/README.md``). It supports the full CSS
@@ -403,15 +415,21 @@ def check_weasyprint_available() -> bool:
     across engines (HTML chain = one binary per engine) and matches the
     rest of ``render.py`` (no Python wheels in the dependency surface).
 
-    Mirrors the ``check_mmdc_available`` (#65) preflight pattern: a pure
-    ``shutil.which`` test that is unit-testable with a monkeypatched
-    ``shutil.which`` and requires no real weasyprint install at test time.
-
-    See also :data:`MEMO_RENDERER_REMEDIATION` for the install story
-    callers should surface when both this and ``check_wkhtmltopdf_available``
-    return ``False``.
+    See also :data:`MEMO_RENDERER_REMEDIATION` for the install story callers
+    should surface when this and ``check_wkhtmltopdf_available`` both return
+    ``False``.
     """
-    return shutil.which("weasyprint") is not None
+    if shutil.which("weasyprint") is None:
+        return False
+    try:
+        result = subprocess.run(
+            ["weasyprint", "--version"],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def check_wkhtmltopdf_available() -> bool:
