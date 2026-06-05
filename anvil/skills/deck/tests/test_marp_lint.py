@@ -22,20 +22,12 @@ or ``pytest anvil/skills/deck/tests/``.
 
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
+from anvil.lib.marp_lint import lint_deck, lint_source, Finding, LintResult
 
-# The deck skill keeps the lint module under its own ``lib/`` per the curator
-# addendum on issue #31 (D4). Add it to ``sys.path`` here so the tests can
-# import the module without a package install step.
 _HERE = Path(__file__).resolve().parent
-_LIB = _HERE.parent / "lib"
-sys.path.insert(0, str(_LIB))
-
-from marp_lint import lint_deck, lint_source, Finding, LintResult  # noqa: E402
-
 _FIXTURES = _HERE / "fixtures" / "marp_lint"
 
 
@@ -301,7 +293,7 @@ class TestPortedRulesIncludesInlineDisplay(unittest.TestCase):
     """``PORTED_RULES`` advertises the new rule alongside the existing two."""
 
     def test_rule_name_in_ported_rules(self) -> None:
-        from marp_lint import PORTED_RULES  # noqa: WPS433
+        from anvil.lib.marp_lint import PORTED_RULES  # noqa: WPS433
         self.assertIn("inline-display-style-dropped", PORTED_RULES)
         self.assertIn("slide-content-overflow", PORTED_RULES)
         self.assertIn("figure-italic-supporting-line-too-long", PORTED_RULES)

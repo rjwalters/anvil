@@ -211,7 +211,7 @@ The skill prompt instructs the figurer to **never invent data** — only render 
 
 ### Pre-flight overflow lint
 
-`slides-review` runs a fast deterministic lint over `<thread>.{N}/deck.md` before scoring. The lint is a Python-stdlib port of marp-vscode's experimental `slide-content-overflow` diagnostic; the slides-side module (`anvil/skills/slides/lib/marp_lint.py`) is a thin re-export of the deck-side single source of truth (`anvil/skills/deck/lib/marp_lint.py`) so behaviour cannot drift between the two skills. The renderer is pinned at the framework level (Marp); the lint is therefore renderer-pinned, not skill-pinned.
+`slides-review` runs a fast deterministic lint over `<thread>.{N}/deck.md` before scoring. The lint is a Python-stdlib port of marp-vscode's experimental `slide-content-overflow` diagnostic; the slides skill imports `anvil.lib.marp_lint` directly (promoted in #318) so behaviour cannot drift between the deck and slides skills. The renderer is pinned at the framework level (Marp); the lint is therefore renderer-pinned, not skill-pinned.
 
 **What it catches** (deterministic source-only heuristics):
 - Figure + 4+ bullets + footer line on 16:9 (the issue #24 pattern, common on results slides).

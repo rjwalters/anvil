@@ -257,7 +257,7 @@ The family currently has three members:
   success, and placeholder-scan gates over a compiled PDF + log
   (`Kind.TOOL_EVIDENCE`; `CriticalFlag` on fail because a missing PDF
   IS a blocker).
-- **`anvil/skills/deck/lib/marp_lint.py`** — slide-source overflow /
+- **`anvil/lib/marp_lint.py`** — slide-source overflow /
   layout linter over the markdown before Marp render.
 - **`anvil/lib/revise_consistency.py`** — stale-token sweep for the
   `*-revise` lifecycle. Compares old- and new-source priced-number

@@ -9,7 +9,7 @@ description: Vision-model critic for the deck skill. Renders the deck to PDF and
 **Reads**: `<thread>.{N}/deck.md` (renders to `deck.pdf` + per-page PNGs on demand).
 **Writes**: `<thread>.{N}.vision/` with `_review.json` (canonical schema, `kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/`.
 
-This critic exists because Anvil's markdown-source critics never *look at* the rendered output. Three open deck bugs — #23 (mathtext italicizing `$11B` as `11B`), #24 (vertical overflow on figure+bullets slides), #25 (`_class: ask` H1+H2 overflow) — are all symptoms of the same gap: text-only critics can't see what the slide actually shows. The static lint in `anvil/skills/deck/lib/marp_lint.py` catches the obvious cases; this critic catches the rest (label cropping, palette adherence, mathtext artifacts, slide-density at projection scale).
+This critic exists because Anvil's markdown-source critics never *look at* the rendered output. Three open deck bugs — #23 (mathtext italicizing `$11B` as `11B`), #24 (vertical overflow on figure+bullets slides), #25 (`_class: ask` H1+H2 overflow) — are all symptoms of the same gap: text-only critics can't see what the slide actually shows. The static lint in `anvil/lib/marp_lint.py` catches the obvious cases; this critic catches the rest (label cropping, palette adherence, mathtext artifacts, slide-density at projection scale).
 
 ## Owned vision dimensions (six, scored /5 each, /30 total)
 
