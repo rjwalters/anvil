@@ -31,6 +31,7 @@ from anvil.lib import render
 from anvil.lib.render import (
     DEFAULT_MARP_CONFIG,
     RenderError,
+    check_weasyprint_available,
     render_marp_to_pdf,
     render_matplotlib_figures,
     render_pandoc_to_pdf,
@@ -305,3 +306,54 @@ def test_matplotlib_walker_file_path_returns_empty(tmp_path):
     f = tmp_path / "file.png"
     f.write_bytes(b"\x89PNG")
     assert render_matplotlib_figures(f) == []
+
+
+# ---------------------------------------------------------------------------
+# check_weasyprint_available — smoke-test paths (#308)
+# ---------------------------------------------------------------------------
+
+
+def test_check_weasyprint_available_false_when_not_on_path(monkeypatch):
+    """Returns False immediately when shutil.which finds no binary."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert check_weasyprint_available() is False
+
+
+def test_check_weasyprint_available_true_when_version_exits_0(monkeypatch):
+    """Returns True when binary is on PATH and --version exits 0."""
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "/usr/bin/weasyprint" if name == "weasyprint" else None
+    )
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    with patch("subprocess.run", return_value=mock_result) as mock_run:
+        assert check_weasyprint_available() is True
+        mock_run.assert_called_once_with(
+            ["weasyprint", "--version"], capture_output=True, timeout=5
+        )
+
+
+def test_check_weasyprint_available_false_when_version_exits_43(monkeypatch):
+    """Returns False when binary is on PATH but exits non-zero (e.g. missing libgobject)."""
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/weasyprint")
+    mock_result = MagicMock()
+    mock_result.returncode = 43
+    with patch("subprocess.run", return_value=mock_result):
+        assert check_weasyprint_available() is False
+
+
+def test_check_weasyprint_available_false_on_oserror(monkeypatch):
+    """Returns False (not raises) when subprocess.run raises OSError."""
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/weasyprint")
+    with patch("subprocess.run", side_effect=OSError("exec failed")):
+        assert check_weasyprint_available() is False
+
+
+def test_check_weasyprint_available_false_on_timeout(monkeypatch):
+    """Returns False (not raises) when the smoke-test times out."""
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/weasyprint")
+    with patch(
+        "subprocess.run",
+        side_effect=subprocess.TimeoutExpired(["weasyprint", "--version"], 5),
+    ):
+        assert check_weasyprint_available() is False
