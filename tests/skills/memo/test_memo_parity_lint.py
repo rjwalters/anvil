@@ -667,45 +667,63 @@ def test_memo_review_md_summary_block_demonstrates_both_shapes():
 
 
 def test_module_docstring_names_promotion_path():
-    """AC11: module docstring explicitly names ``anvil/lib/parity.py`` as
-    the promotion target + cites the parent PR / this issue."""
+    """AC11 (post-promotion, issue #317): the skill-local docstring names
+    the promotion target (``anvil/lib/parity.py``) and the load-bearing
+    narrative content (parent PR/issue refs, canary anchor, Phase A/B
+    contract, second-consumer trigger note) moved into the promoted
+    module's docstring. The skill-local module is now a thin re-export;
+    the narrative content lives with the implementation.
+    """
+    # Skill-local docstring still names the promotion target.
     from anvil.skills.memo.lib import parity_lint
 
-    doc = parity_lint.__doc__ or ""
-    assert "anvil/lib/parity.py" in doc, (
-        "module docstring must name the promotion path"
+    skill_doc = parity_lint.__doc__ or ""
+    assert "anvil/lib/parity.py" in skill_doc, (
+        "skill-local docstring must name the promotion target"
     )
-    # Parent issue / PR refs.
-    assert "#200" in doc, "module docstring must cite #200 (canary anchor)"
-    assert "#205" in doc, "module docstring must cite PR #205 (deck-side first ship)"
-    assert "#215" in doc, "module docstring must cite #215 (this issue)"
+
+    # Parent issue / PR refs now live in the promoted module's docstring.
+    from anvil.lib import parity
+
+    lib_doc = parity.__doc__ or ""
+    assert "#200" in lib_doc, (
+        "anvil.lib.parity docstring must cite #200 (canary anchor)"
+    )
+    assert "#205" in lib_doc, (
+        "anvil.lib.parity docstring must cite PR #205 (deck-side first ship)"
+    )
+    assert "#215" in lib_doc, (
+        "anvil.lib.parity docstring must cite #215 (memo-side mirror)"
+    )
 
 
 def test_module_docstring_names_second_consumer_trigger():
-    """AC11: docstring must explicitly note that this module landing is the
-    second-consumer trigger per CLAUDE.md §Skill-local first."""
-    from anvil.skills.memo.lib import parity_lint
+    """AC11 (post-promotion, issue #317): the second-consumer trigger
+    narrative now lives in the promoted module's docstring."""
+    from anvil.lib import parity
 
-    doc = parity_lint.__doc__ or ""
+    doc = parity.__doc__ or ""
     assert "second-consumer" in doc.lower() or "second consumer" in doc.lower(), (
-        "module docstring must name the second-consumer trigger"
+        "anvil.lib.parity docstring must name the second-consumer trigger"
     )
 
 
 def test_module_docstring_carries_phase_A_B_contract():
-    """AC11: docstring carries the Phase A / Phase B contract verbatim
-    from deck-side."""
-    from anvil.skills.memo.lib import parity_lint
+    """AC11 (post-promotion, issue #317): the Phase A / Phase B contract
+    narrative now lives in the promoted module's docstring."""
+    from anvil.lib import parity
 
-    doc = parity_lint.__doc__ or ""
+    doc = parity.__doc__ or ""
     assert "Phase A" in doc and "Phase B" in doc
     assert "warning" in doc.lower()
 
 
 def test_module_docstring_names_canary_anchor():
-    """AC11: docstring names the Citation Clear ~50-60% completion canary."""
-    from anvil.skills.memo.lib import parity_lint
+    """AC11 (post-promotion, issue #317): the Citation Clear ~50-60%
+    completion canary anchor now lives in the promoted module's
+    docstring."""
+    from anvil.lib import parity
 
-    doc = parity_lint.__doc__ or ""
+    doc = parity.__doc__ or ""
     assert "Citation Clear" in doc
     assert "50" in doc and "60" in doc and "completion" in doc.lower()
