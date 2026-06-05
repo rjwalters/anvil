@@ -112,6 +112,13 @@ auto_shrink = [
     "Pillow>=10.0",
     "numpy>=1.24",
 ]
+# Memo HTML-to-PDF render chain (preferred engine).
+# weasyprint 69.0 is not compatible with Python 3.14 (CSS module import fails).
+# Use xelatex as the fallback engine on Python 3.14+ until weasyprint ships
+# Python 3.14 support. See issue #306 for the canary reproducer.
+html = [
+    "weasyprint>=60.0 ; python_version < '3.14'",
+]
 # Test-time dev deps. Not required for any shipped skill; install for
 # running the test suite locally.
 dev = [

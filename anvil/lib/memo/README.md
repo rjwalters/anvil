@@ -63,6 +63,7 @@ is pinned here so Phase 3's command code is config-not-code.
   paged-media spec (the `@page` rule + counter(page) used in
   `styles.css`), and produces high-fidelity output. The cost is a
   Python install and a handful of native deps (cairo, pango).
+  **Python 3.14 compatibility**: weasyprint 69.0 is not compatible with Python 3.14 (the CSS module fails to import). On Python 3.14, `check_weasyprint_available()` returns `False` (the runtime smoke test detects the failure) and the gate falls through to wkhtmltopdf or xelatex automatically. Install weasyprint only on Python <3.14 via `pip install weasyprint` or `pip install 'anvil[html]'`.
 - **`wkhtmltopdf` is the HTML fallback.** It is a standalone binary
   (`brew install --cask wkhtmltopdf` / `apt-get install
   wkhtmltopdf`), supports the bulk of HTML+CSS without the Python
