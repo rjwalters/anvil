@@ -631,6 +631,15 @@ class ProjectBrief(BaseModel):
         ``project_discovery.has_project_brief`` — this loader only
         accepts BRIEFs that already pass the discovery gate). Slugs are
         guaranteed unique by the parser.
+    theme
+        Optional brand-theme name (issue #322). When set, the per-skill
+        asset resolvers (template + stylesheet + accent) consult
+        ``<consumer>/.anvil/themes/<theme>/`` as a precedence tier
+        between the consumer single-tenant override and the framework
+        default. Free string — theme names are consumer-defined; no
+        enum validation is enforced. A name pointing to a missing theme
+        directory is tolerated (the resolver falls through to the next
+        tier silently).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -639,6 +648,7 @@ class ProjectBrief(BaseModel):
     audience: List[str] = Field(default_factory=list)
     hard_rules: List[str] = Field(default_factory=list)
     documents: List[BriefDocument] = Field(..., min_length=1)
+    theme: Optional[str] = Field(default=None)
 
     def document_for_slug(self, slug: str) -> Optional[BriefDocument]:
         """Return the ``BriefDocument`` whose ``slug`` matches, or ``None``.
@@ -734,6 +744,30 @@ def _normalize_string_list(
             )
         out.append(entry)
     return out
+
+
+def _normalize_theme(value: Any) -> Optional[str]:
+    """Normalize the optional ``theme:`` frontmatter key (issue #322).
+
+    Returns ``None`` when the key is absent, an explicit ``null``, or an
+    empty / whitespace-only string. A non-empty string is returned with
+    surrounding whitespace stripped. Any other type raises
+    ``ValueError`` — the field is strictly a string when present, to
+    catch fat-finger errors (``theme: [foo]``, ``theme: 42``).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(
+            f"BRIEF.theme must be a string when set; got "
+            f"{type(value).__name__}: {value!r} — suggested fix: "
+            f"quote the theme name (`theme: my-brand`) or remove the "
+            f"key to fall through to framework defaults."
+        )
+    stripped = value.strip()
+    if not stripped:
+        return None
+    return stripped
 
 
 def _normalize_target_length_range(
@@ -1283,9 +1317,10 @@ def _parse_brief_body(
     """Parse a frontmatter dict into a :class:`ProjectBrief`.
 
     Raises ``ValueError`` on any schema violation. Recognized top-level
-    keys: ``project``, ``audience``, ``hard_rules``, ``documents``.
-    Other keys are ignored (forward-compat surface for project-level
-    fields that may land later — e.g., a ``voice:`` block).
+    keys: ``project``, ``audience``, ``hard_rules``, ``documents``,
+    ``theme``. Other keys are ignored (forward-compat surface for
+    project-level fields that may land later — e.g., a ``voice:``
+    block).
     """
     project_raw = frontmatter.get("project")
     if not isinstance(project_raw, str) or not project_raw.strip():
@@ -1304,6 +1339,7 @@ def _parse_brief_body(
     documents = _normalize_documents(
         frontmatter.get(DOCUMENTS_FRONTMATTER_KEY)
     )
+    theme = _normalize_theme(frontmatter.get("theme"))
 
     try:
         return ProjectBrief(
@@ -1311,6 +1347,7 @@ def _parse_brief_body(
             audience=audience,
             hard_rules=hard_rules,
             documents=documents,
+            theme=theme,
         )
     except ValidationError as exc:
         raise ValueError(

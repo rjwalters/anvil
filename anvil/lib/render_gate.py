@@ -855,9 +855,31 @@ def gate(
 def _select_memo_engine(requested: Optional[str] = None) -> Optional[str]:
     """Return the preferred memo HTML/PDF engine that is available on PATH.
 
-    Priority per architect Q1 (Epic #158): ``weasyprint`` > ``wkhtmltopdf``
-    > ``xelatex``. Returns ``None`` when none are available — callers
-    surface ``MEMO_RENDERER_REMEDIATION`` in that case.
+    Default priority per architect Q1 (Epic #158): ``weasyprint`` >
+    ``wkhtmltopdf`` > ``xelatex``. Returns ``None`` when none are
+    available — callers surface ``MEMO_RENDERER_REMEDIATION`` in that
+    case.
+
+    When ``requested`` is one of the recognized engine names AND that
+    engine is available on PATH, it wins over the default priority
+    order. When the requested engine is NOT available, the function
+    falls through to the default order rather than returning ``None``
+    — the "respect the brand pin if you can, but render something
+    rather than nothing" contract that matches the broader anvil
+    graceful-degrade discipline. The caller can detect a mismatch by
+    comparing the returned engine to ``requested``.
+
+    The ``requested`` knob is the integration point for two related
+    features:
+
+    - The per-theme ``render_engine`` default from
+      ``<consumer>/.anvil/themes/<theme>/theme.yml`` (issue #322).
+    - The per-document ``documents[].render_engine`` override from
+      the project BRIEF (issue #320).
+
+    Per-document > per-theme > framework default. The caller in
+    :func:`_render_memo_source` is responsible for resolving the
+    precedence and passing the winning value as ``requested``.
 
     The optional ``requested`` parameter (issue #320) carries the
     per-document override from ``BriefDocument.render_engine`` (one of
@@ -877,16 +899,19 @@ def _select_memo_engine(requested: Optional[str] = None) -> Optional[str]:
     # tests monkeypatch the checks on the render module.
     from anvil.lib import render as _render
 
-    # Issue #320: honor a per-document requested engine when both (a) it
-    # is one of the known values AND (b) the corresponding binary is
-    # available on PATH. Unknown / unavailable requests fall through to
-    # the priority order below — no exception.
-    if requested is not None:
-        if requested == MEMO_ENGINE_WEASYPRINT and _render.check_weasyprint_available():
+    # Issue #320 + #322: honor a per-thread or per-theme requested engine
+    # when both (a) it is one of the known values AND (b) the corresponding
+    # binary is available on PATH. Unknown / unavailable requests fall
+    # through to the priority order below — no exception. The
+    # ``str(...).strip().lower()`` normalization tolerates loose YAML
+    # input shapes (whitespace, mixed case) from theme.yml or BRIEF.md.
+    if requested:
+        req = str(requested).strip().lower()
+        if req == MEMO_ENGINE_WEASYPRINT and _render.check_weasyprint_available():
             return MEMO_ENGINE_WEASYPRINT
-        if requested == MEMO_ENGINE_WKHTMLTOPDF and _render.check_wkhtmltopdf_available():
+        if req == MEMO_ENGINE_WKHTMLTOPDF and _render.check_wkhtmltopdf_available():
             return MEMO_ENGINE_WKHTMLTOPDF
-        if requested == MEMO_ENGINE_XELATEX and shutil.which(MEMO_ENGINE_XELATEX) is not None:
+        if req == MEMO_ENGINE_XELATEX and shutil.which(MEMO_ENGINE_XELATEX) is not None:
             return MEMO_ENGINE_XELATEX
         # Requested-but-unavailable (or unknown value): fall through.
 
@@ -907,6 +932,85 @@ def _memo_body_filename(version_dir: Path) -> str:
     so the body filename is ``<version_dir.parent.name>.md``.
     """
     return f"{version_dir.parent.name}.md"
+
+
+def _discover_memo_theme_context(
+    version_dir: Path,
+) -> tuple[Optional[Path], Optional[str], Optional[str]]:
+    """Return ``(consumer_root, theme_name, requested_engine)`` for the memo.
+
+    Walks upward from ``version_dir`` to:
+
+    1. Locate the consumer root (the directory containing ``.anvil/``).
+    2. Locate the enclosing project root and read its BRIEF.md.
+    3. Resolve the project's theme (if any) and load
+       ``<consumer>/.anvil/themes/<theme>/theme.yml`` for the
+       ``render_engine`` default.
+
+    All three return slots are independently optional — the caller
+    handles ``None`` for each gracefully. Discovery never raises; any
+    error in BRIEF parsing or theme loading is swallowed and the
+    relevant slot returns ``None``. This matches the graceful-degrade
+    contract of the existing memo render path.
+
+    Issue #322 (theme primitive) + issue #320 (per-doc render_engine)
+    integration point. The per-doc override from #320 is currently
+    sourced by the caller of :func:`_render_memo_source`; this helper
+    deliberately stops at the theme tier so the two issues don't fight
+    over the same code surface.
+    """
+    consumer_root: Optional[Path] = None
+    theme_name: Optional[str] = None
+    requested_engine: Optional[str] = None
+
+    # Tier 1: locate consumer root (the directory containing .anvil/).
+    try:
+        from anvil.lib.theme import find_consumer_root, load_theme
+
+        consumer_root = find_consumer_root(version_dir)
+    except Exception:
+        # Defensive — theme.py is part of the framework so import should
+        # always succeed; this guard exists for future-proofing.
+        return (None, None, None)
+
+    # Tier 2: locate project root + read BRIEF for theme: field.
+    try:
+        # Lazy import: project_discovery lives under the memo skill's
+        # lib/ which isn't always on sys.path at module-import time.
+        # Reuse the resolution logic from the discovery primitive
+        # rather than re-rolling the walk-up.
+        import sys
+
+        memo_lib = (
+            Path(__file__).parent.parent / "skills" / "memo" / "lib"
+        )
+        memo_lib_str = str(memo_lib)
+        if memo_lib_str not in sys.path:
+            sys.path.insert(0, memo_lib_str)
+
+        from project_discovery import discover_thread_root  # type: ignore
+        from project_brief import load_project_brief  # type: ignore
+
+        discovery = discover_thread_root(version_dir)
+        if discovery is not None:
+            brief = load_project_brief(discovery.project_root)
+            if brief is not None and brief.theme:
+                theme_name = brief.theme
+    except Exception:
+        # Any BRIEF discovery or parse failure → no theme available;
+        # render falls through to framework defaults.
+        return (consumer_root, None, None)
+
+    # Tier 3: load theme.yml for render_engine default.
+    if theme_name is not None and consumer_root is not None:
+        try:
+            theme = load_theme(consumer_root, theme_name)
+            if theme is not None:
+                requested_engine = theme.render_engine
+        except Exception:
+            requested_engine = None
+
+    return (consumer_root, theme_name, requested_engine)
 
 
 def _render_memo_source(
@@ -936,9 +1040,18 @@ def _render_memo_source(
     out_pdf:
         Output PDF path. Parent directory must exist.
     requested_engine:
-        Optional per-document engine override (issue #320). Threaded
-        through to :func:`_select_memo_engine`. When set and available
-        on PATH, that engine is used; otherwise auto-priority applies.
+        Optional per-document engine override (issue #320). Composed
+        with the per-theme ``render_engine`` default from issue #322
+        as ``effective_engine = requested_engine or theme_engine``;
+        the result is threaded through to :func:`_select_memo_engine`.
+        Per-thread wins by short-circuit: when ``requested_engine`` is
+        truthy it is used directly; when ``None`` the per-theme default
+        from ``theme.yml`` (discovered via
+        :func:`_discover_memo_theme_context`) takes over; when both are
+        absent, :func:`_select_memo_engine` falls through to the
+        framework auto-priority (weasyprint > wkhtmltopdf > xelatex).
+        When set and available on PATH, the effective engine is used;
+        otherwise auto-priority applies.
 
     Returns
     -------
@@ -973,7 +1086,24 @@ def _render_memo_source(
     if not _render.check_pandoc_available():
         return (COMPILE_UNAVAILABLE, -1, "", "")
 
-    engine = _select_memo_engine(requested=requested_engine)
+    # Issue #322: discover the project's theme context (consumer_root,
+    # theme_name, theme-default render_engine). All three slots are
+    # optional — when no theme is declared (the canary's existing
+    # single-tenant flow), this returns ``(None, None, None)`` and the
+    # render path is byte-identical to pre-#322 behavior.
+    consumer_root, theme_name, theme_engine = _discover_memo_theme_context(
+        version_dir
+    )
+
+    # Issue #320 + #322 precedence: per-thread (``requested_engine`` from
+    # ``documents[].render_engine``) wins over per-theme
+    # (``theme.yml.render_engine``). The ``or`` short-circuit yields the
+    # first truthy value, so a per-thread override (when set) wins; when
+    # absent (``None``), the per-theme default takes over; when both are
+    # absent, ``_select_memo_engine`` falls through to the framework
+    # auto-priority (weasyprint > wkhtmltopdf > xelatex).
+    effective_engine = requested_engine or theme_engine
+    engine = _select_memo_engine(requested=effective_engine)
     if engine is None:
         return (COMPILE_UNAVAILABLE, -1, "", "")
 
@@ -986,20 +1116,56 @@ def _render_memo_source(
         str(out_pdf),
         f"--pdf-engine={engine}",
     ]
-    # Pin the framework template + stylesheet for the HTML chain. The
-    # xelatex chain pins template.tex via the same --template flag pandoc
-    # honors for both output paths.
+    # Resolve template + stylesheet paths through the theme-aware
+    # resolver (issue #322). When no theme is declared or no per-theme
+    # override exists for an asset, the resolver returns the framework
+    # default — identical to the pre-#322 ``memo_lib / <asset>`` lookup.
+    # Lazy import to keep the resolver module out of the load-time
+    # circular dep chain with anvil.lib.render.
+    import sys as _sys
+
+    _memo_lib_path = (
+        Path(__file__).parent.parent / "skills" / "memo" / "lib"
+    )
+    _memo_lib_str = str(_memo_lib_path)
+    if _memo_lib_str not in _sys.path:
+        _sys.path.insert(0, _memo_lib_str)
+    try:
+        from theme_resolver import (  # type: ignore
+            MEMO_ASSET_STYLES_CSS,
+            MEMO_ASSET_TEMPLATE_HTML,
+            MEMO_ASSET_TEMPLATE_TEX,
+            resolve_memo_asset,
+        )
+    except ImportError:
+        # Defensive — should never trigger in a sane install; fall back
+        # to the framework default lookup.
+        resolve_memo_asset = None  # type: ignore[assignment]
+        MEMO_ASSET_TEMPLATE_HTML = "template.html"  # type: ignore[assignment]
+        MEMO_ASSET_STYLES_CSS = "styles.css"  # type: ignore[assignment]
+        MEMO_ASSET_TEMPLATE_TEX = "template.tex"  # type: ignore[assignment]
+
     memo_lib = Path(_render.__file__).parent / "memo"
+
+    def _resolve(asset_name: str) -> Path:
+        if resolve_memo_asset is None:
+            return memo_lib / asset_name
+        return resolve_memo_asset(
+            asset_name,
+            consumer_root=consumer_root,
+            theme_name=theme_name,
+        )
+
     if engine in (MEMO_ENGINE_WEASYPRINT, MEMO_ENGINE_WKHTMLTOPDF):
-        html_template = memo_lib / "template.html"
-        styles_css = memo_lib / "styles.css"
+        html_template = _resolve(MEMO_ASSET_TEMPLATE_HTML)
+        styles_css = _resolve(MEMO_ASSET_STYLES_CSS)
         if html_template.exists():
             cmd.extend(["--template", str(html_template)])
         if styles_css.exists():
             cmd.extend(["--css", str(styles_css)])
         cmd.append("--standalone")
     else:  # xelatex
-        tex_template = memo_lib / "template.tex"
+        tex_template = _resolve(MEMO_ASSET_TEMPLATE_TEX)
         if tex_template.exists():
             cmd.extend(["--template", str(tex_template)])
     # --fail-if-warnings rolls unresolved template variables into the
