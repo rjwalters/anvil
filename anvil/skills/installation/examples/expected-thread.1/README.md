@@ -36,7 +36,7 @@ quiet-place.1.review/
 - The drafter's prose will vary across runs.
 - Dimensions, budget ranges, and throughput numbers will vary in wording and precision.
 - LaTeX whitespace and macro use will vary.
-- The canonical fully-realized instance (`../studio/output/legacy/memos-flat/quiet-place.tex`, ~32 KB) is deliberately NOT vendored here — it is a sibling-canary reference, not a golden file. A trimmed grounding example lives in `assets/example-brief.md` (the input) instead.
+- A realized companion is vendored at `../quiet-place/` (project root + `quiet-place.1/installation.tex` + `installation.pdf` + the prior-art reference under `quiet-place/refs/prior-quiet-place.tex`). This expected-thread README documents the *structural contract* that the vendored worked example satisfies — it is illustrative, not a golden file. A trimmed grounding example lives in `assets/example-brief.md` (the input) as well.
 
 ## Smoke test assertions (structural)
 
