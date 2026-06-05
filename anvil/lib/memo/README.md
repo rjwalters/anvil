@@ -110,19 +110,70 @@ sees one actionable error rather than four sequential ones.
 ## Override discipline
 
 Consumers who want custom typography, page layout, or LaTeX preamble
-override the relevant file under their installed path:
+have two override paths, walked by the per-skill asset resolver in
+this precedence:
 
-| Override target | Path (consumer repo) |
-|---|---|
-| Default styles | `<consumer>/.anvil/lib/memo/styles.css` |
-| HTML template | `<consumer>/.anvil/lib/memo/template.html` |
-| xelatex template | `<consumer>/.anvil/lib/memo/template.tex` |
+| Tier | Path (consumer repo) | When to use |
+|---|---|---|
+| Per-theme (issue #322) | `<consumer>/.anvil/themes/<theme>/memo/<asset>` | Multiple brands / portfolios run through the same anvil install |
+| Consumer single-tenant | `<consumer>/.anvil/anvil/lib/memo/<asset>` | One brand for the whole repo (the post-#230 in-place edit of the framework default) |
+| Framework default | shipped at `anvil/lib/memo/<asset>` (this directory) | Anvil's neutral baseline |
+
+`<asset>` is one of `styles.css`, `template.html`, `template.tex`.
+The resolver is implemented at
+`anvil/skills/memo/lib/theme_resolver.py::resolve_memo_asset`; the
+project BRIEF surfaces the theme name via the `theme:` frontmatter
+key documented in `anvil/skills/memo/lib/project_brief.py`.
 
 The install script (`scripts/install-anvil.sh`) copies the framework
-defaults to `.anvil/lib/memo/` and respects in-place modifications
+defaults to `.anvil/anvil/lib/memo/` and respects in-place modifications
 under the standard `--force` discipline (see #163). When the consumer
 ships a custom `styles.css`, Phase 3's `memo-render` command picks it
 up unchanged.
+
+### Per-theme override (issue #322)
+
+For consumers running multiple brands through one anvil install, the
+**per-theme** tier inserts above the consumer single-tenant tier.
+Declare a theme in the project BRIEF:
+
+```yaml
+# <consumer>/projects/brains-for-robots/BRIEF.md
+---
+project: brains-for-robots
+theme: sphere-semi
+documents:
+  - slug: investment-memo
+    artifact_type: investment-memo
+---
+```
+
+Then provide the theme's asset overrides under
+`<consumer>/.anvil/themes/sphere-semi/memo/`:
+
+```
+<consumer>/.anvil/themes/
+  sphere-semi/
+    theme.yml                # accent_color, studio, render_engine, …
+    memo/
+      styles.css             # branded typography
+      template.tex           # branded xelatex preamble
+```
+
+Themes can be partial: a theme that only overrides `styles.css` still
+uses the framework default `template.html` and `template.tex`. The
+resolver walks asset-by-asset, not tier-by-tier.
+
+When the BRIEF declares `theme:` but the named theme directory is
+missing or the specific asset is absent, the resolver falls through
+to the framework default silently — never raises. This matches the
+graceful-degrade discipline of the broader memo render path.
+
+The theme.yml file may also carry a `render_engine:` pin (one of
+`weasyprint`, `wkhtmltopdf`, `xelatex`) — see `anvil/lib/theme.py`
+for the full schema. The engine pin is advisory: when the named
+engine is not on PATH, the renderer falls through to the default
+priority order rather than failing.
 
 #### `template.tex` override: preserve the pandoc 3.x compat block
 
