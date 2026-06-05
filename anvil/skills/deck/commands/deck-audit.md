@@ -199,7 +199,7 @@ Before running any of the three checks, the auditor gathers:
 
 **Why CRITICAL**: an unattributed generative image is a credibility-destroying claim — an investor doing visual diligence on a "product screenshot" that turns out to be a Stable Diffusion render is the failure mode this finding exists to prevent.
 
-**Suppression**: `<!-- anvil-audit-disable: unattributed-generative-imagery -->` on the same slide downgrades the finding to `severity: info`. The slide must justify the suppression in `speaker-notes.md` (per the lint-disable precedent in `anvil/skills/deck/lib/marp_lint.py`).
+**Suppression**: `<!-- anvil-audit-disable: unattributed-generative-imagery -->` on the same slide downgrades the finding to `severity: info`. The slide must justify the suppression in `speaker-notes.md` (per the lint-disable precedent in `anvil/lib/marp_lint.py`).
 
 ### Finding 2: `prompt-claim-divergence` (MAJOR)
 
@@ -238,7 +238,7 @@ Before running any of the three checks, the auditor gathers:
 
 ### Suppression convention
 
-All three findings honor the per-slide directive shape established by the marp-lint escape hatch (`anvil/skills/deck/lib/marp_lint.py` § "Escape hatch — `<!-- anvil-lint-disable: slide-content-overflow -->`"). The audit-side directive uses the `anvil-audit-disable:` prefix to distinguish it from the lint-side `anvil-lint-disable:` directive; both follow the same `<!-- anvil-<kind>-disable: <finding-name> -->` shape and the same severity-downgrade semantic (the finding is preserved in `findings.md` at `severity: info` rather than silenced).
+All three findings honor the per-slide directive shape established by the marp-lint escape hatch (`anvil/lib/marp_lint.py` § "Escape hatch — `<!-- anvil-lint-disable: slide-content-overflow -->`"). The audit-side directive uses the `anvil-audit-disable:` prefix to distinguish it from the lint-side `anvil-lint-disable:` directive; both follow the same `<!-- anvil-<kind>-disable: <finding-name> -->` shape and the same severity-downgrade semantic (the finding is preserved in `findings.md` at `severity: info` rather than silenced).
 
 Multiple findings may be suppressed on one slide by listing them comma-separated:
 

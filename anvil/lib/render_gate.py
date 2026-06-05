@@ -1,6 +1,6 @@
 """Deterministic render-gate for paginated Anvil artifacts.
 
-This is the LaTeX-skill analog of ``anvil/skills/deck/lib/marp_lint.py``: a
+This is the LaTeX-skill analog of ``anvil/lib/marp_lint.py``: a
 cheap, deterministic pre-flight gate over a compiled PDF (and its compile
 log + sources) that runs *before* the expensive content review. It checks
 four properties:

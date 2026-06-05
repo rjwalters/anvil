@@ -15,16 +15,10 @@ Mirrors ``anvil/skills/deck/tests/test_marp_lint.py``.
 
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
-
-_HERE = Path(__file__).resolve().parent
-_LIB = _HERE.parent / "lib"
-sys.path.insert(0, str(_LIB))
-
-from marp_lint import (  # noqa: E402
+from anvil.lib.marp_lint import (
     Finding,
     LintResult,
     UPSTREAM_SHA,
@@ -33,6 +27,7 @@ from marp_lint import (  # noqa: E402
     lint_source,
 )
 
+_HERE = Path(__file__).resolve().parent
 _FIXTURES = _HERE / "fixtures" / "marp_lint"
 
 

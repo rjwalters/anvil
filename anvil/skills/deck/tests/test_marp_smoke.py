@@ -21,20 +21,13 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
+from anvil.lib.marp_lint import lint_deck
 
-# Add the deck-side lib to ``sys.path`` so we can import ``marp_lint``.
 _HERE = Path(__file__).resolve().parent
-_LIB = _HERE.parent / "lib"
-sys.path.insert(0, str(_LIB))
-
-from marp_lint import lint_deck  # noqa: E402
-
-
 _FIXTURE = _HERE / "fixtures" / "marp-smoke" / "deck.md"
 
 # Raw mermaid grammar tokens. If any of these appear as text in the rendered

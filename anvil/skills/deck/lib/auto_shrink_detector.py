@@ -73,8 +73,8 @@ skills — they emit overfull-box warnings instead of silently scaling, and
 into ``anvil/lib/`` would force LaTeX skills to optionally depend on
 ``Pillow``/``numpy`` for a check that can never fire there. The
 ``slides`` skill adopting this later follows the ``marp_lint.py``
-precedent: per-skill copies until #10 consolidates ``anvil/lib/`` for
-cross-skill Python modules.
+precedent: ship skill-local first, then promote to ``anvil/lib/`` once a
+second consumer materializes (per #318 for ``marp_lint``).
 
 Wiring
 ------
@@ -111,7 +111,7 @@ from typing import Optional
 class Thresholds:
     """Tunable thresholds for the per-class peer-comparison rule.
 
-    Mirrors ``anvil.skills.deck.lib.marp_lint.Geometry`` so consumers with
+    Mirrors ``anvil.lib.marp_lint.Geometry`` so consumers with
     a heavier-padding theme or a different aspect ratio can override
     without monkeypatching internals.
     """

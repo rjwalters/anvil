@@ -47,25 +47,17 @@ duplicate test-module basenames.
 from __future__ import annotations
 
 import re
-import sys
 import unittest
 from pathlib import Path
 
-
-# The deck skill keeps the lint module under its own ``lib/`` per the curator
-# addendum on issue #31. Add it to ``sys.path`` here so the test can import
-# the module without a package install step.
-_HERE = Path(__file__).resolve().parent
-_LIB = _HERE.parent / "lib"
-sys.path.insert(0, str(_LIB))
-
-from marp_lint import (  # noqa: E402
+from anvil.lib.marp_lint import (
     Geometry,
     PORTED_RULES,
     lint_deck,
     lint_source,
 )
 
+_HERE = Path(__file__).resolve().parent
 _FIXTURES = _HERE / "fixtures" / "marp_lint"
 
 

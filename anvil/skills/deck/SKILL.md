@@ -221,7 +221,7 @@ The portfolio orchestrator is the user-facing entry point for status; the lifecy
 
 ### Pre-flight overflow lint
 
-`deck-review` runs a fast deterministic lint over `<thread>.{N}/deck.md` before scoring. The lint is a Python-stdlib port of marp-vscode's experimental `slide-content-overflow` diagnostic (see `anvil/skills/deck/lib/marp_lint.py` for the upstream SHA pin and per-rule notes). It models each slide's vertical capacity from the markdown source and emits a `slide-content-overflow` finding when the estimated content exceeds the safe area.
+`deck-review` runs a fast deterministic lint over `<thread>.{N}/deck.md` before scoring. The lint is a Python-stdlib port of marp-vscode's experimental `slide-content-overflow` diagnostic (see `anvil/lib/marp_lint.py` for the upstream SHA pin and per-rule notes). It models each slide's vertical capacity from the markdown source and emits a `slide-content-overflow` finding when the estimated content exceeds the safe area.
 
 **What it catches** (deterministic source-only heuristics):
 - The "figure + 4 bullets + footer line" idiom on 16:9 (issue #24).
