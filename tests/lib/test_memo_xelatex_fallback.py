@@ -195,6 +195,51 @@ def test_template_preserves_minimal_preamble():
 
 
 # ---------------------------------------------------------------------------
+# Lane 1b: Unicode fallback assertions — issue #309
+# ---------------------------------------------------------------------------
+
+# Tokens required for the Unicode symbol fallback block (issue #309).
+# newunicodechar maps individual code-points to a DejaVu Sans render path
+# so they are not silently dropped when Helvetica lacks coverage.
+_REQUIRED_UNICODE_FALLBACK_TOKENS = (
+    r"\usepackage{newunicodechar}",
+    r"\UnicodeFallback",
+    r"\newunicodechar{→}",
+    r"\newunicodechar{μ}",
+)
+
+
+def test_template_carries_unicode_fallback_block():
+    """Static: the Unicode symbol fallback block ships in ``template.tex``.
+
+    Helvetica lacks coverage for arrows (→ ↑ ↓ ←) and Greek/SI letters
+    (μ). Without a ``newunicodechar`` mapping to a fallback font (DejaVu
+    Sans), these code-points render as spaces in the PDF — no compile
+    error, silent drop. Issue #309 documents the canary reproducer.
+
+    This test asserts:
+    - ``\\usepackage{newunicodechar}`` is loaded
+    - ``\\UnicodeFallback`` font-family command is declared
+    - ``\\newunicodechar{→}`` and ``\\newunicodechar{μ}`` are mapped
+
+    Runs in CI without pandoc or xelatex installed — its purpose is to
+    catch accidental deletion of the Unicode fallback block during future
+    ``template.tex`` edits.
+    """
+    tex = _template_tex_path()
+    assert tex.is_file(), f"template.tex not found at {tex}"
+    content = tex.read_text(encoding="utf-8")
+
+    missing = [tok for tok in _REQUIRED_UNICODE_FALLBACK_TOKENS if tok not in content]
+    assert not missing, (
+        f"template.tex is missing required Unicode fallback tokens: {missing}. "
+        "See issue #309 for the Helvetica-missing-glyph reproducer. "
+        "The newunicodechar block maps → and μ (and peers) to DejaVu Sans "
+        "so they are not silently dropped in the rendered PDF."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Lane 2: Skip-guarded real-render against the reproducer fixture
 # ---------------------------------------------------------------------------
 
