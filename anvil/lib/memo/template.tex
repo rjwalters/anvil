@@ -99,7 +99,7 @@
 % (pandoc 3.9.0.2 + MacTeX xelatex, undefined ``\st``).
 \usepackage{xcolor}
 \usepackage{iftex}
-\ifPDFTeX\else
+\ifluatex
   \IfFileExists{lua-ul.sty}{\usepackage[soul]{lua-ul}}{}
 \fi
 \IfFileExists{soul.sty}{\usepackage{soul}}{}
