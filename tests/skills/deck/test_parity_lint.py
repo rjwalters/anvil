@@ -488,15 +488,32 @@ def test_deck_review_md_findings_subsection_documented():
 
 
 def test_module_docstring_names_promotion_path():
-    """AC9: module docstring explicitly names ``anvil/lib/parity.py`` as
-    the promotion target + mirrors ``marp_lint.py`` shape."""
+    """AC9 (post-promotion, issue #317): the skill-local docstring names
+    the promotion target (``anvil/lib/parity.py``) and the load-bearing
+    narrative content (marp_lint mirroring pattern, memo-side mirror)
+    moved into the promoted module's docstring. The skill-local module
+    is now a thin re-export; the canary anchor and mirroring narrative
+    live with the implementation.
+    """
+    # Skill-local docstring still names the promotion target as the
+    # discovery anchor for anyone reading the re-export.
     from anvil.skills.deck.lib import parity_lint
 
-    doc = parity_lint.__doc__ or ""
-    assert "anvil/lib/parity.py" in doc, (
-        "module docstring must name the promotion path"
+    skill_doc = parity_lint.__doc__ or ""
+    assert "anvil/lib/parity.py" in skill_doc, (
+        "skill-local docstring must name the promotion target"
     )
-    assert "marp_lint" in doc, (
-        "module docstring must reference the marp_lint mirroring pattern"
+
+    # The load-bearing narrative content (marp_lint mirroring pattern,
+    # memo-side mirror) lives in the promoted module's docstring.
+    from anvil.lib import parity
+
+    lib_doc = parity.__doc__ or ""
+    assert "marp_lint" in lib_doc, (
+        "anvil.lib.parity docstring must reference the marp_lint mirroring pattern"
     )
-    assert "memo-side mirror" in doc or "memo_image_refs" in doc.lower() or "memo-side" in doc
+    assert (
+        "memo-side mirror" in lib_doc
+        or "memo_image_refs" in lib_doc.lower()
+        or "memo-side" in lib_doc
+    ), "anvil.lib.parity docstring must reference the memo-side mirror"
