@@ -1,0 +1,146 @@
+---
+name: memo-hyperlinks
+description: Hyperlink resolver critic for the memo skill (Epic #328 Track B Phase 2). Deterministic link-validation pass over a memo version directory, emitting a canonical _review.json (kind=tool_evidence) for broken cross-thread refs, broken markdown internal paths, broken wiki-links, and (behind --check-external) failing external HTTP links. Offline-safe by default; raises critical_broken_cross_thread_anchor when a sibling thread anchor is missing.
+---
+
+# memo-hyperlinks — Hyperlink resolver critic
+
+**Role**: deterministic tool-evidence critic (Epic #328 Track B Phase 2).
+**Reads**: `<thread>.{N}/<thread>.md` (memo body, slug-echo per #295).
+**Writes**: `<thread>.{N}.hyperlinks/_review.json` (canonical sibling critic dir).
+
+This command is the memo-skill's **hyperlink-resolver critic** — a deterministic, subprocess-only detector that walks every link expression in a memo version directory and validates each per its class. It is the second mechanical detector in the deterministic-checks family (alongside `anvil/lib/render_gate.py` and `anvil/lib/revise_consistency.py`) and the **Track B Phase 2** deliverable of the reframed Epic #328 (Track A judgment-enrichment shipped via the memo rubric in #333 / PR #334; Track B Phase 3 ships the citation-coverage critic in parallel issue #336).
+
+**Design contract** (settled at Epic #328 kickoff; do NOT re-litigate):
+
+- **No schema delta.** Ships using the existing free-form `Finding.fix` / `Finding.suggested_fix` text per `anvil/lib/review_schema.py`. No `action` / `target_anchor` / `proposed_content` fields. The structured-action experiment is preserved as a Deferred line item on #328.
+- **Skill-local first.** Implementation lives at `anvil/skills/memo/lib/hyperlink_resolver.py`. Promotion to `anvil/lib/` is deferred per the CLAUDE.md "wait for the second consumer" rule.
+- **External HTTP check off by default.** `--check-external` is opt-in; the critic stays offline-safe and CI-reproducible by default.
+- **Memo first.** Pub / report / etc. extensions land in follow-on issues when a second consumer surfaces.
+
+**State-machine status**: hyperlinks is a **sub-step** of `REVIEWED`, NOT a new state. The critic sibling dir `<thread>.{N}.hyperlinks/` is one of N parallel critics that feed the aggregator (`anvil/lib/critics.py::aggregate`); absence of the sibling means the critic never ran (a fully legal pre-#335 state).
+
+**Composability**: `memo-hyperlinks` is **independently re-runnable** and **independently aggregable**. The reviewer (`memo-review`) does NOT call this critic directly; instead the operator runs `memo-hyperlinks` and the aggregator auto-discovers the resulting sibling. This decoupling matches the memo-skill's existing N-parallel-critics convention.
+
+## Inputs
+
+- **Version directory** (positional argument): path to `<thread>.{N}/` containing `<thread>.md`. The body filename echoes the thread slug per the #295 model lock.
+- **`--check-external`** (optional flag, default OFF): when set, external HTTP/HTTPS links are probed via `curl -I` with a 5-second timeout. When unset, external links are recorded (so the reviewer can see they were recognized) but NOT validated. The off-by-default discipline keeps the critic offline-safe and CI-reproducible.
+- **`--write-review`** (optional flag): when set, also write `<version_dir>.hyperlinks/_review.json` for auto-discovery. Without this flag the command prints a JSON summary to stdout but does NOT persist the sibling critic dir.
+- **`--curl-timeout SECS`** (optional, default 5): per-probe timeout for external link checks.
+
+## Outputs
+
+```
+<thread>.{N}.hyperlinks/
+  _review.json    Canonical Review payload (kind=tool_evidence, critic_id=hyperlinks).
+```
+
+`_review.json` carries the standard `anvil/lib/review_schema.py::Review` shape:
+
+- `schema_version`: `"1"`.
+- `kind`: `"tool_evidence"`.
+- `critic_id`: `"hyperlinks"`.
+- `version_dir`: the version dir name (e.g., `"primary-memo.1"`).
+- `scores`: a single null-scored `Score` for `dimension="hyperlinks"` — the critic owns no rubric dimension; it feeds the verdict via critical-flag short-circuit (broken cross-thread anchors) and as tool-evidence findings the reviewer consumes alongside its own dim 3 scoring (markdown / wiki / external).
+- `findings`: one `Finding` per broken link, with `tool_calls=[]` to satisfy the `Kind.TOOL_EVIDENCE` schema validator. Severities per the four link classes (see §"Link classes" below).
+- `critical_flags`: one `CriticalFlag` of type `critical_broken_cross_thread_anchor` when any cross-thread ref failed to resolve, which forces `Verdict.BLOCK` in the aggregator. Empty list otherwise.
+
+Per the issue #335 AC: every emitted `Finding` uses the existing free-form `fix` / `suggested_fix` text. No schema delta.
+
+## Procedure
+
+1. **Discover state**: take the `version_dir` positional arg; verify it exists; verify `<slug>.md` exists inside it (slug-echo per #295). If either check fails, exit code 2 with a clear error.
+2. **Enumerate links**: walk the body text and produce four ordered lists:
+   - **Cross-thread refs** — `[[../<other-slug>/<other-slug>.N]]` and the symbolic latest-version shape (per `cross_thread_refs.py` — this command tolerates whichever form the canonical resolver supports without writing or following any symlink itself), with optional `/<file>` suffix. Delegates to `anvil/skills/memo/lib/cross_thread_refs.py::find_cross_thread_refs` — **no duplicate parsing**.
+   - **Markdown links** — `[text](url)` and image-link `![text](url)`. The per-link validator decides classification (internal vs. external) and pass/fail.
+   - **Wiki-links** — `[[document-name]]` (single-segment, no slash, no `.N` version specifier — distinct from cross-thread ref shape).
+3. **Validate per class**:
+   - **Cross-thread**: delegates to `cross_thread_refs.resolve_cross_thread_ref(ref, portfolio_root)`. Unresolved refs emit `severity="blocker"` AND increment the critical-cross-thread counter that fires the `critical_broken_cross_thread_anchor` flag.
+   - **Markdown internal**: file-existence check against `<version_dir> / <url>` (trailing `#anchor` / `?query` stripped — anchor validity is out of scope per the issue body). Missing target emits `severity="major"`.
+   - **Markdown external**: when `--check-external` is OFF, recorded but not probed. When ON, probed via `subprocess.run(["curl", "-I", ...])` with a short timeout; 2xx / 3xx → resolved; 4xx / 5xx / timeout → `severity="major"` finding.
+   - **Wiki-link**: target looked up against the enclosing project's `BRIEF.md` `documents:` list (resolved via `anvil/skills/memo/lib/project_discovery.py::discover_thread_root` + `project_brief.load_project_brief`). Unknown slug → `severity="major"` finding; missing BRIEF → `severity="major"` with reason `"BRIEF.md not found"`.
+4. **Emit Review**: build the canonical `Review` payload per the §"Outputs" shape above. The free-form `Finding.suggested_fix` text echoes the issue body's examples ("Section was renamed — try …", "External target returned 404 — consider removing or replacing").
+5. **Write sibling** (only when `--write-review` is set): write `<version_dir>.hyperlinks/_review.json`. The aggregator's discovery pass (`anvil/lib/critics.py::discover_critics`) picks up the sibling without code changes — the `<version_dir>.<tag>/` pattern matches `hyperlinks` as the trailing tag.
+6. **Report**: print the JSON shape from `HyperlinkResolverResult.to_json()` to stdout. Exit code:
+   - `0`: clean pass (no broken findings).
+   - `1`: one or more findings.
+   - `2`: invocation error (missing `version_dir` or body).
+
+## Link classes
+
+| Class | Shape | Severity (broken) | Critical flag? |
+|---|---|---|---|
+| **Cross-thread** | `[[../slug/slug.N]]`, the symbolic latest-version shape (tolerates the consumer-side convention without following or writing it), `[[../slug/slug.N/file]]` | `blocker` | `critical_broken_cross_thread_anchor` |
+| **Markdown internal** | `[text](path/to/file)`, `![alt](exhibits/fig.png)` | `major` | — |
+| **Markdown external** | `[text](https://...)`, `[text](http://...)` | `major` (only when `--check-external` ON) | — |
+| **Wiki-link** | `[[document-name]]` | `major` | — |
+
+The cross-thread-anchor critical flag is the load-bearing short-circuit: when memo A cites sibling memo B §N and §N doesn't exist on disk, the aggregator's `compute_verdict` returns `Verdict.BLOCK` regardless of the rest of the scorecard. This matches the issue #335 AC: a missing-anchor cross-thread ref is a structural failure of the memo's evidence chain.
+
+## CLI entry-point
+
+```bash
+# From a consumer repo (uv-runnable install per issue #230):
+uv run --project .anvil python -m anvil.skills.memo.lib.hyperlink_resolver \
+    <thread>.{N}/
+
+# Or from the anvil source repo (development):
+python -m anvil.skills.memo.lib.hyperlink_resolver \
+    anvil/skills/memo/examples/<example>/<thread>.{N}/
+```
+
+The CLI entry-point convention (`python -m anvil.skills.memo.lib.<module> <version_dir>`) is the **agreed coordination point** with the Phase 3 citation-coverage critic (#336) — both critics share an invocation shape so consumer wiring is uniform. Similarly the output-dir naming (`<thread>.{N}.hyperlinks/` here vs. `<thread>.{N}.citations/` for #336) follows the `<version_dir>.<tag>/` convention that `anvil/lib/critics.py::discover_critics` recognizes without code changes.
+
+## Auto-discovery wiring
+
+`anvil/lib/critics.py::discover_critics(version_dir)` walks the parent directory for any sibling matching `<version_dir.name>.<tag>/` that contains a recognizable review payload (canonical `_review.json` OR legacy prose triple). The `hyperlinks` tag fits the contract without changes:
+
+```text
+project/
+  primary-memo/
+    primary-memo.1/
+      primary-memo.md
+    primary-memo.1.review/         ← standard reviewer sibling
+      _review.json
+    primary-memo.1.hyperlinks/     ← THIS critic's sibling
+      _review.json
+    primary-memo.1.citations/      ← Phase 3 sibling (issue #336)
+      _review.json
+```
+
+When the operator (or a future automated runner) calls `aggregate(reviews)` after loading every sibling, the hyperlinks findings merge with the reviewer's findings and any cross-thread critical flag short-circuits the verdict to `BLOCK`.
+
+## Failure modes
+
+| Failure | Symptom | Severity / verdict effect | Operator action |
+|---|---|---|---|
+| **Broken cross-thread anchor** | Memo cites `[[../slug/slug.N]]` where the sibling thread, version dir, or file is missing | `blocker` finding + `critical_broken_cross_thread_anchor` → `Verdict.BLOCK` | Verify the sibling thread version exists on disk; update or remove the cross-thread reference. |
+| **Broken markdown internal link** | Memo references `[text](exhibits/fig-1.png)` but `exhibits/fig-1.png` doesn't exist | `major` finding | Verify the file path is correct relative to the version dir; create the missing file or remove the link. |
+| **Broken markdown external link** (with `--check-external`) | External URL returns 4xx / 5xx / times out | `major` finding | Replace the link with a current source; if the failure is transient, re-run with `--check-external`. |
+| **Wiki-link to unknown document** | Memo references `[[unknown-doc]]` but `unknown-doc` is not in BRIEF.md's `documents:` list | `major` finding | Add the document to `BRIEF.md` or correct the wiki-link target. |
+| **No BRIEF.md discoverable** | Wiki-links present but no project BRIEF found upward | `major` finding per wiki-link with reason `BRIEF.md not found` | Either add a project BRIEF (the canonical layout per #295 / #296) or remove the wiki-links. |
+| **curl unavailable** (with `--check-external`) | The external probe path runs but `curl` is not on PATH | No finding (graceful-degrade); top-level reason records the install gap | Install curl (`brew install curl` / `apt-get install curl`); re-run. |
+| **Missing version_dir or body** | The positional arg doesn't exist or `<slug>.md` is absent | Exit code 2 (invocation error) | Verify the path; check the slug-echo convention (`<thread>.{N}/<thread>.md`). |
+
+## Idempotence and resumability
+
+- Re-running `memo-hyperlinks <version_dir>` is byte-equivalent across runs (modulo external-probe responses when `--check-external` is ON). The critic does NOT mutate the memo body or any other artifact.
+- `--write-review` overwrites the existing `_review.json` in place; the sibling critic dir is owned by this command.
+- The critic is **stateless** between invocations — there is no `_progress.json` checkpoint; each run is a fresh enumeration.
+
+## What `memo-hyperlinks` does NOT do
+
+- **Never edit the memo body.** The critic is read-only against `<thread>.md` and any companion files.
+- **Never validate anchor fragments.** `[text](appendix.md#methodology)` resolves on file existence; the `#methodology` anchor is NOT checked. Anchor validity is out of scope per the issue body.
+- **Never probe external links by default.** The off-by-default discipline (`--check-external`) is load-bearing for CI reproducibility.
+- **Never duplicate cross-thread ref parsing.** The implementation delegates to `cross_thread_refs.find_cross_thread_refs` per the issue #335 AC ("no duplicate parsing").
+- **Never modify the rubric scorecard.** The critic emits `score=None` for its single null-scored row; the reviewer's standard rubric scoring is unaffected. The verdict-shift comes solely from the critical-flag short-circuit when a cross-thread anchor breaks.
+
+## Notes for the agent
+
+- **Cross-thread refs are the load-bearing surface.** The other three link classes are valuable but the cross-thread-anchor case is the one that forces `Verdict.BLOCK` — a memo whose evidence chain points at a missing sibling version is structurally broken regardless of dim-by-dim scoring.
+- **External links are recorded even when not probed.** The reviewer can see at a glance which external sources the memo cites without forcing the offline-safety contract to break.
+- **Failure is non-blocking for the rest of the pipeline.** The critic's job is to surface findings; the operator decides whether to revise. The aggregator's verdict short-circuit handles the load-bearing case (broken cross-thread anchor) automatically.
+
+**Snippet references**: See `anvil/lib/review_schema.py` for the `Review` / `Finding` / `CriticalFlag` shape, `anvil/lib/critics.py` for the aggregator's auto-discovery contract, and `anvil/skills/memo/lib/cross_thread_refs.py` for the cross-thread ref parser this critic delegates to.
