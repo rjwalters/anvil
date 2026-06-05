@@ -35,6 +35,7 @@ existing ``test_render.py`` so the per-skill packaging convention in
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -296,7 +297,19 @@ def test_lib_memo_ships_styles_css(memo_lib_dir: Path):
 
 
 def test_lib_memo_ships_pandoc_html_template(memo_lib_dir: Path):
-    """``template.html`` ships with the pandoc variables referenced."""
+    """``template.html`` ships with the pandoc variables referenced.
+
+    Stylesheet delivery is via pandoc ``--css`` (see
+    ``anvil/lib/render_gate.py``), NOT a relative ``<link
+    rel="stylesheet" href="styles.css" />`` inside the template body.
+    A bare relative ``<link>`` in the template resolves against the
+    pandoc CWD at invocation time, which on consumer installs is the
+    repo root — producing a weasyprint ``ERROR: Failed to load
+    stylesheet`` against a non-existent path while ``--css`` separately
+    loads the correct absolute path. The double-load fights the
+    ``--fail-if-warnings`` invariant in ``render_gate.py`` and is
+    purely redundant. See issue #319.
+    """
     html = memo_lib_dir / "template.html"
     assert html.exists(), f"missing pandoc HTML template: {html}"
     text = html.read_text(encoding="utf-8")
@@ -305,8 +318,49 @@ def test_lib_memo_ships_pandoc_html_template(memo_lib_dir: Path):
     assert "$author$" in text
     assert "$date$" in text
     assert "$body$" in text
-    # References the pinned stylesheet.
-    assert "styles.css" in text
+
+
+def test_lib_memo_template_html_avoids_bare_stylesheet_link(
+    memo_lib_dir: Path,
+) -> None:
+    """The bare ``<link rel="stylesheet">`` must not return.
+
+    A relative ``<link rel="stylesheet" href="styles.css" />`` inside
+    the template body is resolved by weasyprint against the input
+    HTML's effective base URL — which when pandoc invokes the template
+    ends up being the CWD pandoc ran from (the consumer repo root).
+    That fetch fails with a stderr ``ERROR: Failed to load
+    stylesheet`` and would be promoted to a hard error by the
+    ``--fail-if-warnings`` invariant in ``anvil/lib/render_gate.py``.
+    Stylesheet delivery is via pandoc's ``--css`` flag, which carries
+    the absolute path to ``anvil/lib/memo/styles.css`` and is the
+    single source of truth. See issue #319.
+
+    This is the inverse-shape regression guard modeled on
+    ``tests/skills/memo/test_memo_styles_page_size_doc.py::
+    test_styles_css_page_block_avoids_bare_letter_keyword`` — the
+    "this shape must NOT appear" pattern.
+    """
+    html = memo_lib_dir / "template.html"
+    text = html.read_text(encoding="utf-8")
+    # Match ``<link rel="stylesheet"`` with single or double quotes and
+    # optional whitespace. Strip the HTML comment header first so the
+    # documentation block (which legitimately mentions the pandoc
+    # ``--css`` invocation) does not trip the guard.
+    body = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    link_tag = re.search(
+        r"""<link\s+[^>]*rel\s*=\s*["']stylesheet["']""",
+        body,
+        flags=re.IGNORECASE,
+    )
+    assert link_tag is None, (
+        f"template.html contains a bare ``<link rel=\"stylesheet\">`` "
+        f"tag. weasyprint resolves the relative href against pandoc's "
+        f"CWD (the consumer repo root), failing the fetch and "
+        f"conflicting with the absolute ``--css`` path that "
+        f"render_gate.py already passes (issue #319). Stylesheet "
+        f"delivery is via pandoc ``--css``; remove the ``<link>`` tag."
+    )
 
 
 def test_lib_memo_ships_xelatex_template(memo_lib_dir: Path):
