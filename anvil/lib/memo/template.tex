@@ -38,6 +38,29 @@
   BoldItalicFont = Helvetica Bold,
 ]
 
+% --- Unicode fallback for symbols not covered by Helvetica ---------------
+% Helvetica (and Arial) lack coverage for many Unicode symbols — arrows
+% (→ ↑ ↓ ←), Greek/SI letters (μ), math-adjacent signs (≥ ≤ ± × ÷).
+% Without a fallback these glyphs render as spaces in the PDF (no compile
+% error, silent drop). ``newunicodechar`` ships in texlive-latex-extra
+% (Debian) and MacTeX. DejaVu Sans ships in texlive-fonts-recommended
+% and MacTeX full install. ``Scale=MatchLowercase`` blends the fallback
+% glyph size with Helvetica body text. See issue #309 for the canary
+% reproducer. Consumers who override template.tex SHOULD preserve this
+% block or supply an equivalent font fallback for their chosen main font.
+\usepackage{newunicodechar}
+\newfontfamily\UnicodeFallback[Scale=MatchLowercase]{DejaVuSans.ttf}
+\newunicodechar{→}{\UnicodeFallback →}
+\newunicodechar{↑}{\UnicodeFallback ↑}
+\newunicodechar{↓}{\UnicodeFallback ↓}
+\newunicodechar{←}{\UnicodeFallback ←}
+\newunicodechar{μ}{\UnicodeFallback μ}
+\newunicodechar{≥}{\UnicodeFallback ≥}
+\newunicodechar{≤}{\UnicodeFallback ≤}
+\newunicodechar{±}{\UnicodeFallback ±}
+\newunicodechar{×}{\UnicodeFallback ×}
+\newunicodechar{÷}{\UnicodeFallback ÷}
+
 % --- Page numbering: footer page X of Y, matching @page rule in CSS -----
 \usepackage{fancyhdr}
 \pagestyle{fancy}
