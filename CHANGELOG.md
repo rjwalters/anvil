@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`parity_lint` promoted to `anvil/lib/parity.py`** (#317, PR #205 follow-on #2 of 4). Per CLAUDE.md §"Skill-local first, lib promotion later", the second-consumer trigger fired on merge of PR #215 (memo-side mirror); this is the canonical one-line import-path swap. The shared module ships the byte-identical core (extractors, normalization, escape-hatch, `Finding`, `LintResult`) plus a unified `lint_parity(primary_path, sibling_path, primary_kind, sibling_kind)` wrapper. Both skill-local modules (`anvil/skills/deck/lib/parity_lint.py`, `anvil/skills/memo/lib/parity_lint.py`) shrink to thin re-exports preserving the public API byte-compatibly — the deck-review step 5d / memo-review step 4d invocations and the two `*-review.md` doc-coverage tests remain unchanged.
+
 ## [0.3.0] — 2026-06-04
 
 **Project-organization model lock + canary-driven completion of the multi-thread named-document layout.** v0.3.0 closes out the #283 epic (project-as-thread-root layout discovery, project-level BRIEF.md parser, cross-thread reference validation, `.latest` symlink resolution, rubric overlay selection from BRIEF, shared `research/`) and locks the model with the three-part contract change: body filename echoes doc slug (#295), BRIEF.md absorbs all per-project anvil config (#296), and a new `anvil:project-migrate` skill bridges existing projects (#297). Skill count: 8 → 9.
