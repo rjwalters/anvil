@@ -462,6 +462,51 @@ def check_wkhtmltopdf_available() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# XeLaTeX preflight (shared Markdown-substrate PDF render path)
+# ---------------------------------------------------------------------------
+
+# Remediation message surfaced when ``xelatex`` is absent and the shared
+# ``anvil/lib/latex_render.py`` BRIEF-configured PDF path is requested.
+# Unlike the memo xelatex fallback (which uses the memo render chain and
+# requires soul.sty / footnotehyper.sty that pandoc 3.x emits), this path
+# uses the ``anvil-doc.cls`` base class directly and drives Markdown → LaTeX
+# via pandoc --to=latex only (not the full pandoc → PDF chain). The note about
+# mactex-no-gui is intentionally carried forward from the memo remediation so
+# operators have the full context in one place.
+XELATEX_REMEDIATION = (
+    "xelatex not found on PATH — required for the LaTeX-substrate PDF render path. "
+    "Install via `brew install --cask mactex-no-gui` (macOS; note: mactex-no-gui "
+    "omits soul.sty / footnotehyper.sty that pandoc 3.x emits — use full mactex "
+    "if also using the memo xelatex path) or "
+    "`apt-get install texlive-xetex texlive-fonts-recommended texlive-latex-extra` "
+    "(Debian/Ubuntu)."
+)
+
+
+def check_xelatex_available() -> bool:
+    """Return ``True`` if the ``xelatex`` binary is on PATH.
+
+    This is the preflight guard ``anvil/lib/latex_render.py`` runs before
+    invoking the shared Markdown-substrate XeLaTeX PDF render path
+    (``anvil-doc.cls`` + ``anvil-doc.tex.j2``). It mirrors the
+    ``check_mmdc_available`` (#65), ``check_pdfjam_available`` (#85), and
+    ``check_pandoc_available`` (#168) precedents: a pure ``shutil.which``
+    test that is unit-testable with a monkeypatched ``shutil.which`` and
+    requires no real TeX Live install at test time.
+
+    The XeLaTeX path is required (not optional): skills that declare
+    ``pdf_output: true`` in their BRIEF.md need this engine to produce
+    the PDF. Callers should return ``COMPILE_UNAVAILABLE`` (not raise) when
+    this returns ``False``, per the ``render_gate.py`` graceful-degrade
+    contract.
+
+    See also :data:`XELATEX_REMEDIATION` for the install story callers
+    should surface when this returns ``False``.
+    """
+    return shutil.which("xelatex") is not None
+
+
+# ---------------------------------------------------------------------------
 # PDF → per-page PNGs
 # ---------------------------------------------------------------------------
 
@@ -667,6 +712,7 @@ __all__ = [
     "MEMO_RENDERER_REMEDIATION",
     "MMDC_REMEDIATION",
     "PDFJAM_REMEDIATION",
+    "XELATEX_REMEDIATION",
     "RenderError",
     "check_auto_shrink_deps_available",
     "check_mmdc_available",
@@ -674,6 +720,7 @@ __all__ = [
     "check_pdfjam_available",
     "check_weasyprint_available",
     "check_wkhtmltopdf_available",
+    "check_xelatex_available",
     "require_mmdc",
     "require_pdfjam",
     "render_marp_to_pdf",

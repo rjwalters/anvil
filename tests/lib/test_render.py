@@ -357,3 +357,22 @@ def test_check_weasyprint_available_false_on_timeout(monkeypatch):
         side_effect=subprocess.TimeoutExpired(["weasyprint", "--version"], 5),
     ):
         assert check_weasyprint_available() is False
+
+
+# ---------------------------------------------------------------------------
+# check_xelatex_available
+# ---------------------------------------------------------------------------
+
+
+def test_check_xelatex_available_false(monkeypatch):
+    """Returns False when xelatex is not on PATH (shutil.which returns None)."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    from anvil.lib.render import check_xelatex_available
+    assert check_xelatex_available() is False
+
+
+def test_check_xelatex_available_true(monkeypatch):
+    """Returns True when xelatex is on PATH (shutil.which returns a path)."""
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/xelatex")
+    from anvil.lib.render import check_xelatex_available
+    assert check_xelatex_available() is True
