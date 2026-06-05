@@ -240,6 +240,26 @@ def test_template_carries_unicode_fallback_block():
 
 
 # ---------------------------------------------------------------------------
+# Lane 1c: lua-ul guard correctness — issue #305
+# ---------------------------------------------------------------------------
+
+
+def test_template_uses_ifluatex_guard_for_lua_ul():
+    r"""The lua-ul guard must use \ifluatex, NOT \ifPDFTeX\else.
+
+    \ifPDFTeX\else causes xelatex to enter the else-branch and attempt
+    loading lua-ul.sty, which requires lualatex (issue #305).
+    """
+    tex = _template_tex_path().read_text(encoding="utf-8")
+    assert r"\ifluatex" in tex, (
+        r"template.tex must contain \ifluatex for the lua-ul guard"
+    )
+    assert r"\ifPDFTeX\else" not in tex, (
+        r"\ifPDFTeX\else is incorrect for lua-ul — must use \ifluatex"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Lane 2: Skip-guarded real-render against the reproducer fixture
 # ---------------------------------------------------------------------------
 
