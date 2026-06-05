@@ -30,7 +30,7 @@ This skill is built by composing two existing skills:
 
 ## Canonical worked instance
 
-The grounding example is **Quiet Place** — a spherical anechoic chamber for two strangers and one minute. A fully realized instance lives in the studio canary repo at `../studio/output/legacy/memos-flat/quiet-place.tex` (a sibling repo, NOT vendored here). Its preamble (XeLaTeX, Helvetica Neue, amber `#B45309`, `callout` + `metricbox`) and its 11-section structure are the basis for `anvil-installation.cls` and `installation.tex.j2`. The brief that grounds it is `assets/example-brief.md`; the structural contract a drafted thread should satisfy is documented in `examples/expected-thread.1/README.md`.
+The grounding example is **Quiet Place** — a spherical anechoic chamber for two strangers and one minute. A fully realized instance is vendored in-tree at `examples/quiet-place/quiet-place.1/installation.tex` with its compiled PDF at `examples/quiet-place/quiet-place.1/installation.pdf` and its prior-art reference at `examples/quiet-place/quiet-place/refs/prior-quiet-place.tex`. Its preamble (XeLaTeX, Helvetica Neue, amber `#B45309`, `callout` + `metricbox`) and its 11-section structure are the basis for `anvil-installation.cls` and `installation.tex.j2`. The brief that grounds it is `assets/example-brief.md`; the structural contract a drafted thread should satisfy is documented in `examples/expected-thread.1/README.md`.
 
 ## Renderer
 

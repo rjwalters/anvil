@@ -19,10 +19,12 @@ tables (a spec table and at least one budget table), and the participatory
 governance sections (Ritual Act / Consent / Safety) present because
 `participatory: true`.
 
-The canonical fully-realized instance lives in the studio canary repo at
-`../studio/output/legacy/memos-flat/quiet-place.tex` (NOT vendored here). This
-brief is a trimmed input that grounds the template; the worked thread's
-structural contract is documented in `examples/expected-thread.1/README.md`.
+A realized companion is vendored in-tree at
+`../examples/quiet-place/quiet-place.1/installation.tex` (with its compiled PDF
+alongside and its prior-art reference at
+`../examples/quiet-place/quiet-place/refs/prior-quiet-place.tex`). This brief
+is a trimmed input that grounds the template; the worked thread's structural
+contract is documented in `../examples/expected-thread.1/README.md`.
 
 ## Premise (section 1)
 

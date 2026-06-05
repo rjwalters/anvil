@@ -20,10 +20,12 @@ tables), and the steel-blue accent because `signature_color: 4A6FA5`. The
 customer here is an external client (a palazzo owner), so `customer_kind:
 external` — the reviewer reads dim 7 as "wins the client".
 
-The canonical fully-realized instance lives in the studio canary repo at
-`../studio/output/legacy/memos-flat/gossamer-lan.tex` (NOT vendored here). This
+A realized companion is vendored in-tree at
+`../examples/gossamer-lan/gossamer-lan.1/proposal.tex` (with its compiled PDF
+alongside and its prior-art reference at
+`../examples/gossamer-lan/gossamer-lan/refs/prior-gossamer-lan.tex`). This
 brief is a trimmed input that grounds the template; the worked thread's
-structural contract is documented in `examples/expected-thread.1/README.md`.
+structural contract is documented in `../examples/expected-thread.1/README.md`.
 
 ## Premise (section 1)
 

@@ -44,7 +44,7 @@ gossamer-lan.1.audit/
 - The drafter's prose will vary across runs.
 - Dimensions, priced ranges, labor hours, and the project total will vary in wording and precision.
 - LaTeX whitespace and macro use will vary.
-- The canonical fully-realized instance (`../studio/output/legacy/memos-flat/gossamer-lan.tex`, ~16 KB) is deliberately NOT vendored here — it is a sibling-canary reference, not a golden file. A trimmed grounding example lives in `assets/example-brief.md` (the input) instead.
+- A realized companion is vendored at `../gossamer-lan/` (project root + `gossamer-lan.1/proposal.tex` + `proposal.pdf` + the prior-art reference under `gossamer-lan/refs/prior-gossamer-lan.tex`). This expected-thread README documents the *structural contract* that the vendored worked example satisfies — it is illustrative, not a golden file. A trimmed grounding example lives in `assets/example-brief.md` (the input) as well.
 
 ## Smoke test assertions (structural)
 
