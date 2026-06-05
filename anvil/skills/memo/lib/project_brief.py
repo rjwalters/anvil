@@ -228,7 +228,7 @@ from __future__ import annotations
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import warnings
 
@@ -329,7 +329,18 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "target_length",
     "target_length_overrides",
     "rubric_overrides",
+    "render_engine",
 }
+
+# Valid values for the ``render_engine`` per-doc knob (issue #320). The
+# trio mirrors :data:`anvil.lib.render_gate.MEMO_ENGINE_*` and the
+# ``_select_memo_engine`` priority order. The BRIEF parser enforces this
+# closed set at parse time; the render-gate's ``_select_memo_engine``
+# does the runtime fallthrough when the requested engine is not on PATH.
+# Per the parallel issue #322 (theme system) and the scope split agreed
+# at curation, **per-document `render_engine` wins**; the per-theme
+# default is layered underneath by #322.
+_VALID_RENDER_ENGINES = ("weasyprint", "xelatex", "wkhtmltopdf")
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +582,17 @@ class BriefDocument(BaseModel):
         per PR #265 (issue #233). Mirrors the historical
         ``.anvil.json rubric_overrides`` shape (issue #296
         consolidation moved it here).
+    render_engine
+        Optional per-document override for the memo HTML/PDF engine
+        used by ``anvil/lib/render_gate.py``. One of
+        ``"weasyprint"``, ``"xelatex"``, or ``"wkhtmltopdf"`` (issue
+        #320). When set, ``_select_memo_engine`` honors this request
+        if the named binary is on PATH; otherwise it gracefully
+        falls through to the existing
+        ``weasyprint > wkhtmltopdf > xelatex`` auto-priority. The
+        theme-level default knob shipped by parallel issue #322 sits
+        *below* this per-doc value in precedence (per-thread >
+        per-project > per-theme > framework default).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -580,6 +602,9 @@ class BriefDocument(BaseModel):
     target_length: Optional[TargetLengthRange] = Field(default=None)
     target_length_overrides: Optional[TargetLengthOverrides] = Field(default=None)
     rubric_overrides: Optional[RubricOverrides] = Field(default=None)
+    render_engine: Optional[
+        Literal["weasyprint", "xelatex", "wkhtmltopdf"]
+    ] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -1003,6 +1028,35 @@ def _validate_artifact_type(raw: Any, field_path: str) -> ArtifactType:
         )
 
 
+def _validate_render_engine(raw: Any, field_path: str) -> Optional[str]:
+    """Validate a raw ``render_engine`` value against the closed allowlist.
+
+    Closed-ended per issue #320: unknown values raise ``ValueError`` listing
+    the valid trio so a typo produces a self-correcting error. ``None`` is
+    valid and short-circuits — the field is optional. The actual runtime
+    fallthrough (requested-but-unavailable-on-PATH) is handled in
+    :func:`anvil.lib.render_gate._select_memo_engine`, not here — this
+    validator only gates parse-time correctness.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a string; got "
+            f"{type(raw).__name__}: {raw!r} — suggested fix: quote "
+            f"the value (one of {list(_VALID_RENDER_ENGINES)})."
+        )
+    if raw not in _VALID_RENDER_ENGINES:
+        raise ValueError(
+            f"BRIEF.{field_path}: unknown render_engine {raw!r}. "
+            f"Valid values: {list(_VALID_RENDER_ENGINES)}. "
+            f"Suggested fix: replace with one of the valid values "
+            f"or omit the key to use the default auto-priority "
+            f"(weasyprint > wkhtmltopdf > xelatex)."
+        )
+    return raw
+
+
 def _normalize_documents(raw: Any) -> List[BriefDocument]:
     """Convert the raw ``documents:`` list into typed ``BriefDocument`` entries.
 
@@ -1105,6 +1159,11 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
             field_path=f"documents[{i}].rubric_overrides",
         )
 
+        render_engine = _validate_render_engine(
+            entry.get("render_engine"),
+            field_path=f"documents[{i}].render_engine",
+        )
+
         try:
             doc = BriefDocument(
                 slug=slug,
@@ -1112,6 +1171,7 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
                 target_length=target_length,
                 target_length_overrides=target_length_overrides,
                 rubric_overrides=rubric_overrides,
+                render_engine=render_engine,
             )
         except ValidationError as exc:
             raise ValueError(

@@ -188,6 +188,135 @@ def test_select_memo_engine_returns_none_when_nothing_available(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# _select_memo_engine: per-document `requested` engine (issue #320)
+# ---------------------------------------------------------------------------
+
+
+def test_select_memo_engine_honors_requested_when_available(monkeypatch):
+    """Request xelatex; only xelatex on PATH → returns xelatex (the trivial
+    case — weasyprint priority cannot win because it is not installed)."""
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: False)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: False)
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "/x/xelatex" if name == "xelatex" else None
+    )
+    assert _select_memo_engine(requested=MEMO_ENGINE_XELATEX) == MEMO_ENGINE_XELATEX
+
+
+def test_select_memo_engine_honors_requested_xelatex_over_weasyprint(monkeypatch):
+    """Request xelatex; ALL three engines on PATH → returns xelatex (the
+    canary's bessemer / brains-for-robots case where the per-document knob
+    overrides the default priority order)."""
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+    # Without `requested`, the default priority would pick weasyprint.
+    assert _select_memo_engine() == MEMO_ENGINE_WEASYPRINT
+    # With `requested=xelatex`, the per-doc knob wins.
+    assert _select_memo_engine(requested=MEMO_ENGINE_XELATEX) == MEMO_ENGINE_XELATEX
+
+
+def test_select_memo_engine_falls_through_when_requested_unavailable(monkeypatch):
+    """Request xelatex; only weasyprint on PATH → returns weasyprint
+    (graceful fallthrough to auto-priority, no exception). This is the
+    silent-with-record contract: the gate layer surfaces the fallthrough
+    in `reasons`, but the selector itself just returns the best available."""
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda name: None)  # no xelatex
+    assert (
+        _select_memo_engine(requested=MEMO_ENGINE_XELATEX) == MEMO_ENGINE_WEASYPRINT
+    )
+
+
+def test_select_memo_engine_falls_through_when_requested_unknown(monkeypatch):
+    """Request an unknown engine string → falls through to auto-priority
+    (consistent with the unavailable-engine case; no exception). Parse-time
+    validation of the closed allowlist lives in
+    ``project_brief._validate_render_engine`` — the render-gate selector
+    only deals in runtime PATH availability and treats anything it
+    doesn't recognize as "request not satisfiable, fall through"."""
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+    # Garbage `requested` value silently falls through to default priority.
+    assert _select_memo_engine(requested="foo") == MEMO_ENGINE_WEASYPRINT
+
+
+def test_select_memo_engine_none_request_preserves_legacy_behavior(monkeypatch):
+    """``requested=None`` → behavior identical to the pre-#320 contract.
+
+    Regression guard for the four legacy tests above (lines 156–187) —
+    when `requested` is `None`, the selector behaves exactly as it did
+    before the per-doc knob landed.
+    """
+    # Weasyprint available → picked first.
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+    assert _select_memo_engine(requested=None) == MEMO_ENGINE_WEASYPRINT
+
+    # All three missing → None.
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: False)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert _select_memo_engine(requested=None) is None
+
+
+def test_render_memo_source_threads_requested_engine(monkeypatch, memo_version_dir):
+    """``_render_memo_source(..., requested_engine="xelatex")`` with ALL three
+    engines available → pandoc cmd uses ``--pdf-engine=xelatex`` and the
+    LaTeX template path is selected over the HTML path.
+
+    Verifies the full plumbing chain from caller → _render_memo_source →
+    _select_memo_engine. The captured pandoc command must show:
+    1. ``--pdf-engine=xelatex`` (not weasyprint, the default priority).
+    2. ``--template <path-to-template.tex>`` (the xelatex branch at
+       lines 965-968 of render_gate.py — NOT the HTML template/css path
+       at lines 957-964).
+    """
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+
+    captured_cmd: list[list[str]] = []
+    real_run = subprocess.run
+
+    def _capturing_run(cmd, **kwargs):
+        if cmd and cmd[0] == "pandoc":
+            captured_cmd.append(list(cmd))
+            if "-o" in cmd:
+                idx = cmd.index("-o")
+                target = Path(cmd[idx + 1])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"%PDF-1.5\n%fake fixture\n")
+            return _FakeCompletedProcess(returncode=0, stdout="", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _capturing_run)
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, exit_code, engine, _stderr = _render_memo_source(
+        memo_version_dir, out_pdf, requested_engine=MEMO_ENGINE_XELATEX
+    )
+    assert status == COMPILE_OK
+    assert exit_code == 0
+    assert engine == MEMO_ENGINE_XELATEX
+
+    # The captured pandoc command must carry --pdf-engine=xelatex even
+    # though the default priority would have picked weasyprint.
+    assert len(captured_cmd) == 1
+    cmd = captured_cmd[0]
+    assert "--pdf-engine=xelatex" in cmd
+    # The xelatex branch in _render_memo_source pins template.tex (not
+    # template.html + styles.css). The exact template file may or may
+    # not exist on the test filesystem — we just check the branch was
+    # taken by asserting the HTML-specific --css flag is NOT present.
+    assert "--css" not in cmd
+
+
+# ---------------------------------------------------------------------------
 # _render_memo_source: graceful degrade + happy path
 # ---------------------------------------------------------------------------
 
