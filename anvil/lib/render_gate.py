@@ -548,6 +548,7 @@ def gate(
     out_pdf: Optional[Path] = None,
     target_length: Optional[dict] = None,
     words_per_page: Optional[int] = None,
+    render_engine: Optional[str] = None,
     log_path: Optional[Path] = None,
     source_paths: Optional[list[Path]] = None,
     page_cap: Optional[int] = None,
@@ -576,6 +577,11 @@ def gate(
       module docstring §"page_cap calibration"); ``None`` uses
       :data:`MEMO_WORDS_PER_PAGE` (400). Malformed overrides
       (non-numeric or ``<= 0``) silently fall back to the default.
+      Optional ``render_engine`` (issue #320) is the per-document
+      override resolved from ``BriefDocument.render_engine`` (one of
+      ``"weasyprint"``, ``"xelatex"``, ``"wkhtmltopdf"``); when set and
+      available on PATH it overrides the auto-priority, otherwise
+      falls through gracefully.
       Routes through :func:`_gate_memo` which invokes
       :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
       engine, then runs the five memo-specific checks. See module
@@ -633,6 +639,7 @@ def gate(
             placeholder_patterns=placeholder_patterns,
             pdfinfo_path=pdfinfo_path,
             words_per_page=words_per_page,
+            render_engine=render_engine,
         )
     if kind != "latex":
         raise ValueError(
@@ -845,12 +852,23 @@ def gate(
 # -----------------------------------------------------------------------------
 
 
-def _select_memo_engine() -> Optional[str]:
+def _select_memo_engine(requested: Optional[str] = None) -> Optional[str]:
     """Return the preferred memo HTML/PDF engine that is available on PATH.
 
     Priority per architect Q1 (Epic #158): ``weasyprint`` > ``wkhtmltopdf``
     > ``xelatex``. Returns ``None`` when none are available — callers
     surface ``MEMO_RENDERER_REMEDIATION`` in that case.
+
+    The optional ``requested`` parameter (issue #320) carries the
+    per-document override from ``BriefDocument.render_engine`` (one of
+    ``"weasyprint"``, ``"xelatex"``, ``"wkhtmltopdf"``). When set AND the
+    requested engine is available on PATH, this function returns the
+    requested engine regardless of the default priority order. When the
+    requested engine is set but NOT available on PATH, the function
+    **gracefully falls through** to the existing auto-priority — it does
+    NOT raise (consistent with the graceful-degrade contract called out
+    in architect Q7). When ``requested`` is ``None``, behavior is
+    identical to the pre-#320 contract: no regression on legacy callers.
 
     Indirected through :mod:`anvil.lib.render` so monkeypatched
     ``check_*_available`` functions in tests take effect uniformly.
@@ -858,6 +876,19 @@ def _select_memo_engine() -> Optional[str]:
     # Lazy import to avoid a circular dep at module load time and to let
     # tests monkeypatch the checks on the render module.
     from anvil.lib import render as _render
+
+    # Issue #320: honor a per-document requested engine when both (a) it
+    # is one of the known values AND (b) the corresponding binary is
+    # available on PATH. Unknown / unavailable requests fall through to
+    # the priority order below — no exception.
+    if requested is not None:
+        if requested == MEMO_ENGINE_WEASYPRINT and _render.check_weasyprint_available():
+            return MEMO_ENGINE_WEASYPRINT
+        if requested == MEMO_ENGINE_WKHTMLTOPDF and _render.check_wkhtmltopdf_available():
+            return MEMO_ENGINE_WKHTMLTOPDF
+        if requested == MEMO_ENGINE_XELATEX and shutil.which(MEMO_ENGINE_XELATEX) is not None:
+            return MEMO_ENGINE_XELATEX
+        # Requested-but-unavailable (or unknown value): fall through.
 
     if _render.check_weasyprint_available():
         return MEMO_ENGINE_WEASYPRINT
@@ -881,6 +912,7 @@ def _memo_body_filename(version_dir: Path) -> str:
 def _render_memo_source(
     version_dir: Path,
     out_pdf: Path,
+    requested_engine: Optional[str] = None,
 ) -> tuple[str, int, str, str]:
     """Run pandoc → (weasyprint OR wkhtmltopdf OR xelatex) over the
     version dir's body markdown and write ``out_pdf``.
@@ -903,6 +935,10 @@ def _render_memo_source(
         filename echoes the thread slug per #295).
     out_pdf:
         Output PDF path. Parent directory must exist.
+    requested_engine:
+        Optional per-document engine override (issue #320). Threaded
+        through to :func:`_select_memo_engine`. When set and available
+        on PATH, that engine is used; otherwise auto-priority applies.
 
     Returns
     -------
@@ -937,7 +973,7 @@ def _render_memo_source(
     if not _render.check_pandoc_available():
         return (COMPILE_UNAVAILABLE, -1, "", "")
 
-    engine = _select_memo_engine()
+    engine = _select_memo_engine(requested=requested_engine)
     if engine is None:
         return (COMPILE_UNAVAILABLE, -1, "", "")
 
@@ -1222,12 +1258,21 @@ def _gate_memo(
     placeholder_patterns: Optional[tuple[str, ...]],
     pdfinfo_path: Optional[str],
     words_per_page: Optional[int] = None,
+    render_engine: Optional[str] = None,
 ) -> GateResult:
     """Five-dimension memo render-gate (kind="memo").
 
     See the module docstring for the dimension list and severity model.
     The function is structured to mirror the LaTeX gate's "all checks run
     independently, no short-circuit" contract.
+
+    The optional ``render_engine`` parameter (issue #320) carries the
+    per-document override forwarded from
+    ``BriefDocument.render_engine`` via the public :func:`gate`
+    dispatcher. It is plumbed verbatim to
+    :func:`_render_memo_source`; the actual honor-or-fallthrough
+    decision lives in :func:`_select_memo_engine`. When ``None``, the
+    auto-priority order applies (no regression on legacy callers).
     """
     if out_pdf is None:
         # PDF output basename echoes the thread slug per #295 (e.g.
@@ -1241,8 +1286,26 @@ def _gate_memo(
 
     # --- Step 1: invoke the renderer ---------------------------------------
     compile_status, exit_code, engine_used, stderr_text = _render_memo_source(
-        version_dir, out_pdf
+        version_dir, out_pdf, requested_engine=render_engine
     )
+
+    # --- Record fallthrough when the requested engine was overridden ------
+    # Issue #320: when the caller requested a specific engine but the
+    # selector returned a different one (because the requested binary is
+    # not on PATH), surface the rationale in reasons so the operator can
+    # see why their requested engine wasn't used. This is silent-with-
+    # record: not a gate failure, not a finding, just a breadcrumb in
+    # ``reasons``.
+    if (
+        render_engine is not None
+        and engine_used
+        and engine_used != render_engine
+    ):
+        reasons.append(
+            f"{DIM_MEMO_COMPILE}: requested render_engine={render_engine!r} "
+            f"not available on PATH; fell through to {engine_used!r} per "
+            f"auto-priority (weasyprint > wkhtmltopdf > xelatex)."
+        )
 
     # --- Check 1: memo_compile_success -------------------------------------
     compile_exit_code: Optional[int] = exit_code if exit_code != -1 else None
