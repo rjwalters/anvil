@@ -1,0 +1,24 @@
+{
+  "critic": "review",
+  "for_version": 2,
+  "rubric": {
+    "id": "anvil-installation-v2",
+    "total": 44,
+    "advance_threshold": 35,
+    "dimensions": 9,
+    "prior_rubric_id": null,
+    "prior_rubric_inferred": "/40-legacy"
+  },
+  "dimensions": {
+    "1_conceptual_coherence": 5,
+    "2_spatial_resolution": 5,
+    "3_sensory_language": 4,
+    "4_visitor_experience": 5,
+    "5_fabrication": 4,
+    "6_ethics_safety": 3,
+    "7_references": 3,
+    "8_open_decisions": 4,
+    "9_rhetorical_economy": 3
+  },
+  "critical_flag": false
+}

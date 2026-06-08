@@ -139,30 +139,34 @@ class TestCommandFrontmatter(unittest.TestCase):
 
 
 class TestRubric(unittest.TestCase):
-    """rubric.md declares exactly 8 dimensions summing to 40 + the 3 flags."""
+    """rubric.md declares exactly 9 dimensions summing to 44 + the 3 flags.
+
+    Post-#357 the installation rubric migrated from /40 (8 dims, ≥32) to
+    /44 (9 dims, ≥35) with dim 9 *Rhetorical economy* at weight 4.
+    """
 
     def setUp(self):
         self.text = _read("rubric.md")
 
-    def test_eight_dimensions_sum_to_forty(self):
+    def test_nine_dimensions_sum_to_forty_four(self):
         # Dimension rows look like: | 1 | **Conceptual coherence** | 6 | ... |
         rows = re.findall(
-            r"^\|\s*([1-8])\s*\|\s*\*\*[^|]+\*\*\s*\|\s*(\d+)\s*\|",
+            r"^\|\s*([1-9])\s*\|\s*\*\*[^|]+\*\*\s*\|\s*(\d+)\s*\|",
             self.text,
             flags=re.MULTILINE,
         )
         self.assertEqual(
-            len(rows), 8, f"expected 8 dimension rows, found {len(rows)}"
+            len(rows), 9, f"expected 9 dimension rows, found {len(rows)}"
         )
         indices = sorted(int(i) for i, _ in rows)
-        self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8])
+        self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8, 9])
         total = sum(int(w) for _, w in rows)
-        self.assertEqual(total, 40, f"dimension weights sum to {total}, not 40")
+        self.assertEqual(total, 44, f"dimension weights sum to {total}, not 44")
 
     def test_advance_threshold_present(self):
         self.assertTrue(
-            re.search(r"(≥\s*32|>=\s*32|\b32/40\b)", self.text),
-            "advance threshold of 32 not stated in rubric.md",
+            re.search(r"(≥\s*35|>=\s*35|\b35/44\b)", self.text),
+            "advance threshold of 35 not stated in rubric.md",
         )
 
     def test_three_critical_flags_named(self):
