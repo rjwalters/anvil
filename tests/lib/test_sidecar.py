@@ -1,0 +1,451 @@
+"""Tests for ``anvil.lib.sidecar`` (issue #350).
+
+Coverage:
+
+- **Happy path** — ``staged_sidecar`` writes all required files into
+  the staging dir, then atomically renames to the final dir.
+- **Missing required file** — clean context exit with a required file
+  missing raises :class:`SidecarIncompleteError` and leaves the staging
+  dir in place.
+- **Exception in body** — exception in the ``with`` block propagates and
+  leaves the staging dir in place (no rename).
+- **Pre-existing final dir** — :class:`FileExistsError` on entry; we
+  refuse to stage over an existing target.
+- **Pre-existing staging dir** — a leftover staging dir from a prior
+  interrupt is removed before we re-enter (forward-progress contract).
+- **cleanup_stale_staging** — removes leading-dot ``*.tmp/`` dirs;
+  leaves non-staging siblings alone (final-named critic dirs, hidden
+  non-tmp dirs like ``.git/``).
+- **Discovery isolation** — ``discover_critics`` does not match a
+  leading-dot staging dir, even when it carries a valid
+  ``_review.json``.
+- **Canary-replay** — synthesize the 13 partial-sidecar shapes (one
+  through six of the six required files present, with random subsets)
+  and verify ``discover_critics`` finds zero of them (because the final
+  name was never created), and the next ``cleanup_stale_staging`` call
+  removes all of them.
+"""
+
+from __future__ import annotations
+
+import itertools
+import json
+import logging
+from pathlib import Path
+
+import pytest
+
+from anvil.lib.critics import CANONICAL_REVIEW_FILENAME, discover_critics
+from anvil.lib.review_schema import Kind, Review, Score
+from anvil.lib.sidecar import (
+    STAGING_SUFFIX,
+    SidecarIncompleteError,
+    cleanup_stale_staging,
+    staged_sidecar,
+    staging_path_for,
+)
+
+
+# Memo-shaped six-file sidecar manifest (the canonical post-Wave-1 memo
+# review sibling shape: verdict.md + scoring.md + comments.md + _summary.md
+# + _meta.json + _progress.json).
+MEMO_REVIEW_REQUIRED = (
+    "verdict.md",
+    "scoring.md",
+    "comments.md",
+    "_summary.md",
+    "_meta.json",
+    "_progress.json",
+)
+
+
+def _write_all(staging: Path, names) -> None:
+    """Write a non-empty placeholder to each given basename in ``staging``."""
+    for name in names:
+        (staging / name).write_text(f"placeholder for {name}\n")
+
+
+# ---------------------------------------------------------------------------
+# staging_path_for
+# ---------------------------------------------------------------------------
+
+
+def test_staging_path_for_sibling_of_final(tmp_path):
+    final_dir = tmp_path / "acme-seed.3.review"
+    staging = staging_path_for(final_dir)
+    assert staging.parent == final_dir.parent
+    assert staging.name == ".acme-seed.3.review.tmp"
+
+
+def test_staging_path_for_pure_function(tmp_path):
+    """staging_path_for never touches the filesystem."""
+    final_dir = tmp_path / "does-not-exist.7.review"
+    staging = staging_path_for(final_dir)
+    # Verify we got a path back without anything being created.
+    assert not staging.exists()
+    assert not final_dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# staged_sidecar happy path
+# ---------------------------------------------------------------------------
+
+
+def test_staged_sidecar_happy_path_renames_on_clean_exit(tmp_path):
+    final = tmp_path / "acme-seed.3.review"
+
+    with staged_sidecar(final, required_files=MEMO_REVIEW_REQUIRED) as staging:
+        # Staging dir exists with the .tmp leading-dot shape.
+        assert staging.exists()
+        assert staging.name.startswith(".")
+        assert staging.name.endswith(STAGING_SUFFIX)
+        # Final dir does NOT exist yet.
+        assert not final.exists()
+        _write_all(staging, MEMO_REVIEW_REQUIRED)
+
+    # After context exit: final dir exists, staging dir is gone.
+    assert final.exists()
+    assert final.is_dir()
+    assert not staging.exists()
+    for name in MEMO_REVIEW_REQUIRED:
+        assert (final / name).read_text() == f"placeholder for {name}\n"
+
+
+def test_staged_sidecar_creates_intermediate_parents(tmp_path):
+    """The default ``parents=True`` creates intermediate dirs."""
+    final = tmp_path / "deeply" / "nested" / "thread.1.review"
+    with staged_sidecar(final, required_files=("verdict.md",)) as staging:
+        (staging / "verdict.md").write_text("ok")
+    assert final.exists()
+    assert (final / "verdict.md").read_text() == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Missing-required-file branch
+# ---------------------------------------------------------------------------
+
+
+def test_staged_sidecar_missing_required_raises_and_preserves_staging(
+    tmp_path,
+):
+    final = tmp_path / "acme-seed.3.review"
+
+    with pytest.raises(SidecarIncompleteError) as excinfo:
+        with staged_sidecar(
+            final, required_files=MEMO_REVIEW_REQUIRED
+        ) as staging:
+            # Write only three of the six required files.
+            _write_all(staging, ["verdict.md", "scoring.md", "comments.md"])
+
+    # The final dir was NOT created (no rename).
+    assert not final.exists()
+    # The staging dir IS still present, with the three files we wrote.
+    staging_dir = staging_path_for(final)
+    assert staging_dir.exists()
+    assert (staging_dir / "verdict.md").exists()
+    assert (staging_dir / "scoring.md").exists()
+    assert (staging_dir / "comments.md").exists()
+    assert not (staging_dir / "_summary.md").exists()
+
+    # Error message names the missing files.
+    msg = str(excinfo.value)
+    assert "_summary.md" in msg
+    assert "_meta.json" in msg
+    assert "_progress.json" in msg
+
+
+def test_staged_sidecar_missing_only_progress_json(tmp_path):
+    """The studio canary's canonical failure shape: five of six present,
+    only _progress.json missing (because it is written last).
+    """
+    final = tmp_path / "citation-clear.4.review"
+
+    five_of_six = [n for n in MEMO_REVIEW_REQUIRED if n != "_progress.json"]
+    with pytest.raises(SidecarIncompleteError) as excinfo:
+        with staged_sidecar(
+            final, required_files=MEMO_REVIEW_REQUIRED
+        ) as staging:
+            _write_all(staging, five_of_six)
+
+    assert not final.exists()
+    assert staging_path_for(final).exists()
+    assert "_progress.json" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Exception in body
+# ---------------------------------------------------------------------------
+
+
+def test_staged_sidecar_exception_in_body_no_rename(tmp_path):
+    final = tmp_path / "acme-seed.3.review"
+
+    class _SimulatedLLMError(RuntimeError):
+        pass
+
+    with pytest.raises(_SimulatedLLMError):
+        with staged_sidecar(
+            final, required_files=MEMO_REVIEW_REQUIRED
+        ) as staging:
+            (staging / "verdict.md").write_text("partial work")
+            raise _SimulatedLLMError("simulated mid-write LLM crash")
+
+    # Staging dir is preserved with the partial work.
+    assert not final.exists()
+    staging_dir = staging_path_for(final)
+    assert staging_dir.exists()
+    assert (staging_dir / "verdict.md").read_text() == "partial work"
+
+
+# ---------------------------------------------------------------------------
+# Pre-existing final or staging dirs
+# ---------------------------------------------------------------------------
+
+
+def test_staged_sidecar_refuses_if_final_exists(tmp_path):
+    final = tmp_path / "acme-seed.3.review"
+    final.mkdir()
+
+    with pytest.raises(FileExistsError) as excinfo:
+        with staged_sidecar(final, required_files=("verdict.md",)) as _staging:
+            # Should not reach the body.
+            raise AssertionError("entered context manager despite final exists")
+
+    assert "already exists" in str(excinfo.value)
+
+
+def test_staged_sidecar_clears_prior_staging_dir(tmp_path):
+    """A leftover staging dir from a prior crashed attempt is removed on
+    re-entry so we can make forward progress.
+    """
+    final = tmp_path / "acme-seed.3.review"
+    staging = staging_path_for(final)
+    staging.mkdir(parents=True)
+    (staging / "leftover-from-prior-crash.md").write_text("stale")
+
+    with staged_sidecar(
+        final, required_files=("verdict.md",)
+    ) as new_staging:
+        # The leftover file must be gone — staging dir was wiped.
+        assert not (new_staging / "leftover-from-prior-crash.md").exists()
+        (new_staging / "verdict.md").write_text("fresh write")
+
+    assert final.exists()
+    assert (final / "verdict.md").read_text() == "fresh write"
+    assert not (final / "leftover-from-prior-crash.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# cleanup_stale_staging
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_stale_staging_removes_leading_dot_tmp_dirs(tmp_path):
+    # Synthesize three leftover staging dirs and two unrelated dirs.
+    for slug in ("acme-seed.3.review", "brasidas.7.audit", "foo.1.narrative"):
+        d = tmp_path / f".{slug}.tmp"
+        d.mkdir()
+        (d / "partial.md").write_text("partial work")
+    # An unrelated final-named critic dir (must NOT be removed).
+    (tmp_path / "acme-seed.3.review").mkdir()
+    (tmp_path / "acme-seed.3.review" / "verdict.md").write_text("ok")
+    # An unrelated hidden non-tmp dir (e.g., .git).
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main")
+    # A non-staging plain file.
+    (tmp_path / "README.md").write_text("portfolio readme")
+
+    removed = cleanup_stale_staging(tmp_path)
+
+    names = sorted(p.name for p in removed)
+    assert names == [
+        ".acme-seed.3.review.tmp",
+        ".brasidas.7.audit.tmp",
+        ".foo.1.narrative.tmp",
+    ]
+    # The final-named critic dir is preserved.
+    assert (tmp_path / "acme-seed.3.review").exists()
+    assert (tmp_path / "acme-seed.3.review" / "verdict.md").exists()
+    # The .git dir is preserved (hidden but does not end in .tmp).
+    assert (tmp_path / ".git").exists()
+    assert (tmp_path / ".git" / "HEAD").exists()
+    # Plain file is preserved.
+    assert (tmp_path / "README.md").exists()
+
+
+def test_cleanup_stale_staging_idempotent(tmp_path):
+    (tmp_path / ".thread.1.review.tmp").mkdir()
+    first = cleanup_stale_staging(tmp_path)
+    second = cleanup_stale_staging(tmp_path)
+    assert len(first) == 1
+    assert second == []
+
+
+def test_cleanup_stale_staging_safe_on_nonexistent_parent(tmp_path):
+    nonexistent = tmp_path / "no-such-portfolio"
+    assert cleanup_stale_staging(nonexistent) == []
+
+
+def test_cleanup_stale_staging_safe_on_file_parent(tmp_path):
+    fake_parent = tmp_path / "i-am-a-file"
+    fake_parent.write_text("not a directory")
+    assert cleanup_stale_staging(fake_parent) == []
+
+
+def test_cleanup_stale_staging_skips_files_with_matching_shape(tmp_path):
+    """A file (not a dir) whose name looks like a staging name is left alone.
+    cleanup is dir-scoped — we never delete files.
+    """
+    (tmp_path / ".something.tmp").write_text("but it is a file")
+    removed = cleanup_stale_staging(tmp_path)
+    assert removed == []
+    assert (tmp_path / ".something.tmp").exists()
+
+
+def test_cleanup_stale_staging_skips_bare_dot_tmp(tmp_path):
+    """A directory literally named ``.tmp`` (no body between dot and
+    suffix) is conservatively left alone.
+    """
+    (tmp_path / ".tmp").mkdir()
+    removed = cleanup_stale_staging(tmp_path)
+    assert removed == []
+    assert (tmp_path / ".tmp").exists()
+
+
+def test_cleanup_stale_staging_logs_at_info(tmp_path, caplog):
+    (tmp_path / ".thread.1.review.tmp").mkdir()
+    (tmp_path / ".thread.1.audit.tmp").mkdir()
+    with caplog.at_level(logging.INFO, logger="anvil.lib.sidecar"):
+        removed = cleanup_stale_staging(tmp_path)
+    assert len(removed) == 2
+    # Find the single summary log line.
+    sweep_records = [
+        r for r in caplog.records if "cleanup_stale_staging" in r.message
+    ]
+    assert len(sweep_records) == 1
+    assert ".thread.1.review.tmp" in sweep_records[0].message
+    assert ".thread.1.audit.tmp" in sweep_records[0].message
+
+
+# ---------------------------------------------------------------------------
+# Discovery isolation
+# ---------------------------------------------------------------------------
+
+
+def test_discover_critics_does_not_match_staging_dirs(tmp_path):
+    """A staging dir at ``.<slug>.{N}.<tag>.tmp/`` that even carries a
+    canonical ``_review.json`` is NOT discovered.
+    """
+    (tmp_path / "acme-seed.3").mkdir()
+
+    # Synthesize a fully-formed _review.json inside a staging dir.
+    staging = tmp_path / ".acme-seed.3.review.tmp"
+    staging.mkdir()
+    review = Review(
+        schema_version="1",
+        kind=Kind.JUDGMENT,
+        version_dir="acme-seed.3",
+        critic_id="review",
+        scores=[Score(dimension="d1", score=4, max=5)],
+        findings=[],
+        critical_flags=[],
+    )
+    (staging / CANONICAL_REVIEW_FILENAME).write_text(
+        review.model_dump_json(indent=2)
+    )
+
+    found = discover_critics(tmp_path / "acme-seed.3")
+    # The staging dir must not appear in the result.
+    assert staging not in found
+    assert found == []
+
+
+def test_discover_critics_finds_final_but_not_staging_when_both_present(
+    tmp_path,
+):
+    """Even when a staging dir and a final dir coexist temporarily (e.g.
+    during the rename window of a long-running write), discovery sees
+    only the final dir.
+    """
+    (tmp_path / "acme-seed.3").mkdir()
+
+    # Final dir with valid review.
+    final = tmp_path / "acme-seed.3.review"
+    final.mkdir()
+    review = Review(
+        schema_version="1",
+        kind=Kind.JUDGMENT,
+        version_dir="acme-seed.3",
+        critic_id="review",
+        scores=[Score(dimension="d1", score=4, max=5)],
+    )
+    (final / CANONICAL_REVIEW_FILENAME).write_text(
+        review.model_dump_json(indent=2)
+    )
+
+    # Staging dir, also carrying a _review.json shape.
+    staging = tmp_path / ".acme-seed.3.review.tmp"
+    staging.mkdir()
+    (staging / CANONICAL_REVIEW_FILENAME).write_text(
+        review.model_dump_json(indent=2)
+    )
+
+    found = discover_critics(tmp_path / "acme-seed.3")
+    assert found == [final]
+
+
+# ---------------------------------------------------------------------------
+# Canary-replay test
+# ---------------------------------------------------------------------------
+
+
+def test_canary_replay_all_proper_subsets_undiscovered_and_swept(tmp_path):
+    """Synthesize partial-sidecar shapes (the studio canary's 13 partial
+    sidecars from mid-cycle interrupts) and verify:
+
+    1. None of the synthesized partial-staging dirs are discovered by
+       ``discover_critics`` (because the final-named dir was never
+       created).
+    2. ``cleanup_stale_staging`` removes all of them.
+
+    The studio's 13 partials each carried a different subset of the
+    six-file memo-review manifest. We exhaustively enumerate all
+    non-empty *proper* subsets (63 of them — 2^6 - 1 minus the
+    all-present case) as the canary-replay corpus; this is strictly
+    more thorough than the literal 13 and covers every shape the studio
+    could have produced.
+    """
+    (tmp_path / "studio-thread.5").mkdir()
+
+    partial_shapes = [
+        subset
+        for size in range(1, len(MEMO_REVIEW_REQUIRED))
+        for subset in itertools.combinations(MEMO_REVIEW_REQUIRED, size)
+    ]
+    assert len(partial_shapes) == 62  # C(6,1)+C(6,2)+...+C(6,5)
+
+    synthesized_staging_dirs = []
+    for idx, subset in enumerate(partial_shapes):
+        # Encode each partial under a different fake tag so they don't
+        # collide on the filesystem.
+        tag = f"partial{idx:02d}"
+        staging = tmp_path / f".studio-thread.5.{tag}.tmp"
+        staging.mkdir()
+        _write_all(staging, subset)
+        # Plausibly include a malformed _review.json shape on some to
+        # exercise the "discoverable-looking but isn't" path.
+        if "_progress.json" in subset:
+            (staging / "_review.json").write_text(
+                json.dumps({"schema_version": "1", "version_dir": "studio-thread.5"})
+            )
+        synthesized_staging_dirs.append(staging)
+
+    # 1. None of them are discovered by discover_critics.
+    found = discover_critics(tmp_path / "studio-thread.5")
+    assert found == []
+
+    # 2. cleanup_stale_staging removes every one.
+    removed = cleanup_stale_staging(tmp_path)
+    assert len(removed) == len(synthesized_staging_dirs)
+    for staging in synthesized_staging_dirs:
+        assert not staging.exists()

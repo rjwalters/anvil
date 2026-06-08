@@ -20,6 +20,12 @@ Public modules:
   ``deck-revise`` step 9.5; available to every other ``*-revise``
   command on adoption. See ``anvil/lib/snippets/critics.md``'s
   "Deterministic-checks family" section.
+- ``sidecar``: directory-level atomic writes for critic sibling dirs.
+  ``staged_sidecar`` is a context manager that writes files into a
+  leading-dot staging dir and renames atomically on clean completion;
+  ``cleanup_stale_staging`` is the startup-time sweep that removes
+  ``.*.tmp/`` leftovers from prior interrupts. See issue #350 and
+  ``anvil/lib/snippets/progress.md`` §"Crash recovery contract".
 """
 
 from anvil.lib.cite import (
@@ -57,6 +63,13 @@ from anvil.lib.rubric import (
     discover_venue_rubric,
     load_rubric,
 )
+from anvil.lib.sidecar import (
+    STAGING_SUFFIX,
+    SidecarIncompleteError,
+    cleanup_stale_staging,
+    staged_sidecar,
+    staging_path_for,
+)
 
 
 __all__ = [
@@ -71,6 +84,8 @@ __all__ = [
     "IdentifierKind",
     "Rubric",
     "RubricDimension",
+    "STAGING_SUFFIX",
+    "SidecarIncompleteError",
     "StaleFinding",
     "TERMINATION_CRITICAL_FLAG",
     "TERMINATION_MAX_ITERATIONS",
@@ -81,10 +96,13 @@ __all__ = [
     "bib_key",
     "check_stable",
     "cite",
+    "cleanup_stale_staging",
     "decide_termination",
     "discover_venue_rubric",
     "load_rubric",
     "parse_identifier",
     "resolve",
+    "staged_sidecar",
+    "staging_path_for",
     "sweep",
 ]
