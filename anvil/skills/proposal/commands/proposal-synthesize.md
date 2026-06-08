@@ -44,6 +44,8 @@ The reviser then sees N gaps (each with a single coordinated `recommended_respon
 
 `gaps.json` is the load-bearing contract. `verdict.md` and `synthesis.md` are human-facing prose — they explain the synthesis decisions for an operator reading the directory, but the reviser ignores them.
 
+**Atomicity** (issue #350): the synthesis sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The five files (`verdict.md`, `synthesis.md`, `gaps.json`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.synthesis.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.synthesis/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.synthesis.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob. This is load-bearing: the reviser at `proposal-revise` reads `gaps.json` from the synthesis sibling and a half-written `gaps.json` could either fail schema validation or (worse) silently round-trip with missing gaps. The staged-sidecar contract guarantees the synthesis sibling only ever exists when the full schema-valid `gaps.json` plus its prose companions are complete.
+
 ### `gaps.json` shape (sketched)
 
 ```json
@@ -75,10 +77,10 @@ The reviser reads each `gap` and produces ONE coordinated response per gap (inst
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex` AND BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md`. If either required critic sibling is missing, exit with the error message above. Glob for optional siblings: `<thread>.{N}.*/` minus `<thread>.{N}/` and minus `<thread>.{N}.synthesis/`.
-2. **Resume check**: if `<thread>.{N}.synthesis/_progress.json.synthesize.state == done` AND `verdict.md` + `gaps.json` exist, the synthesis is complete — exit early with a notice (idempotent).
-3. **Crash recovery**: if `synthesize.state == in_progress` without `gaps.json`, delete partial output and re-enter the phase per `anvil/lib/snippets/progress.md` §"Crash recovery contract".
-4. **Initialize `_progress.json`** for the synthesis dir: `phases.synthesize.state = in_progress`, `phases.synthesize.started = <ISO>`, `for_version = N`. Initialize `_meta.json` with `role: "synthesizer"` AND `scorecard_kind: "human-verdict"` (see `anvil/lib/snippets/scorecard_kind.md` and the §"Aggregator behavior" note below).
+1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex` AND BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md`. If either required critic sibling is missing, exit with the error message above. Glob for optional siblings: `<thread>.{N}.*/` minus `<thread>.{N}/` and minus `<thread>.{N}.synthesis/`. Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.synthesis.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed synthesizer session (issue #350).
+2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a completed synthesis means the final-named `<thread>.{N}.synthesis/` dir exists — the atomic-rename contract guarantees the dir only exists when complete. If `<thread>.{N}.synthesis/` exists, the synthesis is complete — exit early with a notice (idempotent).
+3. **Crash recovery**: per issue #350, a partial synthesis manifests as a leading-dot `.<thread>.{N}.synthesis.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.synthesis/` exists without `gaps.json`, delete and re-run.
+4. **Open the staged sidecar** for the synthesis dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.synthesis, required_files=["verdict.md", "synthesis.md", "gaps.json", "_meta.json", "_progress.json"])`. Every file write from this step through the final `_progress.json` update MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.synthesis.tmp/`), NOT inside the final `<thread>.{N}.synthesis/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`: `phases.synthesize.state = in_progress`, `phases.synthesize.started = <ISO>`, `for_version = N`. Initialize `_meta.json` with `role: "synthesizer"` AND `scorecard_kind: "human-verdict"` (see `anvil/lib/snippets/scorecard_kind.md` and the §"Aggregator behavior" note below).
 5. **Read inputs**:
    - `<thread>.{N}/proposal.tex` (for context — the synthesizer SHOULD be able to point at the evidence span when describing each gap).
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
@@ -112,8 +114,8 @@ The reviser reads each `gap` and produces ONE coordinated response per gap (inst
     - Severity breakdown: `critical: 0 | blocker: 1 | should-fix: 3 | nice-to-have: 0`.
     - Recommended triage: one paragraph naming the top 2-3 gaps the reviser should address first, with rationale.
     - The line `gaps.json schema_version: "1"` so an operator can see which contract the file commits to.
-13. **Update `_progress.json`**: `phases.synthesize.state = done`, `phases.synthesize.completed = <ISO>`.
-14. **Report**: print the path to the synthesis dir and a one-line status (e.g., `Synthesized raytheon-pitch-strategy.1 → raytheon-pitch-strategy.1.synthesis/ (5 gaps, 2 singletons; 1 blocker, 4 should-fix)`).
+13. **Update `_progress.json`** inside the staging dir: `phases.synthesize.state = done`, `phases.synthesize.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.synthesis.tmp/` → `<thread>.{N}.synthesis/`. The final-named dir only ever exists in **complete** form — a half-written `gaps.json` can never be read by the reviser.
+14. **Report**: print the path to the (now-renamed) synthesis dir and a one-line status (e.g., `Synthesized raytheon-pitch-strategy.1 → raytheon-pitch-strategy.1.synthesis/ (5 gaps, 2 singletons; 1 blocker, 4 should-fix)`).
 
 ## Idempotence and resumability
 
