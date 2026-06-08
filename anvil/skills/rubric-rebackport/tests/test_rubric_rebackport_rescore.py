@@ -107,12 +107,29 @@ class TestRescoreDeferralBehavior(unittest.TestCase):
             spec = p.reviews[0].rescore_spec
             self.assertFalse(spec.sidecar_path.exists())
 
-    def test_check_rescore_hook_returns_false_for_unmigrated_skill(
+    def test_check_rescore_hook_returns_true_for_migrated_skills(
         self,
     ) -> None:
-        # Memo's review command (today) doesn't carry the
-        # `--rescore-mode` token; the hook is reported absent.
-        self.assertFalse(check_rescore_hook("memo"))
+        # All eight skill review commands carry the `--rescore-mode`
+        # token per issue #368 (the per-skill reviewer-hook landing
+        # PR). check_rescore_hook(skill) must report the hook as
+        # present for each.
+        for skill in (
+            "memo",
+            "proposal",
+            "pub",
+            "deck",
+            "slides",
+            "report",
+            "ip-uspto",
+            "installation",
+        ):
+            with self.subTest(skill=skill):
+                self.assertTrue(
+                    check_rescore_hook(skill),
+                    f"--rescore-mode hook expected to be present in "
+                    f"{skill}-review.md (issue #368)",
+                )
 
     def test_check_rescore_hook_returns_true_when_hook_present(
         self,
