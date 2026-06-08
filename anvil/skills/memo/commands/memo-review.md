@@ -37,8 +37,8 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
   verdict.md       Top-level decision + total /44 + critical flags + top revision priorities
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Line-level comments keyed to <thread>.md headings or excerpts
-  _summary.md      Machine-readable scorecard + pre-flight lint block + render-gate block (see step 9)
-  _meta.json       { critic, role, scorecard_kind: "human-verdict", started, finished, model, schema_version }
+  _summary.md      Machine-readable scorecard + pre-flight lint block + render-gate block + rubric version block (see step 9)
+  _meta.json       { critic, role, scorecard_kind: "human-verdict", started, finished, model, schema_version, rubric_id, rubric_total, advance_threshold }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
 
@@ -46,7 +46,7 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/<thread>.md`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
-3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
+3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict`, `rubric_id: "anvil-memo-v2"`, `rubric_total: 44`, and `advance_threshold: 35` (see `anvil/lib/snippets/scorecard_kind.md` §"The discriminator" — the three rubric-stamping fields are required for new reviews per issue #346; `"anvil-memo-v2"` is the memo skill's current /44 rubric identifier per `anvil/skills/memo/rubric.md` line 3). The rubric-stamping fields let downstream consumers compare scores apples-to-apples across the `/40 → /44` migration without re-reading the skill's current `rubric.md`. Also load the **prior review sibling** at `<thread>.{N-1}.review/_meta.json` when present and cache its `rubric_id` value as `prior_rubric_id` (or `None` when the prior sibling is absent — first iteration — or lacks the field — legacy pre-#346 review). The cached `prior_rubric_id` feeds the `_summary.md.rubric` block at step 9 + the `findings.md` rubric-transition subsection when the prior rubric differs from the current `"anvil-memo-v2"`.
 4. **Read inputs**: load `<thread>.{N}/<thread>.md`, enumerate `exhibits/`, load `rubric.md` and any consumer override. Resolve the declared `target_length` for v{N} by reading it from `<thread>.{N}/_progress.json.metadata.target_length_resolved` (the field the drafter or reviser wrote when producing v{N}). The field carries the resolved `(min_words, max_words)` pair plus a `source` provenance string (`"overrides.<N>"`, `"default"`, or `"none"`). Reading this field — rather than re-resolving from `<project>/BRIEF.md` here — is the load-bearing behavior: it pins the reviewer's dim 7 anchor to the same range the drafter/reviser authored against and prevents drift if BRIEF.md is edited between draft and review.
 
    If `target_length_resolved` is absent (legacy v{N} from before this field shipped, or a hand-built version dir), fall back to re-resolving from `<project>/BRIEF.md`'s matching `documents:` entry: `target_length_overrides["<N>"]` → `target_length` → no target. Normalize: `words` taken directly, `pages` converted at 600 words/page, malformed/absent → no target (dim 7 falls back to the implicit "reasonable" judgment).
@@ -256,6 +256,8 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
 6. **Identify critical flags**: review the memo against the 4 example flags in `rubric.md` AND the open-ended "any deal-breaker a sophisticated reader would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 35) AND (no critical flags) AND (lint.errors == 0)`. When the pre-flight image-reference lint (step 4b) reports `errors > 0`, `advance` is forced `false` and the verdict lists `Memo image refs (lint)` under critical flags. The rubric total is reported honestly but does not save the verdict — a memo that references files that do not exist is not advance-eligible regardless of its prose quality.
 
+   **Append `score_history` row with `rubric_id` (issue #346)**: the orchestrator (the command that drives review→revise iterations) appends one row to `<thread>.{N}/_progress.json.metadata.score_history` per finished review iteration. Per `anvil/lib/snippets/progress.md` §"Convergence fields → score_history", the canonical row shape is `{iteration, total, threshold, rubric_id}` — for the memo skill at /44, that's `{iteration: <N>, total: <computed-total>, threshold: 35, rubric_id: "anvil-memo-v2"}`. A thread that spans the `/40 → /44` migration records different `rubric_id` values across its rows (e.g., rows 1–2 may carry `"anvil-memo-v1"` from legacy reviews and rows 3+ carry `"anvil-memo-v2"` from post-migration reviews); readers tolerate rows missing `rubric_id` per the backwards-compat contract (treat as `"unknown/legacy"`). See `convergence.check_stable` for the precedent on `None`-tolerance.
+
    **Summary-detail consistency critical flag (issue #245)**: when the cached `summary_detail_critical_flag` from step 4e is `true` (i.e., the back-check identified at least one `CONTRADICTED` finding at `critical` severity), append a critical flag named `Summary-detail consistency: CONTRADICTED` to the verdict's critical-flag list with the claim excerpt + the contradicting detail location as the one-paragraph justification. This flag is set via the existing critical-flag-candidate pathway, NOT via a new gate — the existing `advance` aggregation (`(total >= 35) AND (no critical flags) AND (lint.errors == 0)`) is unchanged; the back-check plugs into the "no critical flags" clause exactly like the §"Refs back-check" `CONTRADICTED` precedent. `ABSENT` and `DIVERGENT` findings at `important` / `suggestion` severity are observational only — they do NOT contribute to the critical-flag list and do NOT force `advance: false` on their own.
 
    **Cross-thread cite back-check critical flag (issue #236)**: when the cached `cross_thread_cite_critical_flag` from step 4f is `true` (i.e., the back-check identified at least one `ANCHOR-CONTRADICTED` finding at `critical` severity), append a critical flag named `Cross-thread cite: ANCHOR-CONTRADICTED` to the verdict's critical-flag list with the cite text + the contradicting cited-section location as the one-paragraph justification. This flag is set via the existing critical-flag-candidate pathway, NOT via a new gate — the existing `advance` aggregation (`(total >= 35) AND (no critical flags) AND (lint.errors == 0)`) is unchanged; the back-check plugs into the "no critical flags" clause exactly like the §"Refs back-check" `CONTRADICTED` precedent and the §"Summary-detail consistency" `CONTRADICTED` precedent. `ANCHOR-MISSING-BUT-THREAD-PRESENT` and `THREAD-NOT-FOUND` findings at `important` severity are observational only — they do NOT contribute to the critical-flag list and do NOT force `advance: false` on their own (the per-instance dim 3 deduction is the natural surface).
@@ -305,6 +307,13 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
    {
      "critic": "review",
      "for_version": <N>,
+     "rubric": {
+       "id": "anvil-memo-v2",
+       "total": 44,
+       "advance_threshold": 35,
+       "dimensions": 9,
+       "prior_rubric_id": "anvil-memo-v1"
+     },
      "dimensions": { ... per-dim scores ... },
      "lint": {
        "memo_image_refs": {
@@ -436,6 +445,14 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
    }
    ```
    ```
+   - The top-level `rubric` block (issue #346) carries the rubric the reviewer scored against, so a downstream consumer aggregating across versions does not need to walk back to the skill's `rubric.md` file (which may have changed between v3 and v5 of a long thread that spanned the `/40 → /44` migration). The block lives at the **top level** of `_summary.md` (sibling to `lint`, `render_gate`, `summary_detail_consistency`, `cross_thread_cite_consistency`, `scope_distribution`, `rubric_overrides`, and `strongman_back_check`). Shape:
+     - `id` (`str`): the rubric identifier — `"anvil-memo-v2"` for the current /44 rubric. Mirrors `_meta.json.rubric_id` for self-describing per-review metadata.
+     - `total` (`int`): the rubric's declared `total` (point pool) — `44` for the current memo rubric. Mirrors `_meta.json.rubric_total`.
+     - `advance_threshold` (`int`): the rubric's declared advance threshold — `35` for the current memo rubric. Mirrors `_meta.json.advance_threshold`.
+     - `dimensions` (`int`): the count of weighted dimensions on the rubric — `9` for the current /44 memo rubric.
+     - `prior_rubric_id` (`str | null`, conditional): present when the prior review sibling at `<thread>.{N-1}.review/` exists. The value is the prior `_meta.json.rubric_id` when present, or `null` when the prior sibling lacks the field (legacy pre-#346 review). The field is **omitted entirely** on the first iteration (no prior review sibling exists).
+     - `prior_rubric_inferred` (`str`, conditional): present when `prior_rubric_id == null` AND a prior review sibling exists (i.e., the prior review is legacy and predates per-review version stamping). Value is `"/40-legacy"` to signal "this thread's prior iteration was scored against the pre-#346 /40 rubric (whatever the skill shipped at the time)". Lets a reader see at a glance that the score-delta `prior_iteration_total -> current_iteration_total` may be comparing /40 against /44 and should be treated with care.
+     The block surfaces the rubric version transition when one occurred: the `findings.md` rubric-transition subsection (see step 10) is emitted in parallel for the reviser's actionable view. **Backwards-compat**: a legacy review sibling produced before issue #346 MAY omit this block entirely; downstream consumers MUST tolerate the absence. The block does **NOT** participate in `critical_flag` — it is audit-trail metadata, not a check result.
    - The top-level `rubric_overrides` block (issue #233 / #265) is populated from the cached `RubricOverrides` from step 4h. The block lives at the **top level** of `_summary.md` (sibling to `lint`, `render_gate`, `summary_detail_consistency`, `cross_thread_cite_consistency`, `scope_distribution`, and `strongman_back_check`), NOT nested under `lint` — rationale: the existing `lint` namespace is reserved for deterministic mechanical checks; `rubric_overrides` is **per-thread reviewer configuration**, not a check result. The block exists so the operator and downstream consumers can see at a glance *which* calibrations the reviewer applied to which dimensions, with the verbatim override text recorded for the audit trail (mirroring the suffix text written into `scoring.md`). Shape:
      - `ran` (`bool`): whether any rubric override was loaded. `true` when the loader returned a non-empty `RubricOverrides` (any of `memo_subtype`, `calibrations`, `target_length`, or `unknown_keys` populated); `false` when the loader returned an empty instance (no BRIEF.md, no matching `documents:` entry, no `rubric_overrides:` block on the matching entry, or a malformed BRIEF — see the loader's lenient-form contract on `load_rubric_overrides_for_slug`).
      - `reason` (`str`, only when `ran: false`): short tag — `"no rubric_overrides block on BRIEF.md documents entry"`.
@@ -659,6 +676,28 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
      strongman-for.md files scanned: refs/strongman-for.md
      Objections enumerated: 5
      ```
+9b. **Emit rubric-version-transition subsection in `findings.md` when the prior rubric differs (issue #346)**: when the cached `prior_rubric_id` from step 3 is non-`None` AND differs from the current `"anvil-memo-v2"`, OR when `prior_rubric_id == None` AND a prior review sibling exists (legacy pre-#346 review), write a `## Rubric version transition` subsection into `findings.md` (sibling to the existing `## Parity-lint findings (memo↔deck, optional)`, `## Summary-detail consistency findings`, `## Cross-thread cite consistency findings`, and `## Strongman back-check findings` subsections). The subsection's purpose is **operator visibility** — it surfaces, in plain prose, the fact that this iteration's score is NOT directly comparable to the prior iteration's score (the threshold pool changed, the dimension count changed, weighted contributions shifted) so an operator reading `verdict.md`'s score-delta numbers does not silently mis-judge. Three shapes:
+
+    When the prior rubric is a different stamped id (e.g., post-#346 thread that started with one rubric and the skill ships a new one — rare but possible):
+    ```
+    ## Rubric version transition
+
+    This iteration was scored against `anvil-memo-v2` (/44, ≥35); the prior iteration at `<thread>.{N-1}.review/` was scored against `anvil-memo-v1` (/40, ≥32). The score delta `<prior_total>/40 → <current_total>/44` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/44` against the `≥35/44` threshold.
+    ```
+
+    When the prior rubric is legacy (no `rubric_id` stamped):
+    ```
+    ## Rubric version transition
+
+    This iteration was scored against `anvil-memo-v2` (/44, ≥35); the prior iteration at `<thread>.{N-1}.review/` predates per-review rubric version stamping (issue #346) and was scored against `/40-legacy` — the rubric this skill shipped before the `/40 → /44` migration (likely `anvil-memo-v1`, /40, ≥32). The score delta `<prior_total>/40-legacy → <current_total>/44` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/44` against the `≥35/44` threshold.
+    ```
+
+    When the prior rubric matches the current rubric (the steady-state case — no transition surfaced):
+    ```
+    (subsection omitted entirely)
+    ```
+
+    The subsection is **observational** — it does NOT affect the verdict, the critical-flag list, or the `advance` decision. It is purely audit-trail prose so the operator's mental model stays calibrated across a rubric migration. Backwards-compat: a legacy review sibling produced before this contract shipped does NOT need to be re-emitted.
 10. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Total: `XX / 44`
     - Decision: `advance: true` or `advance: false`
@@ -698,7 +737,7 @@ This command writes the critic-sibling shape documented in `anvil/lib/snippets/p
 
 > Note: using `review` as the phase name here is the documented v0 status quo; new critics should use their own tag per `anvil/lib/snippets/progress.md` (phase-name normalization across skills is deferred under #21 item 11).
 
-And the companion `_meta.json` declaring the scorecard kind (see `anvil/lib/snippets/scorecard_kind.md`):
+And the companion `_meta.json` declaring the scorecard kind and the rubric the reviewer scored against (see `anvil/lib/snippets/scorecard_kind.md` §"The discriminator"):
 
 ```json
 {
@@ -708,8 +747,13 @@ And the companion `_meta.json` declaring the scorecard kind (see `anvil/lib/snip
   "finished": "<ISO>",
   "model": "<model-id>",
   "schema_version": 1,
-  "scorecard_kind": "human-verdict"
+  "scorecard_kind": "human-verdict",
+  "rubric_id": "anvil-memo-v2",
+  "rubric_total": 44,
+  "advance_threshold": 35
 }
 ```
+
+The three `rubric_*` / `advance_threshold` fields are required for new reviews (post-issue #346) and absent-tolerated for legacy reviews. They let downstream consumers compare scores apples-to-apples across rubric migrations without re-reading the skill's current `rubric.md`.
 
 Merge rule (shallow): preserve fields not touched by this command. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
