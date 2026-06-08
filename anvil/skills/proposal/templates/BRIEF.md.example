@@ -17,6 +17,20 @@ orientation: portrait         # portrait (default) | landscape. Use landscape fo
                               # proposals (multi-section priced BOMs with 4+ column comparison
                               # tables, multi-domain coverage matrices, multi-generation roadmap
                               # tables) where the wider text block lets columns breathe.
+recommendation_target: undecided  # invest | pass | conditional | undecided (issue #356).
+                                  # Operator-declared posture for the proposal. `undecided`
+                                  # signals pre-decision / concept-stage — the job of v1 is to
+                                  # resolve the open architectural / scope / cost decisions,
+                                  # not to defend a pre-committed recommendation. When set to
+                                  # `undecided`, the reviewer calibrates dim 8 (Open decisions)
+                                  # on open-decision framing clarity per
+                                  # `rubric.md` §"Dim 8 — `recommendation_target: undecided`
+                                  # calibration". Other values (`invest` / `pass` /
+                                  # `conditional`) are byte-identical-inert: dim 8 scores
+                                  # against the standard "open decisions tracked honestly"
+                                  # calibration. Mirrors the memo-skill default in
+                                  # `templates/BRIEF.fresh.md.example` — the proposer-side
+                                  # default for a fresh thread is `undecided`.
 ---
 
 # Brief: <System / Project Name>
