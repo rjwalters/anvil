@@ -36,6 +36,8 @@ This command is the memo-skill's **hyperlink-resolver critic** — a determinist
   _review.json    Canonical Review payload (kind=tool_evidence, critic_id=hyperlinks).
 ```
 
+**Atomicity** (issue #350): when `--write-review` is set, the hyperlinks sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The `_review.json` file is staged under a leading-dot sibling `.<thread>.{N}.hyperlinks.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.hyperlinks/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.hyperlinks.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 `_review.json` carries the standard `anvil/lib/review_schema.py::Review` shape:
 
 - `schema_version`: `"1"`.
@@ -50,7 +52,7 @@ Per the issue #335 AC: every emitted `Finding` uses the existing free-form `fix`
 
 ## Procedure
 
-1. **Discover state**: take the `version_dir` positional arg; verify it exists; verify `<slug>.md` exists inside it (slug-echo per #295). If either check fails, exit code 2 with a clear error.
+1. **Discover state**: take the `version_dir` positional arg; verify it exists; verify `<slug>.md` exists inside it (slug-echo per #295). If either check fails, exit code 2 with a clear error. When `--write-review` is set, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<version_dir>`. This removes any leftover `.<thread>.<M>.hyperlinks.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed session (issue #350). The sweep is idempotent and logs at INFO level the count + names of removed dirs.
 2. **Enumerate links**: walk the body text and produce four ordered lists:
    - **Cross-thread refs** — `[[../<other-slug>/<other-slug>.N]]` and the symbolic latest-version shape (per `cross_thread_refs.py` — this command tolerates whichever form the canonical resolver supports without writing or following any symlink itself), with optional `/<file>` suffix. Delegates to `anvil/skills/memo/lib/cross_thread_refs.py::find_cross_thread_refs` — **no duplicate parsing**.
    - **Markdown links** — `[text](url)` and image-link `![text](url)`. The per-link validator decides classification (internal vs. external) and pass/fail.
@@ -61,7 +63,7 @@ Per the issue #335 AC: every emitted `Finding` uses the existing free-form `fix`
    - **Markdown external**: when `--check-external` is OFF, recorded but not probed. When ON, probed via `subprocess.run(["curl", "-I", ...])` with a short timeout; 2xx / 3xx → resolved; 4xx / 5xx / timeout → `severity="major"` finding.
    - **Wiki-link**: target looked up against the enclosing project's `BRIEF.md` `documents:` list (resolved via `anvil/skills/memo/lib/project_discovery.py::discover_thread_root` + `project_brief.load_project_brief`). Unknown slug → `severity="major"` finding; missing BRIEF → `severity="major"` with reason `"BRIEF.md not found"`.
 4. **Emit Review**: build the canonical `Review` payload per the §"Outputs" shape above. The free-form `Finding.suggested_fix` text echoes the issue body's examples ("Section was renamed — try …", "External target returned 404 — consider removing or replacing").
-5. **Write sibling** (only when `--write-review` is set): write `<version_dir>.hyperlinks/_review.json`. The aggregator's discovery pass (`anvil/lib/critics.py::discover_critics`) picks up the sibling without code changes — the `<version_dir>.<tag>/` pattern matches `hyperlinks` as the trailing tag.
+5. **Write sibling** (only when `--write-review` is set): **open the staged sidecar** for the hyperlinks dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<version_dir>.hyperlinks, required_files=["_review.json"])`. Write `_review.json` **inside the yielded staging directory** (the path of the shape `.<version_dir>.hyperlinks.tmp/`), NOT inside the final `<version_dir>.hyperlinks/` path. On clean context exit, the staged sidecar primitive verifies `_review.json` exists, then atomically renames the staging dir to its final name (issue #350). The final-named `<version_dir>.hyperlinks/` only ever exists in **complete** form. The aggregator's discovery pass (`anvil/lib/critics.py::discover_critics`) picks up the sibling without code changes — the `<version_dir>.<tag>/` pattern matches `hyperlinks` as the trailing tag; the leading-dot staging shape is invisible to the discovery glob.
 6. **Report**: print the JSON shape from `HyperlinkResolverResult.to_json()` to stdout. Exit code:
    - `0`: clean pass (no broken findings).
    - `1`: one or more findings.

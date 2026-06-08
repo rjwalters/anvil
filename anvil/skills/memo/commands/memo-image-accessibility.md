@@ -31,6 +31,8 @@ This command is the memo-skill analog for Phase 5 of the reframed Epic #328. It 
   _findings.json  Structured payload from ImageAccessibilityResult.to_json() (informational companion).
 ```
 
+**Atomicity** (issue #350): when `--write-review` is set, the image-accessibility sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The two files (`_review.json`, `_findings.json`) are staged under a leading-dot sibling `.<thread>.{N}.image-accessibility.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.image-accessibility/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.image-accessibility.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 The `_review.json` carries:
 
 - One null-scored row on dimension `image_accessibility` so the schema validates while the aggregator treats this critic as null-everywhere (same pattern as `render_gate`'s null-scored row on dimension `render_gate`).
@@ -106,6 +108,8 @@ python -m anvil.skills.memo.lib.image_accessibility <version_dir> [--write-revie
 ```
 
 The `<version_dir>` is the memo version directory (e.g. `memo/memo.1/`). The runner always prints the structured payload (`ImageAccessibilityResult.to_json()`) to stdout. When `--write-review` is passed, it additionally writes `<version_dir>.image-accessibility/_review.json` (typed) and `<version_dir>.image-accessibility/_findings.json` (companion) into the sibling critic dir for auto-discovery by `anvil/lib/critics.py::discover_critics`.
+
+**Staged-sidecar wiring** (issue #350; only when `--write-review` is set): on entry, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<version_dir>`. This removes any leftover `.<thread>.<M>.image-accessibility.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed session. Then **open the staged sidecar** for the image-accessibility dir by invoking `anvil/lib/sidecar.py::staged_sidecar(final_dir=<version_dir>.image-accessibility, required_files=["_review.json", "_findings.json"])`. Write both files **inside the yielded staging directory** (the path of the shape `.<version_dir>.image-accessibility.tmp/`), NOT inside the final `<version_dir>.image-accessibility/` path. On clean context exit, the staged sidecar primitive verifies both files exist, then atomically renames the staging dir to its final name. The final-named dir only ever exists in **complete** form.
 
 **Exit codes** (mirror Phase 2 / Phase 3 sibling-critic CLI contracts):
 
