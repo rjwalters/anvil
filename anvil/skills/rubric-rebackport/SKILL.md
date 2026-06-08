@@ -201,6 +201,16 @@ total but not id), the planner can heuristically pick from the
 | slides | 40 | `anvil-slides-v1` | 32 |
 | installation | 40 | `anvil-installation-v1` | 32 |
 | ip-uspto | 40 | `anvil-ip-uspto-v1` | 35 |
+| pub | 44 | `anvil-pub-v2` | 35 |
+| report | 44 | `anvil-report-v2` | 39 |
+| deck | 44 | `anvil-deck-v2` | 39 |
+| slides | 44 | `anvil-slides-v2` | 35 |
+| installation | 44 | `anvil-installation-v2` | 35 |
+| ip-uspto | 45 | `anvil-ip-uspto-v2` | 39 |
+
+The /40 rows remain in the catalog because stamp-only inference still
+needs them for legacy reviews authored against pre-#357 rubrics. The
+/44 (/45) rows are the targets for post-#357 reviews.
 
 When the legacy `_meta.json` lacks `rubric_total` entirely AND
 `--legacy-rubric` is absent, the review is skipped with an
