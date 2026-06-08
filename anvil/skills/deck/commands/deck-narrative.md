@@ -38,11 +38,13 @@ Other rubric dimensions are scored by other critics and remain `null` in this cr
   _progress.json    Phase state for this critic
 ```
 
+**Atomicity** (issue #350): the narrative sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The five files (`_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.narrative.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.narrative/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.narrative.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. If `<thread>.{N}.narrative/_progress.json.narrative.state == done` AND `_summary.md` parses, exit early (idempotent).
-2. **Resume check**: delete partial output and re-run if a prior crash.
-3. **Initialize `_progress.json`** and `_meta.json`.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.narrative.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed critic session (issue #350). If `<thread>.{N}.narrative/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early (idempotent).
+2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial narrative critic left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.narrative.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.narrative/` exists WITHOUT `_summary.md`, delete the dir and re-run.
+3. **Open the staged sidecar** for the narrative dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.narrative, required_files=["_summary.md", "findings.md", "comments.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.narrative.tmp/`), NOT inside the final `<thread>.{N}.narrative/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` and `_meta.json`.
 4. **Read deck.md end-to-end** as one document. Read speaker-notes.md in parallel. Read BRIEF.md for the canonical ask.
 5. **Evaluate narrative arc** (Dim 1, weight 6):
    - **Problem → Solution bridge**: Does the solution slide answer the problem slide? If the solution describes a different problem, score low.
@@ -113,7 +115,7 @@ Other rubric dimensions are scored by other critics and remain `null` in this cr
 
     12 slides (within target range 10–15). Slide 13 appendix optional and not included; recommend adding 1-2 appendix slides with detailed unit economics for follow-up Q&A.
     ```
-11. **Update `_progress.json`** and `_meta.json` (finished: <ISO>).
+11. **Update `_progress.json`** and `_meta.json` inside the staging dir (finished: <ISO>). The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.narrative.tmp/` → `<thread>.{N}.narrative/`. The final-named dir only ever exists in **complete** form.
 12. **Report**: one-line status (e.g., `Narrative critic on acme-seed.1 → acme-seed.1.narrative/ (dims 1+7: 9/11; 3 findings)`).
 
 ## Idempotence and resumability
