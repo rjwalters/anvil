@@ -93,6 +93,29 @@ class TestPerSkillStampingValuesDocumented(unittest.TestCase):
     def test_rescore_sidecar_naming_convention_documented(self) -> None:
         self.assertIn(".review.rescore-", self.skill_text)
 
+    # ---- Post-#357 /44 (and /45 for ip-uspto) row coverage (issue #366) ----
+
+    def test_pub_v2_44_row_documented(self) -> None:
+        self.assertIn("anvil-pub-v2", self.skill_text)
+
+    def test_report_v2_44_row_documented(self) -> None:
+        self.assertIn("anvil-report-v2", self.skill_text)
+
+    def test_deck_v2_44_row_documented(self) -> None:
+        self.assertIn("anvil-deck-v2", self.skill_text)
+
+    def test_slides_v2_44_row_documented(self) -> None:
+        self.assertIn("anvil-slides-v2", self.skill_text)
+
+    def test_installation_v2_44_row_documented(self) -> None:
+        self.assertIn("anvil-installation-v2", self.skill_text)
+
+    def test_ip_uspto_v2_45_row_documented(self) -> None:
+        self.assertIn("anvil-ip-uspto-v2", self.skill_text)
+        # ip-uspto is /45, not /44 — assert the value is mentioned
+        # somewhere in SKILL.md (suffices to cover the table row).
+        self.assertIn("45", self.skill_text)
+
 
 class TestSkillFrontmatter(unittest.TestCase):
     """The frontmatter on SKILL.md must declare the bridge-tool shape."""

@@ -270,9 +270,74 @@ def build_mixed_skill_portfolio(
     return project_dir
 
 
+# ---------------------------------------------------------------------------
+# Fixture: pub_44_unstamped (post-#357 canary failure mode)
+# ---------------------------------------------------------------------------
+
+
+def _meta_legacy_pub_44() -> dict:
+    """Return a /44-era pub reviewer ``_meta.json`` with rubric_total but no rubric_id."""
+    return {
+        "critic": "review",
+        "role": "pub-review.md",
+        "started": "2026-05-15T12:00:00Z",
+        "finished": "2026-05-15T12:05:00Z",
+        "model": "claude-opus-4-1",
+        "schema_version": 1,
+        "scorecard_kind": "human-verdict",
+        # /44-era pub: rubric_total written, rubric_id absent. The
+        # planner must heuristically pick `anvil-pub-v2` from the
+        # (skill=pub, total=44) pair without --legacy-rubric.
+        "rubric_total": 44,
+    }
+
+
+def build_pub_44_unstamped(
+    root: Path,
+    project_name: str = "legacy-pub-44",
+    *,
+    slug: str = "pub",
+) -> Path:
+    """Build a /44-era pub thread whose review is missing `rubric_id`.
+
+    Exercises the post-#357 catalog entry for ``("pub", 44)`` — the
+    canary failure mode that motivated issue #366.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    _write(project_dir / "BRIEF.md", _brief_for_skill(slug, "pub"))
+
+    thread_dir = project_dir / slug
+    v1 = thread_dir / f"{slug}.1"
+    _write(v1 / f"{slug}.md", f"# {slug} v1\n\nBody.\n")
+    _write(
+        v1 / "_progress.json",
+        json.dumps(_progress_legacy(slug), indent=2) + "\n",
+    )
+
+    review_dir = thread_dir / f"{slug}.1.review"
+    _write(
+        review_dir / "_meta.json",
+        json.dumps(_meta_legacy_pub_44(), indent=2) + "\n",
+    )
+    _write(
+        review_dir / "_summary.md",
+        "---\n"
+        "for_version: 1\n"
+        "scorecard_kind: human-verdict\n"
+        "critical_flag: false\n"
+        "---\n"
+        "\n"
+        "# Review summary\n\nLegacy /44-era pub summary body.\n",
+    )
+    _write(review_dir / "verdict.md", "# Verdict\n\nLegacy verdict.\n")
+    return project_dir
+
+
 __all__ = [
     "build_fully_stamped",
     "build_legacy_unstamped",
     "build_mixed_skill_portfolio",
     "build_partially_stamped",
+    "build_pub_44_unstamped",
 ]
