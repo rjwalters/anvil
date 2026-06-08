@@ -18,17 +18,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 _HERE = Path(__file__).resolve().parent
-_SKILL_ROOT = _HERE.parent
-sys.path.insert(0, str(_SKILL_ROOT))
 sys.path.insert(0, str(_HERE))
 
-from lib.orchestrate import run  # noqa: E402
+from _project_migrate_skill_lib import orchestrate  # noqa: E402
 from _fixtures import (  # noqa: E402
     build_bessemer_shaped,
     build_fully_migrated,
     build_post_283_anvil_json,
     build_pre_283_classic,
 )
+
+run = orchestrate.run
 
 
 def _tree_hash(project: Path) -> dict:

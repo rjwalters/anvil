@@ -37,15 +37,15 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
-_SKILL_ROOT = _HERE.parent
-sys.path.insert(0, str(_SKILL_ROOT))
 sys.path.insert(0, str(_HERE))
 
-from lib import apply as apply_mod  # noqa: E402
-from lib.apply import ROLLBACK_SUBDIR, apply_plan  # noqa: E402
-from lib.detect import Shape  # noqa: E402
-from lib.plan import build_plan  # noqa: E402
+from _project_migrate_skill_lib import apply_mod, detect, plan  # noqa: E402
 from _fixtures import build_post_283_anvil_json  # noqa: E402
+
+ROLLBACK_SUBDIR = apply_mod.ROLLBACK_SUBDIR
+apply_plan = apply_mod.apply_plan
+Shape = detect.Shape
+build_plan = plan.build_plan
 
 
 _THREE_SLUGS = ["doc-a", "doc-b", "doc-c"]

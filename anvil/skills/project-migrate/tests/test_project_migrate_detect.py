@@ -24,21 +24,19 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 _HERE = Path(__file__).resolve().parent
-_SKILL_ROOT = _HERE.parent
-sys.path.insert(0, str(_SKILL_ROOT))
 sys.path.insert(0, str(_HERE))
 
-from lib.detect import (  # noqa: E402
-    Shape,
-    detect_shape,
-    inventory_project,
-)
+from _project_migrate_skill_lib import detect  # noqa: E402
 from _fixtures import (  # noqa: E402
     build_bessemer_shaped,
     build_fully_migrated,
     build_post_283_anvil_json,
     build_pre_283_classic,
 )
+
+Shape = detect.Shape
+detect_shape = detect.detect_shape
+inventory_project = detect.inventory_project
 
 
 class TestDetectShape(unittest.TestCase):
