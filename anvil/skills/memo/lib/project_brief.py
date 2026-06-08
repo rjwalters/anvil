@@ -331,7 +331,16 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "rubric_overrides",
     "render_engine",
     "latex_header_includes",
+    "max_iterations",
+    "iteration_cap_rationale",
 }
+
+# Default iteration cap. The override floor mirrors the deck skill's
+# precedent in ``anvil/skills/deck/SKILL.md`` §"Per-thread override
+# contract": the cap is a discipline tool, an override may **raise** the
+# cap but never **lower** it below the principled default. Set the
+# floor in one place so deck and memo agree.
+DEFAULT_MAX_ITERATIONS = 4
 
 # Valid values for the ``render_engine`` per-doc knob (issue #320). The
 # trio mirrors :data:`anvil.lib.render_gate.MEMO_ENGINE_*` and the
@@ -627,6 +636,71 @@ class BriefDocument(BaseModel):
               \\definecolor{ink}{HTML}{0f172a}
               \\usepackage{tabularx}
               \\newcolumntype{Y}{>{\\raggedright\\arraybackslash}X}
+    max_iterations
+        Optional paired-override of the default iteration cap
+        (:data:`DEFAULT_MAX_ITERATIONS` = 4) for the review/revise loop
+        on this thread (issue #349). When set, the override **may raise
+        but not lower** the principled default — values below
+        :data:`DEFAULT_MAX_ITERATIONS` are treated as malformed and
+        rejected at parse time.
+
+        The override is **paired** with :attr:`iteration_cap_rationale`:
+        both keys must be present and well-formed for the override to
+        take effect. Setting :attr:`max_iterations` without a non-empty
+        :attr:`iteration_cap_rationale` (or vice-versa) is a schema
+        violation — the BRIEF parser raises ``ValueError`` with the
+        offending field path so the operator can correct the BRIEF
+        before any drafter / reviser pass picks up an unjustified
+        override.
+
+        The paired-override design mirrors the deck skill's
+        ``<thread>/.anvil.json`` contract documented at
+        ``anvil/skills/deck/SKILL.md`` §"Per-thread override contract".
+        The deck override lives in ``.anvil.json`` (the per-thread
+        carrier predating the #296 consolidation); the memo override
+        lives here in the project BRIEF (the post-#296 single-source-
+        of-truth carrier).
+
+        Semantics are **sticky raise**, NOT single-use: setting
+        ``max_iterations: 5`` raises the cap to 5 until the BRIEF is
+        edited again. The required rationale — not single-use semantics
+        — is what prevents abuse.
+
+        Drafter and reviser commands mirror the resolved value into
+        per-version ``_progress.json.metadata.max_iterations`` and
+        ``_progress.json.metadata.iteration_cap_rationale`` so each
+        version dir carries an audit trail of the cap in effect when it
+        was produced. The reviser's BLOCKED notice (see
+        ``commands/memo-revise.md`` §"BLOCKED notice") surfaces the
+        rationale verbatim when the elevated cap is hit, so the operator
+        sees the prior authorization at the moment they need it.
+    iteration_cap_rationale
+        Required-when-:attr:`max_iterations`-is-set free-prose
+        justification for the elevated cap (issue #349). When set,
+        documents *why* this thread deserves more revision passes than
+        the principled default. The rationale text is what makes the
+        override principled and is preserved in BRIEF git history as the
+        audit trail.
+
+        Whitespace-only values are normalized to ``None`` at parse time
+        — a YAML author can write ``iteration_cap_rationale:`` with
+        nothing on the right-hand side, but that field will not
+        activate an override (the parser will raise because the paired
+        :attr:`max_iterations` is then set without a valid rationale).
+
+        Example (a memo thread surfacing the cap-bound near-miss
+        documented in issue #349)::
+
+            documents:
+              - slug: aldus
+                artifact_type: investment-memo
+                max_iterations: 5
+                iteration_cap_rationale: |
+                  Operator-extended to 5 on 2026-06-08. Reason: v4 verdict
+                  34/44 vs floor 35, gap is design-side (slide 7 figsize +
+                  slide 4 preamble drop), reviewer identified memo-revise
+                  can close it; founder follow-ups for source-side lift
+                  (Dims 3/5/6) are tracked separately at issue X.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -640,6 +714,8 @@ class BriefDocument(BaseModel):
         Literal["weasyprint", "xelatex", "wkhtmltopdf"]
     ] = Field(default=None)
     latex_header_includes: Optional[str] = Field(default=None)
+    max_iterations: Optional[int] = Field(default=None)
+    iteration_cap_rationale: Optional[str] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -1160,6 +1236,118 @@ def _validate_latex_header_includes(raw: Any, field_path: str) -> Optional[str]:
     return raw
 
 
+def _normalize_iteration_cap_rationale(raw: Any, field_path: str) -> Optional[str]:
+    """Normalize a raw ``iteration_cap_rationale`` value (issue #349).
+
+    The rationale is **required when set** — operator must supply a
+    non-empty, non-whitespace string to activate the paired override.
+    Empty / whitespace-only values normalize to ``None`` so a YAML
+    author can write ``iteration_cap_rationale:`` with nothing on the
+    right-hand side and get back-compat behavior (the paired field
+    :attr:`BriefDocument.max_iterations` will then trigger the paired-
+    override validator's "missing rationale" rejection).
+
+    Non-string types raise ``ValueError`` with a clear field-path
+    message. The contents themselves are opaque to the parser — any
+    non-empty string survives the validator.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a string; got "
+            f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
+            f"value as a quoted string or YAML block-literal (``|``) "
+            f"naming why this thread deserves more revision passes."
+        )
+    if not raw.strip():
+        return None
+    return raw
+
+
+def _validate_max_iterations(raw: Any, field_path: str) -> Optional[int]:
+    """Validate a raw ``max_iterations`` value (issue #349).
+
+    The override is sticky-raise: an integer ``>=``
+    :data:`DEFAULT_MAX_ITERATIONS` is honored; values below the
+    principled default are rejected at parse time. Non-integer types
+    are rejected too (booleans masquerading as ``0``/``1`` would
+    silently degrade the override to a no-op). ``None`` is valid and
+    short-circuits — the field is optional.
+
+    The paired-override contract — that ``max_iterations`` requires a
+    non-empty :attr:`BriefDocument.iteration_cap_rationale` — is enforced
+    in :func:`_validate_paired_iteration_cap_override` at the document-
+    entry level rather than here so the cross-field error message can
+    name both fields explicitly.
+    """
+    if raw is None:
+        return None
+    # bool is a subclass of int — reject explicitly so True/False can't
+    # masquerade as 1/0 in a cap value.
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError(
+            f"BRIEF.{field_path} must be an integer >= "
+            f"{DEFAULT_MAX_ITERATIONS}; got {type(raw).__name__}: "
+            f"{raw!r} — suggested fix: write the value as an integer "
+            f"(e.g., `max_iterations: 5`)."
+        )
+    if raw < DEFAULT_MAX_ITERATIONS:
+        raise ValueError(
+            f"BRIEF.{field_path}: max_iterations ({raw}) must be >= "
+            f"{DEFAULT_MAX_ITERATIONS}. The override may raise the cap "
+            f"but not lower it below the principled default. Suggested "
+            f"fix: set `max_iterations: {DEFAULT_MAX_ITERATIONS}` "
+            f"(or higher) or remove the key to fall through to the "
+            f"default."
+        )
+    return raw
+
+
+def _validate_paired_iteration_cap_override(
+    max_iterations: Optional[int],
+    iteration_cap_rationale: Optional[str],
+    field_path: str,
+) -> None:
+    """Enforce the paired-override contract for the iteration-cap override.
+
+    The override is **paired**: both ``max_iterations`` and
+    ``iteration_cap_rationale`` must be present and well-formed for the
+    override to take effect, OR both must be absent. Setting one without
+    the other is a schema violation that raises with a field-path
+    message naming both keys.
+
+    This is the load-bearing audit-trail contract: an elevated cap
+    without a rationale would silently raise the cap without recording
+    why. The rationale text — preserved in BRIEF git history — IS the
+    audit trail.
+    """
+    has_cap = max_iterations is not None
+    has_rationale = iteration_cap_rationale is not None
+    if has_cap and not has_rationale:
+        raise ValueError(
+            f"BRIEF.{field_path}: max_iterations is set "
+            f"({max_iterations}) but iteration_cap_rationale is missing "
+            f"or empty. The paired-override contract requires BOTH "
+            f"fields to be present and well-formed — the rationale text "
+            f"is the audit trail that documents why this thread "
+            f"deserves more revision passes. Suggested fix: add a "
+            f"non-empty `iteration_cap_rationale:` value explaining why "
+            f"the elevated cap is authorized, OR remove the "
+            f"`max_iterations:` key to fall through to the default cap "
+            f"of {DEFAULT_MAX_ITERATIONS}."
+        )
+    if has_rationale and not has_cap:
+        raise ValueError(
+            f"BRIEF.{field_path}: iteration_cap_rationale is set but "
+            f"max_iterations is missing. The paired-override contract "
+            f"requires BOTH fields to be present and well-formed. "
+            f"Suggested fix: add `max_iterations: <N>` (integer "
+            f">= {DEFAULT_MAX_ITERATIONS}) naming the elevated cap, OR "
+            f"remove the `iteration_cap_rationale:` key."
+        )
+
+
 def _normalize_documents(raw: Any) -> List[BriefDocument]:
     """Convert the raw ``documents:`` list into typed ``BriefDocument`` entries.
 
@@ -1272,6 +1460,25 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
             field_path=f"documents[{i}].latex_header_includes",
         )
 
+        max_iterations = _validate_max_iterations(
+            entry.get("max_iterations"),
+            field_path=f"documents[{i}].max_iterations",
+        )
+
+        iteration_cap_rationale = _normalize_iteration_cap_rationale(
+            entry.get("iteration_cap_rationale"),
+            field_path=f"documents[{i}].iteration_cap_rationale",
+        )
+
+        # Paired-override validation runs after the per-field validators
+        # so the cross-field error names both keys with already-normalized
+        # values (e.g., whitespace-only rationale → None → "missing").
+        _validate_paired_iteration_cap_override(
+            max_iterations,
+            iteration_cap_rationale,
+            field_path=f"documents[{i}]",
+        )
+
         try:
             doc = BriefDocument(
                 slug=slug,
@@ -1281,6 +1488,8 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
                 rubric_overrides=rubric_overrides,
                 render_engine=render_engine,
                 latex_header_includes=latex_header_includes,
+                max_iterations=max_iterations,
+                iteration_cap_rationale=iteration_cap_rationale,
             )
         except ValidationError as exc:
             raise ValueError(
@@ -1788,6 +1997,7 @@ __all__ = [
     "ArtifactType",
     "BriefDocument",
     "CalibrationOverride",
+    "DEFAULT_MAX_ITERATIONS",
     "MAX_DIM",
     "MIN_DIM",
     "ProjectBrief",

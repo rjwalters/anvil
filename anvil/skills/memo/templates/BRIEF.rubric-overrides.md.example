@@ -81,6 +81,25 @@ documents:
   - slug: raytheon-pitch-strategy
     artifact_type: position-paper
     target_length: { words: [4000, 6000] }
+    # Per-document iteration-cap paired override (issue #349). BOTH keys
+    # are required when overriding — setting `max_iterations` without a
+    # non-empty `iteration_cap_rationale` is a schema violation at parse
+    # time. The override may raise the cap but not lower it below the
+    # principled default (4); `< 4` is rejected.
+    #
+    # Sticky-raise semantics: setting `max_iterations: 5` raises the cap
+    # to 5 until the BRIEF is edited again. The required rationale —
+    # preserved in BRIEF git history — is the audit trail that documents
+    # why this thread deserves more revision passes than the principled
+    # default. See `anvil/skills/memo/SKILL.md` §"Per-document override
+    # contract" for the full validation contract.
+    max_iterations: 5
+    iteration_cap_rationale: |
+      Operator-extended to 5 on 2026-06-08. v4 verdict 34/44 vs floor
+      35; gap is positional-framing-side (Recommendation §3 conditional
+      terms could be sharpened, reviewer named dim 4 at 5/6 with
+      specific suggestion). One extra reviser pass to close the gap;
+      founder follow-ups for source-side lift tracked separately.
     rubric_overrides:
       memo_subtype: feedback-memo
       dim_1_calibration: >-
@@ -139,6 +158,13 @@ and the prior sibling `<thread>/.anvil.json` is retired. The two
   #265 (issue #233). Carries `memo_subtype`, per-dimension calibration
   prose (`dim_N_calibration`), and an optional `target_length` override
   scoped to the subtype.
+- **Per-doc `max_iterations` + `iteration_cap_rationale`** — the
+  paired iteration-cap override from issue #349 (demonstrated on the
+  `raytheon-pitch-strategy` entry above). BOTH keys are required when
+  overriding; the rationale text is the audit trail preserved in BRIEF
+  git history. The override may raise the cap above the principled
+  default of 4 but never lower it. See `anvil/skills/memo/SKILL.md`
+  §"Per-document override contract" for the full validation contract.
 
 Free prose below the frontmatter is shared project context — author voice,
 audience notes, hard-rule rationale. The reviewer reads this prose as
