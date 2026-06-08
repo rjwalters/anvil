@@ -36,9 +36,11 @@ The claims critic focuses on the *strategic* side of claim drafting (scope, ladd
   _progress.json    Phase state for the claims critic
 ```
 
+**Atomicity** (issue #350): the claims sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The four files (`_summary.md`, `findings.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.claims.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.claims/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.claims.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state, resume, init `_progress.json`** (standard).
+1. **Discover state, resume, init `_progress.json`** (standard). At command entry, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. Idempotence: if `<thread>.{N}.claims/` exists (the atomic-rename contract guarantees the dir only exists when complete — issue #350), exit early. Otherwise **open the staged sidecar** for the claims dir by invoking `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.claims, required_files=["_summary.md", "findings.md", "_meta.json", "_progress.json"])`. Every file write below MUST land inside the yielded staging directory (the path of the shape `.<thread>.{N}.claims.tmp/`). On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name. Then, inside the staging dir, initialize `_progress.json`.
 2. **Read inputs**: `claims.tex`, `spec.tex`, optionally `BRIEF.md`.
 
 ### Parse the claim tree
@@ -94,7 +96,7 @@ The claims critic focuses on the *strategic* side of claim drafting (scope, ladd
 
 13. **Write `_summary.md`** with 8-row scorecard (only Dim 1 and optionally Dim 3 scored).
 14. **Write `findings.md`** with itemized findings, organized by claim then by ladder.
-15. **Write `_meta.json`** and finalize `_progress.json`.
+15. **Write `_meta.json`** and finalize `_progress.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies the manifest, then atomically renames `.<thread>.{N}.claims.tmp/` → `<thread>.{N}.claims/`. The final-named dir only ever exists in **complete** form.
 16. **Report**: e.g., `claims: acme-widget.2.claims/ → D1=4 (1 ladder gap on claim 1 family); D3 deferred to s112`.
 
 ## Idempotence and resumability
