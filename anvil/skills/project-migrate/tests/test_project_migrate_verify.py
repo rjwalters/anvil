@@ -18,18 +18,19 @@ from tempfile import TemporaryDirectory
 
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent
-sys.path.insert(0, str(_SKILL_ROOT))
 sys.path.insert(0, str(_HERE))
 
 # Skill-local imports.
-from lib.orchestrate import run  # noqa: E402
-from lib.verify import verify_migration  # noqa: E402
+from _project_migrate_skill_lib import orchestrate, verify  # noqa: E402
 from _fixtures import (  # noqa: E402
     build_bessemer_shaped,
     build_fully_migrated,
     build_post_283_anvil_json,
     build_pre_283_classic,
 )
+
+run = orchestrate.run
+verify_migration = verify.verify_migration
 
 
 # Also wire up the memo skill's lib so we can call discover_thread_root /
