@@ -1,19 +1,29 @@
 # Rubric scoring shape and convergence logic
 
-Every anvil skill ships a `rubric.md` with 8 weighted dimensions summing
-to /40. This snippet documents the SHAPE only — every skill picks its
-own dimension names, weights, and thresholds. The lib does not impose a
-canonical dimension list (every observed skill has a different one).
+Every anvil skill ships a `rubric.md` with weighted dimensions whose
+sum is the rubric's declared `total`. The shipped v0 skills use either
+**/40 (8 dimensions)** or **/44 (9 dimensions, dim 9 *Rhetorical
+economy*)** — both shapes are valid and the lib is total-agnostic. This
+snippet documents the SHAPE only — every skill picks its own dimension
+names, weights, threshold, and total. The lib does not impose a
+canonical dimension list (every observed skill has a different one)
+and does not impose a canonical total (skills migrate from /40 to /44
+independently; see "Per-review version stamping" below).
 
 ## Shape requirements
 
 A skill rubric MUST:
 
-1. Define exactly **8 dimensions** numbered 1–8.
-2. Assign each dimension an integer **weight** (in points).
-3. Have weights that **sum to 40**.
-4. Declare an **advance threshold** (integer, in points out of 40).
-5. Declare a **critical-flag** list (one-paragraph definitions of
+1. Declare a **`total`** (positive integer point pool — `40` and `44`
+   are the v0 shapes; the lib accepts any positive integer).
+2. Define **8 or 9 dimensions** (the v0 observed counts) — long-term
+   the rubric.py schema accepts ≥1 dimension and the skill's
+   `rubric.md` is the source of truth for the count.
+3. Assign each dimension an integer **weight** (in points).
+4. Have weights that **sum to the declared `total`**.
+5. Declare an **advance threshold** (integer, in points out of
+   `total`).
+6. Declare a **critical-flag** list (one-paragraph definitions of
    "any of these blocks regardless of total").
 
 A skill rubric MAY:
@@ -25,20 +35,76 @@ A skill rubric MAY:
 - Document which critic owns which dimension (for skills with multiple
   specialists; see `critics.md`).
 
+### Threshold-to-total anchor (suggested)
+
+For skills picking a new threshold, the observed v0 pattern anchors
+near `threshold ≈ round(total × 0.82)` — that yields `≥33/40` and
+`≥36/44` as natural anchors and matches the canary's "high quality"
+advance bar. The actual shipped thresholds (`≥32/40`, `≥35/40`,
+`≥35/44`) sit close to this anchor; the skill's declared `threshold`
+is the source of truth at runtime — the anchor is guidance only.
+
 ## Observed thresholds across v0 skills
 
-| Skill | Threshold | Critical-flag count |
-|---|---|---|
-| memo | ≥32/40 | 4 examples + open-ended |
-| pub | ≥32/40 | 5 examples + open-ended |
-| slides | ≥32/40 | 3 hard rules (audit / density / time) + open-ended |
-| deck | ≥35/40 | 4 hard rules (fabricated traction / fabricated team / market-math / absent ask) |
-| report | ≥35/40 | 4 hard rules + open-ended |
-| ip-uspto | ≥35/40 | §101 + §112 hard rules (each short-circuits) + open-ended |
+| Skill | Total | Threshold | Dimensions | Critical-flag count |
+|---|---|---|---|---|
+| memo | /44 | ≥35/44 | 9 | 4 examples + open-ended |
+| proposal | /44 | ≥35/44 | 9 | 4 hard rules + open-ended |
+| pub | /40 | ≥32/40 | 8 | 5 examples + open-ended |
+| slides | /40 | ≥32/40 | 8 | 3 hard rules (audit / density / time) + open-ended |
+| deck | /40 | ≥35/40 | 8 | 4 hard rules (fabricated traction / fabricated team / market-math / absent ask) |
+| report | /40 | ≥35/40 | 8 | 4 hard rules + open-ended |
+| installation | /40 | ≥32/40 | 8 | 3 hard rules + open-ended |
+| ip-uspto | /40 | ≥35/40 | 8 | §101 + §112 hard rules (each short-circuits) + open-ended |
 
-The recurring pattern: customer-facing or legal-facing artifacts use
-≥35; internal or rough-draft-friendly artifacts use ≥32. New skills
-should pick from this binary by audience class.
+Two patterns recur: (a) customer-facing or legal-facing artifacts use
+the higher threshold band (`≥35`); internal or rough-draft-friendly
+artifacts use the lower band (`≥32`); (b) skills migrate `/40 → /44`
+by splitting an existing dimension (or adding dim 9 *Rhetorical
+economy* at weight 4 as countervailing bloat-pressure) and choosing a
+new threshold near the 0.82 anchor — both `memo` and `proposal` ship
+the /44 shape today, with the other six skills tracking as separate
+per-skill follow-ups.
+
+## Per-review version stamping
+
+A rubric the skill ships today (`anvil-memo-v2`, `anvil-pub-v1`, …) is
+NOT necessarily the rubric a historical review was scored against —
+threads outlive rubric migrations, and a thread spanning a /40 → /44
+bump records BOTH rubrics across its iterations. The framework records
+the rubric a review was scored against as **per-review metadata** so
+downstream consumers can compare scores apples-to-apples without
+re-reading the skill's current `rubric.md`:
+
+1. **`_meta.json.rubric_id`** + **`_meta.json.rubric_total`** +
+   **`_meta.json.advance_threshold`** — the rubric the critic scored
+   against. See `scorecard_kind.md` §"The discriminator".
+2. **`_progress.json.metadata.score_history[].rubric_id`** — per-row
+   stamp on the score-history so a thread that spans a migration
+   records which rubric scored which iteration. See `progress.md`
+   §"Convergence fields" → `score_history`.
+3. **`_summary.md.rubric`** block — sibling to `lint` / `render_gate` /
+   `summary_detail_consistency`, carrying the rubric `id`, `total`,
+   `advance_threshold`, and `dimensions` count so an aggregator does
+   not need to walk back to the skill's `rubric.md` file (which may
+   have changed between v3 and v5). When the prior review sibling
+   recorded a different `rubric_id`, the block also carries
+   `prior_rubric_id` and (for legacy reviews missing `rubric_id`)
+   `prior_rubric_inferred: "/40-legacy"`.
+
+Reader contract (backwards-compat): a critic sibling produced before
+this stamping landed MAY lack any of these fields. Readers MUST tolerate
+the absence (treat missing `rubric_id` as `"unknown/legacy"` and the
+review's `total` as advisory). See `convergence.check_stable` for the
+precedent — it tolerates `None` entries in `score_history` without
+short-circuiting.
+
+`rubric_id` naming convention (informal, not enforced by the lib):
+`anvil-<skill>-v<N>` for the generic gate rubric, bumped to `-v2` on a
+breaking shape change (e.g., `/40 → /44`). Pre-existing literals in the
+codebase: `anvil-pub-v1`, `anvil-pub-neurips-v1`,
+`anvil-figure-content-v1`, `anvil-vision-v1`. Skills shipping /44 use
+`anvil-<skill>-v2` (e.g., `anvil-memo-v2`, `anvil-proposal-v2`).
 
 ## Convergence logic
 
@@ -158,8 +224,8 @@ both classes when the artifact warrants belt-and-suspenders verification.
 Critical flags are NOT a sub-score deduction. They are a binary
 short-circuit:
 
-- **Critical flag set** → block regardless of total. Even a 38/40
-  with one critical flag does not advance.
+- **Critical flag set** → block regardless of total. Even a 38/40 (or
+  42/44) with one critical flag does not advance.
 - **Critical flag NOT set** → fall back to the score-vs-threshold
   check.
 
@@ -319,9 +385,10 @@ rule (see `critics.md`).
 
 ### Per-consumer rubric migration
 
-The canonical "8 dimensions summing to /40" shape is preserved by
-**splitting** an existing citation-related dimension rather than
-adding two new ones outside the /40 envelope. Worked examples:
+The skill's declared `total` envelope is preserved by **splitting** an
+existing citation-related dimension rather than adding two new ones
+outside that envelope. Worked examples (both shown for /40 skills; a
+/44 skill follows the same pattern against its own envelope):
 
 | Skill | Before | After |
 |---|---|---|
@@ -352,24 +419,25 @@ both during scoring.
 ## Advisory rubric overlays
 
 Some skills (currently `anvil:pub`) ship **advisory rubric overlays**
-in addition to the generic /40 rubric. These are venue-pinned YAMLs
+in addition to the generic gate rubric. These are venue-pinned YAMLs
 (e.g. `anvil/skills/pub/rubrics/neurips.yaml`) that produce
 supplementary scoring for venue-specific signal — NeurIPS
 reproducibility checklist, Nature's broad-significance bar, arXiv's
 category-correctness norm — without breaking the framework-wide
-/40 invariant.
+gate-rubric invariant ("the skill's declared `total` means the same
+thing across versions of that skill's reviewer").
 
 Key properties of advisory rubrics:
 
-- **They do NOT change the convergence gate.** The generic /40 with
-  its declared threshold remains the sole driver of the `advance`
-  decision. The venue overlay produces additional findings the
-  reviser consumes; it does NOT contribute points to the
-  gate-deciding total.
+- **They do NOT change the convergence gate.** The generic gate rubric
+  (the skill's `rubric.md`, with its declared `total` and `threshold`)
+  remains the sole driver of the `advance` decision. The venue overlay
+  produces additional findings the reviser consumes; it does NOT
+  contribute points to the gate-deciding total.
 - **They relax the sum-to-total invariant.** A venue overlay may
   declare any sensible total (NeurIPS /16, Nature /15, arXiv /10).
-  The framework's "/40 means the same thing across skills" rule
-  applies only to the gate rubric (`advisory: false`).
+  The gate-rubric sum-to-total rule applies only to the gate rubric
+  (`advisory: false`).
 - **Threshold is optional.** Advisory rubrics have no gate, so no
   threshold is required.
 

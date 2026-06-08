@@ -9,8 +9,9 @@ Two JSON Schema documents are emitted:
 - ``anvil/lib/review_schema.json`` — the critic ``_review.json`` payload
   (union of ``Review`` and ``AggregatedReview``).
 - ``anvil/lib/rubric_schema.json`` — the rubric YAML shape used by both
-  generic /40 convergence-gate rubrics and venue advisory overlays
-  (loaded by ``anvil.lib.rubric.load_rubric``).
+  generic convergence-gate rubrics (the skill's declared ``total``,
+  ``40`` and ``44`` are the v0 observed shapes) and venue advisory
+  overlays (loaded by ``anvil.lib.rubric.load_rubric``).
 
 Both are consumed by non-Python callers (e.g., a future TypeScript
 orchestrator) for validation against the same contract as the Python
@@ -81,10 +82,11 @@ def build_schema() -> dict:
 def build_rubric_schema() -> dict:
     """Return the rubric JSON Schema document as a dict.
 
-    Covers both generic /40 convergence-gate rubrics and advisory venue
-    overlays; the ``advisory`` field inside the document discriminates
-    them (advisory rubrics relax the sum-to-total invariant and the
-    threshold requirement).
+    Covers both generic convergence-gate rubrics (the skill's declared
+    ``total`` — ``40`` and ``44`` are the v0 observed shapes) and
+    advisory venue overlays; the ``advisory`` field inside the document
+    discriminates them (advisory rubrics relax the sum-to-total
+    invariant and the threshold requirement).
     """
     rubric_schema = Rubric.model_json_schema(ref_template="#/$defs/{model}")
 
@@ -100,10 +102,11 @@ def build_rubric_schema() -> dict:
         "title": "Anvil rubric YAML schema",
         "description": (
             "Canonical YAML/JSON contract for Anvil rubric files. "
-            "Covers both generic /40 convergence-gate rubrics and "
-            "advisory venue overlays (discriminated by the `advisory` "
-            "field). Generated from anvil/lib/rubric.py; do not edit "
-            "by hand."
+            "Covers both generic convergence-gate rubrics (the skill's "
+            "declared `total`; /40 and /44 are the v0 observed shapes) "
+            "and advisory venue overlays (discriminated by the "
+            "`advisory` field). Generated from anvil/lib/rubric.py; do "
+            "not edit by hand."
         ),
         "$ref": "#/$defs/Rubric",
         "$defs": shared_defs,

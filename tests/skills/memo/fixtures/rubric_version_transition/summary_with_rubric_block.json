@@ -1,0 +1,24 @@
+{
+  "critic": "review",
+  "for_version": 2,
+  "rubric": {
+    "id": "anvil-memo-v2",
+    "total": 44,
+    "advance_threshold": 35,
+    "dimensions": 9,
+    "prior_rubric_id": null,
+    "prior_rubric_inferred": "/40-legacy"
+  },
+  "dimensions": {
+    "1_recommendation": 5,
+    "2_thesis": 5,
+    "3_evidence": 4,
+    "4_risk": 4,
+    "5_market": 3,
+    "6_financial": 4,
+    "7_scope": 4,
+    "8_prose": 4,
+    "9_rhetorical_economy": 3
+  },
+  "critical_flag": false
+}

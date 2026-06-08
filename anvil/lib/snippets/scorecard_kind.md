@@ -37,9 +37,50 @@ Every critic sibling's `_meta.json` MUST include:
   "finished": "<ISO-8601 UTC>",
   "model": "<model-id>",
   "schema_version": 1,
-  "scorecard_kind": "human-verdict" | "machine-summary"
+  "scorecard_kind": "human-verdict" | "machine-summary",
+  "rubric_id": "<rubric-identifier>",
+  "rubric_total": <int>,
+  "advance_threshold": <int>
 }
 ```
+
+### Rubric version stamping fields (`rubric_id`, `rubric_total`, `advance_threshold`)
+
+These three fields are required for new reviews (post-issue #346) and
+absent-tolerated for legacy reviews (pre-issue #346). They record the
+rubric that the critic scored against, so a downstream consumer can
+compare scores apples-to-apples across rubric migrations without
+re-reading the skill's current `rubric.md`.
+
+- `rubric_id` (`str`) — stable rubric identifier, e.g.
+  `"anvil-memo-v2"`, `"anvil-pub-v1"`. Naming convention:
+  `anvil-<skill>-v<N>`; the version is bumped on breaking shape
+  changes (e.g., `/40 → /44`). Pre-existing literals in the codebase:
+  `anvil-pub-v1`, `anvil-pub-neurips-v1`, `anvil-figure-content-v1`,
+  `anvil-vision-v1`. /44 skills use `-v2` (e.g., `anvil-memo-v2`,
+  `anvil-proposal-v2`).
+- `rubric_total` (`int`) — the rubric's declared `total` (the point
+  pool the per-dimension weights sum to). The v0 observed values are
+  `40` and `44`.
+- `advance_threshold` (`int`) — the rubric's declared advance
+  threshold (the minimum aggregated total that yields `ADVANCE` when
+  no critical flag is set). Observed values: `32` and `35` across the
+  shipped skills.
+
+**Backwards compatibility**: a critic sibling produced before these
+fields landed MAY omit any or all of them. Readers MUST tolerate the
+absence — treat missing `rubric_id` as `"unknown/legacy"` and the
+review's reported `total` as advisory only. The verdict aggregator
+(`anvil.lib.critics.compute_verdict`) does NOT consume these fields;
+they are downstream-consumer audit-trail metadata, not gating inputs.
+
+**Why per-review stamping**: a thread that spans a rubric migration
+(e.g., `/40 → /44`) records different `rubric_id` values across its
+review siblings; without per-review stamping, an aggregator looking
+back at the thread's history cannot tell which iteration was scored
+against which rubric and may compare `/40` scores against `/44`
+thresholds. See `rubric.md` §"Per-review version stamping" for the
+full contract.
 
 The `scorecard_kind` field takes one of two values:
 
@@ -50,7 +91,7 @@ the reviser as a narrative). Files emitted:
 
 ```
 <thread>.{N}.<tag>/
-  verdict.md       Top-level decision + total /40 + critical flags
+  verdict.md       Top-level decision + total /N (where N is the rubric's declared `total`) + critical flags
   scoring.md       Per-dimension scorecard with justifications (markdown table)
   comments.md      Line-keyed or location-keyed feedback grouped by severity
   _meta.json       { ..., "scorecard_kind": "human-verdict" }
@@ -170,4 +211,4 @@ documented in the respective audit command file.
 
 - `critics.md` — discovery glob + aggregation invocation.
 - `progress.md` — `_progress.json` schema (sits next to `_meta.json`).
-- `rubric.md` — the 8-dimension /40 shape that scorecards conform to.
+- `rubric.md` — the per-skill weighted-dimension shape that scorecards conform to (/40 and /44 are the v0 observed shapes) + the per-review `rubric_id` version-stamping convention these fields surface.
