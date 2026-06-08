@@ -1,8 +1,8 @@
 # Deck review rubric
 
-Pitch decks are scored against 8 weighted dimensions summing to **40**. The threshold to advance is **≥35/40** — decks are customer-facing artifacts (the founder's pitch to external capital), held to the same standard as legal artifacts per `lib/README.md`'s convergence rule. Any **critical flag** short-circuits the verdict — the deck is blocked regardless of total score until the flagged issue is addressed.
+Pitch decks are scored against 9 weighted dimensions summing to **44**. The threshold to advance is **≥39/44** — decks are customer-facing artifacts (the founder's pitch to external capital), held to the same standard as legal artifacts per `lib/README.md`'s convergence rule. The threshold is the proportional bump from the pre-#357 ≥35/40 (≈ 35×44/40 = 38.5, rounded). Any **critical flag** short-circuits the verdict — the deck is blocked regardless of total score until the flagged issue is addressed.
 
-The rubric is tuned for the way investors actually read decks: **narrative coherence + ask specificity + market credibility dominate (16/40 = 40%)**. A deck of strong individual slides without an arc fails. A deck with a clear arc but no specific ask fails. A deck with a credible problem and team but a fabricated market number fails on the critical flag regardless of total.
+The rubric is tuned for the way investors actually read decks: **narrative coherence + ask specificity + market credibility dominate (16/44 ≈ 36.4%)**. A deck of strong individual slides without an arc fails. A deck with a clear arc but no specific ask fails. A deck with a credible problem and team but a fabricated market number fails on the critical flag regardless of total. The dim 9 *Rhetorical economy* addition (weight 4) provides explicit countervailing pressure against bloat — decks lose to bloat hardest of any skill (a 30-slide deck is fatal); dim 9 catches the failure mode where every other dim rewards adding more.
 
 ## Dimensions
 
@@ -16,10 +16,12 @@ The rubric is tuned for the way investors actually read decks: **narrative coher
 | 6 | **Team credibility** | 4 | Founder–market fit, prior outcomes, key hires, advisors who actually advise. Stage-dependent emphasis: seed → team-heavy; growth → traction-heavy. Generic credentials ("ex-FAANG") without a thesis-relevant connection score low. | `deck-review` |
 | 7 | **Ask specificity** | 5 | Round size, optionally valuation expectation, use of funds breakdown, milestones the raise unlocks, runway months. "Raising $X to do Y by Z" — no hand-waving. An absent or vague ask is a critical flag. | `deck-narrative` |
 | 8 | **Design polish** | 5 | Visual hierarchy, slide density (≤6 bullets and ≤30 words per content slide is the working bar), chart legibility at projection scale, consistent typography/palette, no chartjunk, no walls of text. Decks are seen, not read — design is content. Critique runs against the **rendered PDF**, not the markdown source. | `deck-design` |
-| | **Total** | **40** | Advance threshold: **≥35** | |
+| 9 | **Rhetorical economy** | 4 | Could a busy investor extract the ask in 90 seconds? Are slides 18+ load-bearing? Could the same arc reach the ask in fewer slides? Decks lose to bloat hardest of any skill — a 30-slide deck is fatal. Owned by `deck-narrative` (which owns the arc/ask pair); the arc critic's natural turf. | `deck-narrative` |
+| | **Total** | **44** | Advance threshold: **≥39** | |
 
 **Weight rationale**:
-- Narrative + ask + market = **16/40 = 40%**. A pitch deck is fundamentally a persuasive document with a request.
+- Narrative + ask + market = **16/44 ≈ 36.4%**. A pitch deck is fundamentally a persuasive document with a request.
+- Dim 9 *Rhetorical economy* (4/44) provides the explicit anti-bloat countervailing pressure — decks balloon under "more slides = more thorough" pressure, and a 30-slide deck is fatal regardless of per-slide quality.
 - Differentiates from `pub` (rigor + evidence dominate; calibrated for academic credibility) and `memo` (clarity-of-recommendation dominates; calibrated for internal IC decision-making).
 
 ## Critic dimension ownership
@@ -29,7 +31,7 @@ Critics fill only the rubric dimensions they own. Other dimensions remain `null`
 | Critic | Owns dimensions | Notes |
 |---|---|---|
 | `deck-review` | 2, 5, 6 | General reviewer; can fill any dimension as a fallback if the specialist critic is skipped, but primary ownership is here. |
-| `deck-narrative` | 1, 7 | Arc + ask — read the deck end to end as a single argument. |
+| `deck-narrative` | 1, 7, 9 | Arc + ask + rhetorical economy — read the deck end to end as a single argument. Dim 9 *Rhetorical economy* maps naturally to the arc/ask critic's turf: "could a busy investor extract the ask in 90 seconds?" is the same critic's question. |
 | `deck-market` | 3, 4 | Market math + competitive differentiation — verify arithmetic, check framing. |
 | `deck-design` | 8 (markdown-source density / hierarchy / consistency) | Visual quality — critique against the rendered PDF, not the source. |
 | `deck-vision` | 8 (rendered-PDF density) + vision rubric v1–v6 | VLM critic over rendered PNGs; surfaces overflow, label cropping, axis legibility, palette adherence, mathtext artifacts, slide density. See `commands/deck-vision.md`. |
