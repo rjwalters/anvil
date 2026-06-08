@@ -1,8 +1,8 @@
 # Report review rubric
 
-The reviewer scores a report against 8 weighted dimensions summing to **40**. The threshold to advance is **≥35/40** (the customer-facing tier; higher than the ≥32/40 used by `anvil:memo`). Any **critical flag** — set by either `report-review` or `report-audit` — short-circuits the verdict regardless of total score until addressed.
+The reviewer scores a report against 9 weighted dimensions summing to **44**. The threshold to advance is **≥39/44** (the customer-facing tier; higher than the ≥35/44 used by `anvil:memo`). Any **critical flag** — set by either `report-review` or `report-audit` — short-circuits the verdict regardless of total score until addressed.
 
-Customer-facing reports fail differently from internal memos: a typo in a memo is embarrassing; an unsupported claim or wrong number in a customer report is a liability. The rubric weighting reflects this — **evidence trail and finding sufficiency dominate** (12/40 = 30%); polish dimensions exist but are deliberately not the deciding factor.
+Customer-facing reports fail differently from internal memos: a typo in a memo is embarrassing; an unsupported claim or wrong number in a customer report is a liability. The rubric weighting reflects this — **evidence trail and finding sufficiency dominate** (13/44 ≈ 29.5%); polish dimensions exist but are deliberately not the deciding factor. The dim 9 *Rhetorical economy* addition (weight 4) provides explicit countervailing pressure against bloat — customer reports balloon under "more = more rigorous" pressure, and dim 9 catches the failure mode where every other dim rewards adding more.
 
 ## Dimensions
 
@@ -16,11 +16,12 @@ Customer-facing reports fail differently from internal memos: a typo in a memo i
 | 6 | **Internal consistency** | 4 | Numbers in body match exec summary match tables match prior reports in this engagement. Common failure when reports go through multiple revisions; the auditor sibling explicitly checks this. |
 | 7 | **Format / presentation quality** | 4 | Tables render, figures legible, pagination clean, headers/footers consistent, recipient-appropriate branding. Customer-visible — sloppy presentation undermines trust in the technical content. `report-review` enforces a deterministic existence + freshness gate on `report.pdf` (cap at 2/4 if missing or stale; see `commands/report-review.md` step 4c). |
 | 8 | **Tone & audience calibration** | 3 | Written for the named recipient (from `_project.md`) — appropriate jargon level, no hedging-to-hide, no overselling. Lowest weight but non-zero: a technically correct report in the wrong tone still damages the engagement. |
-| | **Total** | **40** | Advance threshold: ≥35 |
+| 9 | **Rhetorical economy** | 4 | Is the WHOLE report load-bearing? Could the same findings + recommendations land in fewer pages? Customer reports balloon under "more = more rigorous" pressure — dim 9 catches sections that restate findings without adding evidence, appendices that quote interview transcripts verbatim where excerpts would land, recommendation lists that pad with low-value items. Distinct from dim 1 (first-page clarity) and dim 7 (rendered polish). |
+| | **Total** | **44** | Advance threshold: ≥39 |
 
 ## Vision-owned dimensions (rendered-PDF critic)
 
-The eight dimensions above are scored from the **markdown source** by `report-review` and `report-audit`. Dimension 7 (Format / presentation quality) names the right concern — "tables render, figures legible, pagination clean" — but a source-side critic can only *guess* at it: a well-formed markdown table can still overflow the page text block after pandoc lays it out, and a figure that looks fine in source can be illegible at the recipient's print scale.
+The nine dimensions above are scored from the **markdown source** by `report-review` and `report-audit`. Dimension 7 (Format / presentation quality) names the right concern — "tables render, figures legible, pagination clean" — but a source-side critic can only *guess* at it: a well-formed markdown table can still overflow the page text block after pandoc lays it out, and a figure that looks fine in source can be illegible at the recipient's print scale.
 
 The optional `report-vision` critic (`commands/report-vision.md`) closes that gap by scoring the **rendered `report.pdf`** with a vision-language model. It owns a separate four-dimension vision rubric (`anvil-report-vision-v1`), scored /5 each (/20 total), composed from the framework `VisionRubric` / `VisionDimension` primitives in `anvil/lib/vision.py`:
 
@@ -31,7 +32,9 @@ The optional `report-vision` critic (`commands/report-vision.md`) closes that ga
 | `layout_artifacts` | 5 | Page-break / flow quality: orphaned headings, widow lines, figures or tables split across a page boundary, inconsistent running headers/footers. |
 | `palette_adherence` | 5 | Embedded charts match the report theme palette (`assets/style.css`) rather than default matplotlib colors. |
 
-These four vision dims appear in the aggregated scorecard alongside the eight main-rubric dimensions; the existing aggregator (`anvil/lib/critics.py::aggregate`) merges them via the same mean-of-non-null path with no schema or aggregation changes. The vision critic puts `null` on the eight main dims (it does not own them); `report-review` and `report-audit` put `null` on the four vision dims. The two source-side critics and the vision critic also contribute disjoint findings — source-side critics flag prose/structure/citation issues, `report-vision` flags rendered-only layout defects.
+These four vision dims appear in the aggregated scorecard alongside the nine main-rubric dimensions; the existing aggregator (`anvil/lib/critics.py::aggregate`) merges them via the same mean-of-non-null path with no schema or aggregation changes. The vision critic puts `null` on the nine main dims (it does not own them); `report-review` and `report-audit` put `null` on the four vision dims. The two source-side critics and the vision critic also contribute disjoint findings — source-side critics flag prose/structure/citation issues, `report-vision` flags rendered-only layout defects.
+
+The vision rubric (`anvil-report-vision-v1`, /20, 4 dims) is a **disjoint co-rubric** that does NOT migrate to /44 — it keeps its existing `rubric_id` and is stamped separately by `report-vision-review.md` if/when that command exists. The main rubric's `/40 → /44` migration is independent.
 
 `report-vision` reuses the two framework critical-flag types (no new flag types): `rendered_overflow_unrecoverable` (a clipped table or split figure that loses a load-bearing value) and `mathtext_artifact_breaks_meaning` (a `$X` rendered as italic math where the dollar sign carries semantic weight). Either flag short-circuits the verdict to block, consistent with the critical-flag policy below.
 
@@ -48,12 +51,12 @@ Suggested calibration:
 - **~25% of weight** — present but inadequate; major rework needed.
 - **0** — absent or actively misleading.
 
-For a customer-facing report, the ≥35 threshold means the report has at most ~12% of points missing — roughly equivalent to "one major weakness across the eight dimensions, or two minor weaknesses." This is a deliberately tight tolerance for material that will be delivered externally.
+For a customer-facing report, the ≥39 threshold means the report has at most ~11% of points missing — roughly equivalent to "one major weakness across the nine dimensions, or two minor weaknesses." This is a deliberately tight tolerance for material that will be delivered externally. The proportional bump from ≥35/40 → ≥39/44 preserves the customer-facing tier relative to the memo tier (≥35/44).
 
 ## Advance threshold
 
-- **≥35/40** — advance to `READY` (subject to also having `pass: true` in the audit sibling). This skill's terminal pre-promotion state is `AUDITED` (which for this skill means both `.review/` advance AND `.audit/` pass).
-- **<35/40** — block; revise.
+- **≥39/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling). This skill's terminal pre-promotion state is `AUDITED` (which for this skill means both `.review/` advance AND `.audit/` pass).
+- **<39/44** — block; revise.
 - **Any critical flag set** (in either `.review/` or `.audit/`) — block regardless of total. The next revision must address the flagged issue specifically and the relevant critic must re-evaluate the flag before the threshold check applies.
 
 ## Critical flags
@@ -81,8 +84,8 @@ The reviewer and auditor should each raise a flag for any other issue that, in t
 
 ### Review verdict (`<thread>.{N}.review/verdict.md`)
 
-1. **Total score**: `XX / 40`.
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires `total ≥ 35` AND `no unresolved critical flag`.)
+1. **Total score**: `XX / 44`.
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires `total ≥ 39` AND `no unresolved critical flag`.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification.
 4. **Dimension summary**: a markdown table of per-dimension scores (full detail lives in `scoring.md`).
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes the reviser should focus on.

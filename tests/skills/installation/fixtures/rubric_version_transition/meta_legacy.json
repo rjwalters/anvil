@@ -1,0 +1,9 @@
+{
+  "critic": "review",
+  "role": "installation-review.md",
+  "started":  "2026-05-01T12:00:00Z",
+  "finished": "2026-05-01T12:05:00Z",
+  "model": "claude-opus-4-1",
+  "schema_version": 1,
+  "scorecard_kind": "human-verdict"
+}

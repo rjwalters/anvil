@@ -1,6 +1,6 @@
 ---
 name: ip-uspto-review
-description: General reviewer critic for the ip-uspto skill. Owns rubric dimensions 6 (specification completeness), 7 (drawing-text correspondence), and 8 (formal compliance). Writes a sibling .review/ directory with the uniform critic output schema.
+description: General reviewer critic for the ip-uspto skill. Owns rubric dimensions 6 (specification completeness), 7 (drawing-text correspondence), and 8 (formal compliance). Scores against the 9-dimension /45 rubric (≥39 advance threshold). Writes a sibling .review/ directory with the uniform critic output schema.
 ---
 
 # ip-uspto-review — General reviewer
@@ -23,7 +23,7 @@ Per `rubric.md` ownership map:
 
 The reviewer MAY also contribute scores to dimensions it does not primarily own (e.g., it may notice a §112(b) antecedent-basis issue and score Dimension 3 — but the s112 critic is the primary owner). When the reviewer contributes a non-owned score, that score participates in the mean aggregation alongside the primary critic's score.
 
-For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves the score as `null` unless it has a specific observation.
+For dimensions 1–5 (claim breadth, §112, §101, novelty) and dimension 9 (claim-spec correspondence, jointly owned by `s112` + `claims`), the reviewer leaves the score as `null` unless it has a specific observation.
 
 ## Inputs
 
@@ -36,9 +36,11 @@ For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves
 
 ```
 <thread>.{N}.review/
-  _summary.md       Critic tag, critical flag, per-dimension scorecard (owns 6, 7, 8), top revision priorities
+  _summary.md       Critic tag, critical flag, top-level rubric block, per-dimension scorecard (owns 6, 7, 8), top revision priorities
   findings.md       Itemized findings (severity, location, rationale, suggested fix)
-  _meta.json        { critic, role, started, finished, model, schema_version, scorecard_kind: "machine-summary" }
+                    + "Rubric version transition" subsection (conditional, when prior rubric differs)
+  _meta.json        { critic, role, started, finished, model, schema_version, scorecard_kind: "machine-summary",
+                      rubric_id, rubric_total, advance_threshold }
   _progress.json    Phase state for the reviewer
 ```
 
@@ -46,7 +48,7 @@ For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/spec.tex`. If `<thread>.{N}.review/_progress.json.review.state == done` and `_summary.md` exists, exit early (idempotent).
 2. **Resume check**: if a prior crashed review exists, delete partial output and re-review.
-3. **Initialize `_progress.json`** for the review dir.
+3. **Initialize `_progress.json`** for the review dir. Also initialize `_meta.json` with `scorecard_kind: "machine-summary"`, `rubric_id: "anvil-ip-uspto-v2"`, `rubric_total: 45`, and `advance_threshold: 39` (see `anvil/lib/snippets/scorecard_kind.md` §"The discriminator" — the three rubric-stamping fields are required for new reviews per issue #346 and are **independent of `scorecard_kind`** per the snippet's discriminator contract; `"anvil-ip-uspto-v2"` is the ip-uspto skill's current /45 rubric identifier per `anvil/skills/ip-uspto/rubric.md` line 3). The rubric-stamping fields let downstream consumers compare scores apples-to-apples across the `/40 → /45` migration without re-reading the skill's current `rubric.md`. Also load the **prior review sibling** at `<thread>.{N-1}.review/_meta.json` when present and cache its `rubric_id` value as `prior_rubric_id` (or `None` when the prior sibling is absent — first iteration — or lacks the field — legacy pre-#346 review). The cached `prior_rubric_id` feeds the `_summary.md.rubric` block at step 9 + the `findings.md` rubric-transition subsection (step 10b) when the prior rubric differs from the current `"anvil-ip-uspto-v2"`.
 4. **Read inputs**: load all of `<thread>.{N}/` and `rubric.md` + any consumer override.
    - **Consult `_outline.json`** as the structural ground truth for coherence checks. The outline records the section render plan (ids, order, `claim_tree`, per-feature `subsections`, figure list, `drawn_from` pointers from claims into the detailed description). Use it to:
      - confirm every claim in `claim_tree` traces to a detailed-description subsection via `drawn_from`;
@@ -77,9 +79,63 @@ For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves
    - Specification is so disorganized that examination would be impossible.
    - Drawings contradict the spec in a way that introduces indefiniteness.
    - The application as drafted does not appear to describe the invention claimed in the brief (severe spec-claim mismatch).
-9. **Write `_summary.md`** in the rubric's specified format. Per-dimension scorecard has all 8 rows but only 6, 7, 8 carry scores (others are `null` with justification `n/a — see <other critic>`).
+
+   **Append `score_history` row with `rubric_id` (issue #346)**: the orchestrator (the command that drives review→revise iterations) appends one row to `<thread>.{N}/_progress.json.metadata.score_history` per finished review iteration. Per `anvil/lib/snippets/progress.md` §"Convergence fields → score_history", the canonical row shape is `{iteration, total, threshold, rubric_id}` — for the ip-uspto skill at /45, that's `{iteration: <N>, total: <computed-total>, threshold: 39, rubric_id: "anvil-ip-uspto-v2"}`. A thread that spans the `/40 → /45` migration records different `rubric_id` values across its rows; readers tolerate rows missing `rubric_id` per the backwards-compat contract (treat as `"unknown/legacy"`).
+9. **Write `_summary.md`** in the rubric's specified format with a top-level `rubric` block (issue #346) sibling to the per-dimension scorecard. Per-dimension scorecard has all 9 rows but only 6, 7, 8 carry scores from this critic (others are `null` with justification `n/a — see <other critic>`). The `rubric` block carries the rubric the reviewer scored against so a downstream consumer aggregating across versions does not need to walk back to `anvil/skills/ip-uspto/rubric.md` (which may have changed between v3 and v5 of a long thread that spanned the `/40 → /45` migration). Shape:
+
+   ```markdown
+   # Review summary
+
+   ```json
+   {
+     "critic": "review",
+     "for_version": <N>,
+     "rubric": {
+       "id": "anvil-ip-uspto-v2",
+       "total": 45,
+       "advance_threshold": 39,
+       "dimensions": 9,
+       "prior_rubric_id": "anvil-ip-uspto-v1"
+     },
+     "dimensions": { /* 9-dim partial scorecard per rubric.md; this critic scores 6, 7, 8 */ },
+     "critical_flag": false
+   }
+   ```
+   ```
+
+   The `rubric` block fields:
+   - `id` (`str`): the rubric identifier — `"anvil-ip-uspto-v2"` for the current /45 rubric. Mirrors `_meta.json.rubric_id`.
+   - `total` (`int`): the rubric's declared `total` — `45` (preserves flat-weight design: 9 dims × 5 each).
+   - `advance_threshold` (`int`): the rubric's declared advance threshold — `39`.
+   - `dimensions` (`int`): the count of weighted dimensions — `9`.
+   - `prior_rubric_id` (`str | null`, conditional): present when the prior review sibling at `<thread>.{N-1}.review/` exists. Value is the prior `_meta.json.rubric_id` when present, or `null` when the prior sibling lacks the field (legacy pre-#346 review). **Omitted entirely** on the first iteration.
+   - `prior_rubric_inferred` (`str`, conditional): present when `prior_rubric_id == null` AND a prior review sibling exists. Value is `"/40-legacy"` to signal "this thread's prior iteration was scored against the pre-#346 /40 rubric (whatever the skill shipped at the time)".
+
+   The block is **observational only** — it does NOT affect verdict, critical flags, or `advance`.
 10. **Write `findings.md`** with itemized findings (severity, location, rationale, suggested fix). Findings group by dimension.
-11. **Write `_meta.json`** and finalize `_progress.json` to `done`.
+10b. **Emit rubric-version-transition subsection in `findings.md` when the prior rubric differs (issue #346)**: when the cached `prior_rubric_id` from step 3 is non-`None` AND differs from the current `"anvil-ip-uspto-v2"`, OR when `prior_rubric_id == None` AND a prior review sibling exists (legacy pre-#346 review), append a `## Rubric version transition` subsection to `findings.md` sibling to the existing dim-grouped findings. Three shapes:
+
+   When the prior rubric is a different stamped id:
+   ```
+   ## Rubric version transition
+
+   This iteration was scored against `anvil-ip-uspto-v2` (/45, ≥39); the prior iteration at `<thread>.{N-1}.review/` was scored against `anvil-ip-uspto-v1` (/40, ≥35). The score delta `<prior_total>/40 → <current_total>/45` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/45` against the `≥39/45` threshold.
+   ```
+
+   When the prior rubric is legacy (no `rubric_id` stamped):
+   ```
+   ## Rubric version transition
+
+   This iteration was scored against `anvil-ip-uspto-v2` (/45, ≥39); the prior iteration at `<thread>.{N-1}.review/` predates per-review rubric version stamping (issue #346) and was scored against `/40-legacy` — the rubric this skill shipped before the `/40 → /45` migration (likely `anvil-ip-uspto-v1`, /40, ≥35). The score delta `<prior_total>/40-legacy → <current_total>/45` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/45` against the `≥39/45` threshold.
+   ```
+
+   When the prior rubric matches the current rubric (the steady-state case — no transition surfaced):
+   ```
+   (subsection omitted entirely)
+   ```
+
+   The subsection is **observational** — it does NOT affect the verdict, the critical-flag list, or the `advance` decision. Backwards-compat: a legacy review sibling produced before this contract shipped does NOT need to be re-emitted.
+11. **Write `_meta.json`** (finalize from the step 3 init by setting `finished`) and finalize `_progress.json` to `done`.
 12. **Report**: print the path and a one-line status (e.g., `Reviewed acme-widget.2 → acme-widget.2.review/ (D6=4, D7=3, D8=5; no critical flag)`).
 
 ## Idempotence and resumability
@@ -112,3 +168,22 @@ For dimensions 1–5 (claim breadth, §112, §101, novelty), the reviewer leaves
 ## Scorecard kind
 
 This critic emits the `machine-summary` scorecard kind per `anvil/lib/snippets/scorecard_kind.md`. The `_meta.json` MUST include `"scorecard_kind": "machine-summary"` so the `ip-uspto-revise` aggregator can correctly discriminate this sibling from any `human-verdict` siblings (e.g., consumer-added narrative critics).
+
+## `_meta.json` snippet (review sibling)
+
+```json
+{
+  "critic": "review",
+  "role": "ip-uspto-review.md",
+  "started":  "<ISO>",
+  "finished": "<ISO>",
+  "model": "<model-id>",
+  "schema_version": 1,
+  "scorecard_kind": "machine-summary",
+  "rubric_id": "anvil-ip-uspto-v2",
+  "rubric_total": 45,
+  "advance_threshold": 39
+}
+```
+
+The three `rubric_*` / `advance_threshold` fields are required for new reviews (post-issue #346) and absent-tolerated for legacy reviews. They are **independent of `scorecard_kind`** per the snippet's discriminator contract — both `human-verdict` and `machine-summary` critics carry the rubric stamping. They let downstream consumers compare scores apples-to-apples across rubric migrations without re-reading the skill's current `rubric.md`.

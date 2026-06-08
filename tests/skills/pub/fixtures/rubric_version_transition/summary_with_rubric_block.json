@@ -1,0 +1,24 @@
+{
+  "critic": "review",
+  "for_version": 2,
+  "rubric": {
+    "id": "anvil-pub-v2",
+    "total": 44,
+    "advance_threshold": 35,
+    "dimensions": 9,
+    "prior_rubric_id": null,
+    "prior_rubric_inferred": "/40-legacy"
+  },
+  "dimensions": {
+    "1_rigor": 5,
+    "2_evidence": 5,
+    "3_contribution": 4,
+    "4_related_work": 4,
+    "5_reproducibility": 4,
+    "6_figure_table": 3,
+    "7_prose": 3,
+    "8_citation_hygiene": 4,
+    "9_rhetorical_economy": 3
+  },
+  "critical_flag": false
+}

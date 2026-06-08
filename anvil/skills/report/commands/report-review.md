@@ -1,6 +1,6 @@
 ---
 name: report-review
-description: Reviewer command for the report skill. Scores the latest report version against the 8-dimension /40 rubric (≥35 advance threshold) and writes a read-only review sibling directory.
+description: Reviewer command for the report skill. Scores the latest report version against the 9-dimension /44 rubric (≥39 advance threshold) and writes a read-only review sibling directory.
 ---
 
 # report-review — Reviewer
@@ -18,17 +18,21 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
 - **Project + thread path** (positional argument): `<project>/<thread>`.
 - **Project context**: `<project>/_project.md` — recipient, engagement_id, voice_notes, confidentiality_class. The reviewer uses these to score tone & audience calibration (dimension 8) and to gauge appropriateness against the engagement scope.
 - **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/report.md` existing.
-- **Rubric**: `anvil/skills/report/rubric.md` (8 dimensions, /40, ≥35 threshold, critical flags).
+- **Rubric**: `anvil/skills/report/rubric.md` (9 dimensions, /44, ≥39 threshold, critical flags).
 - **Optional consumer override**: `.anvil/skills/report/rubric.overrides.md` (additional critical-flag examples; never reduces the base rubric).
 
 ## Outputs
 
 ```
 <project>/<thread>.{N}.review/
-  verdict.md       Top-level decision + total /40 + critical flags + top revision priorities
+  verdict.md       Top-level decision + total /44 + critical flags + top revision priorities
+                   (carries `## Rubric version transition` subsection when prior rubric differs)
   scoring.md       Per-dimension score (0–weight) + 1–3 sentence justification each
   comments.md      Line-level comments keyed to report.md headings or excerpts
-  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
+  _summary.md      JSON-in-markdown scorecard carrying the top-level `rubric` block + dimensions.
+                   The `rubric` block lets aggregators compare scores across rubric migrations
+                   without re-reading `rubric.md`.
+  _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version, rubric_id, rubric_total, advance_threshold }
   _progress.json   Phase state for the reviewer (phase: review)
 ```
 
@@ -36,7 +40,7 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/report.md`. If `<thread>.{N}.review/_progress.json.review.state == done` and `verdict.md` exists, the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: if a prior crashed review exists (`review.state == in_progress` without `verdict.md`), delete the partial output and re-review.
-3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`).
+3. **Initialize `_progress.json`** for the review dir: `phases.review.state = in_progress`, `phases.review.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict`, `rubric_id: "anvil-report-v2"`, `rubric_total: 44`, and `advance_threshold: 39` (see `anvil/lib/snippets/scorecard_kind.md` §"The discriminator" — the three rubric-stamping fields are required for new reviews per issue #346; `"anvil-report-v2"` is the report skill's current /44 rubric identifier per `anvil/skills/report/rubric.md` line 3). The rubric-stamping fields let downstream consumers compare scores apples-to-apples across the `/40 → /44` migration without re-reading the skill's current `rubric.md`. Also load the **prior review sibling** at `<thread>.{N-1}.review/_meta.json` when present and cache its `rubric_id` value as `prior_rubric_id` (or `None` when the prior sibling is absent — first iteration — or lacks the field — legacy pre-#346 review). The cached `prior_rubric_id` feeds the `_summary.md.rubric` block at step 9 + the `verdict.md` rubric-transition subsection (step 9b) when the prior rubric differs from the current `"anvil-report-v2"`.
 4. **Read inputs**: load `<thread>.{N}/report.md`, enumerate `exhibits/`, load `_project.md` for recipient calibration context, load `rubric.md` and any consumer override. Also stat `<thread>.{N}/report.pdf` for the existence + freshness check in step 4c — the PDF is stat-only, its content is not read by this critic; see `report-vision` for rendered-content review.
 4b. **Run render-gate (pre-flight)** — mirrors `deck-review.md` step 5b:
    - Invoke `anvil/lib/render_gate.py`'s `gate(...)` against `<thread>.{N}/report.pdf` (produced by `report-figures`; see `commands/report-figures.md`).
@@ -59,11 +63,12 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
    - This check does NOT read PDF content — that is `report-vision`'s territory.
    - The check does NOT set a `critical_flag` — `major` severity at the rubric-cap level is the right calibration. A missing/stale PDF affects ADVANCE via the rubric total (capped Dim 7 ≤ 2/4 contributes ≤ 2 to the /40 total), not via critical-flag short-circuit. The reviewer can still substantively evaluate the markdown.
 
-5. **Score each dimension** (1–8 per rubric, /40 total, customer-facing weights):
+5. **Score each dimension** (1–9 per rubric, /44 total, customer-facing weights):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the report.
    - Record per-dimension result in `scoring.md` as a markdown table with columns `# | Dimension | Weight | Score | Justification`.
    - **Dimension 7 cap from step 4c**: if step 4c emitted a finding (missing or stale `report.pdf`), Dimension 7's score is capped at 2/4 regardless of the markdown-source assessment. The justification must reference the step 4c finding.
+   - **Rhetorical economy (D9)**: distinct from dim 1 *Executive summary clarity* (first-page clarity) and dim 7 *Format / presentation quality* (rendered polish). Dim 9 asks "is the WHOLE report load-bearing?" — sections that restate findings without adding evidence, appendices that quote interview transcripts verbatim where excerpts would land, recommendation lists padded with low-value items, methodology sections that pre-emptively defend against questions nobody is going to ask. Customer reports balloon under "more = more rigorous" pressure; dim 9 is the explicit countervailing pressure.
 6. **Identify critical flags** (review-side; see `rubric.md` for the list and definitions):
    - Recommendation contradicts a finding
    - Named third party mischaracterized
@@ -71,16 +76,71 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
    - Scope creep beyond engagement (compare report content against the scope declared in `_project.md` and any `BRIEF.md` scope field)
 
    AND the open-ended "any other issue that would cause a sophisticated recipient to lose confidence" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
-7. **Compute total**: sum all dimension scores. `advance = (total >= 35) AND (no critical flags)`.
+7. **Compute total**: sum all dimension scores. `advance = (total >= 39) AND (no critical flags)`.
+
+   **Append `score_history` row with `rubric_id` (issue #346)**: the orchestrator (the command that drives review→revise iterations) appends one row to `<thread>.{N}/_progress.json.metadata.score_history` per finished review iteration. Per `anvil/lib/snippets/progress.md` §"Convergence fields → score_history", the canonical row shape is `{iteration, total, threshold, rubric_id}` — for the report skill at /44, that's `{iteration: <N>, total: <computed-total>, threshold: 39, rubric_id: "anvil-report-v2"}`. A thread that spans the `/40 → /44` migration records different `rubric_id` values across its rows; readers tolerate rows missing `rubric_id` per the backwards-compat contract (treat as `"unknown/legacy"`). See `convergence.check_stable` for the precedent on `None`-tolerance.
 8. **Write line-level comments**: in `comments.md`, list specific feedback keyed to report sections — heading reference + short excerpt + comment. Group by severity (`blocker` / `major` / `minor` / `nit`).
 9. **Write `verdict.md`** in the format specified in `rubric.md`:
-   - Total: `XX / 40`
+   - Total: `XX / 44`
    - Decision: `advance: true` or `advance: false`
    - Critical flags (if any) with justification
    - Dimension summary table (per-dim scores; full justifications in `scoring.md`)
    - Top 3 revision priorities (if `advance: false`)
+
+   **Also write `_summary.md` with the top-level `rubric` block (issue #346)**: emit a JSON-in-markdown `_summary.md` carrying at minimum the `rubric` block — the rubric the reviewer scored against, so a downstream consumer aggregating across versions does not need to walk back to `anvil/skills/report/rubric.md` (which may have changed between v3 and v5 of a long thread that spanned the `/40 → /44` migration). Shape:
+
+   ```markdown
+   # Review summary
+
+   ```json
+   {
+     "critic": "review",
+     "for_version": <N>,
+     "rubric": {
+       "id": "anvil-report-v2",
+       "total": 44,
+       "advance_threshold": 39,
+       "dimensions": 9,
+       "prior_rubric_id": "anvil-report-v1"
+     }
+   }
+   ```
+   ```
+
+   The `rubric` block fields:
+   - `id` (`str`): the rubric identifier — `"anvil-report-v2"` for the current /44 rubric. Mirrors `_meta.json.rubric_id`.
+   - `total` (`int`): the rubric's declared `total` — `44`.
+   - `advance_threshold` (`int`): the rubric's declared advance threshold — `39`.
+   - `dimensions` (`int`): the count of weighted dimensions — `9`.
+   - `prior_rubric_id` (`str | null`, conditional): present when the prior review sibling at `<thread>.{N-1}.review/` exists. Value is the prior `_meta.json.rubric_id` when present, or `null` when the prior sibling lacks the field (legacy pre-#346 review). **Omitted entirely** on the first iteration (no prior review sibling exists).
+   - `prior_rubric_inferred` (`str`, conditional): present when `prior_rubric_id == null` AND a prior review sibling exists. Value is `"/40-legacy"`.
+
+   The block is **observational only** — it does NOT affect verdict, critical flags, or `advance`. Backwards-compat: a legacy review sibling produced before issue #346 MAY omit `_summary.md` entirely; downstream consumers MUST tolerate the absence.
+
+9b. **Emit rubric-version-transition subsection in `verdict.md` when the prior rubric differs (issue #346)**: when the cached `prior_rubric_id` from step 3 is non-`None` AND differs from the current `"anvil-report-v2"`, OR when `prior_rubric_id == None` AND a prior review sibling exists (legacy pre-#346 review), append a `## Rubric version transition` subsection to `verdict.md` (the report skill does not emit a separate `findings.md`; the verdict file is the canonical home for cross-section observations per the curator's "smaller skills, less ceremony" decision). The subsection's purpose is **operator visibility** — it surfaces, in plain prose, the fact that this iteration's score is NOT directly comparable to the prior iteration's score (the threshold pool changed, the dimension count changed, weighted contributions shifted). Three shapes:
+
+   When the prior rubric is a different stamped id:
+   ```
+   ## Rubric version transition
+
+   This iteration was scored against `anvil-report-v2` (/44, ≥39); the prior iteration at `<thread>.{N-1}.review/` was scored against `anvil-report-v1` (/40, ≥35). The score delta `<prior_total>/40 → <current_total>/44` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/44` against the `≥39/44` threshold.
+   ```
+
+   When the prior rubric is legacy (no `rubric_id` stamped):
+   ```
+   ## Rubric version transition
+
+   This iteration was scored against `anvil-report-v2` (/44, ≥39); the prior iteration at `<thread>.{N-1}.review/` predates per-review rubric version stamping (issue #346) and was scored against `/40-legacy` — the rubric this skill shipped before the `/40 → /44` migration (likely `anvil-report-v1`, /40, ≥35). The score delta `<prior_total>/40-legacy → <current_total>/44` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/44` against the `≥39/44` threshold.
+   ```
+
+   When the prior rubric matches the current rubric (the steady-state case — no transition surfaced):
+   ```
+   (subsection omitted entirely)
+   ```
+
+   The subsection is **observational** — it does NOT affect the verdict, the critical-flag list, or the `advance` decision. Backwards-compat: a legacy review sibling produced before this contract shipped does NOT need to be re-emitted.
 10. **Update `_progress.json`**: `phases.review.state = done`, `phases.review.completed = <ISO>`.
-11. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed acme-q2/findings.1 → acme-q2/findings.1.review/ (33/40, advance: false, 0 critical flags)`).
+11. **Report**: print the path to the review dir and a one-line status (e.g., `Reviewed acme-q2/findings.1 → acme-q2/findings.1.review/ (36/44, advance: false, 0 critical flags)`).
 
 ## Idempotence and resumability
 
@@ -96,12 +156,12 @@ This is the canonical "N parallel critics, one reviser" pattern — `report-revi
 ## Notes for the reviewer agent
 
 - **You are reviewing for the named recipient.** Load `_project.md` first. The recipient identity changes what "audience calibration" means — score dimension 8 against THAT recipient, not against a generic professional reader.
-- **Be honest, not encouraging.** The skill is not "polish the report." The threshold is ≥35/40 — a tight tolerance for customer-facing material. Most first drafts of customer reports score 28–33; that is normal and informative, not a failure of the drafter.
+- **Be honest, not encouraging.** The skill is not "polish the report." The threshold is ≥39/44 — a tight tolerance for customer-facing material. Most first drafts of customer reports score in the low-to-mid /44 range; that is normal and informative, not a failure of the drafter.
 - **Distinguish style from substance.** Stylistic improvements live in `comments.md` at severity `nit` or `minor`. They should NOT drive critical flags. Critical flags are for substantive defects (mischaracterizations, contradictions, scope violations, missing disclaimers).
 - **Cross-reference with `_project.md`.** The reviewer's job is partly to confirm the report addresses the engagement scope declared in the project context. Scope creep is a critical flag.
 - **Defer factual auditing to the auditor sibling.** This command does NOT walk citation chains or check numeric consistency — that is `report-audit`'s job. Note "possibly factual issue here, deferring to auditor" in comments rather than scoring it.
 
-## `_progress.json` snippet (review sibling)
+## `_progress.json` and `_meta.json` snippets (review sibling)
 
 ```json
 {
@@ -115,4 +175,23 @@ This is the canonical "N parallel critics, one reviser" pattern — `report-revi
 }
 ```
 
-The review sibling's `_progress.json` includes a `for_version` field naming the version it reviews. Merge rule (shallow): preserve fields not touched by this command.
+The review sibling's `_progress.json` includes a `for_version` field naming the version it reviews. The companion `_meta.json` declares the scorecard kind and the rubric the reviewer scored against (per `anvil/lib/snippets/scorecard_kind.md` §"The discriminator"):
+
+```json
+{
+  "critic": "review",
+  "role": "report-review.md",
+  "started":  "<ISO>",
+  "finished": "<ISO>",
+  "model": "<model-id>",
+  "schema_version": 1,
+  "scorecard_kind": "human-verdict",
+  "rubric_id": "anvil-report-v2",
+  "rubric_total": 44,
+  "advance_threshold": 39
+}
+```
+
+The three `rubric_*` / `advance_threshold` fields are required for new reviews (post-issue #346) and absent-tolerated for legacy reviews. They let downstream consumers compare scores apples-to-apples across rubric migrations without re-reading the skill's current `rubric.md`.
+
+Merge rule (shallow): preserve fields not touched by this command.

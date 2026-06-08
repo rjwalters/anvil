@@ -1,8 +1,8 @@
 # Installation review rubric
 
-The reviewer scores an installation-art concept proposal against 8 weighted dimensions summing to **40**. The threshold to advance is **≥32/40**. Any **critical flag** short-circuits the verdict — the proposal is blocked regardless of total score until the flagged issue is addressed.
+The reviewer scores an installation-art concept proposal against 9 weighted dimensions summing to **44**. The threshold to advance is **≥35/44**. Any **critical flag** short-circuits the verdict — the proposal is blocked regardless of total score until the flagged issue is addressed.
 
-The rubric is tuned so that the **conceptual + spatial + sensory + experiential core (concept + spatial + sensory + experience = 23/40 = 57.5%)** dominates the score, mirroring `anvil:memo`'s "the substance dominates" weighting. A concept proposal's primary job is to make one legible argument realized in designed space; fabrication credibility and lineage are necessary but secondary.
+The rubric is tuned so that the **conceptual + spatial + sensory + experiential core (concept + spatial + sensory + experience = 23/44 ≈ 52.3%)** dominates the score, mirroring `anvil:memo`'s "the substance dominates" weighting. A concept proposal's primary job is to make one legible argument realized in designed space; fabrication credibility and lineage are necessary but secondary. The dim 9 *Rhetorical economy* addition (weight 4) provides explicit countervailing pressure against bloat — concept proposals balloon under "more references / more sensory detail = more rigorous" pressure, and dim 9 catches the failure mode where a curator or fabricator cannot extract the argument and the build in 5 minutes.
 
 ## Dimensions
 
@@ -16,7 +16,8 @@ The rubric is tuned so that the **conceptual + spatial + sensory + experiential 
 | 6 | **Ethics & safety** | 4 | For participatory/sensory work: consent design, safety-without-surveillance, and accessibility are addressed. (For non-participatory pieces, scored on physical safety and accessibility only.) |
 | 7 | **References & lineage** | 4 | The work is situated in art-historical / architectural precedent, not naive about what came before. Precedents are named and their relevance is stated. |
 | 8 | **Open decisions** | 4 | Unresolved choices are tracked honestly (the `anvil:memo` "assumptions to validate" analogue). A proposal that pretends every decision is settled scores low. |
-| | **Total** | **40** | Advance threshold: ≥32 |
+| 9 | **Rhetorical economy** | 4 | Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a curator or fabricator extract the argument and the build in 5 minutes? |
+| | **Total** | **44** | Advance threshold: ≥35 |
 
 ## Scoring guidance
 
@@ -31,8 +32,8 @@ Suggested calibration:
 
 ## Advance threshold
 
-- **≥32/40** — advance to `READY` (or to next step in the lifecycle).
-- **<32/40** — block; revise.
+- **≥35/44** — advance to `READY` (or to next step in the lifecycle).
+- **<35/44** — block; revise.
 - **Any critical flag set** — block regardless of total. The next revision must address the flagged issue specifically and the reviewer must re-evaluate the flag before the threshold check applies.
 
 ## Critical flags
@@ -49,8 +50,8 @@ The reviewer should also raise a flag for any other issue that, in their judgmen
 
 The reviewer writes a `verdict.md` at the top of the review sibling dir with:
 
-1. **Total score**: `XX / 40`.
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 32` AND `no unresolved critical flag`.)
+1. **Total score**: `XX / 44`.
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 35` AND `no unresolved critical flag`.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification.
 4. **Dimension summary**: a markdown table of per-dimension scores (full detail lives in `scoring.md`).
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes the reviser should focus on.

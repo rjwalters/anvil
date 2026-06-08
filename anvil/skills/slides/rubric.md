@@ -1,10 +1,10 @@
 # Slides review rubric
 
-The reviewer scores a talk deck against 8 weighted dimensions summing to **40**. The threshold to advance is **≥32/40**. Any of **three critical flags** short-circuits the verdict — the deck is blocked regardless of total score until the flagged issue is addressed.
+The reviewer scores a talk deck against 9 weighted dimensions summing to **44**. The threshold to advance is **≥35/44**. Any of **three critical flags** short-circuits the verdict — the deck is blocked regardless of total score until the flagged issue is addressed.
 
-The rubric is talk-tuned: **technical accuracy + pedagogical clarity + narrative arc + density (25/40 ≈ 62.5%)** dominate. A talk's primary job is to communicate true ideas clearly within a time budget. Visual polish matters but never outranks correctness or readability — an unreadable beautiful slide is worse than a plain readable one.
+The rubric is talk-tuned: **technical accuracy + pedagogical clarity + narrative arc + density (25/44 ≈ 56.8%)** dominate. A talk's primary job is to communicate true ideas clearly within a time budget. Visual polish matters but never outranks correctness or readability — an unreadable beautiful slide is worse than a plain readable one.
 
-This weighting differs from `anvil:memo` (where thesis + evidence + risk dominate) and will differ from `anvil:deck` (where investability + persuasion + defensibility dominate). Same 8-dimension shape; different priorities.
+This weighting differs from `anvil:memo` (where thesis + evidence + risk dominate) and will differ from `anvil:deck` (where investability + persuasion + defensibility dominate). Same 9-dimension shape; different priorities. The dim 9 *Rhetorical economy* addition (weight 4) provides explicit countervailing pressure against bloat at the **talk level** — distinct from per-slide density (dim 4). Dim 4 asks "is this slide too dense?"; dim 9 asks "could the whole talk land in 30 minutes? Are slides 23–28 load-bearing?". Dim 9 is owned by the source-side reviewer (`slides-review`) and is NOT scored by `slides-vision`.
 
 ## Dimensions
 
@@ -18,9 +18,10 @@ This weighting differs from `anvil:memo` (where thesis + evidence + risk dominat
 | 6 | **Accessibility / readability at distance** | 4 | Minimum font size (24pt body / 18pt code), color-blind-safe palette, sufficient contrast, no critical info conveyed by color alone. Hard requirement for projected venues — a slide unreadable from row 20 is a slide nobody read. |
 | 7 | **Presenter-notes completeness** | 4 | Every slide has speaker notes covering: what to say, transitions, anticipated questions, time-allocation. Critical for rehearsal AND for handoff (someone else may deliver the talk). |
 | 8 | **Time-budget realism** | 3 | Slide count × estimated-time-per-slide fits the venue slot ±10%. Penalize "60 slides for a 45-minute slot" overruns. Rehearsal phase produces the empirical estimate; the reviewer scores the realism of the fit. |
-| | **Total** | **40** | Advance threshold: ≥32 |
+| 9 | **Rhetorical economy** | 4 | Talk-level anti-bloat (distinct from per-slide density dim 4): could the whole talk land in 30 minutes? Are slides 23–28 load-bearing? Could the same arc reach the takeaway in fewer beats? Owned by `slides-review` (source-side judgment); NOT scored by `slides-vision`. |
+| | **Total** | **44** | Advance threshold: ≥35 |
 
-The four anchor dimensions (1–4) sum to **25/40 = 62.5%**, reflecting that the four pillars of a good talk are *true, clear, well-shaped, and digestible*. The presentation-craft dimensions (5–8) sum to 15/40 — necessary but never sufficient.
+The four anchor dimensions (1–4) sum to **25/44 ≈ 56.8%**, reflecting that the four pillars of a good talk are *true, clear, well-shaped, and digestible*. The presentation-craft dimensions (5–8) sum to 15/44 — necessary but never sufficient. The dim 9 *Rhetorical economy* check (4/44) sits adjacent to dim 4 *Slide density* as the talk-level counterpart to the per-slide check.
 
 ## Dimension 4 ownership (density / cognitive load)
 
@@ -48,8 +49,8 @@ Suggested calibration:
 
 ## Advance threshold
 
-- **≥32/40** AND no critical flag → advance to `READY` (or to next step in the lifecycle).
-- **<32/40** → block; revise.
+- **≥35/44** AND no critical flag → advance to `READY` (or to next step in the lifecycle).
+- **<35/44** → block; revise.
 - **Any critical flag set** → block regardless of total. The next revision must address the flagged issue specifically; the reviewer (and auditor, for audit flags) must re-evaluate the flag before the threshold check applies.
 
 ## Critical flags
@@ -101,8 +102,8 @@ In addition to the three structural flags above, the reviewer should raise a fla
 
 The reviewer writes a `verdict.md` at the top of the review sibling dir with:
 
-1. **Total score**: `XX / 40`.
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total >= 32` AND `no unresolved critical flag` — including the audit, density, and time flags pulled in from sibling critic dirs.)
+1. **Total score**: `XX / 44`.
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total >= 35` AND `no unresolved critical flag` — including the audit, density, and time flags pulled in from sibling critic dirs.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification. Pulled flags from `slides-audit` and `slides-rehearse` are labeled with their source.
 4. **Dimension summary**: a markdown table of per-dimension scores (full detail lives in `scoring.md`).
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes the reviser should focus on.

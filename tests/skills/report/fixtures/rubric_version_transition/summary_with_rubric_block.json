@@ -1,0 +1,24 @@
+{
+  "critic": "review",
+  "for_version": 2,
+  "rubric": {
+    "id": "anvil-report-v2",
+    "total": 44,
+    "advance_threshold": 39,
+    "dimensions": 9,
+    "prior_rubric_id": null,
+    "prior_rubric_inferred": "/40-legacy"
+  },
+  "dimensions": {
+    "1_executive_summary": 6,
+    "2_finding_sufficiency": 6,
+    "3_recommendation_actionability": 4,
+    "4_evidence_trail": 5,
+    "5_risk_limitation": 3,
+    "6_internal_consistency": 4,
+    "7_format_presentation": 4,
+    "8_tone_calibration": 3,
+    "9_rhetorical_economy": 3
+  },
+  "critical_flag": false
+}
