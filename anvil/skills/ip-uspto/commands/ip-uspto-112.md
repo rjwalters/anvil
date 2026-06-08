@@ -42,9 +42,11 @@ Dimension 3 is jointly owned with `claims` — both critics may score it; the re
   _progress.json    Phase state for the s112 critic
 ```
 
+**Atomicity** (issue #350): the s112 sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The four files (`_summary.md`, `findings.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.s112.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.s112/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.s112.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state, resume, init `_progress.json`** (standard).
+1. **Discover state, resume, init `_progress.json`** (standard). At command entry, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. Idempotence: if `<thread>.{N}.s112/` exists (the atomic-rename contract guarantees the dir only exists when complete — issue #350), exit early. Otherwise **open the staged sidecar** for the s112 dir by invoking `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.s112, required_files=["_summary.md", "findings.md", "_meta.json", "_progress.json"])`. Every file write below MUST land inside the yielded staging directory (the path of the shape `.<thread>.{N}.s112.tmp/`). On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name. Then, inside the staging dir, initialize `_progress.json`.
 2. **Read inputs**: `spec.tex` and `claims.tex` in full.
 
 ### Evaluate §112(a) — written description & enablement (Dimension 2, score 0–5)
@@ -84,7 +86,7 @@ Dimension 3 is jointly owned with `claims` — both critics may score it; the re
 
 14. **Write `_summary.md`** with full 8-row scorecard. Only dimensions 2 and 3 carry scores (others `null`). Optionally contribute to Dim 1 (claim breadth) if an obvious breadth pathology is noticed, but defer to the `claims` critic.
 15. **Write `findings.md`** organized by section: §112(a) findings first, §112(b) findings second. Each finding has severity, location (with claim number and spec paragraph reference), rationale, suggested fix.
-16. **Write `_meta.json`** and finalize `_progress.json`.
+16. **Write `_meta.json`** and finalize `_progress.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies the manifest, then atomically renames `.<thread>.{N}.s112.tmp/` → `<thread>.{N}.s112/`. The final-named dir only ever exists in **complete** form.
 17. **Report**: e.g., `s112: acme-widget.2.s112/ → D2=4, D3=3, FLAGGED (claim 4 MPF without structure)`.
 
 ## Idempotence and resumability

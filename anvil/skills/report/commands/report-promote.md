@@ -39,6 +39,8 @@ Conflating them removes a useful kill-switch. A report can pass the rubric and s
 
 And updates `<project>/<thread>.{N}/_progress.json` with `phases.promote.state = done` (so the version dir self-reports its CUSTOMER-READY status).
 
+**Atomicity** (issue #350): the promote sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The two files (`receipt.md`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.promote.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.promote/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.promote.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form — load-bearing for the receipt-as-canonical-marker contract (a partially-written `<thread>.{N}.promote/receipt.md` would otherwise look like a completed promotion and break the idempotence check at step 2). The update to `<thread>.{N}/_progress.json` (in the version dir, NOT the promote sibling) happens AFTER the staged_sidecar context exits, so the promote sibling is the canonical commit point.
+
 ### `receipt.md` schema
 
 ```markdown
@@ -79,8 +81,8 @@ And updates `<project>/<thread>.{N}/_progress.json` with `phases.promote.state =
    - `<thread>.{N}.audit/verdict.md` exists, parses, has `pass: true` and no critical flags.
    - `<thread>.{N}/report.pdf` exists and is newer than `report.md`.
 
-   If any precondition fails, exit with a specific error explaining which one. Do NOT run the promotion.
-2. **Idempotence check**: if `<thread>.{N}.promote/receipt.md` already exists, exit early with the message "thread already CUSTOMER-READY at version <N>, promoted at <timestamp>." (Re-promotion is not supported; supersession works by promoting a later version.)
+   If any precondition fails, exit with a specific error explaining which one. Do NOT run the promotion. Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<project_root>)` where `<project_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.promote.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed promotion session (issue #350). The sweep is idempotent.
+2. **Idempotence check**: if `<thread>.{N}.promote/` already exists (the atomic-rename contract guarantees the dir only exists when complete — i.e., `receipt.md` + `_progress.json` are both present), exit early with the message "thread already CUSTOMER-READY at version <N>, promoted at <timestamp>." (Re-promotion is not supported; supersession works by promoting a later version.)
 3. **Load project context**: read `<project>/_project.md`. Extract `recipient` and `engagement_id` (both REQUIRED fields). The acknowledgment will be checked against `recipient` to ensure the operator knows who they are releasing to.
 4. **Extract report title**: parse the first H1 heading from `report.md`. This is the canonical title used in the acknowledgment prompt.
 5. **Verify rendering match**: compute SHA256 of both `report.md` and `report.pdf`. Re-render the PDF if `report.md` modtime is newer than `report.pdf` modtime — a stale PDF cannot be promoted. (If re-render is needed and `report-figures` has not been invoked since the last `report.md` change, fail with "report.pdf is stale; run report-figures first" rather than re-rendering implicitly — promotion should be a no-op check, not a side-effect cascade.)
@@ -117,10 +119,10 @@ And updates `<project>/<thread>.{N}/_progress.json` with `phases.promote.state =
 
      If any check fails, exit with no promotion and no on-disk state.
 7. **Detect supersession**: enumerate other `<thread>.{prior_N}.promote/` siblings under the project for the same thread slug. If any exist, the new promotion supersedes them. Prompt the operator for a one-line `Cause:` (or read from the ack file). Record both the prior version reference and the cause in `receipt.md`. (The skill does NOT modify prior `.promote/` siblings; they remain as audit trail. The newest `.promote/` is canonical for delivery.)
-8. **Initialize `_progress.json`** (in the promote sibling dir): `phases.promote.state = in_progress`, `phases.promote.started = <ISO>`, `for_version = N`.
-9. **Write `receipt.md`** per the schema above, including the verified SHA256 of `report.pdf` and `report.md`, the operator identity, acknowledgment method, and rubric clearance summary.
-10. **Update `_progress.json`** (in the promote sibling): `phases.promote.state = done`, `phases.promote.completed = <ISO>`.
-11. **Update `<thread>.{N}/_progress.json`** (in the version dir): merge `phases.promote.state = done`, `phases.promote.receipt_path = <thread>.{N}.promote/receipt.md`.
+8. **Open the staged sidecar** for the promote dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<project>/<thread>.{N}.promote, required_files=["receipt.md", "_progress.json"])`. Every file write in steps 9-10 MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.promote.tmp/`), NOT inside the final `<thread>.{N}.promote/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`: `phases.promote.state = in_progress`, `phases.promote.started = <ISO>`, `for_version = N`.
+9. **Write `receipt.md`** inside the staging dir per the schema above, including the verified SHA256 of `report.pdf` and `report.md`, the operator identity, acknowledgment method, and rubric clearance summary.
+10. **Update `_progress.json`** inside the staging dir: `phases.promote.state = done`, `phases.promote.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.promote.tmp/` → `<thread>.{N}.promote/`. The final-named dir only ever exists in **complete** form.
+11. **Update `<thread>.{N}/_progress.json`** (in the version dir, AFTER the staged_sidecar context exits): merge `phases.promote.state = done`, `phases.promote.receipt_path = <thread>.{N}.promote/receipt.md`. This update happens AFTER the promote sibling has been atomically renamed — the promote sibling is the canonical commit point.
 12. **Report**: print a one-line status (e.g., `Promoted acme-q2/findings.3 to CUSTOMER-READY (recipient: Acme Corp, deliverable SHA256 c7e3...)`). If this promotion superseded a prior version, also print the supersession note.
 
 ## Idempotence and safety

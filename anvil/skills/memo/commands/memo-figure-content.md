@@ -36,6 +36,8 @@ This command is the memo-skill's **figure-content VLM critic** — a vision-lang
   _review.json    Canonical Review payload (kind=vision, critic_id=figure-content).
 ```
 
+**Atomicity** (issue #350): when `--write-review` is set, the figure-content sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The `_review.json` file is staged under a leading-dot sibling `.<thread>.{N}.figure-content.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.figure-content/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.figure-content.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 `_review.json` carries the standard `anvil/lib/review_schema.py::Review` shape:
 
 - `schema_version`: `"1"`.
@@ -77,7 +79,7 @@ The VLM may also emit narrative-level findings (`severity=blocker|major|minor|ni
 
 ## Procedure
 
-1. **Discover state**: take the `version_dir` positional arg; verify it exists. If not, exit code 2 with a clear error.
+1. **Discover state**: take the `version_dir` positional arg; verify it exists. If not, exit code 2 with a clear error. When `--write-review` is set, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<version_dir>`. This removes any leftover `.<thread>.<M>.figure-content.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed session (issue #350). The sweep is idempotent and logs at INFO level the count + names of removed dirs.
 2. **Discover figures** (`figure_content.discover_figures`):
    - **PDF path**: when `<slug>.pdf` exists AND `pdftoppm` is on PATH, rasterize each page to a PNG in a tempdir at the requested DPI. Each page becomes one `FigureRecord` (provenance `pdf-page`, label `page-N`).
    - **figures/ dir path**: walk `<version_dir>/figures/` recursively for `.png` / `.jpg` / `.jpeg` / `.webp` / `.gif` sources. Each becomes one `FigureRecord` (provenance `figures-dir`, label `figures/<rel-path>`).
@@ -89,7 +91,7 @@ The VLM may also emit narrative-level findings (`severity=blocker|major|minor|ni
    - Per-figure budget cap enforced (default 1; configurable via `vlm_budget_per_figure=`).
 5. **Map per-figure VLM payload → per-figure scores + findings + critical flags** (`_payload_to_per_figure_outputs`). Score values clamped to rubric range defensively. Sub-threshold dims (score ≤ max/2) emit a Finding even when the VLM didn't supply a narrative finding for them (safety net for "low score, no narrative entry").
 6. **Roll up scores into the rubric** (`FigureContentResult.to_review`): per-dimension mean across figures, rounded to nearest int. Total = sum of rolled-up scores; threshold = 15.
-7. **Write sibling** (only when `--write-review` is set): write `<version_dir>.figure-content/_review.json`. The aggregator's discovery pass (`anvil/lib/critics.py::discover_critics`) picks up the sibling without code changes.
+7. **Write sibling** (only when `--write-review` is set): **open the staged sidecar** for the figure-content dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<version_dir>.figure-content, required_files=["_review.json"])`. Write `_review.json` **inside the yielded staging directory** (the path of the shape `.<version_dir>.figure-content.tmp/`), NOT inside the final `<version_dir>.figure-content/` path. On clean context exit, the staged sidecar primitive verifies `_review.json` exists, then atomically renames the staging dir to its final name (issue #350). The final-named `<version_dir>.figure-content/` only ever exists in **complete** form. The aggregator's discovery pass (`anvil/lib/critics.py::discover_critics`) picks up the sibling without code changes — the leading-dot staging shape is invisible to the discovery glob.
 8. **Report**: print the JSON shape from `FigureContentResult.to_json()` to stdout. Exit code:
    - `0`: clean pass (no findings, no critical flag).
    - `1`: one or more findings (or a critical flag).

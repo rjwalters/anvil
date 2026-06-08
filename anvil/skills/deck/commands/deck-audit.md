@@ -33,10 +33,12 @@ The auditor does **not own any rubric dimension directly** — it does not score
   _progress.json
 ```
 
+**Atomicity** (issue #350): the audit sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The five files (`_summary.md`, `findings.md`, `audit-trail.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.audit.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.audit/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.audit.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state** + **resume check** (standard).
-2. **Initialize `_progress.json`** + `_meta.json`.
+1. **Discover state** + **resume check** (standard). Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.audit.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed auditor session (issue #350). The "completed" check is satisfied when the final-named `<thread>.{N}.audit/` exists — the atomic-rename contract guarantees the dir only exists when complete.
+2. **Open the staged sidecar** for the audit dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.audit, required_files=["_summary.md", "findings.md", "audit-trail.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.audit.tmp/`), NOT inside the final `<thread>.{N}.audit/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` + `_meta.json`.
 3. **Enumerate claims**: walk every slide in `<thread>.{N}/deck.md` and extract:
    - **Numbers**: every number that appears in body text or in a chart (read from `figures/src/*.csv` if a chart is data-driven).
    - **Names**: every named person, company (competitor, customer, partner, investor), product, or institution.
@@ -136,7 +138,7 @@ The auditor does **not own any rubric dimension directly** — it does not score
    }
    ```
    ```
-11. **Update `_progress.json`** and `_meta.json`.
+11. **Update `_progress.json`** and `_meta.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.audit.tmp/` → `<thread>.{N}.audit/`. The final-named dir only ever exists in **complete** form.
 12. **Report**: one-line status (e.g., `Audit on acme-seed.2 → acme-seed.2.audit/ (CRITICAL: 2 fabrication flags; 1 major; deck cannot ship until addressed)`).
 
 ## Generative-imagery audit

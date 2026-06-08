@@ -37,10 +37,12 @@ Total ownership: 5/40. Other dimensions remain `null` in this critic's `_summary
   _progress.json
 ```
 
+**Atomicity** (issue #350): the design sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The five top-level files (`_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.design.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.design/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.design.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob. The `slides/` subdirectory is staged inside the staging dir but is NOT validated by the required-files manifest (per `staged_sidecar`'s flat-manifest contract — subdirectories like `slides/` are not validated).
+
 ## Procedure
 
-1. **Discover state** + **resume check** (standard).
-2. **Initialize `_progress.json`** + `_meta.json`.
+1. **Discover state** + **resume check** (standard). Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.design.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed design-critic session (issue #350). The "completed" check is satisfied when the final-named `<thread>.{N}.design/` exists — the atomic-rename contract guarantees the dir only exists when complete.
+2. **Open the staged sidecar** for the design dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.design, required_files=["_summary.md", "findings.md", "comments.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.design.tmp/`), NOT inside the final `<thread>.{N}.design/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` + `_meta.json`.
 3. **Ensure deck.pdf exists**:
    - If `<thread>.{N}/deck.pdf` exists and is newer than `deck.md`, use it.
    - Otherwise, run the Marp renderer (same invocation as `deck-figures` step 7 — single source of truth):
@@ -110,7 +112,7 @@ Total ownership: 5/40. Other dimensions remain `null` in this critic's `_summary
    ```
    Note: this critic rarely raises critical flags (the four standing flags are content-fabrication-oriented, not design-oriented). A truly broken render (Dim 8 score 0) is a `[blocker]` finding but not a critical flag.
 10. **Write `findings.md`** and `comments.md` in the standard format.
-11. **Update `_progress.json`** and `_meta.json`.
+11. **Update `_progress.json`** and `_meta.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.design.tmp/` → `<thread>.{N}.design/`. The final-named dir only ever exists in **complete** form.
 12. **Report**: one-line status (e.g., `Design critic on acme-seed.1 → acme-seed.1.design/ (dim 8: 4/5; 12 slides rendered; 3 findings)`).
 
 ## Idempotence and resumability

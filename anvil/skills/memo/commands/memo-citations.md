@@ -32,6 +32,8 @@ This command is the memo-skill analog of `memo-render` for the citation-coverage
   _findings.json  Structured payload from CoverageResult.to_json() (informational companion).
 ```
 
+**Atomicity** (issue #350): when `--write-review` is set, the citations sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The two files (`_review.json`, `_findings.json`) are staged under a leading-dot sibling `.<thread>.{N}.citations.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.citations/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.citations.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 The `_review.json` carries:
 
 - One null-scored row on dimension `citation_coverage` so the schema validates while the aggregator treats this critic as null-everywhere (same pattern as `render_gate`'s null-scored row on dimension `render_gate`).
@@ -41,7 +43,7 @@ The `_review.json` carries:
 
 ## Procedure
 
-1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `<thread>.md` present. If no such version exists, exit with a notice (`No memo version found; nothing to scan.`).
+1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `<thread>.md` present. If no such version exists, exit with a notice (`No memo version found; nothing to scan.`). When `--write-review` is set, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.citations.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed session (issue #350). The sweep is idempotent and logs at INFO level the count + names of removed dirs.
 2. **Invoke the citation-coverage scan**: call
 
    ```python
@@ -52,16 +54,17 @@ The `_review.json` carries:
 
    The scanner owns the full pipeline: refs-key collection (per `collect_refs_keys`), the four claim-detector classes (numeric / named-author / quantitative summary / date-pinned events), the four false-positive disciplines (version-context, self-reference, hedge, quoted), and the broken-citation closest-match suggestion. See `anvil/skills/memo/lib/citation_coverage.py` module docstring for the detection contract.
 
-3. **Emit `_review.json`**: write
+3. **Emit `_review.json` + `_findings.json` companion via the staged sidecar** (only when `--write-review` is set): **open the staged sidecar** for the citations dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<version_dir>.citations, required_files=["_review.json", "_findings.json"])`. Inside the yielded staging directory (the path of the shape `.<version_dir>.citations.tmp/`), write the typed review and the structured companion:
 
    ```python
    review = result.to_review(version_dir=<version_dir>.name)
-   (<version_dir>.citations / "_review.json").write_text(review.model_dump_json(indent=2))
+   (staging / "_review.json").write_text(review.model_dump_json(indent=2))
+   (staging / "_findings.json").write_text(json.dumps(result.to_json(), indent=2))
    ```
 
-   The review's `kind=tool_evidence` shape is what the aggregator routes on; `tool_calls=[]` is set on every finding to satisfy the schema requirement (the detector greps the body — no per-finding tool invocations to record).
+   The review's `kind=tool_evidence` shape is what the aggregator routes on; `tool_calls=[]` is set on every finding to satisfy the schema requirement (the detector greps the body — no per-finding tool invocations to record). The `_findings.json` companion carries `refs_keys_scanned`, per-finding source spans, the `total_findings` count, and the `critical_flag_emitted` boolean — informational only; the load-bearing contract remains `_review.json`. On clean context exit, the staged sidecar primitive verifies both files exist, then atomically renames `.<version_dir>.citations.tmp/` → `<version_dir>.citations/` (issue #350). The final-named dir only ever exists in **complete** form.
 
-4. **Emit `_findings.json` companion**: write the structured payload from `result.to_json()` alongside the typed review. The companion carries `refs_keys_scanned`, per-finding source spans, the `total_findings` count, and the `critical_flag_emitted` boolean — informational only; the load-bearing contract remains `_review.json`.
+4. (removed — folded into step 3 under the staged-sidecar wrapper.)
 
 5. **Report**: print a one-line status reflecting the scan outcome:
    - Clean: `Scanned acme-seed.2/acme-seed.md (0 unhooked claims, 0 broken citations).`

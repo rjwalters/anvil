@@ -51,10 +51,12 @@ This critic evaluates each independent claim against each supplied prior-art ref
   _progress.json    Phase state for the priorart critic
 ```
 
+**Atomicity** (issue #350): the priorart sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The four files (`_summary.md`, `findings.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.priorart.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.priorart/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.priorart.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state, resume, init `_progress.json`** (standard).
-2. **Check prior art supply**: enumerate `<thread>/prior-art/**`. If empty, write a `_summary.md` noting "no prior art supplied; Dim 5 unscored" and exit cleanly (this is a `done` state, not an error — operator may legitimately have no prior art at hand for the first review pass).
+1. **Discover state, resume, init `_progress.json`** (standard). At command entry, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. Idempotence: if `<thread>.{N}.priorart/` exists (the atomic-rename contract guarantees the dir only exists when complete — issue #350), exit early. Otherwise **open the staged sidecar** for the priorart dir by invoking `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.priorart, required_files=["_summary.md", "findings.md", "_meta.json", "_progress.json"])`. Every file write below MUST land inside the yielded staging directory (the path of the shape `.<thread>.{N}.priorart.tmp/`). On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name. Then, inside the staging dir, initialize `_progress.json`.
+2. **Check prior art supply**: enumerate `<thread>/prior-art/**`. If empty, write a `_summary.md` noting "no prior art supplied; Dim 5 unscored" plus `findings.md`, `_meta.json`, and `_progress.json` (all four required-files inside the staging dir), then exit the staged_sidecar context (which atomically renames the staging dir to its final name — this is a `done` state, not an error — operator may legitimately have no prior art at hand for the first review pass).
 3. **Read inputs**: parse each prior-art reference into a structured form (title, date, summary, claim text if applicable). Read all claims from `claims.tex`.
 
 ### Anticipation analysis (§102)
@@ -108,7 +110,7 @@ This critic evaluates each independent claim against each supplied prior-art ref
     ```
 
 11. **Write `findings.md`** with one section per (independent claim × relevant reference) pair plus combinations. For anticipated claims, include the limitation-by-limitation map.
-12. **Write `_meta.json`** and finalize `_progress.json`.
+12. **Write `_meta.json`** and finalize `_progress.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies the manifest, then atomically renames `.<thread>.{N}.priorart.tmp/` → `<thread>.{N}.priorart/`. The final-named dir only ever exists in **complete** form.
 13. **Report**: e.g., `priorart: acme-widget.2.priorart/ → D5=1, FLAGGED (claim 1 anticipated by smith-2019)`.
 
 ## Idempotence and resumability

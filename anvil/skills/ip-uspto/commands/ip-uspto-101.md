@@ -50,11 +50,13 @@ This critic runs the Alice/Mayo analysis on each independent claim and reports f
   _progress.json    Phase state for the s101 critic
 ```
 
+**Atomicity** (issue #350): the s101 sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The four files (`_summary.md`, `findings.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.s101.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.s101/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.s101.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state**: highest `N` with `<thread>.{N}/claims.tex`. Idempotence check on `_progress.json`.
-2. **Resume check**: delete partial output from a crashed run.
-3. **Initialize `_progress.json`**.
+1. **Discover state**: highest `N` with `<thread>.{N}/claims.tex`. Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.s101.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed s101 critic (issue #350). Idempotence: if `<thread>.{N}.s101/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early.
+2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial s101 critic left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.s101.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.s101/` exists without `_summary.md`, delete and re-run.
+3. **Open the staged sidecar** for the s101 dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.s101, required_files=["_summary.md", "findings.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.s101.tmp/`), NOT inside the final `<thread>.{N}.s101/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`.
 4. **Read inputs**: `spec.tex` (for context on what the invention claims to do) and `claims.tex` (the objects of analysis).
 5. **Parse independent claims**: extract each independent claim (claims that do not depend on another claim).
 6. **For each independent claim, run Alice/Mayo Step 1**:
@@ -124,7 +126,7 @@ This critic runs the Alice/Mayo analysis on each independent claim and reports f
     - **Suggested fix**: Either (a) narrow the claim to recite a specific technical improvement to computer functionality (e.g., a new data structure or algorithm that improves computational efficiency, with spec support), or (b) integrate the method into a practical application that effects a transformation (e.g., applying the result to control a physical actuator).
     ```
 
-12. **Write `_meta.json`** and finalize `_progress.json`.
+12. **Write `_meta.json`** and finalize `_progress.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.s101.tmp/` → `<thread>.{N}.s101/`. The final-named dir only ever exists in **complete** form.
 13. **Report**: print the path and a one-line status (e.g., `s101: acme-widget.2.s101/ → score=3, FLAGGED (claim 9 fails Step 2)`).
 
 ## Idempotence and resumability
