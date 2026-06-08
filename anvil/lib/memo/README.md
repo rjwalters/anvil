@@ -175,6 +175,41 @@ for the full schema. The engine pin is advisory: when the named
 engine is not on PATH, the renderer falls through to the default
 priority order rather than failing.
 
+#### Per-doc `latex_header_includes` (issue #347)
+
+For the canary's common case — a single memo that uses `{=latex}`
+raw blocks for table-fidelity but doesn't justify a full
+`template.tex` override — the BRIEF schema exposes a per-document
+`latex_header_includes` knob. Free-form LaTeX preamble text is
+threaded into pandoc's `header-includes` slot via
+`--include-in-header` at render time, **only when** the dispatched
+engine resolves to `xelatex`:
+
+```yaml
+# <project>/BRIEF.md
+documents:
+  - slug: investment-memo
+    artifact_type: investment-memo
+    render_engine: xelatex
+    latex_header_includes: |
+      \usepackage{xcolor}
+      \definecolor{green}{HTML}{059669}
+      \definecolor{ink}{HTML}{0f172a}
+      \usepackage{tabularx}
+      \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+      \newenvironment{callout}{...}{...}
+```
+
+This is the lightweight alternative to a full `template.tex`
+override: declare the packages, named colors, and custom
+environments your `{=latex}` blocks reference, and ship the rest
+of the framework default unchanged. When the dispatched engine is
+HTML-side (`weasyprint` / `wkhtmltopdf`), the include is silently
+skipped and the skip is recorded in `_progress.json.render_gate.reasons`
+— the field is xelatex-only by name. See `memo-render` step 4d
+for the render-time plumbing and `memo-draft` step 5c / `memo-revise`
+step 6 for the draft / revise-side `_progress.json` carry.
+
 #### `template.tex` override: preserve the pandoc 3.x compat block
 
 The shipped `template.tex` ships a "Pandoc 3.x emission compatibility"

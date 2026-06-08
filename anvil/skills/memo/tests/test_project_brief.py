@@ -1058,6 +1058,162 @@ class TestDocumentRenderEngine(_TmpProjectBase):
 
 
 # ---------------------------------------------------------------------------
+# Per-document latex_header_includes override (issue #347)
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentLatexHeaderIncludes(_TmpProjectBase):
+    """Per-document ``latex_header_includes`` knob (issue #347).
+
+    The BRIEF parser only enforces type (string-or-None) and normalizes
+    empty / whitespace-only inputs to ``None``. The contents are opaque
+    LaTeX — no value-shape enforcement, no engine-conditional gating at
+    parse time. The runtime engine-scoping
+    (xelatex-only ``--include-in-header`` injection) lives in
+    ``anvil.lib.render_gate._render_memo_source`` — these tests pin
+    the parse-time contract only.
+    """
+
+    def test_brief_document_accepts_latex_header_includes_multiline(self) -> None:
+        """A YAML block-literal preamble parses verbatim onto the model."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                render_engine: xelatex
+                latex_header_includes: |
+                  \\usepackage{xcolor}
+                  \\definecolor{green}{HTML}{059669}
+                  \\usepackage{tabularx}
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(len(brief.documents), 1)
+        value = brief.documents[0].latex_header_includes
+        self.assertIsNotNone(value)
+        assert value is not None  # type narrowing
+        # Every load-bearing token survives the round-trip verbatim.
+        self.assertIn("\\usepackage{xcolor}", value)
+        self.assertIn("\\definecolor{green}{HTML}{059669}", value)
+        self.assertIn("\\usepackage{tabularx}", value)
+
+    def test_brief_document_accepts_latex_header_includes_single_line(self) -> None:
+        """A single-line quoted preamble parses as a flat string."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                latex_header_includes: "\\\\usepackage{xcolor}"
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(
+            brief.documents[0].latex_header_includes, "\\usepackage{xcolor}"
+        )
+
+    def test_brief_document_rejects_non_string_latex_header_includes(self) -> None:
+        """Non-string types (lists, dicts, ints) raise with a clear path."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                latex_header_includes:
+                  - "\\\\usepackage{xcolor}"
+                  - "\\\\usepackage{tabularx}"
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        msg = str(cm.exception)
+        self.assertIn("latex_header_includes", msg)
+        self.assertIn("must be a string", msg)
+
+    def test_brief_document_treats_empty_latex_header_includes_as_none(self) -> None:
+        """Empty / whitespace-only values normalize to ``None`` so a YAML
+        author can write the key with no value and get back-compat behavior
+        (no preamble include, identical to the absence-of-key case).
+        """
+        # Whitespace-only (multi-line of spaces).
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                latex_header_includes: "   "
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertIsNone(brief.documents[0].latex_header_includes)
+
+    def test_brief_document_latex_header_includes_optional(self) -> None:
+        """Entries without ``latex_header_includes:`` parse cleanly.
+
+        Every existing BRIEF in the canary continues to load without
+        change after #347 — the field is purely additive.
+        """
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertIsNone(brief.documents[0].latex_header_includes)
+
+    def test_brief_document_latex_header_includes_persists_to_model(self) -> None:
+        """Round-trip: ``latex_header_includes`` in YAML frontmatter →
+        ``BriefDocument.latex_header_includes`` on the parsed model
+        (no normalization beyond whitespace-only → ``None``).
+
+        Regression anchor for the plumbing into
+        ``_progress.json.metadata.latex_header_includes_resolved`` at
+        draft and revise time: the value the drafter / reviser reads
+        off the BRIEF document model must equal the value the operator
+        wrote in the BRIEF frontmatter, byte for byte.
+        """
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                render_engine: xelatex
+                latex_header_includes: |
+                  \\usepackage{xcolor}
+                  \\definecolor{ink}{HTML}{0f172a}
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        doc = brief.document_for_slug("doc")
+        self.assertIsNotNone(doc)
+        assert doc is not None  # type narrowing
+        value = doc.latex_header_includes
+        self.assertIsNotNone(value)
+        assert value is not None
+        # The block-literal preserves every line and only strips the
+        # last trailing newline; the assertion targets specific
+        # substrings to avoid a brittle whitespace match while still
+        # pinning the verbatim-preservation contract.
+        self.assertIn("\\usepackage{xcolor}", value)
+        self.assertIn("\\definecolor{ink}{HTML}{0f172a}", value)
+
+
+# ---------------------------------------------------------------------------
 # On-disk fixture (the brains-for-robots canary shape)
 # ---------------------------------------------------------------------------
 
