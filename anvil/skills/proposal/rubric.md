@@ -151,6 +151,46 @@ The dim 6 audit-side justification (in the audit's `verdict.md` and `findings.md
 
 The deduction is applied entirely via auditor judgment — there is no automated `refs/` parsing in v0. See `commands/proposal-audit.md` §Procedure step 7 (refs back-check sub-step for non-cost claims) for the auditor-side procedure, `commands/proposal-review.md` §Procedure step 4 for the light reviewer-side mention, and `commands/proposal-draft.md` §Procedure step 3 for the drafter-side ingestion contract.
 
+## Dim 8 — `recommendation_target: undecided` calibration
+
+**Trigger** (issue #356). When the thread-level `<thread>/BRIEF.md`'s YAML frontmatter declares `recommendation_target: undecided` (the documented default for a fresh proposal thread per `templates/BRIEF.md.example` — *"the job of v1 is to resolve the open architectural / scope / cost decisions, not to defend a pre-committed recommendation"*), the reviewer scores dim 8 (Open decisions, weight 4) on **open-decision framing clarity** rather than the standard "are open decisions tracked honestly" reading. The reviewer reads the value via `anvil/skills/proposal/lib/project_brief.py::load_recommendation_target(thread_dir)` and dispatches per the rules below.
+
+**Why this calibrates dim 8, NOT dim 1.** The memo precedent (PR #351, issue #348) calibrates memo dim 1 (Recommendation clarity) on the `undecided` case because memo dim 1 is about *the memo author's invest/pass recommendation*. Proposal dim 1 is *Intent / requirements clarity* — about what the **customer/sponsor** needs the system to do, NOT about the proposer's recommendation. A pre-decision proposal does not penalize on proposal dim 1 the way a pre-decision memo penalizes on memo dim 1: the customer's hard constraints are still the customer's hard constraints regardless of whether the proposer has committed to a single topology. The closest conceptual analog in the proposal rubric is **dim 8 *Open decisions* (weight 4)** — explicitly the "unresolved engineering choices tracked honestly" dim. A pre-decision / concept-stage proposal is the *intended* case for high dim 8 scores when the open decisions are sharply framed. Calibrating dim 1 here would overload the dim's semantics; calibrating dim 8 honors the dimension-meaning distinction between the two rubrics. (Recorded so a future reader sees why proposal dim 1 was NOT touched — issue #356 curator note.)
+
+**Five-point scoring posture** (replaces the standard "open decisions tracked honestly" calibration when triggered):
+
+- **Full weight (4/4)** — the proposal enumerates the open architectural / scope / cost decisions, AND each open decision is named with stakes (what depends on it; what scope / cost implication each branch carries), AND falsifiability is stated (what specific evidence — a pilot, a vendor quote, a site survey, a permit ruling, a load test — would settle each open decision). The recommendation may be deferred but the **decision substrate is sharp**.
+- **~75% (3/4)** — open decisions are named with stakes, but falsifiability ("what evidence would settle this") is hand-waved or partial. A sophisticated reader could anchor on the decision frame but would not be able to identify the load-bearing experiment / pilot / quote to commission.
+- **~50% (2/4)** — open decisions are named but vague (the choices are flagged without stating what depends on them), OR the proposal lapses into pseudo-resolving (committing implicitly to a single branch without acknowledging the open choice) without committing to either the open-decision frame or a single design.
+- **~25% (1/4)** — open decisions are not named explicitly; the proposal explores territory without anchoring on the engineering choices a commissioning conversation would need to settle.
+- **0/4** — no open-decision framing at all — the proposal presents a single design as if every decision were settled, with no §10 Open Decisions list and no acknowledgement that concept-stage work carries unresolved choices.
+
+Note: the five-point ladder anchors at **5/5 → 0/5** in shape (parallel to the memo dim 1 ladder for cross-skill consistency); the actual integer score on proposal dim 8 caps at the dimension's weight (4), so the "5/5" anchor in the ladder shape maps to "full weight (4/4)" on this dim. The qualitative posture at each rung is the load-bearing contract — 5/5 *open questions enumerated, falsifiability stated*; 4/5 *open decisions named, falsifiability partial*; 3/5 *open decisions vague, or pseudo-resolving*; 2/5 *open decisions not named*; 0/5 *no open-decision framing*.
+
+**Suffix shape (mandatory)**. The reviewer's dim 8 `scoring.md` justification MUST cite `recommendation_target: undecided` from the BRIEF and the chosen scoring posture explicitly so the audit trail records why the calibration fired. The verbatim suffix appended to the dim 8 `scoring.md` cell is:
+
+```
+recommendation_target: undecided — scoring dim 8 on open-decision framing clarity
+```
+
+The suffix is appended **after** the reviewer's base scoring prose for dim 8. Composition order when multiple surfaces fire on dim 8:
+
+1. Base reviewer-prose justification (the reviewer's own scoring rationale against the criteria above).
+2. `recommendation_target: undecided` suffix (this sub-rule).
+3. Any future per-doc `dim_8_calibration` suffix (when a future-shipped rubric-overrides surface on the proposal side declares one — out of scope for this issue, but the ordering is documented so a future reader knows where the per-doc suffix would land).
+
+In practice the typical fresh-thread proposal case fires only (1) + (2) — the proposal skill does not currently ship a per-doc `rubric_overrides` surface analogous to memo's, so no overlay or per-doc suffix is in scope today.
+
+**Backwards-compat — byte-identical when the trigger value is absent or non-`undecided`**. This calibration is **byte-identically inert** when any of the following hold:
+
+- No `<thread>/BRIEF.md` exists.
+- BRIEF exists but has no YAML frontmatter or has malformed YAML frontmatter.
+- Frontmatter has no `recommendation_target` key.
+- `recommendation_target` value is not in the closed set (`invest` / `pass` / `conditional` / `undecided`) — e.g., a typo (`Undecided`, `tbd`, `?`) resolves to `None` and the calibration does not fire.
+- `recommendation_target` is one of the decided values (`invest`, `pass`, `conditional`) — the calibration does not fire; dim 8 scores against the standard "open decisions tracked honestly" calibration in the rubric table at the top of this file verbatim.
+
+The contract is: the only path through this section is `recommendation_target == "undecided"` AND the value parsed cleanly from `<thread>/BRIEF.md`. Every other path is byte-identical to pre-#356 behavior — and pre-#356 the proposal rubric had no `recommendation_target` surface at all, so the zero-impact backwards-compat surface is the entire pre-#356 rubric.
+
 ## Dim 9 — rhetorical economy
 
 **Rhetorical economy** (weight: 4) — Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds?
