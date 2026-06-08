@@ -1830,11 +1830,6 @@ def load_rubric_overrides_for_slug(
 
 
 # ---------------------------------------------------------------------------
-# Body-filename helper (issue #295)
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Thread-level BRIEF.md helpers (issue #348)
 # ---------------------------------------------------------------------------
 #
@@ -1949,6 +1944,11 @@ def load_recommendation_target(
     if isinstance(value, str) and value in _RECOGNIZED_RECOMMENDATION_TARGETS:
         return value  # type: ignore[return-value]
     return None
+
+
+# ---------------------------------------------------------------------------
+# Body-filename helper (issue #295)
+# ---------------------------------------------------------------------------
 
 
 def body_filename_for(slug: str) -> str:
