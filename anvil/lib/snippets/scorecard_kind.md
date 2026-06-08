@@ -53,19 +53,26 @@ compare scores apples-to-apples across rubric migrations without
 re-reading the skill's current `rubric.md`.
 
 - `rubric_id` (`str`) — stable rubric identifier, e.g.
-  `"anvil-memo-v2"`, `"anvil-pub-v1"`. Naming convention:
+  `"anvil-memo-v2"`, `"anvil-ip-uspto-v2"`. Naming convention:
   `anvil-<skill>-v<N>`; the version is bumped on breaking shape
-  changes (e.g., `/40 → /44`). Pre-existing literals in the codebase:
-  `anvil-pub-v1`, `anvil-pub-neurips-v1`, `anvil-figure-content-v1`,
-  `anvil-vision-v1`. /44 skills use `-v2` (e.g., `anvil-memo-v2`,
-  `anvil-proposal-v2`).
+  changes (e.g., `/40 → /44` or `/40 → /45`). Pre-existing literals
+  for advisory / overlay / vision rubrics: `anvil-pub-neurips-v1`,
+  `anvil-figure-content-v1`, `anvil-vision-v1`,
+  `anvil-report-vision-v1`, `anvil-ip-uspto-vision-v1`. All eight v0
+  artifact-class skills ship `-v2` for their main gate rubric
+  post-#357: `anvil-memo-v2`, `anvil-proposal-v2`, `anvil-pub-v2`,
+  `anvil-slides-v2`, `anvil-deck-v2`, `anvil-report-v2`,
+  `anvil-installation-v2`, `anvil-ip-uspto-v2`.
 - `rubric_total` (`int`) — the rubric's declared `total` (the point
   pool the per-dimension weights sum to). The v0 observed values are
-  `40` and `44`.
+  `40` (legacy), `44` (seven post-#357 skills), and `45` (ip-uspto
+  post-#357, preserving flat-weight design).
 - `advance_threshold` (`int`) — the rubric's declared advance
   threshold (the minimum aggregated total that yields `ADVANCE` when
-  no critical flag is set). Observed values: `32` and `35` across the
-  shipped skills.
+  no critical flag is set). Observed values: `32` and `35` for the
+  legacy /40 skills; `35` for the internal-tier /44 skills (memo,
+  proposal, pub, slides, installation); `39` for the customer-facing
+  /44 skills (deck, report); `39` for the /45 ip-uspto skill.
 
 **Backwards compatibility**: a critic sibling produced before these
 fields landed MAY omit any or all of them. Readers MUST tolerate the

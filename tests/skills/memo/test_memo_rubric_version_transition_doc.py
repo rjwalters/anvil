@@ -249,8 +249,11 @@ def test_rubric_snippet_documents_per_review_version_stamping():
         "stamping' subsection documenting `_meta.json.rubric_id`, "
         "`score_history[].rubric_id`, and `_summary.md.rubric` block."
     )
-    # All three surfaces named.
-    sec_idx = body.find("Per-review version stamping")
+    # All three surfaces named. Find the H2 section start (not the
+    # cross-reference at line 11 of the file) so the slice reliably
+    # covers the section even as the doc grows.
+    sec_idx = body.find("## Per-review version stamping")
+    assert sec_idx >= 0, "snippets/rubric.md MUST carry the H2 section"
     section = body[sec_idx:sec_idx + 4000]
     assert "_meta.json" in section
     assert "score_history" in section

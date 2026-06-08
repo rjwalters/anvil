@@ -50,21 +50,25 @@ is the source of truth at runtime — the anchor is guidance only.
 |---|---|---|---|---|
 | memo | /44 | ≥35/44 | 9 | 4 examples + open-ended |
 | proposal | /44 | ≥35/44 | 9 | 4 hard rules + open-ended |
-| pub | /40 | ≥32/40 | 8 | 5 examples + open-ended |
-| slides | /40 | ≥32/40 | 8 | 3 hard rules (audit / density / time) + open-ended |
-| deck | /40 | ≥35/40 | 8 | 4 hard rules (fabricated traction / fabricated team / market-math / absent ask) |
-| report | /40 | ≥35/40 | 8 | 4 hard rules + open-ended |
-| installation | /40 | ≥32/40 | 8 | 3 hard rules + open-ended |
-| ip-uspto | /40 | ≥35/40 | 8 | §101 + §112 hard rules (each short-circuits) + open-ended |
+| pub | /44 | ≥35/44 | 9 | 5 examples + open-ended |
+| slides | /44 | ≥35/44 | 9 | 3 hard rules (audit / density / time) + open-ended |
+| deck | /44 | ≥39/44 | 9 | 4 hard rules (fabricated traction / fabricated team / market-math / absent ask) |
+| report | /44 | ≥39/44 | 9 | 4 hard rules + open-ended |
+| installation | /44 | ≥35/44 | 9 | 3 hard rules + open-ended |
+| ip-uspto | /45 | ≥39/45 | 9 | §101 + §112 hard rules (each short-circuits) + open-ended |
 
 Two patterns recur: (a) customer-facing or legal-facing artifacts use
-the higher threshold band (`≥35`); internal or rough-draft-friendly
-artifacts use the lower band (`≥32`); (b) skills migrate `/40 → /44`
-by splitting an existing dimension (or adding dim 9 *Rhetorical
-economy* at weight 4 as countervailing bloat-pressure) and choosing a
-new threshold near the 0.82 anchor — both `memo` and `proposal` ship
-the /44 shape today, with the other six skills tracking as separate
-per-skill follow-ups.
+the higher threshold band (`≥39`); internal or rough-draft-friendly
+artifacts use the lower band (`≥35`); (b) skills have migrated `/40 →
+/44` by adding **dim 9 *Rhetorical economy*** at weight 4 as
+countervailing bloat-pressure (memo, proposal, pub, slides, deck,
+report, installation), or — for `ip-uspto` — by adding a skill-
+appropriate **dim 9 *Claim-spec correspondence*** at weight 5 to
+preserve the flat-weight design (`/45`, every dim weight 5). The /44
+skills choose a new threshold near the 0.82 anchor (memo/proposal/
+pub/slides/installation at ≥35/44; deck/report at ≥39/44, the
+customer-facing tier). The /45 ip-uspto threshold (≥39/45 ≈ 0.87) is
+proportionally bumped from its prior ≥35/40 customer-facing tier.
 
 ## Per-review version stamping
 
@@ -101,10 +105,15 @@ short-circuiting.
 
 `rubric_id` naming convention (informal, not enforced by the lib):
 `anvil-<skill>-v<N>` for the generic gate rubric, bumped to `-v2` on a
-breaking shape change (e.g., `/40 → /44`). Pre-existing literals in the
-codebase: `anvil-pub-v1`, `anvil-pub-neurips-v1`,
-`anvil-figure-content-v1`, `anvil-vision-v1`. Skills shipping /44 use
-`anvil-<skill>-v2` (e.g., `anvil-memo-v2`, `anvil-proposal-v2`).
+breaking shape change (e.g., `/40 → /44` or `/40 → /45`). Pre-existing
+literals in the codebase for advisory / overlay / vision rubrics:
+`anvil-pub-neurips-v1`, `anvil-figure-content-v1`, `anvil-vision-v1`,
+`anvil-report-vision-v1`, `anvil-ip-uspto-vision-v1`. All eight v0
+artifact-class skills ship `-v2` for their main gate rubric post-#357:
+`anvil-memo-v2`, `anvil-proposal-v2`, `anvil-pub-v2`, `anvil-slides-v2`,
+`anvil-deck-v2`, `anvil-report-v2`, `anvil-installation-v2`,
+`anvil-ip-uspto-v2`. The first seven ship `/44`; `ip-uspto` ships `/45`
+to preserve its flat-weight design.
 
 ## Convergence logic
 
