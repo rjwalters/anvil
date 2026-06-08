@@ -509,3 +509,118 @@ def test_rubric_schema_export_includes_dimension_and_flag_defs():
     schema = build_rubric_schema()
     assert "RubricDimension" in schema["$defs"]
     assert "CriticalFlagDefinition" in schema["$defs"]
+
+
+# ---------------------------------------------------------------------------
+# /44 rubric schema validation (issue #346)
+# ---------------------------------------------------------------------------
+
+
+def test_rubric_total_44_weights_sum_to_44_validates():
+    """A /44 rubric with weights summing to 44 + threshold 35 validates.
+
+    Pins the contract that the lib is total-agnostic — `total: 44` is
+    accepted on the same code path as `total: 40`. This is the load-
+    bearing schema validation for the memo + proposal skills, which both
+    ship /44 today (issue #346 surfaces this so a downstream test can
+    pin the schema contract without re-reading the per-skill rubric.md).
+    """
+    payload = {
+        "id": "test-memo-v2",
+        "name": "Test memo /44",
+        "total": 44,
+        "threshold": 35,
+        "advisory": False,
+        "dimensions": [
+            {
+                "id": "dim_1_recommendation",
+                "name": "Recommendation clarity",
+                "weight": 5,
+                "description": "A single unambiguous recommendation. " * 5,
+            },
+            {
+                "id": "dim_2_thesis",
+                "name": "Thesis coherence",
+                "weight": 6,
+                "description": "A falsifiable thesis. " * 8,
+            },
+            {
+                "id": "dim_3_evidence",
+                "name": "Evidence quality",
+                "weight": 6,
+                "description": "Claims backed by primary sources. " * 6,
+            },
+            {
+                "id": "dim_4_risk",
+                "name": "Risk honesty",
+                "weight": 6,
+                "description": "Top 3-5 risks named explicitly. " * 6,
+            },
+            {
+                "id": "dim_5_market",
+                "name": "Market framing",
+                "weight": 4,
+                "description": "TAM/SAM/SOM sized to the artifact. " * 5,
+            },
+            {
+                "id": "dim_6_financial",
+                "name": "Financial reasoning",
+                "weight": 5,
+                "description": "Unit economics, capital efficiency. " * 5,
+            },
+            {
+                "id": "dim_7_scope",
+                "name": "Scope discipline",
+                "weight": 4,
+                "description": "The artifact stays within its declared scope. " * 5,
+            },
+            {
+                "id": "dim_8_prose",
+                "name": "Prose & structure",
+                "weight": 4,
+                "description": "Navigable headings, tight prose. " * 5,
+            },
+            {
+                "id": "dim_9_rhetorical_economy",
+                "name": "Rhetorical economy",
+                "weight": 4,
+                "description": (
+                    "Is every paragraph load-bearing? Could the same "
+                    "argument land in fewer words? " * 4
+                ),
+            },
+        ],
+    }
+    r = Rubric.model_validate(payload)
+    assert r.total == 44
+    assert r.threshold == 35
+    assert len(r.dimensions) == 9
+    # Sum of all dim weights == total (the load-bearing invariant).
+    assert sum(d.weight for d in r.dimensions) == r.total
+
+
+def test_rubric_total_44_weights_mismatched_rejected():
+    """A /44 rubric whose weights do not sum to 44 fails validation.
+
+    Confirms the validator runs against the declared `total` (44), not
+    a hardcoded 40 — the same code path the memo and proposal skills
+    rely on at runtime.
+    """
+    payload = {
+        "id": "test-memo-broken-v2",
+        "name": "Test memo /44 broken",
+        "total": 44,
+        "threshold": 35,
+        "advisory": False,
+        "dimensions": [
+            {
+                "id": "dim_1",
+                "name": "Dim 1",
+                "weight": 5,
+                "description": "x " * 80,
+            },
+            # Single dimension at weight 5; sum is 5, total is 44 — must fail.
+        ],
+    }
+    with pytest.raises(ValidationError):
+        Rubric.model_validate(payload)
