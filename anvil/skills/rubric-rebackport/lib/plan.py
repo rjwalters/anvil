@@ -40,7 +40,6 @@ Public API
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -277,11 +276,6 @@ class Plan:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-_PROGRESS_HISTORY_RE = re.compile(
-    r"\.metadata\.score_history\b"
-)
 
 
 def _legacy_total_from_meta(meta: Dict[str, object]) -> Optional[int]:
