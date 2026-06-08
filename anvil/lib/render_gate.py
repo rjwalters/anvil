@@ -549,6 +549,7 @@ def gate(
     target_length: Optional[dict] = None,
     words_per_page: Optional[int] = None,
     render_engine: Optional[str] = None,
+    latex_header_includes: Optional[str] = None,
     log_path: Optional[Path] = None,
     source_paths: Optional[list[Path]] = None,
     page_cap: Optional[int] = None,
@@ -582,6 +583,16 @@ def gate(
       ``"weasyprint"``, ``"xelatex"``, ``"wkhtmltopdf"``); when set and
       available on PATH it overrides the auto-priority, otherwise
       falls through gracefully.
+      Optional ``latex_header_includes`` (issue #347) is per-document
+      free-form LaTeX preamble text resolved from
+      ``BriefDocument.latex_header_includes``. Threaded into pandoc's
+      ``header-includes`` slot via ``--include-in-header=<tempfile>``
+      **only when** the dispatched engine resolves to ``xelatex``;
+      silently skipped (with a breadcrumb in ``reasons``) for the
+      HTML chain. Enables consumers with table-dense memos to load
+      ``xcolor`` / ``tabularx`` / custom environments referenced by
+      ``{=latex}`` raw blocks without maintaining a full
+      ``template.tex`` override.
       Routes through :func:`_gate_memo` which invokes
       :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
       engine, then runs the five memo-specific checks. See module
@@ -640,6 +651,7 @@ def gate(
             pdfinfo_path=pdfinfo_path,
             words_per_page=words_per_page,
             render_engine=render_engine,
+            latex_header_includes=latex_header_includes,
         )
     if kind != "latex":
         raise ValueError(
@@ -1017,6 +1029,7 @@ def _render_memo_source(
     version_dir: Path,
     out_pdf: Path,
     requested_engine: Optional[str] = None,
+    latex_header_includes: Optional[str] = None,
 ) -> tuple[str, int, str, str]:
     """Run pandoc → (weasyprint OR wkhtmltopdf OR xelatex) over the
     version dir's body markdown and write ``out_pdf``.
@@ -1052,6 +1065,19 @@ def _render_memo_source(
         framework auto-priority (weasyprint > wkhtmltopdf > xelatex).
         When set and available on PATH, the effective engine is used;
         otherwise auto-priority applies.
+    latex_header_includes:
+        Optional per-document free-form LaTeX preamble text (issue
+        #347). When set AND the dispatched engine resolves to
+        ``xelatex``, the content is written to a tempfile and passed
+        to pandoc via ``--include-in-header=<tempfile>``; pandoc
+        emits the content into the xelatex template's
+        ``$for(header-includes)$`` slot. The tempfile is removed
+        before this function returns (whether the subprocess
+        succeeded or failed). When the engine is NOT xelatex, the
+        include is silently skipped (caller is expected to record
+        the skip in the audit trail) — this matches the
+        engine-scoping policy that ``latex_header_includes`` is for
+        LaTeX content only and the HTML chain has no analogue.
 
     Returns
     -------
@@ -1173,18 +1199,63 @@ def _render_memo_source(
     # placeholder + image checks don't have to re-derive them.
     cmd.append("--fail-if-warnings")
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except (OSError, FileNotFoundError) as exc:
-        return (COMPILE_FAILED, -1, engine, str(exc))
+    # Issue #347: per-doc LaTeX preamble extension. Engine-scoped to
+    # xelatex — the shipped ``template.tex`` already wires
+    # ``$for(header-includes)$``, and pandoc's ``--include-in-header``
+    # is the canonical way to inject content into that slot from a
+    # caller-owned tempfile. The HTML chain has a parallel
+    # ``header-includes`` slot in ``template.html``, but
+    # ``latex_header_includes`` is named-and-scoped to LaTeX content;
+    # injecting raw LaTeX into the HTML chain would be a user-error
+    # trap. The caller (``_gate_memo``) records the skip in
+    # ``reasons`` when the engine resolves to non-xelatex.
+    import tempfile as _tempfile  # local import: not used elsewhere
 
-    status = COMPILE_OK if proc.returncode == 0 else COMPILE_FAILED
-    return (status, proc.returncode, engine, proc.stderr or "")
+    header_tmp: Optional[str] = None
+    if (
+        latex_header_includes is not None
+        and engine == MEMO_ENGINE_XELATEX
+    ):
+        try:
+            with _tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".tex",
+                delete=False,
+                encoding="utf-8",
+            ) as f:
+                f.write(latex_header_includes)
+                header_tmp = f.name
+            cmd.extend(["--include-in-header", header_tmp])
+        except OSError:
+            # Tempfile creation failure is rare but not catastrophic —
+            # surface as a compile-side stderr-style note so the caller
+            # records the failure but does not raise.
+            header_tmp = None
+
+    try:
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except (OSError, FileNotFoundError) as exc:
+            return (COMPILE_FAILED, -1, engine, str(exc))
+
+        status = COMPILE_OK if proc.returncode == 0 else COMPILE_FAILED
+        return (status, proc.returncode, engine, proc.stderr or "")
+    finally:
+        # Clean up the include-in-header tempfile regardless of outcome.
+        # Pandoc has already read it (or never opened it on subprocess
+        # failure); leaving it around would clutter ``$TMPDIR`` over
+        # repeated renders. ``unlink`` swallows the file-not-found case
+        # (tempfile creation failed earlier).
+        if header_tmp is not None:
+            try:
+                Path(header_tmp).unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _parse_memo_overfull(stderr_text: str) -> list[dict]:
@@ -1425,6 +1496,7 @@ def _gate_memo(
     pdfinfo_path: Optional[str],
     words_per_page: Optional[int] = None,
     render_engine: Optional[str] = None,
+    latex_header_includes: Optional[str] = None,
 ) -> GateResult:
     """Five-dimension memo render-gate (kind="memo").
 
@@ -1439,6 +1511,17 @@ def _gate_memo(
     :func:`_render_memo_source`; the actual honor-or-fallthrough
     decision lives in :func:`_select_memo_engine`. When ``None``, the
     auto-priority order applies (no regression on legacy callers).
+
+    The optional ``latex_header_includes`` parameter (issue #347)
+    carries per-document free-form LaTeX preamble text forwarded from
+    ``BriefDocument.latex_header_includes``. Plumbed verbatim to
+    :func:`_render_memo_source`, which threads it into pandoc's
+    ``header-includes`` slot via ``--include-in-header=<tempfile>``
+    **only when** the dispatched engine resolves to ``xelatex``.
+    Silent-with-record skip when the engine is HTML-side: the skip is
+    appended to ``reasons`` for the audit trail without flipping any
+    gate status. When ``None``, no include is added (no regression on
+    legacy callers).
     """
     if out_pdf is None:
         # PDF output basename echoes the thread slug per #295 (e.g.
@@ -1452,7 +1535,10 @@ def _gate_memo(
 
     # --- Step 1: invoke the renderer ---------------------------------------
     compile_status, exit_code, engine_used, stderr_text = _render_memo_source(
-        version_dir, out_pdf, requested_engine=render_engine
+        version_dir,
+        out_pdf,
+        requested_engine=render_engine,
+        latex_header_includes=latex_header_includes,
     )
 
     # --- Record fallthrough when the requested engine was overridden ------
@@ -1471,6 +1557,26 @@ def _gate_memo(
             f"{DIM_MEMO_COMPILE}: requested render_engine={render_engine!r} "
             f"not available on PATH; fell through to {engine_used!r} per "
             f"auto-priority (weasyprint > wkhtmltopdf > xelatex)."
+        )
+
+    # --- Record skip when latex_header_includes did not reach pandoc ------
+    # Issue #347: ``latex_header_includes`` is engine-scoped to xelatex
+    # (the HTML chain has a parallel ``header-includes`` slot in
+    # ``template.html``, but the contents are LaTeX). When the operator
+    # set the BRIEF knob but the dispatched engine resolved to a non-
+    # xelatex chain (e.g., the requested engine fell through to
+    # weasyprint), surface the skip as a breadcrumb in ``reasons`` so
+    # the operator can see why their preamble didn't apply. This is
+    # silent-with-record: not a gate failure, not a finding.
+    if (
+        latex_header_includes is not None
+        and engine_used
+        and engine_used != MEMO_ENGINE_XELATEX
+    ):
+        reasons.append(
+            f"{DIM_MEMO_COMPILE}: latex_header_includes provided but "
+            f"dispatched engine={engine_used!r} is not xelatex; preamble "
+            f"include skipped (latex_header_includes is xelatex-only)."
         )
 
     # --- Check 1: memo_compile_success -------------------------------------
