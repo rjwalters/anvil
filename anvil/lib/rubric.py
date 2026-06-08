@@ -8,17 +8,20 @@ list and weights that scores are taken against.
 
 Two kinds of rubric coexist in the ecosystem:
 
-1. **Generic /40 convergence-gate rubrics** — every skill ships one as a
+1. **Generic convergence-gate rubrics** — every skill ships one as a
    markdown file (``anvil/skills/<skill>/rubric.md``). These define the
-   8 dimensions whose weighted sum drives the
+   dimensions whose weighted sum drives the
    ``advance = (total >= threshold) AND (no critical flag)`` decision.
-   The /40 invariant is described in ``snippets/rubric.md`` lines 8-17.
+   The v0 shipped skills declare either ``total: 40`` (8 dimensions)
+   or ``total: 44`` (9 dimensions); the lib is total-agnostic and
+   accepts any positive integer. The per-skill shape requirements are
+   documented in ``snippets/rubric.md`` §"Shape requirements".
 2. **Advisory venue-pinned overlays** — venue YAMLs (e.g. ``neurips.yaml``,
    ``nature.yaml``, ``arxiv.yaml``) under
    ``anvil/skills/pub/rubrics/``. These produce supplementary scoring
    that the reviser consumes for venue-specific signal, but do NOT
    contribute to the convergence-gate decision. Their weights need not
-   sum to 40, and ``threshold`` may be omitted.
+   sum to the declared ``total``, and ``threshold`` may be omitted.
 
 Both kinds use the same ``Rubric`` pydantic model. The discriminator is
 the ``advisory`` flag:
@@ -28,8 +31,9 @@ the ``advisory`` flag:
   loader accepts the mismatch and the convergence gate ignores the rubric.
 
 This split lets venue overlays declare any sensible total (NeurIPS /16,
-Nature /15, arXiv /10) without breaking the framework-wide invariant
-that ``>=32/40`` means the same thing across every skill.
+Nature /15, arXiv /10) without breaking the per-skill gate-rubric
+invariant that the skill's declared ``total`` means the same thing
+across versions of that skill's reviewer.
 
 Discovery
 ---------
@@ -138,10 +142,13 @@ class Rubric(BaseModel):
     """A weighted-dimension rubric, generic or venue-pinned.
 
     Loaded from a YAML file via ``load_rubric``. The same model serves
-    both the framework-wide /40 convergence-gate rubrics (when shipped
-    as YAML — markdown rubrics like ``anvil/skills/pub/rubric.md`` are
+    both the framework-wide convergence-gate rubrics (when shipped as
+    YAML — markdown rubrics like ``anvil/skills/pub/rubric.md`` are
     not currently loaded by this module) and venue advisory overlays.
-    The ``advisory`` flag distinguishes them.
+    The ``advisory`` flag distinguishes them. The lib is total-agnostic
+    — gate rubrics declare any positive integer ``total`` (``40`` and
+    ``44`` are the v0 observed shapes) and the validator enforces
+    weight-sum-equals-``total`` only for non-advisory rubrics.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -150,7 +157,10 @@ class Rubric(BaseModel):
         ...,
         description=(
             "Stable rubric identifier matching ``Review.rubric``, e.g. "
-            "``anvil-pub-v1`` for the generic /40 or "
+            "``anvil-pub-v1`` for a /40 generic gate rubric, "
+            "``anvil-memo-v2`` for a /44 generic gate rubric (post the "
+            "/40 → /44 migration described in ``snippets/rubric.md`` "
+            "§\"Per-review version stamping\"), or "
             "``anvil-pub-neurips-v1`` for a venue overlay. The lib does "
             "not enforce a naming scheme — the convention is documented "
             "in ``anvil/lib/README.md``."
@@ -198,16 +208,19 @@ class Rubric(BaseModel):
             "NOT contribute to the convergence-gate decision and the "
             "sum-of-weights == total invariant is not enforced. Venue "
             "rubrics (NeurIPS, Nature, arXiv) ship with advisory=True. "
-            "Generic /40 convergence-gate rubrics use advisory=False."
+            "Generic convergence-gate rubrics (whatever their declared "
+            "``total``) use advisory=False."
         ),
     )
     dimensions: List[RubricDimension] = Field(
         ...,
         min_length=1,
         description=(
-            "Per-dimension rows. Generic /40 rubrics have exactly 8 "
-            "(per ``snippets/rubric.md``); advisory venue rubrics may "
-            "have any number ≥ 1. The lib does not enforce a count."
+            "Per-dimension rows. v0 generic gate rubrics ship with 8 "
+            "dimensions (/40 shape) or 9 dimensions (/44 shape, dim 9 "
+            "*Rhetorical economy*) per ``snippets/rubric.md``; advisory "
+            "venue rubrics may have any number ≥ 1. The lib does not "
+            "enforce a count."
         ),
     )
     critical_flags: List[CriticalFlagDefinition] = Field(

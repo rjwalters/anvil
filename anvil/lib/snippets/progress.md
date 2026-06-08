@@ -23,8 +23,8 @@ Every `_progress.json` carries this minimum shape:
     "iteration": <N>,
     "max_iterations": <N>,
     "score_history": [
-      { "iteration": 1, "total": 28, "threshold": 32 },
-      { "iteration": 2, "total": 30, "threshold": 32 }
+      { "iteration": 1, "total": 28, "threshold": 32, "rubric_id": "anvil-memo-v1" },
+      { "iteration": 2, "total": 30, "threshold": 32, "rubric_id": "anvil-memo-v1" }
     ]
   },
   "termination_reason": "THRESHOLD_MET | CRITICAL_FLAG | STALLED | MAX_ITERATIONS"
@@ -85,9 +85,9 @@ review iteration:
 
 ```json
 "score_history": [
-  { "iteration": 1, "total": 28, "threshold": 32 },
-  { "iteration": 2, "total": 30, "threshold": 32 },
-  { "iteration": 3, "total": null, "threshold": 32 }
+  { "iteration": 1, "total": 28, "threshold": 32, "rubric_id": "anvil-memo-v1" },
+  { "iteration": 2, "total": 30, "threshold": 32, "rubric_id": "anvil-memo-v1" },
+  { "iteration": 3, "total": null, "threshold": 35, "rubric_id": "anvil-memo-v2" }
 ]
 ```
 
@@ -99,6 +99,12 @@ review iteration:
   reviewer wrote a scorecard.
 - `threshold`: the advance threshold at that iteration. Captured per-row
   so a mid-loop threshold override remains auditable.
+- `rubric_id`: the stable rubric identifier the reviewer scored against
+  (e.g., `"anvil-memo-v1"`, `"anvil-memo-v2"`). Added per issue #346 so
+  a thread that spans a rubric migration records which rubric scored
+  which iteration — the example above shows a `/40 → /44` migration
+  between iterations 2 and 3 (threshold bumped from 32/40 to 35/44 and
+  `rubric_id` from `anvil-memo-v1` to `anvil-memo-v2`).
 
 The array is the input to `anvil.lib.convergence.check_stable` and
 `anvil.lib.convergence.decide_termination`. The orchestrator extracts the
@@ -107,6 +113,15 @@ The array is the input to `anvil.lib.convergence.check_stable` and
 The reviser/orchestrator command is responsible for appending the row for
 the iteration it just finished. Other commands MUST NOT mutate
 `score_history`; they read it as input only.
+
+**Backwards compatibility on `rubric_id`** — required for new entries
+(post-issue #346) and absent-tolerated for legacy entries (pre-issue
+#346). Readers MUST tolerate a row missing `rubric_id` by treating it
+as `"unknown/legacy"` (a downstream consumer aggregating across a
+thread that spans the migration knows the row is pre-stamping and was
+scored against whatever rubric the skill shipped at the time). The
+`check_stable` precedent — it tolerates `None` entries in `history`
+without short-circuiting — is the same backwards-compat shape.
 
 ### `termination_reason` (top-level)
 

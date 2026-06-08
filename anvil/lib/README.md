@@ -50,7 +50,9 @@ anvil/lib/
     version_layout.md          <thread>.{N}/ + sibling naming rules.
     thread_state.md            Derive state-machine position from on-disk evidence.
     state_machine.md           Base state machine + canonical extension points.
-    rubric.md                  8-dim /40 scoring shape + convergence logic.
+    rubric.md                  Weighted-dimension scoring shape (per-skill `total`;
+                                /40 and /44 are the v0 observed shapes) + per-review
+                                rubric_id version stamping + convergence logic.
     critics.md                 Sibling discovery + aggregation rules.
     scorecard_kind.md          human-verdict | machine-summary discriminator.
     audit.md                   .review/ (judgment) vs .audit/ (tool-evidence)
@@ -75,7 +77,9 @@ anvil/lib/
                                 pydantic models. Regenerate with
                                 `python3 -m anvil.lib.export_schema`. (#26)
   rubric.py                    Pydantic models for the rubric YAML shape
-                                (generic /40 + advisory venue overlays),
+                                (generic gate rubrics — per-skill declared
+                                ``total``, /40 and /44 are the v0 observed
+                                shapes — plus advisory venue overlays),
                                 YAML loader, three-tier venue discovery. (#33)
   rubric_schema.json           Auto-generated JSON Schema export of the
                                 rubric pydantic models. Regenerate with
@@ -229,7 +233,7 @@ the six v0 skill implementations. The short version per file:
 | `version_layout.md` | `<thread>.{N}/` and sibling rules were redocumented per skill. |
 | `thread_state.md` | Drafter, reviser, and orchestrator each reimplemented thread enumeration. |
 | `state_machine.md` | Base state machine + extension points (pre-draft, mid-loop, post-AUDITED terminal) were rewritten per skill. |
-| `rubric.md` | 8-dim /40 shape + convergence logic was rewritten per skill, with subtle divergences. |
+| `rubric.md` | Per-skill weighted-dimension scoring shape + convergence logic was rewritten per skill (with subtle divergences); also documents the per-review `rubric_id` version-stamping convention so threads spanning a rubric migration record which rubric scored which iteration. |
 | `critics.md` | Glob discovery + per-dim mean aggregation was rewritten per skill. |
 | `scorecard_kind.md` | The 5+ critic schema shapes collapse to 2 canonical kinds via a discriminator field; this is the load-bearing primitive that unifies the others. |
 
@@ -720,7 +724,8 @@ because the `Score` model enforces one integer score per dimension.
 Adding them is **per-consumer rubric work**, not lib work — the lib
 documents the naming convention but does not split any existing skill
 rubric. See `snippets/rubric.md` for the migration pattern (split an
-existing citation-related dimension to preserve the /40 envelope).
+existing citation-related dimension to preserve the skill's declared
+`total` envelope, whether /40 or /44).
 
 ### The CSL boundary
 
@@ -791,14 +796,15 @@ discriminator is the `advisory` field:
 
 | `advisory` | Use | sum-to-total | threshold |
 |---|---|---|---|
-| `false` (default) | Generic /40 convergence-gate rubric | enforced | required |
+| `false` (default) | Generic convergence-gate rubric (per-skill declared `total` — /40 and /44 are the v0 observed shapes) | enforced | required |
 | `true` | Venue-pinned advisory overlay (e.g. NeurIPS, Nature) | not enforced | optional |
 
 Advisory rubrics produce supplementary scoring the reviser consumes
 for additional signal, but do NOT contribute to the convergence-gate
-decision. This preserves the framework-wide "/40 means the same
-thing across skills" invariant while letting venue overlays declare
-their own totals (NeurIPS /16, Nature /15, arXiv /10) honestly.
+decision. This preserves the per-skill gate-rubric invariant — "the
+skill's declared `total` means the same thing across versions of that
+skill's reviewer" — while letting venue overlays declare their own
+totals (NeurIPS /16, Nature /15, arXiv /10) honestly.
 
 ### Venue discovery search order
 
