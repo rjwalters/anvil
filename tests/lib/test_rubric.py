@@ -624,3 +624,44 @@ def test_rubric_total_44_weights_mismatched_rejected():
     }
     with pytest.raises(ValidationError):
         Rubric.model_validate(payload)
+
+
+# ---------------------------------------------------------------------------
+# /45 rubric schema validation (issue #357 — ip-uspto skill-appropriate dim 9)
+# ---------------------------------------------------------------------------
+
+
+def test_rubric_total_45_weights_sum_to_45_validates():
+    """A /45 rubric with weights summing to 45 + threshold 39 validates.
+
+    Pins the contract that the lib is total-agnostic — `total: 45` is
+    accepted on the same code path as `total: 40` and `total: 44`. This is
+    the load-bearing schema validation for the ip-uspto skill, which
+    ships /45 today (issue #357 surfaces this; the flat-weight design —
+    9 dimensions × 5 each — distinguishes ip-uspto from memo/proposal's
+    weighted /44).
+    """
+    payload = {
+        "id": "test-ip-uspto-v2",
+        "name": "Test ip-uspto /45",
+        "total": 45,
+        "threshold": 39,
+        "advisory": False,
+        "dimensions": [
+            {
+                "id": f"dim_{i}",
+                "name": f"Dim {i}",
+                "weight": 5,
+                "description": "Flat-weight patent rubric. " * 5,
+            }
+            for i in range(1, 10)
+        ],
+    }
+    r = Rubric.model_validate(payload)
+    assert r.total == 45
+    assert r.threshold == 39
+    assert len(r.dimensions) == 9
+    # Sum of all dim weights == total (the load-bearing invariant).
+    assert sum(d.weight for d in r.dimensions) == r.total
+    # Flat-weight check: every dim weighs 5.
+    assert all(d.weight == 5 for d in r.dimensions)

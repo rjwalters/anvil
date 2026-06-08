@@ -1,0 +1,24 @@
+{
+  "critic": "review",
+  "for_version": 2,
+  "rubric": {
+    "id": "anvil-ip-uspto-v2",
+    "total": 45,
+    "advance_threshold": 39,
+    "dimensions": 9,
+    "prior_rubric_id": null,
+    "prior_rubric_inferred": "/40-legacy"
+  },
+  "dimensions": {
+    "1_claim_breadth": null,
+    "2_s112a_written_description": null,
+    "3_s112b_definiteness": null,
+    "4_s101_subject_matter": null,
+    "5_novelty_positioning": null,
+    "6_specification_completeness": 4,
+    "7_drawing_text_correspondence": 4,
+    "8_formal_compliance": 5,
+    "9_claim_spec_correspondence": null
+  },
+  "critical_flag": false
+}

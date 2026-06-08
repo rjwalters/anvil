@@ -1,0 +1,24 @@
+{
+  "critic": "review",
+  "for_version": 2,
+  "rubric": {
+    "id": "anvil-slides-v2",
+    "total": 44,
+    "advance_threshold": 35,
+    "dimensions": 9,
+    "prior_rubric_id": null,
+    "prior_rubric_inferred": "/40-legacy"
+  },
+  "dimensions": {
+    "1_technical_accuracy": 6,
+    "2_pedagogical_clarity": 5,
+    "3_narrative_arc": 5,
+    "4_slide_density": 5,
+    "5_visual_quality": 3,
+    "6_accessibility": 3,
+    "7_presenter_notes": 3,
+    "8_time_budget": 2,
+    "9_rhetorical_economy": 3
+  },
+  "critical_flag": false
+}

@@ -1,8 +1,10 @@
 # USPTO patent review rubric
 
-Reviewers and critics score a patent application against 8 weighted dimensions summing to **40**. The threshold to advance is **≥35/40** (legal/customer-facing artifact per anvil's threshold table). A **§101 critical flag** or **§112 critical flag** short-circuits the verdict — the application is blocked regardless of total score until the flagged issue is addressed. Other critics may also raise critical flags following the same rule.
+Reviewers and critics score a patent application against 9 weighted dimensions summing to **45**. The threshold to advance is **≥39/45** (legal/customer-facing artifact per anvil's threshold table). A **§101 critical flag** or **§112 critical flag** short-circuits the verdict — the application is blocked regardless of total score until the flagged issue is addressed. Other critics may also raise critical flags following the same rule.
 
-USPTO patent applications have a different risk profile than memos: claim breadth and statutory compliance dominate. Every dimension is weighted equally at **5/40**. There is no single dimension that dominates because a failure in any of the eight is grounds for rejection or post-issuance vulnerability. Skills with softer outputs (memo, deck) skew weights; the patent skill is intentionally flat.
+USPTO patent applications have a different risk profile than memos: claim breadth and statutory compliance dominate. Every dimension is weighted equally at **5/45**. There is no single dimension that dominates because a failure in any of the nine is grounds for rejection or post-issuance vulnerability. Skills with softer outputs (memo, deck) skew weights; the patent skill is intentionally flat — including the dim 9 *Claim-spec correspondence* addition (weight 5) that preserves the flat-weight design.
+
+Unlike the other anvil skills (which add a memo-mirror dim 9 *Rhetorical economy*), the patent skill takes a **skill-appropriate dim 9 *Claim-spec correspondence***: patent applications are the inverse of memos on bloat — fewer words is often a §112(a) enablement failure, and "rhetorical economy" is actively counterproductive. The natural ninth dim is the per-limitation cross-walk a sophisticated examiner does first: does every claim limitation have explicit spec support (the §112(a) enablement boundary), and does every spec embodiment surface a claim term? This is **adjacent to but distinct from** existing dim 2 (§112(a) written description, scope-level) and dim 6 (specification completeness, structure-level) — it's the per-limitation cross-walk a sophisticated examiner does first.
 
 ## Dimensions
 
@@ -16,7 +18,8 @@ USPTO patent applications have a different risk profile than memos: claim breadt
 | 6 | **Specification completeness** | 5 | `review`, `s112` | Field, Background, Summary, Brief Description of Drawings, Detailed Description balance; embodiments, alternatives, ranges, definitions; no unsupported assertions. |
 | 7 | **Drawing-text correspondence** | 5 | `review` | Every reference numeral in spec appears in a drawing and vice versa; figure captions match the Brief Description of Drawings; numbering is consistent across spec/claims/drawings. |
 | 8 | **Formal compliance (37 CFR 1.71–1.84)** | 5 | `review`, pre-flight | Section headings per 37 CFR 1.77(b); paragraph numbering in `[0001]` style; abstract ≤150 words; claim count and multiple-dependent claim rules; margins, font, line spacing via the LaTeX class. |
-| | **Total** | **40** | | Advance threshold: ≥35 |
+| 9 | **Claim-spec correspondence** | 5 | `s112`, `claims` | Per-limitation cross-walk: does every claim limitation have explicit spec support (the §112(a) enablement boundary), and does every spec embodiment surface a claim term? Adjacent to but distinct from dim 2 (§112(a) written description, scope-level) and dim 6 (specification completeness, structure-level) — this is the per-limitation cross-walk a sophisticated examiner does first. |
+| | **Total** | **45** | | Advance threshold: ≥39 |
 
 ## Critic ownership
 
@@ -28,15 +31,15 @@ Ownership map (primary):
 |---|---|
 | `review` (general reviewer) | 6, 7, 8 |
 | `s101` | 4 |
-| `s112` | 2, 3 |
-| `claims` | 1, 3 |
+| `s112` | 2, 3, 9 |
+| `claims` | 1, 3, 9 |
 | `priorart` | 5 |
 
-This intentionally overlaps for §112(b) (s112 + claims) — definiteness is both a statutory and a claim-drafting concern, and two independent perspectives is a feature.
+This intentionally overlaps for §112(b) (s112 + claims) — definiteness is both a statutory and a claim-drafting concern, and two independent perspectives is a feature. Post-#357, dim 9 *Claim-spec correspondence* is owned jointly by `s112` and `claims` (mirroring the dim 3 §112(b) joint-ownership precedent) — the per-limitation cross-walk benefits from both the statutory perspective (s112) and the claim-drafting perspective (claims).
 
 ## Vision critic — drawing dimensions (optional sibling)
 
-The optional `ip-uspto-vision` critic (`commands/ip-uspto-vision.md`) owns a **separate drawing-vision rubric subset**, scored independently of the 8-dimension /40 main rubric above. It critiques the rendered **drawings only** (line art, reference numerals, lead lines) — never the spec prose, which the source-side text critics cover. These dimensions exist because the main rubric's Dim 7 (drawing-text correspondence) can only be read from the source; whether a numeral is *legible at examiner scale*, whether the line art is *high-contrast black-on-white*, whether labels *overlap or fall outside the border*, and whether each view carries a visible *"FIG. N"* are render-time visual facts invisible in the LaTeX source.
+The optional `ip-uspto-vision` critic (`commands/ip-uspto-vision.md`) owns a **separate drawing-vision rubric subset**, scored independently of the 9-dimension /45 main rubric above. It critiques the rendered **drawings only** (line art, reference numerals, lead lines) — never the spec prose, which the source-side text critics cover. These dimensions exist because the main rubric's Dim 7 (drawing-text correspondence) can only be read from the source; whether a numeral is *legible at examiner scale*, whether the line art is *high-contrast black-on-white*, whether labels *overlap or fall outside the border*, and whether each view carries a visible *"FIG. N"* are render-time visual facts invisible in the LaTeX source.
 
 | Dim | Name | Weight | What it measures (37 CFR 1.84) |
 |---|---|---|---|
@@ -47,7 +50,9 @@ The optional `ip-uspto-vision` critic (`commands/ip-uspto-vision.md`) owns a **s
 | dv5 | **Cross-reference accuracy** | 5 | Numerals *drawn on the figures* correspond to numerals the spec describes (the pixels-side half of Dim 7; the text-source half — does every spec `\refnum{N}` appear in a drawing? — stays with the `review` critic). |
 | | **Total** | **25** | Scored 0–5 each. |
 
-These dv1–dv5 dimensions are **disjoint from the eight main-rubric dimensions** and from each other's owning critics: the vision critic leaves the 8 main dims `null`, and the source-side critics (`review`, `s101`, `s112`, `claims`, `priorart`) leave dv1–dv5 `null`. The reviser's mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`) merges the scorecards cleanly with no schema or aggregation changes. A vision finding can raise the framework `rendered_overflow_unrecoverable` critical flag (e.g. a load-bearing reference numeral clipped at the drawing border), which short-circuits the verdict to `BLOCK` like any other critical flag.
+These dv1–dv5 dimensions are **disjoint from the nine main-rubric dimensions** and from each other's owning critics: the vision critic leaves the 9 main dims `null`, and the source-side critics (`review`, `s101`, `s112`, `claims`, `priorart`) leave dv1–dv5 `null`. The reviser's mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`) merges the scorecards cleanly with no schema or aggregation changes. A vision finding can raise the framework `rendered_overflow_unrecoverable` critical flag (e.g. a load-bearing reference numeral clipped at the drawing border), which short-circuits the verdict to `BLOCK` like any other critical flag.
+
+The vision rubric (`anvil-ip-uspto-vision-v1`, /25, dv1–dv5) is a **disjoint co-rubric** that does NOT migrate to /45 — it keeps its existing `rubric_id`. The main rubric's `/40 → /45` migration is independent.
 
 | Critic | Drawing dimensions owned |
 |---|---|
@@ -69,8 +74,8 @@ Suggested calibration:
 
 ## Advance threshold
 
-- **Aggregate ≥35/40** AND no unresolved critical flag → advance to `READY` (then `AUDITED`, then `FINALIZED`).
-- **Aggregate <35/40** OR any unresolved critical flag → block; revise.
+- **Aggregate ≥39/45** AND no unresolved critical flag → advance to `READY` (then `AUDITED`, then `FINALIZED`).
+- **Aggregate <39/45** OR any unresolved critical flag → block; revise.
 - Aggregation: per-dimension score = arithmetic mean of non-null critic scores for that dimension. Total = sum of per-dimension means.
 
 ## Critical flags

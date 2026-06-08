@@ -1,8 +1,8 @@
 # Paper review rubric
 
-The reviewer scores a paper against 8 weighted dimensions summing to **40**. The threshold to advance is **≥32/40**. Any **critical flag** short-circuits the verdict — the paper is blocked regardless of total score until the flagged issue is addressed.
+The reviewer scores a paper against 9 weighted dimensions summing to **44**. The threshold to advance is **≥35/44**. Any **critical flag** short-circuits the verdict — the paper is blocked regardless of total score until the flagged issue is addressed.
 
-The rubric is tuned so that **rigor + evidence + citation hygiene (6 + 6 + 5 = 17/40 ≈ 43%)** dominate the score. A paper's primary job is to defend a claim with evidence; prose polish is necessary but not sufficient. Compared to the memo rubric, this rubric demotes recommendation/decision clarity (papers do not recommend; they argue) and promotes positioning against prior work and reproducibility.
+The rubric is tuned so that **rigor + evidence + citation hygiene (6 + 6 + 5 = 17/44 ≈ 38.6%)** dominate the score. A paper's primary job is to defend a claim with evidence; prose polish is necessary but not sufficient. Compared to the memo rubric, this rubric demotes recommendation/decision clarity (papers do not recommend; they argue) and promotes positioning against prior work and reproducibility. The dim 9 *Rhetorical economy* addition (weight 4) provides explicit countervailing pressure against bloat — top venues penalize bloat heavily and dim 9 catches the failure mode where every other dim rewards adding more.
 
 ## Dimensions
 
@@ -16,7 +16,8 @@ The rubric is tuned so that **rigor + evidence + citation hygiene (6 + 6 + 5 = 1
 | 6 | **Figure & table quality** | 4 | Figures and tables are self-contained (caption tells the story), readable at print size, have axis labels with units, and avoid chartjunk. Tables have correct alignment and meaningful column headers. |
 | 7 | **Prose & structural quality** | 4 | Abstract → introduction → methods → results → discussion flow is intact; prose is concise; no hand-waving; tense and voice are consistent. Includes LaTeX-specific concerns: no overfull hboxes in body sections, no broken cross-references (`Section ??`), no unused macros. |
 | 8 | **Citation hygiene** | 5 | Every non-trivial claim has a citation; cited papers actually support the surrounding claim (audit phase verifies — this dimension catches the unsourced-claim half); bibliography entries are complete and consistent (author, title, venue, year all present). |
-| | **Total** | **40** | Advance threshold: ≥32 |
+| 9 | **Rhetorical economy** | 4 | Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reviewer extract the contribution in 90 seconds? |
+| | **Total** | **44** | Advance threshold: ≥35 |
 
 ## Perspective substrate (dim 4)
 
@@ -106,8 +107,8 @@ Suggested calibration:
 
 ## Advance threshold
 
-- **≥32/40** — advance to `READY` (proceed to `pub-audit`).
-- **<32/40** — block; revise.
+- **≥35/44** — advance to `READY` (proceed to `pub-audit`).
+- **<35/44** — block; revise.
 - **Any critical flag set (from `.review/` OR `.audit/`)** — block regardless of total. The next revision must address the flagged issue specifically and the next reviewer pass must re-evaluate the flag before the threshold check applies.
 
 ## Critical flags
@@ -127,8 +128,8 @@ The reviewer should also raise a flag for any other issue that, in their judgmen
 
 The reviewer writes a `verdict.md` at the top of the review sibling dir with:
 
-1. **Total score**: `XX / 40`.
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 32` AND `no unresolved critical flag`.)
+1. **Total score**: `XX / 44`.
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 35` AND `no unresolved critical flag`.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification.
 4. **Dimension summary**: a markdown table of per-dimension scores (full detail lives in `scoring.md`).
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes the reviser should focus on.
@@ -140,7 +141,7 @@ The reviewer writes a `verdict.md` at the top of the review sibling dir with:
   verdict.md           Top-level decision (see above)
   scoring.md           Per-dimension score + justification
   comments.md          Line-level comments keyed to main.tex sections
-  _review.json         Generic /40 scorecard (canonical critic JSON; see anvil/lib/review_schema.py).
+  _review.json         Generic /44 scorecard (canonical critic JSON; see anvil/lib/review_schema.py).
   _review.venue.json   (optional) Venue advisory overlay scorecard, written
                        when <thread>/.anvil.json sets a `venue` field that
                        resolves to a known venue YAML. Same JSON schema as
@@ -162,7 +163,7 @@ A paper thread may declare a target venue in `<thread>/.anvil.json`:
 
 When set and a matching YAML is found, the reviewer also scores the paper against a **venue-pinned advisory rubric** (NeurIPS reviewer form, Nature broad-significance bar, arXiv reader norms, etc.) and writes a second `_review.venue.json` alongside the generic `_review.json`. The venue file uses the same `Review` schema in `anvil/lib/review_schema.py` (no new on-disk shape).
 
-**Critical: the venue overlay is ADVISORY ONLY. It does NOT change the /40 convergence gate.** The generic 8-dimension rubric above (with its ≥32/40 threshold and the critical-flag short-circuit) remains the sole driver of the `advance` decision. The venue overlay produces additional findings the reviser consumes for venue-specific signal; it does NOT contribute points to the gate-deciding total. This preserves the framework-wide "/40 means the same thing across skills" invariant documented in `anvil/lib/snippets/rubric.md`.
+**Critical: the venue overlay is ADVISORY ONLY. It does NOT change the /44 convergence gate.** The generic 9-dimension rubric above (with its ≥35/44 threshold and the critical-flag short-circuit) remains the sole driver of the `advance` decision. The venue overlay produces additional findings the reviser consumes for venue-specific signal; it does NOT contribute points to the gate-deciding total. The per-skill `total` invariant is documented in `anvil/lib/snippets/rubric.md` §"Shape requirements".
 
 Shipped venues:
 
@@ -172,7 +173,7 @@ Shipped venues:
 | `rubrics/nature.yaml` | /15 | Broad significance, accessibility, evidence strength, novelty. Sources Nature reviewer instructions. |
 | `rubrics/arxiv.yaml` | /10 | Citation completeness, reproducibility, clarity of contribution, scope classification. De-facto reader bar + arXiv moderation. |
 
-Each YAML cites its public source in a header comment so it can be updated as venue guidelines change. The schema for these YAMLs is `anvil/lib/rubric.py::Rubric` with `advisory: true`; the loader skips the sum-to-/40 invariant for advisory rubrics. The venue discovery search order (per-thread → consumer-installed → skill-shipped) and the consumer override pattern are documented in `SKILL.md`.
+Each YAML cites its public source in a header comment so it can be updated as venue guidelines change. The schema for these YAMLs is `anvil/lib/rubric.py::Rubric` with `advisory: true`; the loader skips the sum-to-total invariant for advisory rubrics. The venue discovery search order (per-thread → consumer-installed → skill-shipped) and the consumer override pattern are documented in `SKILL.md`.
 
 When `venue` is set but no matching YAML is found, the reviewer emits a stdout warning and proceeds with the generic rubric only. The thread's review is not blocked by the missing venue — the generic gate continues to apply.
 
@@ -190,6 +191,6 @@ The optional `pub-vision` critic (see `commands/pub-vision.md`) scores the **com
 
 The dropped two framework dims (`vertical_overflow`, `slide_density`) are slide-centric and do not apply to a paginated, reflowing paper.
 
-**These dims do NOT contribute to the /40 convergence gate.** Like the venue overlay, the vision scorecard is an **additive overlay** the reviser (`pub-revise`) consumes for actionable signal. The generic 8-dimension /40 rubric above remains the sole driver of the `advance` decision, preserving the framework-wide "/40 means the same thing across skills" invariant. The vision critic's `_review.json` (`kind=vision`) is discovered and aggregated by `anvil/lib/critics.py` alongside `.review/` and `.audit/`.
+**These dims do NOT contribute to the /44 convergence gate.** Like the venue overlay, the vision scorecard is an **additive overlay** the reviser (`pub-revise`) consumes for actionable signal. The generic 9-dimension /44 rubric above remains the sole driver of the `advance` decision. The vision critic's `_review.json` (`kind=vision`) is discovered and aggregated by `anvil/lib/critics.py` alongside `.review/` and `.audit/`.
 
 **Vision critical flags participate in the short-circuit.** The two framework vision flags — `rendered_overflow_unrecoverable` (a clipped table column or caption that loses load-bearing content) and `mathtext_artifact_breaks_meaning` (a rendered equation that changes the claim) — are real critical flags and block advancement exactly like the `.review`/`.audit` flags above until addressed. They map to rubric dim 6 (Figure & table quality) and dim 1/2 (rigor — a mis-rendered equation undermines the argument) when a reviewer later re-scores the source fix.

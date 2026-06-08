@@ -398,8 +398,9 @@ def test_pub_rubric_documents_vision_dims():
     text = rubric_md.read_text()
     for name in PUB_VISION_DIM_NAMES:
         assert name in text
-    # The overlay must be documented as additive, not part of the /40 gate.
-    assert "/40" in text
+    # The overlay must be documented as additive, not part of the main gate.
+    # Post-#357 the pub rubric ships at /44 (dim 9 *Rhetorical economy*).
+    assert "/44" in text
 
 
 def test_skill_dispatch_table_lists_pub_vision():
