@@ -101,6 +101,15 @@ KNOWN_RUBRICS: Dict[Tuple[str, int], RubricIdentity] = {
         "anvil-installation-v1", 40, 32
     ),
     ("ip-uspto", 40): RubricIdentity("anvil-ip-uspto-v1", 40, 35),
+    # Post-#357: pub/report/deck/slides/installation migrated to /44 and
+    # ip-uspto to /45. See `anvil/skills/<skill>/commands/<skill>-review.md`
+    # for the rubric_id literal each skill stamps post-#363 (issue #366).
+    ("pub", 44): RubricIdentity("anvil-pub-v2", 44, 35),
+    ("report", 44): RubricIdentity("anvil-report-v2", 44, 39),
+    ("deck", 44): RubricIdentity("anvil-deck-v2", 44, 39),
+    ("slides", 44): RubricIdentity("anvil-slides-v2", 44, 35),
+    ("installation", 44): RubricIdentity("anvil-installation-v2", 44, 35),
+    ("ip-uspto", 45): RubricIdentity("anvil-ip-uspto-v2", 45, 39),
 }
 
 
@@ -112,12 +121,12 @@ KNOWN_RUBRICS: Dict[Tuple[str, int], RubricIdentity] = {
 CURRENT_RUBRIC_BY_SKILL: Dict[str, RubricIdentity] = {
     "memo": KNOWN_RUBRICS[("memo", 44)],
     "proposal": KNOWN_RUBRICS[("proposal", 44)],
-    "pub": KNOWN_RUBRICS[("pub", 40)],
-    "report": KNOWN_RUBRICS[("report", 40)],
-    "deck": KNOWN_RUBRICS[("deck", 40)],
-    "slides": KNOWN_RUBRICS[("slides", 40)],
-    "installation": KNOWN_RUBRICS[("installation", 40)],
-    "ip-uspto": KNOWN_RUBRICS[("ip-uspto", 40)],
+    "pub": KNOWN_RUBRICS[("pub", 44)],
+    "report": KNOWN_RUBRICS[("report", 44)],
+    "deck": KNOWN_RUBRICS[("deck", 44)],
+    "slides": KNOWN_RUBRICS[("slides", 44)],
+    "installation": KNOWN_RUBRICS[("installation", 44)],
+    "ip-uspto": KNOWN_RUBRICS[("ip-uspto", 45)],
 }
 
 
