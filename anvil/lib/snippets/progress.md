@@ -199,6 +199,16 @@ is killed mid-write.
 
 ## Crash recovery contract
 
+Two shapes apply, distinguished by whether the dir under recovery is a
+**version dir** (one canonical artifact file — `memo.md`, `deck.md`,
+`spec.tex`, `report.md`, …) or a **critic sibling dir** (six-ish files
+with no single canonical one — `verdict.md` + `scoring.md` +
+`comments.md` + `_summary.md` + `_meta.json` + `_progress.json` for the
+memo-review shape, with audit / narrative / market shapes carrying
+different manifests).
+
+### Version dir — single-canonical-output check
+
 If a command finds `phases.<phase>.state == in_progress` and the expected
 output file is missing or empty, the command MUST:
 
@@ -209,6 +219,64 @@ output file is missing or empty, the command MUST:
 
 If `phases.<phase>.state == done` AND the expected output file is present
 and parses, the command is a no-op (idempotent).
+
+### Critic sidecar dir — atomic rename (issue #350)
+
+Critic sibling dirs (`.review/`, `.audit/`, `.narrative/`, `.market/`,
+…) write N files with no single canonical "main" file: the studio
+canary surfaced 13 partials produced by mid-cycle interrupts in which
+some files made it to disk and others did not. The single-canonical-
+output check above is **insufficient** at this boundary — a sidecar
+with `verdict.md` only, or `_review.json` only, would be silently
+discoverable by `anvil/lib/critics.py:discover_critics`.
+
+The canonical recovery shape at the sidecar boundary is **staged-then-
+rename**: a critic writes its files into a leading-dot staging dir
+`.<slug>.{N}.<tag>.tmp/` (a sibling of the intended final
+`<slug>.{N}.<tag>/`), then on clean exit verifies a per-critic
+required-files manifest and atomically renames the staging dir to its
+final name. The final-named dir only ever exists in **complete** form;
+discovery checks "dir exists" and that remains sufficient. The staging
+shape is invisible to `discover_critics` (the leading-dot prefix is
+rejected by `critics.py:122-129`'s discovery glob, and the staging-name
+"tag" segment also carries a dot so the inner tag check rejects it as
+well — belt-and-suspenders rejection).
+
+The reference implementation ships at `anvil/lib/sidecar.py`:
+
+```python
+from anvil.lib.sidecar import staged_sidecar, cleanup_stale_staging
+
+with staged_sidecar(
+    final_dir=Path("<thread>.{N}.review"),
+    required_files=["verdict.md", "scoring.md", "comments.md",
+                    "_summary.md", "_meta.json", "_progress.json"],
+) as staging:
+    (staging / "verdict.md").write_text(...)
+    # ... write all required files into staging, not into final_dir ...
+# On clean __exit__: required-files manifest verified, dir renamed.
+# On exception or missing required: staging dir left in place for GC.
+
+# Startup-time sweep — called by each command's "Discover state" step.
+cleanup_stale_staging(portfolio_dir)
+```
+
+On startup, every command that operates on a thread SHOULD first call
+`cleanup_stale_staging(portfolio_dir)` to sweep `.<slug>.*.tmp/` dirs
+from prior interrupts before doing its own work. Restart-on-detection
+is the v0 contract — resume-from-staging is deferred (critics are
+cheap; a restart preserves more invariants).
+
+Resume-state recovery for a partially-staged sidecar is unnecessary:
+the staging dir is silently swept and the command re-enters its phase
+as if no prior attempt had run. The `_progress.json` for a sidecar
+lives **inside** the sidecar dir, so a sidecar that never renamed has
+no `_progress.json` visible to discovery anyway.
+
+The per-file atomic-write recipe (`tmp + os.replace` for `_progress.json`
+and other individual JSON files — see "Read-merge-write recipe" above)
+remains correct at the **file** boundary and ships alongside the
+directory-level shape; the two are complementary, not alternatives.
 
 ## Initial-write template (version dir)
 
