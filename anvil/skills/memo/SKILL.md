@@ -238,7 +238,48 @@ Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short
 
 **Plan siblings do NOT advance state.** A `<thread>.{N+1}.plan/` directory (written by `memo-revise <thread> --plan` — see §"Operator-confirmable change-set preview" below) is a critic-sibling-shaped artifact, NOT a version dir. Its presence does NOT advance the thread to `REVISED`: the state stays `REVIEWED` until `memo-revise <thread> --apply` writes the matching `<thread>.{N+1}/<thread>.md` body file. The state-machine derivation table above continues to use `<thread>.{N+1}/` presence as the `REVISED` evidence; plan siblings are invisible to it. This preserves the existing immutability contract (a half-built version dir without a body markdown file is never `REVISED`) and keeps the two-phase flow audit-trailable on disk.
 
-Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Consumer overrides land via a future BRIEF.md project-level knob (not yet schema-formalized; the prior `<thread>/.anvil.json` carrier was retired under issue #296). Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Consumer overrides land via the **per-document iteration-cap paired override** on the project BRIEF (issue #349 — `BriefDocument.max_iterations` + `BriefDocument.iteration_cap_rationale`); see "Per-document override contract" below for the full spec. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+
+### Per-document override contract
+
+The cap exists for principled reasons — prevent infinite revision loops, force the operator to confront foundational thesis problems instead of polishing forever — so the override is deliberately friction-ful: it requires a paired rationale that documents *why* this thread deserves more passes. The carrier is the project BRIEF (the post-#296 single-source-of-truth for project / per-doc anvil-config knobs); the schema is `BriefDocument.max_iterations` + `BriefDocument.iteration_cap_rationale` in `anvil/skills/memo/lib/project_brief.py`.
+
+The canonical BRIEF.md shape, applied per-document:
+
+```yaml
+documents:
+  - slug: aldus
+    artifact_type: investment-memo
+    max_iterations: 5
+    iteration_cap_rationale: |
+      Operator-extended to 5 on 2026-06-08. Reason: v4 verdict 34/44 vs
+      floor 35, gap is design-side (slide 7 figsize + slide 4 preamble
+      drop), reviewer identified memo-revise can close it; founder
+      follow-ups for source-side lift (Dims 3/5/6) are tracked separately
+      at issue X.
+```
+
+**Validation contract** (the BRIEF parser enforces this at parse time; see `anvil/skills/memo/lib/project_brief.py` `_validate_max_iterations` and `_validate_paired_iteration_cap_override`):
+
+- `max_iterations` set with a non-empty `iteration_cap_rationale` → honor the override.
+- `max_iterations` set WITHOUT `iteration_cap_rationale` (or with an empty / whitespace-only rationale) → **`ValueError`** at parse time. The rationale is what makes the override principled; an unjustified override does NOT silently degrade — it is rejected with a clear field-path message naming both keys.
+- `iteration_cap_rationale` set WITHOUT `max_iterations` → **`ValueError`** at parse time (the unbalanced paired override). Suggests adding `max_iterations:` or removing the stale rationale.
+- `max_iterations < 4` (the principled default) → **`ValueError`** at parse time. The override may raise the cap but not lower it below the default. The floor is `project_brief.DEFAULT_MAX_ITERATIONS`.
+- Both keys absent → no override, default cap applies (no warning; this is the legacy case).
+
+The BRIEF parser is **STRICT** — a malformed paired override is rejected at parse time, NOT silently degraded to default. This is the load-bearing change from the deck precedent (`<thread>/.anvil.json`, which uses lenient fallback): the BRIEF-side surface is the schema-of-record, so silent drops would confuse the operator.
+
+**Sticky-raise semantics.** Setting `max_iterations: 5` raises the cap to 5 until the BRIEF is edited again. This is NOT single-use ("unlock one more iteration"); the required-rationale contract is what prevents abuse, not single-use semantics. An operator who writes a substantive rationale gets the same affordance whether they get 1 or 2 extra iterations under the elevated cap. The override may not lower the cap below the principled default; only raise it.
+
+**Audit trail.** Three writes per pass:
+
+1. **BRIEF.md `documents:` entry** — the authoring surface; operator writes `max_iterations` + `iteration_cap_rationale` here, git tracks history. This is the durable record of *why* the cap was elevated.
+2. **`<thread>.{N+1}/_progress.json.metadata.max_iterations` + `.iteration_cap_rationale`** — mirrored at drafter (step 4 of `memo-draft.md`) and reviser (step 5 of `memo-revise.md`) write-time. Every version dir carries the cap + rationale that were in effect when it was produced.
+3. **`memo-revise` BLOCKED notice when the elevated cap is hit** — surfaces the rationale verbatim so the operator sees the prior authorization at the moment they need it (see `commands/memo-revise.md` §"BLOCKED notice").
+
+No upper bound is enforced — if an operator sets `max_iterations: 99` with a rationale, the rationale itself is the audit trail. Per-version overrides (e.g., `max_iterations.overrides.v{N}`) are intentionally not supported in v1 — the cheap path is the sticky raise; per-version granularity can land later if the canary surfaces a need.
+
+**Relationship to the deck precedent.** The deck skill ships a structurally identical paired-override at `<thread>/.anvil.json` (see `anvil/skills/deck/SKILL.md` §"Per-thread override contract" for the deck-side spec). The two contracts agree on every load-bearing rule (paired keys required, `>=4` floor, sticky raise, rationale verbatim in BLOCKED notice). The only divergence is the carrier: deck uses `.anvil.json` (the per-thread carrier that predates the #296 consolidation); memo uses BRIEF.md (the post-#296 single-source-of-truth). v2 may converge the two skills on a single carrier; v1 keeps both working in parallel.
 
 ### Operator-initiated polish passes
 

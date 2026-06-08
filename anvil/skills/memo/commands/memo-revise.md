@@ -217,11 +217,19 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/<thread>.md` AND at least `<thread>.{N}.review/verdict.md`. If no review exists, exit with an error ("no review to revise against; run `memo-review` first").
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` and `<thread>.md` + `changelog.md` exist, the revision is complete — exit early with a notice.
-3. **Iteration cap check**: read `metadata.max_iterations` from `<thread>.{N}/_progress.json` (default 4; consumer override via a future BRIEF.md project-level knob — not yet schema-formalized). If `N + 1 > max_iterations`, exit with a `BLOCKED` notice — human review required.
+3. **Iteration cap check**: resolve the effective cap via the **per-document paired-override** in the project BRIEF (issue #349), mirroring the deck skill's `<thread>/.anvil.json` contract documented at `anvil/skills/deck/SKILL.md` §"Per-thread override contract". Resolution order — first match wins:
+
+   1. Read the matching `documents:` entry from `<project>/BRIEF.md` (via `anvil/skills/memo/lib/project_brief.py::load_project_brief` + `ProjectBrief.document_for_slug(slug)`). If `doc.max_iterations` AND `doc.iteration_cap_rationale` are BOTH set, use `doc.max_iterations` as the effective cap and carry the rationale forward into the BLOCKED notice (when the cap is hit) and `_progress.json.metadata.iteration_cap_rationale` (when the new version is written at step 5). The BRIEF parser already enforces the paired-override validation contract at parse time per SKILL.md §"Per-document override contract" — both fields must be present, `max_iterations >= 4`, rationale non-empty; the reviser does NOT re-validate.
+   2. Else fall back to `metadata.max_iterations` from `<thread>.{N}/_progress.json` (typically the default 4 carried from the prior version's drafter / reviser pass).
+   3. Else fall back to the default `project_brief.DEFAULT_MAX_ITERATIONS` (4).
+
+   If the BRIEF cannot be loaded (no BRIEF, malformed YAML, etc.), use the fallback — `load_project_brief` returns `None` on every absence path. If the BRIEF parses but the paired override is malformed (`max_iterations` set without rationale, `< 4`, non-integer cap, etc.), the parser raised `ValueError` at load time — the reviser propagates that error rather than degrading silently (the BRIEF-side surface is the schema-of-record). The schema violation is itself the actionable error: the operator either fixes the BRIEF or removes the override.
+
+   If `N + 1 > effective_max_iterations`, exit with the **BLOCKED notice** per §"BLOCKED notice" below — human review required.
 4. **Verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` and there are no critical flags AND `--polish` was NOT passed, exit with a notice: the thread is `READY`, no revision needed. (Default behavior is to refuse to revise an already-passing version.)
 
    **`--polish` bypass.** When `memo-revise <thread> --polish "<reason>"` is invoked, this step is skipped entirely; proceed to step 5 regardless of `advance:true` + 0-critical. The `--polish` flag is the in-band, audit-trailed alternative to the destructive workarounds (deleting `verdict.md`, hand-bumping `metadata.iteration`, force-editing verdict status) the default-refuse path historically forced operators into. Pre-check the flag's reason argument before bypassing: an absent / empty / whitespace-only reason is rejected with a clear error (see §"CLI flags" above); the thread is left untouched. See §"CLI flags" for the full required-reason contract.
-5. **Initialize `_progress.json`**: write `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations`. Also resolve `target_length` for v{N+1} per step 6 and record `metadata.target_length_resolved` with provenance — the resolution must happen before the revision-plan prompt is built so the resolved range is in scope for both the prompt injection and the `_progress.json` provenance write.
+5. **Initialize `_progress.json`**: write `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations` (the effective cap from step 3), and `metadata.iteration_cap_rationale` (the rationale from step 3 when the per-document BRIEF override is in effect; `null` otherwise). The drafter / reviser carry both fields forward on every pass so every version dir's `_progress.json` records the cap + rationale in effect when the version was produced. Also resolve `target_length` for v{N+1} per step 6 and record `metadata.target_length_resolved` with provenance — the resolution must happen before the revision-plan prompt is built so the resolved range is in scope for both the prompt injection and the `_progress.json` provenance write.
 
    **Polish-pass audit trail.** Additionally write `metadata.revision_mode` and `metadata.revise_force_reason` based on the presence/absence of `--polish`:
    - Default path (no `--polish`): `metadata.revision_mode = "normal"` (or omit the field entirely — readers tolerate both shapes for backwards-compat with pre-this-change version dirs); `metadata.revise_force_reason = null` (or omit).
@@ -362,7 +370,18 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
 
 After this command produces `<thread>.{N+1}/`, the orchestrator should run `memo-review <thread>` on the new version. The cycle continues until:
 - `verdict.md` reports `advance: true` (thread reaches `READY`), OR
-- `N+1 > max_iterations` (thread is `BLOCKED` for human review).
+- `N+1 > max_iterations` (thread is `BLOCKED` for human review — see the BLOCKED notice contract below).
+
+### BLOCKED notice
+
+When step 3's iteration cap check fires (`N + 1 > effective_max_iterations`), the reviser exits without writing `<thread>.{N+1}/` and prints a BLOCKED notice to stdout. The notice surfaces the discoverability pointer (or, when an override is already active, the prior rationale) at **the moment the operator needs it** — the canary friction surfaced in issue #349 was "I didn't know the override existed at PARK time." Required lines:
+
+1. **State line**: `BLOCKED — <thread>.{N} hit the iteration cap (max_iterations=<N>). Human review required.`
+2. **Trajectory line** (when verdict data is available): brief summary of per-iteration totals and the latest critical-flag state, e.g. `Trajectory: v1=27/44, v2=29/44, v3=31/44, v4=34/44 (advance=false, 0 critical); gap to advance threshold ≥35.` This frames the operator's decision: well-conditioned (monotonic improvement, named small gap) → consider override; ill-conditioned (oscillating, persistent critical flag) → the cap is doing its job, take it to the founder.
+3. **Override pointer** (REQUIRED when no override is currently set, i.e. `metadata.iteration_cap_rationale == null` or absent): `Override available — see anvil/skills/memo/SKILL.md §"Per-document override contract". Required fields on the matching <project>/BRIEF.md documents: entry: max_iterations (int ≥ 4) AND iteration_cap_rationale (non-empty string explaining why this thread deserves more passes). Both fields are required; setting one without the other is a schema violation and the BRIEF parser will refuse to load. The override may raise the cap but not lower it below the principled default of 4.`
+4. **Override-already-set surfacing** (when `metadata.iteration_cap_rationale != null` — i.e., an elevated cap is already active and the thread hit the elevated cap): print the rationale (full text, not truncated) so the operator sees the audit trail of *why* this thread was elevated and is hitting the elevated cap. Follow with: `This thread is already at its elevated cap (max_iterations=<N>). Raising further requires re-evaluating the rationale in <project>/BRIEF.md; see anvil/skills/memo/SKILL.md §"Per-document override contract".`
+
+The BLOCKED notice mirrors the deck skill's `deck-revise.md` §"BLOCKED notice" line-by-line (substituting the BRIEF.md carrier reference for `.anvil.json`). The two skills agree on every load-bearing surfacing rule.
 
 ## Notes for the reviser agent
 
@@ -387,6 +406,7 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   "metadata": {
     "iteration": <N+1>,
     "max_iterations": 4,
+    "iteration_cap_rationale": null,
     "revised_from": <N>,
     "scope": "important",
     "target_length_resolved": {
@@ -399,6 +419,8 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   }
 }
 ```
+
+`metadata.max_iterations` and `metadata.iteration_cap_rationale` are the resolved effective cap and (when set) the paired operator-supplied rationale from the BRIEF override (issue #349 — see step 3 for the resolution rules). When the per-document BRIEF override is in effect, `max_iterations` carries the elevated value and `iteration_cap_rationale` carries the verbatim operator-supplied justification string. When the override is absent, `iteration_cap_rationale` is `null` (or omitted; readers tolerate both shapes for backwards-compat with pre-issue-#349 version dirs). The shallow-merge rule preserves both fields on subsequent writes by other commands. Both are audit-trail-only on the reviser side — the reviewer at the next pass does NOT special-case the elevated cap, it scores `<thread>.{N+1}/` on its own rubric merits; the BLOCKED notice (see §"BLOCKED notice") is the one consumer that surfaces the rationale verbatim, and that fires only when the elevated cap itself is hit.
 
 `metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. `metadata.target_length_resolved` is the resolved target this revision was authored against, with `source` provenance — see step 6 for the resolution rules and the three documented source values (`"overrides.<N+1>"`, `"default"`, `"none"`). The reviewer reads this field rather than re-resolving from `<project>/BRIEF.md`, preventing drift if BRIEF.md is edited between revise and review. The field is optional — its absence is tolerated for legacy version dirs (reviewer falls back to re-resolution). Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 
