@@ -56,10 +56,12 @@ These two flag types are defined in `anvil/lib/vision.py` (`CRITICAL_FLAG_RENDER
   _progress.json                   { version, thread, for_version, phases.vision.{state,started,completed} }
 ```
 
+**Atomicity** (issue #350): the vision sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The three top-level files (`_review.json`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.vision.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.vision/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.vision.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob. The `slides/` subdirectory is staged inside the staging dir but is NOT validated by the required-files manifest (per `staged_sidecar`'s flat-manifest contract — subdirectories like `slides/` are not validated).
+
 ## Procedure
 
-1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`). Find the highest `N` with `<thread>.{N}/deck.md`. If `<thread>.{N}.vision/_progress.json.phases.vision.state == done` AND `_review.json` exists, exit early (idempotent).
-2. **Initialize `_progress.json`**:
+1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`). Find the highest `N` with `<thread>.{N}/deck.md`. Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.vision.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed VLM session (issue #350). If `<thread>.{N}.vision/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early (idempotent).
+2. **Open the staged sidecar** for the vision dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.vision, required_files=["_review.json", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.vision.tmp/`), NOT inside the final `<thread>.{N}.vision/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`:
    ```json
    {
      "version": 1,
@@ -108,7 +110,7 @@ These two flag types are defined in `anvil/lib/vision.py` (`CRITICAL_FLAG_RENDER
    - Validate via `Review.model_validate` (the constructor in step 5 already validated).
    - Serialize with `review.model_dump_json(indent=2)` to `<thread>.{N}.vision/_review.json`.
 
-7. **Update `_progress.json`** and `_meta.json` to `state: done` / `finished: <ISO>`.
+7. **Update `_progress.json`** and `_meta.json` inside the staging dir to `state: done` / `finished: <ISO>`. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.vision.tmp/` → `<thread>.{N}.vision/`. The final-named dir only ever exists in **complete** form.
 
 8. **Report**: one-line status, e.g. `Vision critic on kdd-2026.1 → kdd-2026.1.vision/ (vision total 22/30; 4 findings; 1 critical flag: mathtext_artifact_breaks_meaning)`.
 
