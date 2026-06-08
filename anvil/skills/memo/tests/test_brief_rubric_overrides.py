@@ -748,6 +748,24 @@ class TestWorkedExampleRoundtrip(_TmpProjectBase):
             f"worked-example BRIEF emitted unexpected warnings: {msgs}",
         )
 
+    def test_template_demonstrates_iteration_cap_override(self) -> None:
+        """The template demonstrates the issue #349 paired override.
+
+        The `raytheon-pitch-strategy` entry in
+        ``templates/BRIEF.rubric-overrides.md.example`` carries both
+        ``max_iterations`` and ``iteration_cap_rationale`` so operators
+        have a worked example to copy. A regression here would mean the
+        template silently lost the demonstration.
+        """
+        brief = load_project_brief_strict(self.project_dir)
+        doc = brief.document_for_slug("raytheon-pitch-strategy")
+        assert doc is not None
+        # The template ships max_iterations: 5 + non-empty rationale.
+        self.assertEqual(doc.max_iterations, 5)
+        self.assertIsNotNone(doc.iteration_cap_rationale)
+        assert doc.iteration_cap_rationale is not None
+        self.assertIn("Operator-extended", doc.iteration_cap_rationale)
+
 
 if __name__ == "__main__":
     unittest.main()
