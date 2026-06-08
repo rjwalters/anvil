@@ -39,7 +39,7 @@ This intentionally overlaps for §112(b) (s112 + claims) — definiteness is bot
 
 ## Vision critic — drawing dimensions (optional sibling)
 
-The optional `ip-uspto-vision` critic (`commands/ip-uspto-vision.md`) owns a **separate drawing-vision rubric subset**, scored independently of the 8-dimension /40 main rubric above. It critiques the rendered **drawings only** (line art, reference numerals, lead lines) — never the spec prose, which the source-side text critics cover. These dimensions exist because the main rubric's Dim 7 (drawing-text correspondence) can only be read from the source; whether a numeral is *legible at examiner scale*, whether the line art is *high-contrast black-on-white*, whether labels *overlap or fall outside the border*, and whether each view carries a visible *"FIG. N"* are render-time visual facts invisible in the LaTeX source.
+The optional `ip-uspto-vision` critic (`commands/ip-uspto-vision.md`) owns a **separate drawing-vision rubric subset**, scored independently of the 9-dimension /45 main rubric above. It critiques the rendered **drawings only** (line art, reference numerals, lead lines) — never the spec prose, which the source-side text critics cover. These dimensions exist because the main rubric's Dim 7 (drawing-text correspondence) can only be read from the source; whether a numeral is *legible at examiner scale*, whether the line art is *high-contrast black-on-white*, whether labels *overlap or fall outside the border*, and whether each view carries a visible *"FIG. N"* are render-time visual facts invisible in the LaTeX source.
 
 | Dim | Name | Weight | What it measures (37 CFR 1.84) |
 |---|---|---|---|

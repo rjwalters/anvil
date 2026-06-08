@@ -153,8 +153,8 @@ Suggested calibration:
 
 ## Advance threshold
 
-- **≥35/40** — advance to `READY` (or to next step in the lifecycle).
-- **<35/40** — block; revise.
+- **≥39/44** — advance to `READY` (or to next step in the lifecycle).
+- **<39/44** — block; revise.
 - **Any critical flag set** — block regardless of total. The next revision must address the flagged issue specifically and the relevant critic(s) must re-evaluate the flag before the threshold check applies.
 
 ## Critical flags
@@ -174,8 +174,8 @@ The critic should also raise a flag for any other issue that, in its judgment, m
 
 The reviser (consuming all critic siblings at `<thread>.{N}/`) writes an aggregated `verdict.md` at the top of the next version's revision plan (or the general reviewer writes a per-critic verdict in `.review/`). The format:
 
-1. **Total score**: `XX / 40` (mean-aggregated per dimension across non-null critic scores).
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 35` AND `no unresolved critical flag from any critic`.)
+1. **Total score**: `XX / 44` (mean-aggregated per dimension across non-null critic scores).
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 39` AND `no unresolved critical flag from any critic`.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification and the critic that raised it.
 4. **Dimension summary**: a markdown table of per-dimension aggregate scores, the critics contributing each, and any null dimensions.
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes for the reviser to focus on.
