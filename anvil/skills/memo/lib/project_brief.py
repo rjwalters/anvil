@@ -1550,6 +1550,123 @@ def load_rubric_overrides_for_slug(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Thread-level BRIEF.md helpers (issue #348)
+# ---------------------------------------------------------------------------
+#
+# The thread-level ``<thread>/BRIEF.md`` is a SEPARATE on-disk surface from the
+# project-level ``<project>/BRIEF.md`` parsed above. The thread-level BRIEF
+# is intentionally **freeform prose** with optional YAML frontmatter — it
+# documents the drafter's context (company / sector / stage / check_size)
+# and the operator's recommendation posture. Recognized informal frontmatter
+# keys are documented in ``anvil/skills/memo/commands/memo-draft.md`` step 3:
+# ``company``, ``sector``, ``stage``, ``check_size``, and
+# ``recommendation_target`` (one of ``invest`` / ``pass`` / ``conditional`` /
+# ``undecided``).
+#
+# These keys are **purely informational passthrough** for most consumers; the
+# drafter reads them into context but no structural module parses them.
+# Issue #348 promotes the one structurally-load-bearing key —
+# ``recommendation_target`` — into a typed signal so the reviewer can
+# calibrate dim 1 (Recommendation clarity) appropriately when the operator
+# explicitly declared the thread is in pre-decision mode
+# (``recommendation_target: undecided``).
+#
+# The helper is intentionally **lenient** — every absence path returns
+# ``None`` so callers can branch on ``is None`` without try/except. The
+# contract mirrors :func:`load_rubric_overrides_for_slug` for the
+# project-level surface.
+
+# Closed set of recognized ``recommendation_target`` values.
+# The closed set is the contract: typos like ``Undecided`` (capitalized),
+# ``tbd``, ``?``, ``maybe`` are NOT recognized and resolve to ``None``
+# (the reviewer falls back to the legacy dim 1 calibration — same behavior
+# as a thread with no BRIEF). This prevents the structured-field surface
+# from silently accepting noise.
+_RECOGNIZED_RECOMMENDATION_TARGETS = ("invest", "pass", "conditional", "undecided")
+
+
+def load_recommendation_target(
+    thread_dir: Path,
+) -> Optional[Literal["invest", "pass", "conditional", "undecided"]]:
+    """Read ``recommendation_target`` from a thread-level ``BRIEF.md``.
+
+    Issue #348 promotes the informal-but-documented ``recommendation_target``
+    frontmatter key (per ``memo-draft.md`` step 3 and
+    ``templates/BRIEF.fresh.md.example``) into a typed signal that the
+    reviewer can calibrate dim 1 (Recommendation clarity) against.
+
+    Parameters
+    ----------
+    thread_dir
+        The thread root directory (the directory holding ``BRIEF.md`` for
+        the thread, e.g., ``<project>/<slug>/``). NOT a version directory.
+
+    Returns
+    -------
+    Optional[Literal["invest", "pass", "conditional", "undecided"]]
+        The verbatim ``recommendation_target`` value when present and in the
+        closed set. ``None`` for every absence / malformed path:
+
+        - ``<thread_dir>/BRIEF.md`` does not exist.
+        - The file exists but has no YAML frontmatter (no opening ``---``
+          delimiter, missing closing delimiter, malformed YAML).
+        - The frontmatter is a parseable dict but contains no
+          ``recommendation_target`` key.
+        - The frontmatter value is not in the closed set
+          (``invest`` / ``pass`` / ``conditional`` / ``undecided``) — e.g.,
+          ``Undecided`` (capitalized), ``tbd``, ``maybe``, ``?``, an integer,
+          a list, a null. The reviewer falls back to byte-identical
+          pre-#348 behavior for these noise values.
+
+    Notes
+    -----
+    Lenient by design — never raises. The contract mirrors
+    :func:`load_rubric_overrides_for_slug`'s "empty / None on every absence
+    path" lenient form so the reviewer's zero-impact backwards-compat is
+    preserved exactly for any thread that pre-dates this helper or that
+    chose not to set the field.
+
+    The thread-level BRIEF is a SEPARATE surface from the project-level
+    BRIEF parsed by :func:`load_project_brief`. The two share frontmatter
+    extraction primitive (:func:`_extract_frontmatter`) but the schema
+    contracts are distinct: project-level BRIEF is STRICT (typo in
+    ``artifact_type`` raises); thread-level BRIEF is FREEFORM PROSE with
+    informal frontmatter. This helper extracts only the one structured
+    field; everything else is passed through to the drafter as
+    informational context.
+    """
+    if not isinstance(thread_dir, Path):
+        # Defensive: callers may inadvertently pass a string. The helper is
+        # documented to take a Path; convert rather than raise to preserve
+        # the lenient contract.
+        try:
+            thread_dir = Path(thread_dir)
+        except Exception:
+            return None
+
+    brief_path = thread_dir / BRIEF_FILENAME
+    if not brief_path.is_file():
+        return None
+
+    try:
+        text = brief_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    fm = _extract_frontmatter(text)
+    if fm is None:
+        return None
+
+    value = fm.get("recommendation_target")
+    # Closed-set membership check. Anything not on the recognized list —
+    # including booleans, ints, lists, dicts, None, and string typos —
+    # falls through to None per the lenient contract.
+    if isinstance(value, str) and value in _RECOGNIZED_RECOMMENDATION_TARGETS:
+        return value  # type: ignore[return-value]
+    return None
+
+
 def body_filename_for(slug: str) -> str:
     """Return the body markdown filename for a memo thread.
 
@@ -1606,5 +1723,6 @@ __all__ = [
     "body_filename_for",
     "load_project_brief",
     "load_project_brief_strict",
+    "load_recommendation_target",
     "load_rubric_overrides_for_slug",
 ]
