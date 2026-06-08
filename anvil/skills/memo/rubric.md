@@ -30,6 +30,45 @@ The rubric is tuned so that **intellectual honesty and reasoning quality (thesis
 
 When the `rubric_overrides:` block is absent on the matching document entry, the rubric behaves exactly as documented above — zero-impact for existing investment-memo threads. When present, the reviewer appends the verbatim calibration prose as a `"calibration applied: <text>"` suffix to each affected dimension's `scoring.md` justification (see `commands/memo-review.md` step 5 §"Rubric overrides — calibration suffixes"). The full override contract, schema, worked examples (synthesis-brief, feedback-memo), and the `BRIEF.md` free-prose "Critical reviewer guidance" unstructured fallback all live in `SKILL.md` §"Rubric overrides and non-investment-memo shapes".
 
+## Dim 1 — `recommendation_target: undecided` calibration
+
+**Trigger** (issue #348). When the thread-level `<thread>/BRIEF.md`'s YAML frontmatter declares `recommendation_target: undecided` (the documented default for fresh-thread v1s per `templates/BRIEF.fresh.md.example` — *"the job of v1 is to resolve the recommendation target, not to defend a predetermined one"*), the reviewer scores dim 1 (Recommendation clarity, weight 5) on **decision-framework clarity** rather than **recommendation clarity**. The reviewer reads the value via `anvil/skills/memo/lib/project_brief.py::load_recommendation_target(thread_dir)` and dispatches per the rules below.
+
+**Why the existing dim 1 wording is unfair to pre-decision memos.** Dim 1 as written above scores "a single unambiguous recommendation (invest / pass / conditional) with stated check size or scope" — verbatim language that penalizes a v1 memo whose explicit job is to enumerate the open questions a recommendation would have to answer rather than to pre-commit to one. The studio canary's `clear-signal` and `open-assay` threads both surfaced this failure mode: each received 30-/44-class verdicts whose dim 1 deductions were structurally unjust given the operator had explicitly declared the thread was in pre-decision mode. This sub-rule closes the gap by routing the reviewer's dim 1 scoring through the operator's declared posture.
+
+**Five-point scoring posture** (replaces the standard "single unambiguous recommendation" calibration when triggered):
+
+- **Full weight (5/5)** — memo names the load-bearing decision (e.g., "is Hearth & Crumb a plausible pre-seed bet?"), enumerates the open questions a sophisticated reader would need answered to land on invest / pass / conditional, AND states what specific evidence would flip the decision in each direction (the falsifiability contract from `BRIEF.fresh.md.example` "Recommendation must be falsifiable" hard-rule). The recommendation may be deferred but the **decision substrate is sharp**.
+- **~75% (4/5)** — decision is named, open questions enumerated, but the falsifiability ("what evidence would flip this") is hand-waved or partial. A sophisticated reader could anchor on the decision frame but would not be able to identify the load-bearing experiment to run.
+- **~50% (3/5)** — decision is named but the open questions are vague, OR the memo lapses into pseudo-recommending (taking implicit positions without committing) without committing to either the decision frame or a recommendation.
+- **~25% (2/5)** — the memo does not name the decision being made; it explores related territory without orientation. A reader cannot tell what question the memo is trying to answer.
+- **0/5** — no decision framing at all — the memo is undirected exploration of a topic with no anchored decision and no recommendation.
+
+**Suffix shape (mandatory)**. The reviewer's dim 1 `scoring.md` justification MUST cite `recommendation_target: undecided` from the BRIEF and the chosen scoring posture explicitly so the audit trail records why the calibration fired. The verbatim suffix appended to the dim 1 `scoring.md` cell is:
+
+```
+recommendation_target: undecided — scoring dim 1 on decision-framework clarity, not recommendation clarity
+```
+
+The suffix sits **between the artifact-type overlay suffix (if any) and the per-doc `dim_1_calibration` suffix (if any)** so per-doc author wording continues to win on the same dim (the existing precedence contract from §"Per-doc recalibration for non-investment-memo shapes" above is preserved). Composition order for dim 1 when all three surfaces fire:
+
+1. Base reviewer-prose justification (the reviewer's own scoring rationale against the criteria above).
+2. Artifact-type overlay suffix (when `select_overlay_for_thread` returns an overlay with a dim 1 `calibration_prose` entry).
+3. `recommendation_target: undecided` suffix (this sub-rule).
+4. Per-doc `dim_1_calibration` suffix (when the matching `documents:` entry in `<project>/BRIEF.md` declares one).
+
+In practice the typical fresh-thread investment-memo case fires only (1) + (3) — the `investment-memo` overlay is identity (no dim 1 prose) and a fresh thread is unlikely to also carry a per-doc `dim_1_calibration` calibration override.
+
+**Backwards-compat — zero-impact when the trigger value is absent or non-`undecided`**. This calibration is **byte-identically inert** when any of the following hold:
+
+- No `<thread>/BRIEF.md` exists.
+- BRIEF exists but has no YAML frontmatter or has malformed YAML frontmatter.
+- Frontmatter has no `recommendation_target` key.
+- `recommendation_target` value is not in the closed set (`invest` / `pass` / `conditional` / `undecided`) — e.g., a typo (`Undecided`, `tbd`, `?`) resolves to `None` and the calibration does not fire.
+- `recommendation_target` is one of the decided values (`invest`, `pass`, `conditional`) — the calibration does not fire; dim 1 scores against the standard "single unambiguous recommendation" calibration verbatim.
+
+The contract is: the only path through this section is `recommendation_target == "undecided"` AND the value parsed cleanly from `<thread>/BRIEF.md`. Every other path is byte-identical to pre-#348 behavior.
+
 ## Scoring guidance
 
 For each dimension, the reviewer assigns an integer between 0 and the dimension's weight. A short justification accompanies each score (1–3 sentences pointing to specific evidence in the memo).
