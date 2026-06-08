@@ -34,13 +34,16 @@ This is the terminal command. After `ip-uspto-finalize` succeeds, the package is
   _progress.json                 Phase state with finalize: done
 ```
 
+**Atomicity** (issue #350): the `<thread>.final/` terminal directory is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. Although this is a TERMINAL package directory (not a critic sibling), the same atomic-rename contract applies: the package artifacts are staged under a leading-dot sibling `.<thread>.final.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.final/` name. A mid-cycle interrupt leaves a `.<thread>.final.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. This is load-bearing: a half-written `<thread>.final/` (missing one of the nine submission artifacts) would otherwise look like a complete submission package to the idempotence check at step 1 and could ship to a human attorney. The staged-sidecar contract guarantees the final-named dir only ever exists when the full submission package is complete.
+
 ## Procedure
 
 1. **Discover state**:
    - Find the highest `N` with `<thread>.{N}.audit/_summary.md` containing `passed: true`. If none, exit with an error: "no version is AUDITED; run `ip-uspto-audit` first."
-   - Check whether `<thread>.final/` already exists. If yes AND `_progress.json.finalize.state == done` AND `_manifest.json` parses, exit early (idempotent).
-2. **Resume check**: delete partial `<thread>.final/` output from a crashed run.
-3. **Initialize `<thread>.final/_progress.json`**.
+   - Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.final.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed finalize session (issue #350).
+   - Check whether `<thread>.final/` already exists. If yes (the atomic-rename contract guarantees the dir only exists when complete — `_manifest.json` and all required artifacts are present), exit early (idempotent).
+2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial `<thread>.final/` left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.final.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.final/` exists without `_manifest.json`, delete and re-run.
+3. **Open the staged sidecar** for the final dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.final, required_files=["spec.pdf", "drawings.pdf", "abstract.txt", "claims.tex", "ads-placeholder.txt", "fee-sheet-placeholder.txt", "inventorship-attestation.md", "README.md", "_manifest.json", "_progress.json"])`. Every file write in steps 4-15 MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.final.tmp/`), NOT inside the final `<thread>.final/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`.
 
 ### Pre-flight gates (must all pass before producing the package)
 
@@ -188,7 +191,7 @@ This is the terminal command. After `ip-uspto-finalize` succeeds, the package is
     }
     ```
 
-15. **Update `_progress.json`**: `phases.finalize.state = done`, `phases.finalize.completed = <ISO>`.
+15. **Update `_progress.json`** inside the staging dir: `phases.finalize.state = done`, `phases.finalize.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest (all nine submission artifacts plus `_progress.json`) exists in the staging dir, then atomically renames `.<thread>.final.tmp/` → `<thread>.final/`. The final-named dir only ever exists in **complete** form — a partial submission package can never reach a human attorney.
 16. **Report**: e.g., `Finalized acme-widget.final/ from acme-widget.3/. 7 artifacts written, 0 warnings. Next: human attorney review + Patent Center submission.`
 
 ## Failure handling

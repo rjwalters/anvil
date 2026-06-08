@@ -31,11 +31,13 @@ Two of the three structural critical flags (density and time) are mechanical —
   _progress.json   Phase state with rehearse: done, for_version: <N>
 ```
 
+**Atomicity** (issue #350): the rehearse sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The three files (`timing.md`, `density.md`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.rehearse.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.rehearse/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.rehearse.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. If `<thread>.{N}.rehearse/_progress.json.rehearse.state == done` and both `timing.md` + `density.md` exist, exit early with a notice (idempotent).
-2. **Resume check**: if `rehearse.state == in_progress` without complete output, delete partial files and re-run.
-3. **Initialize `_progress.json`**: `phases.rehearse.state = in_progress`, `phases.rehearse.started = <ISO>`, `for_version: <N>`.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.rehearse.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed rehearser session (issue #350). If `<thread>.{N}.rehearse/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early with a notice (idempotent).
+2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial rehearse left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.rehearse.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.rehearse/` exists without complete output, delete and re-run.
+3. **Open the staged sidecar** for the rehearse dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.rehearse, required_files=["timing.md", "density.md", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.rehearse.tmp/`), NOT inside the final `<thread>.{N}.rehearse/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`: `phases.rehearse.state = in_progress`, `phases.rehearse.started = <ISO>`, `for_version: <N>`.
 4. **Parse the deck**: split `deck.md` on `---` slide separators. Skip the Marp frontmatter block at the top (everything before the first slide-delimiting `---` that follows the frontmatter block). For each slide:
    - Slide number (1-indexed in slide order).
    - Slide title (first heading on the slide, or filename of paired notes file).
@@ -113,7 +115,7 @@ Two of the three structural critical flags (density and time) are mechanical —
     <Bulleted list of the lowest-density / lowest-priority slides as cut candidates, by slide number and title.>
     ```
 
-12. **Update `_progress.json`**: `phases.rehearse.state = done`, `phases.rehearse.completed = <ISO>`.
+12. **Update `_progress.json`** inside the staging dir: `phases.rehearse.state = done`, `phases.rehearse.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.rehearse.tmp/` → `<thread>.{N}.rehearse/`. The final-named dir only ever exists in **complete** form.
 13. **Report**: print a one-line status (e.g., `Rehearsed kdd-2026-keynote.1 → kdd-2026-keynote.1.rehearse/ (22 slides, 47 minutes for 45-min slot, density flag SET, time flag SET)`).
 
 ## Heuristic calibration note

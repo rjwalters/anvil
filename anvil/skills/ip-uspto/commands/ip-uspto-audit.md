@@ -38,12 +38,14 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
   _progress.json    Phase state for the audit
 ```
 
+**Atomicity** (issue #350): the audit sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The four files (`_summary.md`, `findings.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.audit.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.audit/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.audit.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/_revise-result.md` containing `READY_FOR_AUDIT`. If no such version exists, exit with an error: "no version is READY_FOR_AUDIT; complete the revise cycle first."
-2. **Idempotence check**: if `<thread>.{N}.audit/_progress.json.audit.state == done` AND `_summary.md` exists, exit early.
-3. **Resume check**: delete partial output from crashed run.
-4. **Initialize `_progress.json`**.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/_revise-result.md` containing `READY_FOR_AUDIT`. If no such version exists, exit with an error: "no version is READY_FOR_AUDIT; complete the revise cycle first." Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.audit.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed auditor session (issue #350).
+2. **Idempotence check**: if `<thread>.{N}.audit/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early.
+3. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial audit left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.audit.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.audit/` exists without `_summary.md`, delete and re-audit.
+4. **Open the staged sidecar** for the audit dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.audit, required_files=["_summary.md", "findings.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.audit.tmp/`), NOT inside the final `<thread>.{N}.audit/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`.
 
 5. **Run audit checks** (collect findings; do not short-circuit):
 
@@ -131,7 +133,7 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
    ```
 
 8. **Write `findings.md`** in the standard format.
-9. **Write `_meta.json`** and finalize `_progress.json`.
+9. **Write `_meta.json`** and finalize `_progress.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.audit.tmp/` → `<thread>.{N}.audit/`. The final-named dir only ever exists in **complete** form.
 10. **Report**: e.g., `Audit: acme-widget.3.audit/ → FAIL (3 blockers: ref-numeral orphans, inventorship matrix stale). Next: address blockers via ip-uspto-revise or ip-uspto-inventorship.`
 
 ## Failure handling

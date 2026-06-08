@@ -37,6 +37,8 @@ The prefix vocabulary maps `fig` / `figure` → `Figure`, `tab` / `table` → `T
   _findings.json  Structured payload from GroundingResult.to_json() (informational companion).
 ```
 
+**Atomicity** (issue #350): when `--write-review` is set, the claim-figure-grounding sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The two files (`_review.json`, `_findings.json`) are staged under a leading-dot sibling `.<thread>.{N}.claim-figure-grounding.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.claim-figure-grounding/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.claim-figure-grounding.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 The `_review.json` carries:
 
 - One null-scored row on dimension `claim_figure_grounding` so the schema validates while the aggregator treats this critic as null-everywhere (same pattern as the memo-side `citation_coverage` and `hyperlink_resolver` siblings).
@@ -46,7 +48,7 @@ The `_review.json` carries:
 
 ## Procedure
 
-1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `report.md` present. If no such version exists, exit with a notice (`No report version found; nothing to scan.`).
+1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `report.md` present. If no such version exists, exit with a notice (`No report version found; nothing to scan.`). When `--write-review` is set, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.claim-figure-grounding.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed session (issue #350).
 2. **Invoke the claim-figure-grounding scan**: call
 
    ```python
@@ -57,18 +59,17 @@ The `_review.json` carries:
 
    The scanner owns the full pipeline: label-roster collection (per `collect_known_labels`), the three prose-detection regex classes (prepositional / subject-verb / parenthetical), the deduplication on `(label_class, label_id)`, and the closest-match suggestion. See `anvil/skills/report/lib/claim_figure_grounding.py` module docstring for the full detection contract.
 
-3. **Emit `_review.json`**: write
+3. **Emit `_review.json` + `_findings.json` companion via the staged sidecar** (only when `--write-review` is set): **open the staged sidecar** for the claim-figure-grounding dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<version_dir>.claim-figure-grounding, required_files=["_review.json", "_findings.json"])`. Inside the yielded staging directory (the path of the shape `.<version_dir>.claim-figure-grounding.tmp/`), write the typed review and the structured companion:
 
    ```python
    review = result.to_review(version_dir=<version_dir>.name)
-   (<version_dir>.claim-figure-grounding / "_review.json").write_text(
-       review.model_dump_json(indent=2)
-   )
+   (staging / "_review.json").write_text(review.model_dump_json(indent=2))
+   (staging / "_findings.json").write_text(json.dumps(result.to_json(), indent=2))
    ```
 
-   The review's `kind=tool_evidence` shape is what the aggregator routes on; `tool_calls=[]` is set on every finding to satisfy the schema requirement (the detector greps the body — no per-finding tool invocations to record).
+   The review's `kind=tool_evidence` shape is what the aggregator routes on; `tool_calls=[]` is set on every finding to satisfy the schema requirement (the detector greps the body — no per-finding tool invocations to record). The `_findings.json` companion carries `known_labels`, per-reference source spans, the `total_findings` count, and the `critical_flag_emitted` boolean — informational only; the load-bearing contract remains `_review.json`. On clean context exit, the staged sidecar primitive verifies both files exist, then atomically renames `.<version_dir>.claim-figure-grounding.tmp/` → `<version_dir>.claim-figure-grounding/` (issue #350). The final-named dir only ever exists in **complete** form.
 
-4. **Emit `_findings.json` companion**: write the structured payload from `result.to_json()` alongside the typed review. The companion carries `known_labels`, per-reference source spans, the `total_findings` count, and the `critical_flag_emitted` boolean — informational only; the load-bearing contract remains `_review.json`.
+4. (removed — folded into step 3 under the staged-sidecar wrapper.)
 
 5. **Status output**: print a one-line status reflecting the scan outcome:
    - Clean: `Scanned acme-q2/findings.2/report.md (0 missing figures; 7 known labels in roster).`

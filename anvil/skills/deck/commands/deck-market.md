@@ -39,10 +39,12 @@ Total ownership: 10/40. Other dimensions are scored by other critics and remain 
   _progress.json
 ```
 
+**Atomicity** (issue #350): the market sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The five required files (`_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.market.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.market/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.market.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. The optional `tam-recompute.md` is written inside the staging dir but is NOT in the required-files manifest (it is a conditional output). Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+
 ## Procedure
 
-1. **Discover state** + **resume check** (standard).
-2. **Initialize `_progress.json`** + `_meta.json`.
+1. **Discover state** + **resume check** (standard). Then **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.market.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed market-critic session (issue #350). The "completed" check is satisfied when the final-named `<thread>.{N}.market/` exists — the atomic-rename contract guarantees the dir only exists when complete.
+2. **Open the staged sidecar** for the market dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.market, required_files=["_summary.md", "findings.md", "comments.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.market.tmp/`), NOT inside the final `<thread>.{N}.market/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` + `_meta.json`.
 3. **Read inputs**: load `deck.md`, identify market slide(s) and competition slide(s). Load `BRIEF.md` market and competition sections. Load any market-chart source data from `figures/src/*.csv`.
 4. **Evaluate market size credibility** (Dim 3, weight 5):
    - **Identify the sizing approach**: bottom-up, top-down, or hybrid?
@@ -168,7 +170,7 @@ Total ownership: 10/40. Other dimensions are scored by other critics and remain 
    ```
    ```
 9. **Write `findings.md`** and **`comments.md`** in the standard severity/slide-ref format.
-10. **Update `_progress.json`** and `_meta.json`.
+10. **Update `_progress.json`** and `_meta.json` inside the staging dir. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.market.tmp/` → `<thread>.{N}.market/`. The final-named dir only ever exists in **complete** form.
 11. **Report**: one-line status (e.g., `Market critic on acme-seed.1 → acme-seed.1.market/ (dims 3+4: 7/10; 4 findings, 0 critical flags; TAM recomputation matches within rounding)`).
 
 ## Idempotence and resumability
