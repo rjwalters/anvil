@@ -317,6 +317,302 @@ def test_render_memo_source_threads_requested_engine(monkeypatch, memo_version_d
 
 
 # ---------------------------------------------------------------------------
+# _render_memo_source: latex_header_includes (issue #347)
+# ---------------------------------------------------------------------------
+
+
+def test_render_memo_source_threads_latex_header_includes_when_xelatex(
+    monkeypatch, memo_version_dir
+):
+    """``_render_memo_source(..., latex_header_includes="...")`` with xelatex
+    dispatched → tempfile written + pandoc cmd carries
+    ``--include-in-header <tempfile>``.
+
+    Verifies the issue #347 plumbing: when the dispatched engine is
+    xelatex AND the caller provided a preamble string, the function
+    writes a tempfile and passes ``--include-in-header`` to pandoc.
+    The tempfile contents must equal the caller's string verbatim.
+    """
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+
+    captured_cmd: list[list[str]] = []
+    captured_tempfile_contents: list[str] = []
+    real_run = subprocess.run
+
+    def _capturing_run(cmd, **kwargs):
+        if cmd and cmd[0] == "pandoc":
+            captured_cmd.append(list(cmd))
+            # Snapshot the include-in-header tempfile while pandoc would
+            # still be reading it — the tempfile is cleaned up in the
+            # ``finally`` block after subprocess returns.
+            if "--include-in-header" in cmd:
+                idx = cmd.index("--include-in-header")
+                if idx + 1 < len(cmd):
+                    p = Path(cmd[idx + 1])
+                    if p.exists():
+                        captured_tempfile_contents.append(p.read_text())
+            if "-o" in cmd:
+                idx = cmd.index("-o")
+                target = Path(cmd[idx + 1])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"%PDF-1.5\n%fake fixture\n")
+            return _FakeCompletedProcess(returncode=0, stdout="", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _capturing_run)
+
+    preamble = (
+        "\\usepackage{xcolor}\n"
+        "\\definecolor{green}{HTML}{059669}\n"
+        "\\usepackage{tabularx}\n"
+    )
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, exit_code, engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=MEMO_ENGINE_XELATEX,
+        latex_header_includes=preamble,
+    )
+    assert status == COMPILE_OK
+    assert exit_code == 0
+    assert engine == MEMO_ENGINE_XELATEX
+
+    # The captured pandoc command must carry --include-in-header with
+    # a tempfile path pointing to the caller's preamble text.
+    assert len(captured_cmd) == 1
+    cmd = captured_cmd[0]
+    assert "--include-in-header" in cmd, (
+        f"--include-in-header missing from pandoc cmd: {cmd!r}"
+    )
+    idx = cmd.index("--include-in-header")
+    header_path_str = cmd[idx + 1]
+    assert header_path_str.endswith(".tex"), (
+        f"include-in-header path should end in .tex; got {header_path_str!r}"
+    )
+
+    # Tempfile contents must equal the caller's preamble verbatim.
+    assert len(captured_tempfile_contents) == 1
+    assert captured_tempfile_contents[0] == preamble
+
+
+def test_render_memo_source_skips_latex_header_includes_when_weasyprint(
+    monkeypatch, memo_version_dir
+):
+    """``_render_memo_source(..., latex_header_includes="...")`` with
+    weasyprint dispatched (xelatex not on PATH) → no
+    ``--include-in-header`` in cmd; the function silently skips
+    injecting the LaTeX preamble.
+
+    The skip is recorded by the caller (``_gate_memo``) in ``reasons``;
+    the rendering primitive itself only enforces "xelatex → inject;
+    HTML → skip" without raising.
+    """
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: False)
+    # weasyprint wins the auto-priority.
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    captured_cmd: list[list[str]] = []
+    real_run = subprocess.run
+
+    def _capturing_run(cmd, **kwargs):
+        if cmd and cmd[0] == "pandoc":
+            captured_cmd.append(list(cmd))
+            if "-o" in cmd:
+                idx = cmd.index("-o")
+                target = Path(cmd[idx + 1])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"%PDF-1.5\n%fake fixture\n")
+            return _FakeCompletedProcess(returncode=0, stdout="", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _capturing_run)
+
+    preamble = "\\usepackage{xcolor}\n"
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, exit_code, engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=None,
+        latex_header_includes=preamble,
+    )
+    assert status == COMPILE_OK
+    assert engine == MEMO_ENGINE_WEASYPRINT  # default auto-priority
+
+    # The captured pandoc cmd must NOT carry --include-in-header.
+    assert len(captured_cmd) == 1
+    cmd = captured_cmd[0]
+    assert "--include-in-header" not in cmd, (
+        f"--include-in-header leaked into HTML-chain cmd: {cmd!r}"
+    )
+
+
+def test_render_memo_source_no_latex_header_includes_legacy(
+    monkeypatch, memo_version_dir
+):
+    """``_render_memo_source(...)`` with ``latex_header_includes=None``
+    (or absent) → pandoc cmd contains no ``--include-in-header`` flag.
+
+    Back-compat anchor: every legacy caller that doesn't pass the new
+    kwarg gets a byte-identical pandoc cmd to pre-#347 behavior.
+    """
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+
+    captured_cmd: list[list[str]] = []
+    real_run = subprocess.run
+
+    def _capturing_run(cmd, **kwargs):
+        if cmd and cmd[0] == "pandoc":
+            captured_cmd.append(list(cmd))
+            if "-o" in cmd:
+                idx = cmd.index("-o")
+                target = Path(cmd[idx + 1])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"%PDF-1.5\n%fake fixture\n")
+            return _FakeCompletedProcess(returncode=0, stdout="", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _capturing_run)
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    # Explicit None → identical to pre-#347 (legacy caller).
+    status, exit_code, engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=MEMO_ENGINE_XELATEX,
+        latex_header_includes=None,
+    )
+    assert status == COMPILE_OK
+    assert engine == MEMO_ENGINE_XELATEX
+    assert len(captured_cmd) == 1
+    cmd = captured_cmd[0]
+    assert "--include-in-header" not in cmd
+
+
+def test_render_memo_source_cleans_up_header_tempfile(
+    monkeypatch, memo_version_dir
+):
+    """The ``--include-in-header`` tempfile is removed after pandoc returns
+    regardless of subprocess outcome — no clutter accumulates in
+    ``$TMPDIR`` over repeated renders.
+
+    Verifies both success and failure paths via two sub-cases captured
+    by the same fixture.
+    """
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+
+    captured_header_paths: list[str] = []
+    real_run = subprocess.run
+
+    def _capturing_run(cmd, **kwargs):
+        if cmd and cmd[0] == "pandoc":
+            if "--include-in-header" in cmd:
+                idx = cmd.index("--include-in-header")
+                if idx + 1 < len(cmd):
+                    captured_header_paths.append(cmd[idx + 1])
+            if "-o" in cmd:
+                idx = cmd.index("-o")
+                target = Path(cmd[idx + 1])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"%PDF-1.5\n%fake fixture\n")
+            return _FakeCompletedProcess(returncode=0, stdout="", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _capturing_run)
+
+    preamble = "\\usepackage{xcolor}\n"
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=MEMO_ENGINE_XELATEX,
+        latex_header_includes=preamble,
+    )
+    assert len(captured_header_paths) == 1, (
+        f"expected one --include-in-header path; got {captured_header_paths!r}"
+    )
+    p = Path(captured_header_paths[0])
+    assert not p.exists(), (
+        f"tempfile {p} survived after _render_memo_source returned "
+        f"(success path)"
+    )
+
+    # Failure path: pandoc returns non-zero, tempfile still cleaned up.
+    def _failing_run(cmd, **kwargs):
+        if cmd and cmd[0] == "pandoc":
+            if "--include-in-header" in cmd:
+                idx = cmd.index("--include-in-header")
+                if idx + 1 < len(cmd):
+                    captured_header_paths.append(cmd[idx + 1])
+            return _FakeCompletedProcess(
+                returncode=1, stdout="", stderr="pandoc failed"
+            )
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _failing_run)
+
+    _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=MEMO_ENGINE_XELATEX,
+        latex_header_includes=preamble,
+    )
+    assert len(captured_header_paths) == 2
+    p_fail = Path(captured_header_paths[1])
+    assert not p_fail.exists(), (
+        f"tempfile {p_fail} survived after _render_memo_source returned "
+        f"(failure path)"
+    )
+
+
+def test_gate_memo_records_latex_header_includes_skip_on_html_chain(
+    monkeypatch, memo_version_dir, fake_pdfinfo_path
+):
+    """``_gate_memo(..., latex_header_includes="...")`` with the dispatched
+    engine resolving to weasyprint → ``reasons`` carries a breadcrumb
+    explaining the include was skipped.
+
+    Silent-with-record per the issue #347 design: not a gate failure,
+    just an audit-trail note so the operator can see why their LaTeX
+    preamble didn't reach the (HTML) rendering chain.
+    """
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setattr(subprocess, "run", _fake_pandoc(returncode=0))
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    result = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        out_pdf=out_pdf,
+        target_length=None,
+        latex_header_includes="\\usepackage{xcolor}\n",
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    # Must surface the skip breadcrumb naming the dispatched engine.
+    skip_msgs = [
+        r for r in result.reasons if "latex_header_includes" in r
+    ]
+    assert len(skip_msgs) >= 1, (
+        f"expected latex_header_includes skip note in reasons; "
+        f"got {result.reasons!r}"
+    )
+    assert "weasyprint" in skip_msgs[0]
+
+
+# ---------------------------------------------------------------------------
 # _render_memo_source: graceful degrade + happy path
 # ---------------------------------------------------------------------------
 

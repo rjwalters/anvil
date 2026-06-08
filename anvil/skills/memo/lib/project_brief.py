@@ -330,6 +330,7 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "target_length_overrides",
     "rubric_overrides",
     "render_engine",
+    "latex_header_includes",
 }
 
 # Valid values for the ``render_engine`` per-doc knob (issue #320). The
@@ -593,6 +594,39 @@ class BriefDocument(BaseModel):
         theme-level default knob shipped by parallel issue #322 sits
         *below* this per-doc value in precedence (per-thread >
         per-project > per-theme > framework default).
+    latex_header_includes
+        Optional per-document preamble extension threaded into pandoc's
+        ``header-includes`` slot when the dispatched engine is
+        ``xelatex`` (issue #347). Free-form LaTeX text. Used to load
+        consumer-specific packages (e.g., ``xcolor``, ``tabularx``) or
+        define named colors / custom environments referenced by
+        ``{=latex}`` raw blocks in the memo body, *without* requiring
+        the operator to maintain a full ``template.tex`` override.
+
+        Engine-scoped by name: pandoc's ``header-includes`` metadata is
+        also honored by the HTML chain (``template.html`` has the same
+        ``$for(header-includes)$`` slot), so a generic
+        ``header_includes`` could surprise an operator who flips
+        ``render_engine`` between ``xelatex`` and ``weasyprint``. The
+        explicit ``latex_`` prefix makes it visible that the contents
+        are xelatex-only — when the dispatched engine is *not*
+        xelatex, ``_render_memo_source`` silently skips the include
+        and records the skip in the gate's ``reasons`` audit trail.
+
+        The contents are opaque to the parser: any string survives the
+        validator. Empty / whitespace-only values are normalized to
+        ``None`` so a YAML author can write ``latex_header_includes:``
+        with nothing on the right-hand side and get back-compat
+        behavior.
+
+        Example (a table-dense memo using ``{=latex}`` blocks)::
+
+            latex_header_includes: |
+              \\usepackage{xcolor}
+              \\definecolor{green}{HTML}{059669}
+              \\definecolor{ink}{HTML}{0f172a}
+              \\usepackage{tabularx}
+              \\newcolumntype{Y}{>{\\raggedright\\arraybackslash}X}
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -605,6 +639,7 @@ class BriefDocument(BaseModel):
     render_engine: Optional[
         Literal["weasyprint", "xelatex", "wkhtmltopdf"]
     ] = Field(default=None)
+    latex_header_includes: Optional[str] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -1091,6 +1126,40 @@ def _validate_render_engine(raw: Any, field_path: str) -> Optional[str]:
     return raw
 
 
+def _validate_latex_header_includes(raw: Any, field_path: str) -> Optional[str]:
+    """Validate a raw ``latex_header_includes`` value (issue #347).
+
+    The contents are opaque LaTeX — the validator only enforces type
+    (``str`` or ``None``) and normalizes empty / whitespace-only inputs
+    to ``None`` so the BRIEF author can write
+    ``latex_header_includes:`` with an empty value and get back-compat
+    behavior. Non-string types raise ``ValueError`` with a clear
+    field-path message.
+
+    Engine-scoping (xelatex-only) is *not* enforced at parse time — a
+    BRIEF may set ``latex_header_includes`` alongside
+    ``render_engine: weasyprint`` and the value will be carried
+    through. The downstream render path
+    (:func:`anvil.lib.render_gate._render_memo_source`) silently skips
+    the include when the dispatched engine is not xelatex and records
+    the skip in the gate's ``reasons`` audit trail. Parse-time
+    enforcement would lock out the legitimate "I render with xelatex
+    locally but the field falls through to weasyprint on CI" flow.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a string; got "
+            f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
+            f"value as a YAML block-literal (``|``) or quoted string of "
+            f"LaTeX preamble text."
+        )
+    if not raw.strip():
+        return None
+    return raw
+
+
 def _normalize_documents(raw: Any) -> List[BriefDocument]:
     """Convert the raw ``documents:`` list into typed ``BriefDocument`` entries.
 
@@ -1198,6 +1267,11 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
             field_path=f"documents[{i}].render_engine",
         )
 
+        latex_header_includes = _validate_latex_header_includes(
+            entry.get("latex_header_includes"),
+            field_path=f"documents[{i}].latex_header_includes",
+        )
+
         try:
             doc = BriefDocument(
                 slug=slug,
@@ -1206,6 +1280,7 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
                 target_length_overrides=target_length_overrides,
                 rubric_overrides=rubric_overrides,
                 render_engine=render_engine,
+                latex_header_includes=latex_header_includes,
             )
         except ValidationError as exc:
             raise ValueError(
