@@ -385,6 +385,19 @@ class TestDocCanonicalReferences(unittest.TestCase):
         )
         self.assertIn("select_overlay_for_thread", body)
 
+    def test_memo_review_command_documents_skill_mismatch_loud_failure(self) -> None:
+        """Step 4i documents the post-#386 loud-failure outcome (issue #390).
+
+        Skill-identity artifact types (anything outside MEMO_ARTIFACT_TYPES)
+        raise OverlayLoadError rather than returning None; the command prose
+        must name both symbols so the contract can't silently regress.
+        """
+        body = (self.SKILL_ROOT / "commands" / "memo-review.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("OverlayLoadError", body)
+        self.assertIn("MEMO_ARTIFACT_TYPES", body)
+
 
 if __name__ == "__main__":
     unittest.main()
