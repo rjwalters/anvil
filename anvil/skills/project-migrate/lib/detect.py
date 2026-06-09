@@ -101,9 +101,16 @@ _SKILL_FIXED_BODY_FILENAMES = (
 # skill-fixed body name post-#295 (issue #382). A version dir carrying
 # one of these (plus any auxiliary markdown like ``speaker-notes.md``)
 # counts as fully migrated; only the ``_SKILL_FIXED_BODY_FILENAMES``
-# above are pre-#295 evidence. ``proposal.tex`` needs no entry — the
-# body-filename observation only collects ``*.md`` files.
-_RETAINED_BODY_FILENAMES = frozenset({"deck.md"})
+# above are pre-#295 evidence.
+#
+# These are observed on a SEPARATE inventory surface
+# (``ThreadInventory.retained_body_filenames`` — issue #386) so the
+# planner can infer the BRIEF's artifact_type and surface the
+# inference note for ``.tex``-bodied proposal threads too. They are
+# deliberately kept OUT of ``ThreadInventory.body_filenames`` /
+# ``_classify`` evidence: ``body_filenames`` collects ``*.md`` only,
+# and ``proposal.tex`` is not pre-#295 shape evidence.
+_RETAINED_BODY_FILENAMES = frozenset({"deck.md", "proposal.tex"})
 
 # Sibling directories that are never thread dirs (review siblings, audit
 # siblings, generic critic siblings, plus bookkeeping dirs the operator
@@ -160,7 +167,16 @@ class ThreadInventory:
         The set of body filenames observed across the version dirs. The
         canonical post-#295 form is `{<slug>.md}`; pre-#295 threads carry
         skill-fixed names like `{memo.md}`. Mixed sets surface as a
-        diagnostic during planning.
+        diagnostic during planning. ``*.md`` only — this surface feeds
+        `_classify` and deliberately excludes `.tex` (not pre-#295
+        shape evidence).
+    retained_body_filenames
+        Filenames from `_RETAINED_BODY_FILENAMES` (`deck.md`,
+        `proposal.tex`) observed across the version dirs (issue #386).
+        A separate surface from `body_filenames` so the planner can
+        infer the BRIEF entry's artifact_type (deck.md → deck,
+        proposal.tex → proposal) without contaminating `_classify`
+        evidence.
     anvil_json_path
         Path to a per-thread `.anvil.json` if one exists; `None` otherwise.
     """
@@ -169,6 +185,7 @@ class ThreadInventory:
     parent_dir: Path
     version_dirs: List[Path] = field(default_factory=list)
     body_filenames: List[str] = field(default_factory=list)
+    retained_body_filenames: List[str] = field(default_factory=list)
     anvil_json_path: Optional[Path] = None
 
 
@@ -305,6 +322,26 @@ def _observed_body_filenames(version_dir: Path) -> List[str]:
             out.append(child.name)
     except OSError:
         return []
+    out.sort()
+    return out
+
+
+def _observed_retained_body_filenames(version_dir: Path) -> List[str]:
+    """Return sorted retained-body filenames present in a version dir.
+
+    Second scan (issue #386), separate from :func:`_observed_body_filenames`:
+    checks for the `_RETAINED_BODY_FILENAMES` allowlist (`deck.md`,
+    `proposal.tex`) so a `.tex`-bodied proposal thread is visible to
+    the planner's artifact-type inference. Kept OUT of
+    ``ThreadInventory.body_filenames`` — `_classify` must not see
+    `.tex` files as shape evidence.
+    """
+    if not version_dir.is_dir():
+        return []
+    out: List[str] = []
+    for name in _RETAINED_BODY_FILENAMES:
+        if (version_dir / name).is_file():
+            out.append(name)
     out.sort()
     return out
 
@@ -491,8 +528,10 @@ def inventory_project(project_dir: Path) -> ProjectInventory:
         if not version_dirs:
             continue
         body_files: List[str] = []
+        retained_files: List[str] = []
         for vd in version_dirs:
             body_files.extend(_observed_body_filenames(vd))
+            retained_files.extend(_observed_retained_body_filenames(vd))
         anvil_json_path = None
         # Check for .anvil.json at the thread root.
         candidate = child / ANVIL_JSON_FILENAME
@@ -504,6 +543,7 @@ def inventory_project(project_dir: Path) -> ProjectInventory:
                 parent_dir=child,
                 version_dirs=version_dirs,
                 body_filenames=sorted(set(body_files)),
+                retained_body_filenames=sorted(set(retained_files)),
                 anvil_json_path=anvil_json_path,
             )
         )
@@ -516,8 +556,10 @@ def inventory_project(project_dir: Path) -> ProjectInventory:
         # the project dir name as the canonical slug because that's what
         # the migration will rename to.
         body_files: List[str] = []
+        retained_files: List[str] = []
         for vd in version_dirs:
             body_files.extend(_observed_body_filenames(vd))
+            retained_files.extend(_observed_retained_body_filenames(vd))
         # The .anvil.json for classic layouts lives at the project root.
         # Don't pre-claim it here; we'll fold it in via extra_anvil_jsons
         # when classifying, since the canary uses "memo" as the stem AND
@@ -547,6 +589,7 @@ def inventory_project(project_dir: Path) -> ProjectInventory:
                 parent_dir=project_dir,
                 version_dirs=version_dirs,
                 body_filenames=sorted(set(body_files)),
+                retained_body_filenames=sorted(set(retained_files)),
                 anvil_json_path=anvil_json_path,
             )
         )
