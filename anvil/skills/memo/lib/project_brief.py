@@ -239,7 +239,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 # layout contract has a single source of truth. ``BRIEF_FILENAME`` is
 # the on-disk filename; ``DOCUMENTS_FRONTMATTER_KEY`` is the YAML key
 # that gates the project-brief layout.
-from project_discovery import (
+from anvil.skills.memo.lib.project_discovery import (
     BRIEF_FILENAME,
     DOCUMENTS_FRONTMATTER_KEY,
 )

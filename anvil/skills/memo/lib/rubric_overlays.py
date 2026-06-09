@@ -70,8 +70,8 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from project_brief import ArtifactType, load_project_brief
-from project_discovery import discover_thread_root
+from anvil.skills.memo.lib.project_brief import ArtifactType, load_project_brief
+from anvil.skills.memo.lib.project_discovery import discover_thread_root
 
 
 OVERLAYS_DIR: Path = Path(__file__).parent.parent / "rubric_overlays"

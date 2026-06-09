@@ -122,37 +122,6 @@ def _discover_skill_lib_modules() -> list[tuple[str, str]]:
 # rather than passing vacuously.
 _SKILL_LIB_MODULES = _discover_skill_lib_modules()
 
-# ---------------------------------------------------------------------------
-# Pre-existing import bugs (out of scope for issue #375)
-# ---------------------------------------------------------------------------
-#
-# A handful of memo skill-lib modules use unqualified imports
-# (``from project_discovery import ...`` rather than
-# ``from anvil.skills.memo.lib.project_discovery import ...``). These
-# imports work ONLY when the module is executed standalone with the
-# ``lib/`` directory on ``sys.path`` (i.e., legacy ``python lib/foo.py``
-# invocation); they FAIL under the post-#230 package-import contract
-# this test asserts. This is a pre-existing bug also reproducible in the
-# source tree (``uv run python -c "import anvil.skills.memo.lib.project_brief"``
-# fails with the same ``ModuleNotFoundError``).
-#
-# Marking these as ``xfail(strict=False)`` so the test surfaces the
-# regression case the canary asked for (deck skill-lib modules ARE
-# importable post-install — issue #375's canary) without blocking the
-# PR on a pre-existing memo-side bug. Follow-up: issue #379 — re-anchor
-# the memo modules on qualified imports
-# (``from anvil.skills.memo.lib.project_discovery import ...``) and
-# remove this block. ``strict=False`` ensures the green transition is
-# observed (xfail-strict-false: green is allowed).
-_KNOWN_BROKEN_UNQUALIFIED_IMPORTS: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("memo", "project_brief"),
-        ("memo", "cross_thread_refs"),
-        ("memo", "rubric_overlays"),
-        ("memo", "rubric_overrides_suffix"),
-    }
-)
-
 
 # ---------------------------------------------------------------------------
 # Shared session-scoped consumer install
@@ -219,24 +188,9 @@ def consumer_install() -> Path:
 
 
 def _param_for(skill: str, module: str) -> object:
-    """Build the parametrize entry for ``(skill, module)`` with xfail marks
-    applied for the known pre-existing memo unqualified-import bugs."""
+    """Build the parametrize entry for ``(skill, module)``."""
 
-    marks = []
-    if (skill, module) in _KNOWN_BROKEN_UNQUALIFIED_IMPORTS:
-        marks.append(
-            pytest.mark.xfail(
-                reason=(
-                    "Pre-existing memo lib unqualified-import bug "
-                    "(issue #379) — out of scope for issue #375 (deck "
-                    "doc-vs-impl drift). The memo lib module uses `from "
-                    "project_discovery import ...` rather than the "
-                    "qualified package-import form."
-                ),
-                strict=False,
-            )
-        )
-    return pytest.param(skill, module, marks=marks, id=f"{skill}.{module}")
+    return pytest.param(skill, module, id=f"{skill}.{module}")
 
 
 @pytest.mark.skipif(not _uv_present(), reason="uv not on PATH")
