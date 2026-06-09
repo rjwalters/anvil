@@ -30,43 +30,46 @@ There is deliberately **no separate `anvil:spec` skill** — internal build spec
 
 ## Artifact contract
 
-A **proposal thread** is a single proposal for one buildable system, authored across one or more revisions. A thread is identified by a slug (e.g., `gossamer-lan`). Each thread occupies a portfolio directory that contains:
+A **proposal thread** is a single proposal for one buildable system, authored across one or more revisions. A thread is identified by a slug (e.g., `gossamer-lan`). Each thread lives inside a **project root** that carries a project-level `BRIEF.md` (the post-#296 config locus — frontmatter `documents:` list naming every thread in the project). Within the project root, each thread occupies a directory named for its slug; the thread's version dirs and critic siblings are **nested under that thread directory** per the issue #295 project-org model (extended to this skill under issue #382):
 
 ```
-<portfolio>/
-  <thread>/                Optional thread root with brief and reference material
-    BRIEF.md               Optional structured or freeform brief (frontmatter + prose)
-    refs/                  Optional reference material (site plans, datasheets, vendor quotes)
-    .anvil.json            Optional per-thread overrides: max_iterations, customer_kind
-  <thread>.0.perspective/  Optional pre-draft external-substrate sibling (read-only)
-    notes.md               Narrative synthesis: sourceability summary + gaps
-    candidates.md          Structured candidates (comparable projects, vendor quotes, regulatory & compliance, deliverability evidence) with source URLs / refs pointers
-    _meta.json             { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
-    _progress.json         Phase state (phase: perspective)
-  <thread>.1/              First drafted version (immutable once written)
-    proposal.tex           Proposal body (XeLaTeX; uses templates/anvil-proposal.cls)
-    anvil-proposal.cls     Class file, copied alongside so the version dir compiles standalone
-    figures/               Topology diagrams, site/routing plans referenced from body
-    _progress.json         Phase state for this version
-    changelog.md           (revisions only) Maps prior critic notes to changes
-  <thread>.1.review/       Reviewer output for version 1 (read-only)
-    verdict.md             Top-level decision (advance / block) + total /44
-    scoring.md             Per-dimension scores against the proposal rubric
-    comments.md            Line-level comments keyed to proposal.tex
-    _meta.json             { critic, scorecard_kind: "human-verdict", ... } (see lib/snippets/scorecard_kind.md)
-    _progress.json         Phase state for the reviewer
-  <thread>.1.audit/        Auditor output for version 1 (read-only, REQUIRED by default)
-    verdict.md             Audit decision (pass / fail) + critical-flag list
-    findings.md            Per-claim audit log (BOM arithmetic, spec/link-budget, sourceability)
-    evidence.md            Source → dependent-claims traceability map
-    _meta.json             { critic: "audit", scorecard_kind: "human-verdict", ... }
-    _progress.json         Phase state for the auditor
-  <thread>.2/              Revised version (after revise consumes v1 + ALL critic siblings)
-  ...
-  <thread>.{N}/            Terminal version, marked READY/AUDITED in its _progress.json
+<project>/                   Project root (carries the project-level BRIEF; issues #295/#296)
+  BRIEF.md                   Project-level brief (frontmatter `documents:` list + prose; config locus per #296)
+  research/                  Optional shared evidence pool across documents
+  <thread>/                  Thread root (named for the slug)
+    BRIEF.md                 Optional thread-level structured or freeform brief (frontmatter + prose; carries customer_kind / orientation knobs)
+    refs/                    Optional reference material (site plans, datasheets, vendor quotes)
+    <thread>.0.perspective/  Optional pre-draft external-substrate sibling (read-only)
+      notes.md               Narrative synthesis: sourceability summary + gaps
+      candidates.md          Structured candidates (comparable projects, vendor quotes, regulatory & compliance, deliverability evidence) with source URLs / refs pointers
+      _meta.json             { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
+      _progress.json         Phase state (phase: perspective)
+    <thread>.1/              First drafted version (immutable once written)
+      proposal.tex           Proposal body (XeLaTeX; skill-fixed filename — see body-filename note below)
+      anvil-proposal.cls     Class file, copied alongside so the version dir compiles standalone
+      figures/               Topology diagrams, site/routing plans referenced from body
+      _progress.json         Phase state for this version
+      changelog.md           (revisions only) Maps prior critic notes to changes
+    <thread>.1.review/       Reviewer output for version 1 (read-only)
+      verdict.md             Top-level decision (advance / block) + total /44
+      scoring.md             Per-dimension scores against the proposal rubric
+      comments.md            Line-level comments keyed to proposal.tex
+      _meta.json             { critic, scorecard_kind: "human-verdict", ... } (see lib/snippets/scorecard_kind.md)
+      _progress.json         Phase state for the reviewer
+    <thread>.1.audit/        Auditor output for version 1 (read-only, REQUIRED by default)
+      verdict.md             Audit decision (pass / fail) + critical-flag list
+      findings.md            Per-claim audit log (BOM arithmetic, spec/link-budget, sourceability)
+      evidence.md            Source → dependent-claims traceability map
+      _meta.json             { critic: "audit", scorecard_kind: "human-verdict", ... }
+      _progress.json         Phase state for the auditor
+    <thread>.2/              Revised version (after revise consumes v1 + ALL critic siblings)
+    ...
+    <thread>.{N}/            Terminal version, marked READY/AUDITED in its _progress.json
 ```
 
-Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
+**Body filename convention — `proposal.tex` is retained (slug-echo deferred).** Memo's post-#295 contract renames the body file to echo the slug (`<thread>.md`). The proposal skill deliberately does NOT adopt a slug-echo body rename in v1: `proposal.tex` is the LaTeX source filename consumed by `xelatex` invocations across the proposal commands and the `anvil-proposal.cls` class lookups. Renaming the body would touch the entire command surface for no canary-surfaced gain. The slug-echo migration for proposal is tracked as a follow-on; until it lands, `proposal.tex` is the canonical body filename inside every `<thread>.{N}/` version dir. The directory nesting above is load-bearing today; the body filename is not.
+
+Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place. Threads authored before the nesting landed (version dirs as siblings of the thread root, directly under the project root) are migrated by `anvil:project-migrate`.
 
 ### Source-of-truth materials
 
@@ -126,7 +129,7 @@ The **synthesis sibling** (`<thread>.{N}.synthesis/`) is the v0-recommended pre-
 
 **Thresholds**: ≥35/44 advances (matching `anvil:memo`'s 9-dim /44 rubric after the dim 9 *Rhetorical economy* addition; not report's ≥35-of-40 customer-delivery tier, which retains the legacy 8-dim shape). Any critical flag in EITHER `.review/` or `.audit/` short-circuits regardless of total — block until addressed.
 
-**Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+**Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The post-#296 carrier for the per-document override is the **project-level `BRIEF.md`** `documents:` entry (`max_iterations` + `iteration_cap_rationale`, per the paired-override schema in `anvil/lib/project_brief.py` — see `anvil/skills/memo/SKILL.md` §"Per-document override contract" for the schema-of-record). A legacy `<thread>/.anvil.json` `{ "max_iterations": <N> }` is still honored by the shipped commands until the proposal-side BRIEF reader lands; `anvil:project-migrate` merges it into the project BRIEF when migrating older layouts. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
 ## Command dispatch
 
@@ -209,7 +212,7 @@ See `rubric.md` for the 9-dimension /44 scoring schema, the ≥35 advance thresh
 
 **Audit is mandatory** (the key divergence from `anvil:installation`, which deferred audit per memo). Proposals make priced, sourceable cost claims and link-budget/throughput claims — exactly the `kind: tool_evidence` class the audit phase exists for (see `anvil/lib/snippets/audit.md`). A thread cannot reach `READY`/`AUDITED` until BOTH `.review/` and `.audit/` clear. This mirrors the post-contract bookend `anvil:report`, which runs `report-audit` by default.
 
-**`proposal-review` render-gate hook (deterministic pre-flight).** `proposal-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate.py` (the LaTeX-skill analog of `marp_lint` for the deck/slides skills). The gate checks page count (`page_cap=None` — proposal length is customer/sponsor-dependent; a recommended 4–20 pages is documented as guidance only; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap` if a venue / client / budget reviewer has a hard limit), overfull boxes (>5.0pt threshold), compile success (xelatex), and source-side placeholders (`TODO` / `[TBD]` / `(figure)` / `.MISSING`). **This is the first command in the proposal lifecycle to invoke the LaTeX compiler** — `proposal-audit` reads the source but does not compile; the gate triggers `xelatex` via `compile_and_gate(...)` and gates the resulting PDF + log in one step. On engine-unavailable (xelatex not on PATH), the gate degrades gracefully and the review proceeds. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension, which the existing `anvil/lib/critics.py::compute_verdict` path treats as `BLOCK`. See `commands/proposal-review.md` step 4b.
+**`proposal-review` render-gate hook (deterministic pre-flight).** `proposal-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate.py` (the LaTeX-skill analog of `marp_lint` for the deck/slides skills). The gate checks page count (`page_cap=None` — proposal length is customer/sponsor-dependent; a recommended 4–20 pages is documented as guidance only; a per-thread `render_gate.page_cap` override is queued for a future project-level `BRIEF.md` field, mirroring the memo skill's `render_gate.words_per_page` pattern — the prior per-thread `.anvil.json` carrier was retired under issue #296, and until the BRIEF schema is grown to carry the field the uncapped default applies uniformly), overfull boxes (>5.0pt threshold), compile success (xelatex), and source-side placeholders (`TODO` / `[TBD]` / `(figure)` / `.MISSING`). **This is the first command in the proposal lifecycle to invoke the LaTeX compiler** — `proposal-audit` reads the source but does not compile; the gate triggers `xelatex` via `compile_and_gate(...)` and gates the resulting PDF + log in one step. On engine-unavailable (xelatex not on PATH), the gate degrades gracefully and the review proceeds. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension, which the existing `anvil/lib/critics.py::compute_verdict` path treats as `BLOCK`. See `commands/proposal-review.md` step 4b.
 
 A `proposal-vision` critic (rendered-artifact review of topology diagrams and routing plans) is a valuable future addition but is **out of scope for v0**: it depends on `anvil/lib/render.py` / `vision.py`, which are not yet on disk, and wiring it would violate the "no `anvil/lib/` changes" scope guard.
 
@@ -220,5 +223,4 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 - `voice.md` (optional) — Studio or sales-engineering voice/style guidance the drafter reads in addition to its base prompt.
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any deal-breaker" instruction.
 - `templates/anvil-proposal.cls` (optional) — A replacement LaTeX class (e.g., a studio house style or a different signature color).
-- `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted (see `templates/BRIEF.md.example`).
-- `.anvil.json` — Per-thread overrides: `max_iterations`, `customer_kind`.
+- `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted (see `templates/BRIEF.md.example`). The thread-level BRIEF frontmatter carries the `customer_kind` and `orientation` knobs; the per-document `max_iterations` override lives on the project-level `BRIEF.md` `documents:` entry per #296 (legacy `<thread>/.anvil.json` overrides are merged into the project BRIEF by `anvil:project-migrate`).

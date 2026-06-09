@@ -133,6 +133,39 @@ class TestDiscoveryRoundTrip(unittest.TestCase):
                 brief_slugs, {"investment-memo", "latency-wall"}
             )
 
+    def test_mixed_apply_round_trips_via_anvil_lib(self) -> None:
+        """Mixed memo + deck + proposal round-trips through the promoted
+        ``anvil.lib.project_discovery`` primitive (issue #382)."""
+        try:
+            from anvil.lib.project_discovery import discover_thread_root
+            from anvil.lib.project_brief import load_project_brief
+        except ImportError:
+            self.skipTest("anvil.lib not importable in this environment")
+            return
+        from _fixtures import build_mixed_memo_deck_proposal
+        with TemporaryDirectory() as td:
+            project = build_mixed_memo_deck_proposal(Path(td))
+            result = run(project, apply=True)
+            self.assertTrue(result.success)
+            self.assertTrue(result.verify_result.ok)
+            for slug in ("aldus", "series-a-deck", "gossamer-lan"):
+                discovery = discover_thread_root(project / slug)
+                self.assertIsNotNone(discovery)
+                self.assertEqual(discovery.slug, slug)
+            brief = load_project_brief(project)
+            self.assertIsNotNone(brief)
+            brief_slugs = {d.slug for d in brief.documents}
+            self.assertEqual(
+                brief_slugs, {"aldus", "series-a-deck", "gossamer-lan"}
+            )
+            # The deck thread's paired iteration-cap override survived
+            # the merge AND the strict BRIEF parser.
+            deck_doc = next(
+                d for d in brief.documents if d.slug == "series-a-deck"
+            )
+            self.assertEqual(deck_doc.max_iterations, 6)
+            self.assertTrue(deck_doc.iteration_cap_rationale)
+
 
 if __name__ == "__main__":
     unittest.main()

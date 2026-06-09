@@ -27,7 +27,11 @@ SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "memo"
 SKILL_MD = SKILL_ROOT / "SKILL.md"
 DRAFT_MD = SKILL_ROOT / "commands" / "memo-draft.md"
 REVISE_MD = SKILL_ROOT / "commands" / "memo-revise.md"
-PROJECT_BRIEF_PY = SKILL_ROOT / "lib" / "project_brief.py"
+# Canonical module location post-#382 (promoted from the memo skill's
+# lib/ to anvil/lib/; the memo-side path is now a back-compat shim).
+PROJECT_BRIEF_PY = (
+    Path(__file__).resolve().parents[3] / "anvil" / "lib" / "project_brief.py"
+)
 
 
 def _read(p: Path) -> str:

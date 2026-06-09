@@ -318,9 +318,267 @@ def build_bessemer_shaped(
     return project_dir
 
 
+def build_aldus_shaped_deck(
+    root: Path,
+    project_name: str = "brains-for-robots",
+    *,
+    thread: str = "series-a-deck",
+    with_project_brief: bool = False,
+) -> Path:
+    """Build a nested-but-flat deck project (issue #382).
+
+    Sanitized snapshot of the studio canary's pre-``2cf3f37`` deck
+    thread: a thread-root directory carrying the thread-level BRIEF,
+    refs/, assets/, and the per-thread ``.anvil.json`` (the deck
+    iteration-cap-rationale carrier), with the version dirs and critic
+    siblings sitting FLAT at the project root.
+
+    Shape:
+      <project>/
+        series-a-deck/
+          BRIEF.md             ← thread-level deck brief (no documents:)
+          refs/transcript-founder.md
+          assets/logo.png
+          .anvil.json          ← paired max_iterations + rationale
+        series-a-deck.1/
+          deck.md              ← Marp source (retained body filename)
+          speaker-notes.md
+          _progress.json
+        series-a-deck.1.review/verdict.md
+        series-a-deck.2/deck.md + speaker-notes.md
+        series-a-deck.2.design/findings.md
+
+    Migration target: ``<project>/series-a-deck/series-a-deck.N/`` with
+    the thread-root contents (BRIEF/refs/assets) staying in place and
+    the ``.anvil.json`` merged into the project BRIEF.
+
+    When ``with_project_brief`` is True, a project-level BRIEF.md with a
+    ``documents:`` list (naming only the deck thread) is also written —
+    this exercises the POST_283 mixed-grammar dispatch (a flat thread in
+    a BRIEF-bearing project).
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    thread_root = project_dir / thread
+    _write(
+        thread_root / "BRIEF.md",
+        "---\n"
+        "company: Aldus Robotics\n"
+        "stage: series-a\n"
+        "---\n"
+        "\n"
+        f"# Brief: {thread}\n"
+        "\n"
+        "Thread-level deck brief (intake output).\n",
+    )
+    _write(
+        thread_root / "refs" / "transcript-founder.md",
+        "# Founder transcript\n\nQuote substrate.\n",
+    )
+    _write(thread_root / "assets" / "logo.png", "PNG-PLACEHOLDER\n")
+    _write(
+        thread_root / ".anvil.json",
+        json.dumps(
+            {
+                "max_iterations": 6,
+                "iteration_cap_rationale": (
+                    "Well-conditioned thread: trajectory v1-v4 "
+                    "monotonically improving; one extra pass to land "
+                    "the outcome detail."
+                ),
+            },
+            indent=2,
+        ) + "\n",
+    )
+
+    for n in (1, 2):
+        version_dir = project_dir / f"{thread}.{n}"
+        _write(
+            version_dir / "deck.md",
+            f"---\nmarp: true\n---\n\n# {thread} v{n}\n\n---\n\n## Ask\n",
+        )
+        _write(
+            version_dir / "speaker-notes.md",
+            f"# Speaker notes v{n}\n",
+        )
+        _write(
+            version_dir / "_progress.json",
+            json.dumps(
+                {
+                    "version": 1,
+                    "thread": thread,
+                    "phases": {"draft": {"state": "done"}},
+                },
+                indent=2,
+            ) + "\n",
+        )
+    _write(
+        project_dir / f"{thread}.1.review" / "verdict.md",
+        f"# Review of {thread}.1\n\nVerdict: revise.\n",
+    )
+    _write(
+        project_dir / f"{thread}.2.design" / "findings.md",
+        "# Design findings\n\nClean.\n",
+    )
+
+    if with_project_brief:
+        _write(
+            project_dir / "BRIEF.md",
+            "---\n"
+            f"project: {project_name}\n"
+            "audience: []\n"
+            "hard_rules: []\n"
+            "documents:\n"
+            f"  - slug: {thread}\n"
+            "    artifact_type: investment-memo\n"
+            "---\n"
+            "\n"
+            "# Project BRIEF\n",
+        )
+
+    return project_dir
+
+
+def build_mixed_memo_deck_proposal(
+    root: Path,
+    project_name: str = "mixed-project",
+) -> Path:
+    """Build the mixed-skill canary case (issue #382).
+
+    One project root with three pre-#295 flat threads:
+
+    - ``aldus`` — memo thread (``aldus.N/memo.md`` + review sibling;
+      skill-fixed body needs the slug-echo rename).
+    - ``series-a-deck`` — deck thread in the nested-but-flat shape
+      (thread root with BRIEF/refs/assets/.anvil.json as a sibling of
+      flat ``series-a-deck.N/`` version dirs; ``deck.md`` body
+      retained).
+    - ``gossamer-lan`` — proposal thread (thread root with BRIEF/refs
+      as a sibling of flat ``gossamer-lan.N/`` version dirs;
+      ``proposal.tex`` body retained).
+
+    No project-level BRIEF — the whole project classifies as
+    PRE_283_CLASSIC and every thread gets the nesting plan.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- memo thread (flat, named stem, skill-fixed body) ---
+    for n in (1, 2):
+        version_dir = project_dir / f"aldus.{n}"
+        _write(
+            version_dir / "memo.md",
+            f"# aldus memo v{n}\n\nBody.\n",
+        )
+        _write(
+            version_dir / "_progress.json",
+            json.dumps(
+                {
+                    "version": 1,
+                    "thread": "aldus",
+                    "phases": {"draft": {"state": "done"}},
+                },
+                indent=2,
+            ) + "\n",
+        )
+    _write(
+        project_dir / "aldus.2.review" / "verdict.md",
+        "# Review of aldus.2\n\nVerdict: advance.\n",
+    )
+
+    # --- deck thread (nested-but-flat; reuse the aldus-shaped builder
+    # pieces inline so this fixture stays self-describing) ---
+    deck = "series-a-deck"
+    deck_root = project_dir / deck
+    _write(
+        deck_root / "BRIEF.md",
+        "---\ncompany: Aldus Robotics\nstage: series-a\n---\n\n"
+        f"# Brief: {deck}\n",
+    )
+    _write(
+        deck_root / "refs" / "transcript-founder.md",
+        "# Founder transcript\n",
+    )
+    _write(deck_root / "assets" / "logo.png", "PNG-PLACEHOLDER\n")
+    _write(
+        deck_root / ".anvil.json",
+        json.dumps(
+            {
+                "max_iterations": 6,
+                "iteration_cap_rationale": "One extra pass to land detail.",
+            },
+            indent=2,
+        ) + "\n",
+    )
+    for n in (1, 2):
+        version_dir = project_dir / f"{deck}.{n}"
+        _write(
+            version_dir / "deck.md",
+            f"---\nmarp: true\n---\n\n# {deck} v{n}\n",
+        )
+        _write(version_dir / "speaker-notes.md", f"# Notes v{n}\n")
+        _write(
+            version_dir / "_progress.json",
+            json.dumps(
+                {
+                    "version": 1,
+                    "thread": deck,
+                    "phases": {"draft": {"state": "done"}},
+                },
+                indent=2,
+            ) + "\n",
+        )
+    _write(
+        project_dir / f"{deck}.1.review" / "verdict.md",
+        f"# Review of {deck}.1\n\nVerdict: revise.\n",
+    )
+
+    # --- proposal thread (nested-but-flat; LaTeX body) ---
+    prop = "gossamer-lan"
+    prop_root = project_dir / prop
+    _write(
+        prop_root / "BRIEF.md",
+        "---\ncustomer_kind: external\n---\n\n"
+        f"# Brief: {prop}\n",
+    )
+    _write(
+        prop_root / "refs" / "quote-vendor.md",
+        "# Vendor quote\n",
+    )
+    _write(
+        project_dir / f"{prop}.1" / "proposal.tex",
+        "\\documentclass{anvil-proposal}\n"
+        "\\begin{document}\nGossamer LAN v1.\n\\end{document}\n",
+    )
+    _write(
+        project_dir / f"{prop}.1" / "_progress.json",
+        json.dumps(
+            {
+                "version": 1,
+                "thread": prop,
+                "phases": {"draft": {"state": "done"}},
+            },
+            indent=2,
+        ) + "\n",
+    )
+    _write(
+        project_dir / f"{prop}.1.review" / "verdict.md",
+        f"# Review of {prop}.1\n\nVerdict: advance.\n",
+    )
+    _write(
+        project_dir / f"{prop}.1.audit" / "findings.md",
+        "# Audit findings\n\nBOM arithmetic clean.\n",
+    )
+
+    return project_dir
+
+
 __all__ = [
+    "build_aldus_shaped_deck",
     "build_bessemer_shaped",
     "build_fully_migrated",
+    "build_mixed_memo_deck_proposal",
     "build_post_283_anvil_json",
     "build_pre_283_classic",
 ]

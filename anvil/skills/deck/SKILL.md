@@ -12,48 +12,54 @@ The `deck` skill produces **pitch decks**: fundraising narratives (pre-seed, see
 
 ## Artifact contract
 
-A **deck thread** is a single pitch artifact (typically: one round, one ask) authored across one or more revisions. A thread is identified by a slug (e.g., `acme-seed`, `q3-board-update`). Each thread occupies a portfolio directory that contains:
+A **deck thread** is a single pitch artifact (typically: one round, one ask) authored across one or more revisions. A thread is identified by a slug (e.g., `acme-seed`, `q3-board-update`). Each thread lives inside a **project root** that carries a project-level `BRIEF.md` (the post-#296 config locus — frontmatter `documents:` list naming every thread in the project). Within the project root, each thread occupies a directory named for its slug; the thread's version dirs and critic siblings are **nested under that thread directory** per the issue #295 project-org model (extended to this skill under issue #382):
 
 ```
-<portfolio>/
-  <thread>/                  Thread root with brief and consumer-provided assets
-    BRIEF.md                 Structured brief (intake output; freeform prose with optional frontmatter)
-    refs/                    Reference material (decks, transcripts, exported financials, websites)
-    assets/                  Consumer-provided imagery (logos, screenshots, team photos)
-  <thread>.0/                Brief-intake output (immutable once written)
-    BRIEF.md                 Generated brief (if deck-brief was used to produce it)
-    _progress.json
-  <thread>.0.perspective/    Optional pre-draft external-substrate sibling (read-only)
-    notes.md                 Narrative synthesis: market positioning + gaps
-    candidates.md            Structured candidates (competitors, comparables, customer evidence, regulatory) with source URLs
-    _meta.json               { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
-    _progress.json           Phase state (phase: perspective)
-  <thread>.1/                First drafted version
-    deck.md                  Marp markdown slide source (slide breaks via `---`)
-    speaker-notes.md         Per-slide presenter notes (parallel structure to deck.md)
-    figures/                 Mermaid sources + matplotlib scripts + rendered PNGs/SVGs
-      src/                   Source files (.mmd, .py, .csv) regenerable by deck-figures
-    deck.pdf                 Rendered PDF (produced by deck-figures or at READY)
-    _progress.json
-  <thread>.1.review/         General reviewer output (read-only)
-    verdict.md               Top-level decision + total /40 + critical flags
-    scoring.md               Per-dimension scores (this critic fills owned dimensions only)
-    comments.md              Slide-level comments keyed to deck.md
-    _summary.md              8-dim partial scorecard (other critics' dims = null) + critical flag
-    findings.md              Itemized findings: severity, slide ref, rationale, suggested fix
-    _meta.json               { critic, role, started, finished, model }
-  <thread>.1.narrative/      Narrative-arc critic (owns dims 1, 7)
-  <thread>.1.market/         Market/TAM credibility critic (owns dims 3, 4)
-  <thread>.1.design/         Visual/design critic (owns dim 8)
-    slides/                  Per-slide PNGs rendered from deck.pdf (this critic only)
-  <thread>.2/                Revised version (aggregates ALL critic siblings at .1)
-    _revision-log.md         Maps each critic finding to a change made (or "declined" with reason)
-  ...
-  <thread>.{N}/              Terminal version, marked READY in its _progress.json
-  <thread>.{N}.audit/        Optional fact/number/citation auditor (run at or near READY)
+<project>/                     Project root (carries the project-level BRIEF; issues #295/#296)
+  BRIEF.md                     Project-level brief (frontmatter `documents:` list + prose; config locus per #296)
+  research/                    Optional shared evidence pool across documents
+  <thread>/                    Thread root (named for the slug)
+    BRIEF.md                   Thread-level structured brief (intake output; freeform prose with optional frontmatter)
+    refs/                      Reference material (decks, transcripts, exported financials, websites)
+    assets/                    Consumer-provided imagery (logos, screenshots, team photos)
+    <thread>.0/                Brief-intake output (immutable once written)
+      BRIEF.md                 Generated brief (if deck-brief was used to produce it)
+      _progress.json
+    <thread>.0.perspective/    Optional pre-draft external-substrate sibling (read-only)
+      notes.md                 Narrative synthesis: market positioning + gaps
+      candidates.md            Structured candidates (competitors, comparables, customer evidence, regulatory) with source URLs
+      _meta.json               { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
+      _progress.json           Phase state (phase: perspective)
+    <thread>.1/                First drafted version
+      deck.md                  Marp markdown slide source (slide breaks via `---`; skill-fixed filename — see body-filename note below)
+      speaker-notes.md         Per-slide presenter notes (parallel structure to deck.md)
+      figures/                 Mermaid sources + matplotlib scripts + rendered PNGs/SVGs
+        src/                   Source files (.mmd, .py, .csv) regenerable by deck-figures
+      deck.pdf                 Rendered PDF (produced by deck-figures or at READY)
+      _progress.json
+    <thread>.1.review/         General reviewer output (read-only)
+      verdict.md               Top-level decision + total /40 + critical flags
+      scoring.md               Per-dimension scores (this critic fills owned dimensions only)
+      comments.md              Slide-level comments keyed to deck.md
+      _summary.md              8-dim partial scorecard (other critics' dims = null) + critical flag
+      findings.md              Itemized findings: severity, slide ref, rationale, suggested fix
+      _meta.json               { critic, role, started, finished, model }
+    <thread>.1.narrative/      Narrative-arc critic (owns dims 1, 7)
+    <thread>.1.market/         Market/TAM credibility critic (owns dims 3, 4)
+    <thread>.1.design/         Visual/design critic (owns dim 8)
+      slides/                  Per-slide PNGs rendered from deck.pdf (this critic only)
+    <thread>.2/                Revised version (aggregates ALL critic siblings at .1)
+      _revision-log.md         Maps each critic finding to a change made (or "declined" with reason)
+    ...
+    <thread>.{N}/              Terminal version, marked READY in its _progress.json
+    <thread>.{N}.audit/        Optional fact/number/citation auditor (run at or near READY)
 ```
+
+**Body filename convention — `deck.md` is retained (slug-echo deferred).** Memo's post-#295 contract renames the body file to echo the slug (`<thread>.md`). The deck skill deliberately does NOT adopt the slug-echo body rename in v1: `deck.md` is the Marp source filename consumed by `marp` CLI invocations throughout the deck commands, the templates (`templates/deck.md.j2`), and consumer share/CI tooling (`<thread>.latest/deck.pdf`-style paths). Renaming the body would touch the entire command surface for no canary-surfaced gain — the studio's hand-migration (`2cf3f37`) nested the directories and kept `deck.md` in place. The slug-echo migration for deck is tracked as a follow-on; until it lands, `deck.md` is the canonical body filename inside every `<thread>.{N}/` version dir.
 
 Versioned dirs and critic siblings are **immutable once their `_progress.json` records the relevant phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
+
+**Migrating older layouts.** Threads authored before the nesting landed (version dirs as siblings of the thread root, directly under the project root) are migrated by `anvil:project-migrate`, which recognizes the flat deck shape and moves `<thread>.{N}/` (and critic siblings) under `<thread>/`.
 
 **Optional `.latest` convenience symlinks.** Consumers may add per-project convenience symlinks aliasing the current version (`<thread>.latest -> <thread>.{max_N}`, `<thread>.latest.review -> <thread>.{max_N}.review`, `<thread>.latest.design -> <thread>.{max_N}.design`, `<thread>.latest.audit -> <thread>.{max_N}.audit`) so downstream tooling — figure scripts pulling numbers from a peer thread via `refs/<thread>.latest/...`, share scripts pointing at "the current deck PDF", CI gates checking `<thread>.latest/deck.pdf` — can target stable paths without parsing N. The convention is documented in `anvil/lib/snippets/version_layout.md` (section "Convenience `.latest` symlinks"). Anvil-shipped deck commands do not write or require these symlinks in v0; they are consumer-maintained. The discovery glob (`<thread>.{N}.*/`) matches only digit-N suffixes, so a `.latest*` entry is invisible to the reviser's critic-sibling enumeration and cannot perturb anvil's state-machine derivation.
 
@@ -167,7 +173,7 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 
 Iteration cap: default `max_iterations: 4` (terminal version is `<thread>.5/`). Configurable per-thread via `<thread>/.anvil.json`. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
-**Per-thread override contract.** The cap exists for principled reasons — prevent infinite revision loops, force the operator to confront foundational thesis problems instead of polishing forever — so the override is deliberately friction-ful: it requires a paired rationale that documents *why* this thread deserves more passes. The canonical `.anvil.json` shape:
+**Per-thread override contract.** The cap exists for principled reasons — prevent infinite revision loops, force the operator to confront foundational thesis problems instead of polishing forever — so the override is deliberately friction-ful: it requires a paired rationale that documents *why* this thread deserves more passes. The carrier in v1 is `<thread>/.anvil.json` (predates the #296 consolidation); the **v2 convergence target is the project-level `BRIEF.md`** — memo already carries the structurally identical paired override on `BriefDocument.max_iterations` + `BriefDocument.iteration_cap_rationale` (see `anvil/skills/memo/SKILL.md` §"Per-document override contract"), and `anvil:project-migrate` merges a deck thread's `.anvil.json` into the project BRIEF when migrating older layouts. The canonical `.anvil.json` shape:
 
 ```json
 {
@@ -190,7 +196,7 @@ No upper bound is enforced — if an operator sets `max_iterations: 99` with a r
 | Command | Role | Reads | Writes |
 |---|---|---|---|
 | `deck` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state + recommends next command per thread) |
-| `deck-brief <thread>` | intake | `<thread>/refs/**` (transcripts, websites, founder input) | `<thread>/BRIEF.md` (and/or `<thread>.0/BRIEF.md`) |
+| `deck-brief <thread>` | intake | `<thread>/refs/**` (transcripts, websites, founder input) | `<thread>/BRIEF.md` (and/or `<thread>/<thread>.0/BRIEF.md` — the intake version dir is nested under the thread root per the artifact contract) |
 | `deck-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/deck.md` and `.review/` / `.market/` market-substrate findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating |
 | `deck-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs/**`, `<thread>/assets/**`, AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also latest `<thread>.{N}/` + all `<thread>.{N}.*/` siblings (revise path is preferred via `deck-revise`) | `<thread>.{N+1}/deck.md` + `speaker-notes.md` + `figures/` + `_progress.json` |
 | `deck-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (uniform critic schema; also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
