@@ -72,12 +72,23 @@ _REVIEW_DIR_RE = re.compile(
 
 # Body filename → skill inference. Mirrors the project-migrate
 # _SKILL_FIXED_BODY_FILENAMES list but maps to skill names instead.
+#
+# Note: ``deck.md``, ``slides.md``, and ``ip-uspto.md`` are the
+# non-slug-echoed body filename conventions for the deck / slides /
+# ip-uspto skills (the canary uses thread slugs like ``aldus`` whose
+# version dirs contain a fixed-name body file, not a slug-echoed one).
+# Without these entries, rule 2 in ``_infer_skill`` misses on those
+# skills' threads and inference falls through to ``None``. See
+# issue #374.
 _BODY_FILENAME_TO_SKILL: Dict[str, str] = {
     "memo.md": "memo",
     "proposal.md": "proposal",
     "report.md": "report",
     "installation.md": "installation",
     "pub.md": "pub",
+    "deck.md": "deck",
+    "slides.md": "slides",
+    "ip-uspto.md": "ip-uspto",
 }
 
 # Dirs we never descend into during the tree walk.

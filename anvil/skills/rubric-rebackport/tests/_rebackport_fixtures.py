@@ -334,10 +334,146 @@ def build_pub_44_unstamped(
     return project_dir
 
 
+# ---------------------------------------------------------------------------
+# Fixture: unconventional_body_filename_thread (issue #374 — canary repro)
+# ---------------------------------------------------------------------------
+
+
+def build_unconventional_body_filename_thread(
+    root: Path,
+    project_name: str = "canary-unconventional",
+    *,
+    thread_slug: str = "aldus",
+    body_filename: str = "body.md",
+    body_skill: str = "deck",
+) -> Path:
+    """Build a thread whose body filename is NOT in the inference table
+    AND has no BRIEF — so the planner sees ``inferred_skill is None``.
+
+    Reproduces the canary's #374 failure mode after the inference-table
+    extension landed. The canary's actual repro was ``aldus/aldus.4/
+    deck.md`` (no BRIEF), which the table-extension half of #374 fixes
+    via rule 2. This fixture instead uses a body filename that is NOT
+    in the (post-#374) extended table — ``body.md`` — so rule 2 still
+    misses. Without the force-set-on-None semantics promoted by #374,
+    this thread would be skipped with ``outside --skill=<deck> scope
+    (inferred skill: None)`` even though the operator's assertion
+    carries enough information to stamp.
+
+    Shape (defaults):
+      <project>/
+        aldus/
+          aldus.4/
+            body.md             <- body filename NOT in inference table
+            _progress.json
+          aldus.4.review/
+            _meta.json          <- /40-era pre-stamp shape
+            _summary.md
+            verdict.md
+
+    Note: no BRIEF.md at the project root. This is intentional and
+    matches the canary's actual on-disk state for portfolios that
+    predate the post-#295/#296 BRIEF.md model.
+
+    The ``body_filename`` and ``body_skill`` knobs let callers
+    parameterize the fixture for other unconventional cases (e.g.,
+    use ``body_filename="memo-body.md"`` to exercise the same code
+    path under a memo-shaped operator assertion).
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    thread_dir = project_dir / thread_slug
+    v = thread_dir / f"{thread_slug}.4"
+    _write(v / body_filename, f"# {body_skill} v4\n\nBody.\n")
+    _write(
+        v / "_progress.json",
+        json.dumps(_progress_legacy(thread_slug), indent=2) + "\n",
+    )
+
+    review_dir = thread_dir / f"{thread_slug}.4.review"
+    meta = _meta_legacy()
+    meta["role"] = f"{body_skill}-review.md"
+    _write(
+        review_dir / "_meta.json",
+        json.dumps(meta, indent=2) + "\n",
+    )
+    _write(
+        review_dir / "_summary.md",
+        "---\n"
+        "for_version: 4\n"
+        "scorecard_kind: human-verdict\n"
+        "critical_flag: false\n"
+        "---\n"
+        "\n"
+        f"# Review summary\n\nLegacy {body_skill} summary body.\n",
+    )
+    _write(review_dir / "verdict.md", "# Verdict\n\nLegacy verdict.\n")
+    return project_dir
+
+
+def build_deck_thread_no_brief(
+    root: Path,
+    project_name: str = "canary-deck-no-brief",
+    *,
+    thread_slug: str = "aldus",
+) -> Path:
+    """Build the canary's exact #374 repro: deck thread, no BRIEF.
+
+    Shape:
+      <project>/
+        aldus/
+          aldus.4/
+            deck.md             <- deck-fixed body filename
+            _progress.json
+          aldus.4.review/
+            _meta.json          <- /40-era pre-stamp shape
+            _summary.md
+            verdict.md
+
+    The #374 table extension (adding ``deck.md``,  ``slides.md``,
+    ``ip-uspto.md`` to ``_BODY_FILENAME_TO_SKILL``) lets rule 2 of
+    ``_infer_skill`` resolve this to ``"deck"`` even without a BRIEF.
+    Used by ``test_deck_thread_no_brief_infers_via_body_filename``.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    thread_dir = project_dir / thread_slug
+    v = thread_dir / f"{thread_slug}.4"
+    _write(v / "deck.md", "# deck v4\n\nBody.\n")
+    _write(
+        v / "_progress.json",
+        json.dumps(_progress_legacy(thread_slug), indent=2) + "\n",
+    )
+
+    review_dir = thread_dir / f"{thread_slug}.4.review"
+    meta = _meta_legacy()
+    meta["role"] = "deck-review.md"
+    _write(
+        review_dir / "_meta.json",
+        json.dumps(meta, indent=2) + "\n",
+    )
+    _write(
+        review_dir / "_summary.md",
+        "---\n"
+        "for_version: 4\n"
+        "scorecard_kind: human-verdict\n"
+        "critical_flag: false\n"
+        "---\n"
+        "\n"
+        "# Review summary\n\nLegacy deck summary body.\n",
+    )
+    _write(review_dir / "verdict.md", "# Verdict\n\nLegacy verdict.\n")
+    return project_dir
+
+
 __all__ = [
+    "build_deck_thread_no_brief",
     "build_fully_stamped",
     "build_legacy_unstamped",
     "build_mixed_skill_portfolio",
     "build_partially_stamped",
     "build_pub_44_unstamped",
+    "build_unconventional_body_filename_thread",
 ]

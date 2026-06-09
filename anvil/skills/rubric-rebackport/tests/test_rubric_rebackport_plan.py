@@ -13,11 +13,13 @@ sys.path.insert(0, str(_HERE))
 
 from _skill_lib import detect, plan  # noqa: E402
 from _rebackport_fixtures import (  # noqa: E402
+    build_deck_thread_no_brief,
     build_fully_stamped,
     build_legacy_unstamped,
     build_mixed_skill_portfolio,
     build_partially_stamped,
     build_pub_44_unstamped,
+    build_unconventional_body_filename_thread,
 )
 
 inventory_tree = detect.inventory_tree
@@ -333,6 +335,182 @@ class TestHeuristicMiss(unittest.TestCase):
             rp = p.reviews[0]
             self.assertTrue(rp.skipped)
             self.assertIn("rubric_total", rp.skip_reason)
+
+
+# ---------------------------------------------------------------------------
+# Issue #374 — `--skill` as filter / force-set hybrid
+# ---------------------------------------------------------------------------
+
+
+class TestSkillFilterForceSetSemantics(unittest.TestCase):
+    """Pin the post-#374 `--skill=<X>` behavior matrix:
+
+    1. inferred_skill is None    AND --skill=<X> -> FORCE (stamp under X)
+    2. inferred_skill != X       AND --skill=<X> -> FILTER (skip)
+    3. inferred_skill == X       AND --skill=<X> -> NORMAL (stamp)
+
+    Per Option B in the curator enrichment: the prior-release behavior
+    was pure filter for all three cases, which left the canary's deck
+    threads (with `aldus/aldus.4/deck.md`, no BRIEF) skipped with
+    `outside --skill=deck scope (inferred skill: None)` even though
+    the operator's assertion carried enough information to stamp.
+    """
+
+    def test_skill_filter_forces_when_inference_returns_none(self) -> None:
+        """Case 1: inference returned None, --skill=<X> forces the stamp."""
+        with TemporaryDirectory() as td:
+            project = build_unconventional_body_filename_thread(Path(td))
+            inv = inventory_tree(project)
+            self.assertEqual(len(inv.reviews), 1)
+            self.assertIsNone(
+                inv.reviews[0].inferred_skill,
+                "fixture must produce inferred_skill=None for the "
+                "force-set test to be meaningful (rule 2 inference "
+                "table should NOT contain `body.md`)",
+            )
+            p = build_plan(
+                inv,
+                mode=Mode.STAMP_ONLY,
+                skill_filter="deck",
+                legacy_rubric="anvil-deck-v1",
+            )
+            self.assertEqual(len(p.reviews), 1)
+            rp = p.reviews[0]
+            self.assertFalse(
+                rp.skipped,
+                f"force-set should stamp, not skip; reason: {rp.skip_reason}",
+            )
+            self.assertEqual(rp.skill, "deck")
+            self.assertIsNotNone(rp.rubric)
+            self.assertEqual(rp.rubric.id, "anvil-deck-v1")
+            self.assertIsNotNone(rp.stamp_meta)
+            # Operator-visible disclosure of the override in notes.
+            self.assertTrue(
+                any("forced" in n.lower() for n in rp.notes),
+                f"expected `forced` note; got notes: {rp.notes}",
+            )
+
+    def test_skill_filter_still_filters_when_inference_disagrees(self) -> None:
+        """Case 2: inferred_skill is set AND disagrees -> skip with `outside`."""
+        with TemporaryDirectory() as td:
+            project = build_legacy_unstamped(Path(td))  # memo fixture
+            inv = inventory_tree(project)
+            self.assertEqual(inv.reviews[0].inferred_skill, "memo")
+            p = build_plan(
+                inv,
+                mode=Mode.STAMP_ONLY,
+                skill_filter="deck",
+            )
+            self.assertEqual(len(p.reviews), 1)
+            rp = p.reviews[0]
+            self.assertTrue(rp.skipped)
+            self.assertIn("outside", rp.skip_reason)
+            self.assertIn("deck", rp.skip_reason)
+
+    def test_skill_filter_no_effect_when_inference_agrees(self) -> None:
+        """Case 3: inferred_skill == --skill=<X> -> normal stamp, no notes diff."""
+        with TemporaryDirectory() as td:
+            project = build_legacy_unstamped(Path(td))  # memo fixture
+            inv = inventory_tree(project)
+            unfiltered = build_plan(inv, mode=Mode.STAMP_ONLY)
+            inv2 = inventory_tree(project)
+            filtered = build_plan(
+                inv2, mode=Mode.STAMP_ONLY, skill_filter="memo"
+            )
+            self.assertEqual(len(filtered.reviews), 1)
+            rp_u = unfiltered.reviews[0]
+            rp_f = filtered.reviews[0]
+            self.assertFalse(rp_f.skipped)
+            self.assertEqual(rp_f.skill, rp_u.skill)
+            self.assertEqual(rp_f.rubric.id, rp_u.rubric.id)
+            # The agree-case must NOT add a "forced" note; that note is
+            # reserved for the force-set-on-None case.
+            self.assertFalse(
+                any("forced" in n.lower() for n in rp_f.notes),
+                f"agree-case should not emit a `forced` note; got: {rp_f.notes}",
+            )
+
+
+class TestDeckBodyFilenameInference(unittest.TestCase):
+    """Pin the #374 table extension: ``deck.md`` / ``slides.md`` /
+    ``ip-uspto.md`` are now in ``_BODY_FILENAME_TO_SKILL`` so rule 2
+    of ``_infer_skill`` resolves them without needing a BRIEF.
+    """
+
+    def test_deck_thread_no_brief_infers_via_body_filename(self) -> None:
+        """Canary repro: deck thread with `deck.md`, no BRIEF -> infers `deck`."""
+        with TemporaryDirectory() as td:
+            project = build_deck_thread_no_brief(Path(td))
+            inv = inventory_tree(project)
+            self.assertEqual(len(inv.reviews), 1)
+            self.assertEqual(inv.reviews[0].inferred_skill, "deck")
+            self.assertEqual(inv.reviews[0].skill_source, "body-filename")
+
+    def test_table_extended_with_deck_slides_ip_uspto(self) -> None:
+        """Pin that the three #374 entries are in the table."""
+        self.assertEqual(detect._BODY_FILENAME_TO_SKILL["deck.md"], "deck")
+        self.assertEqual(
+            detect._BODY_FILENAME_TO_SKILL["slides.md"], "slides"
+        )
+        self.assertEqual(
+            detect._BODY_FILENAME_TO_SKILL["ip-uspto.md"], "ip-uspto"
+        )
+
+
+class TestCanaryDeckRebackportE2E(unittest.TestCase):
+    """End-to-end smoke test for the canary's #374 reproducer.
+
+    The canary's original on-disk shape was a deck thread with
+    ``aldus/aldus.4/deck.md`` and an unstamped ``aldus.4.review/
+    _meta.json``. Pre-fix, this skipped with ``outside --skill=deck
+    scope (inferred skill: None)``. Post-fix (either path):
+
+    1. Table extension: rule 2 of ``_infer_skill`` resolves to ``deck``,
+       and the planner stamps normally without needing the force-set.
+    2. Force-set: if the body filename were also non-canonical (covered
+       by ``test_skill_filter_forces_when_inference_returns_none``),
+       the planner still stamps via the operator assertion.
+
+    This test pins the first path (rule 2 succeeds) for the exact
+    canary on-disk shape.
+    """
+
+    def test_canary_deck_thread_with_skill_flag_stamps_to_deck_v1(self) -> None:
+        with TemporaryDirectory() as td:
+            project = build_deck_thread_no_brief(Path(td))
+            inv = inventory_tree(project)
+            p = build_plan(
+                inv,
+                mode=Mode.STAMP_ONLY,
+                skill_filter="deck",
+                legacy_rubric="anvil-deck-v1",
+            )
+            self.assertEqual(len(p.reviews), 1)
+            rp = p.reviews[0]
+            self.assertFalse(
+                rp.skipped,
+                f"canary repro should stamp; got skip: {rp.skip_reason}",
+            )
+            self.assertEqual(rp.skill, "deck")
+            self.assertEqual(rp.rubric.id, "anvil-deck-v1")
+            self.assertEqual(rp.rubric.total, 40)
+            self.assertEqual(rp.rubric.advance_threshold, 35)
+            self.assertIsNotNone(rp.stamp_meta)
+
+    def test_canary_deck_thread_without_skill_flag_also_stamps(self) -> None:
+        """Without --skill, the table-extension fix lets rule 2 still resolve."""
+        with TemporaryDirectory() as td:
+            project = build_deck_thread_no_brief(Path(td))
+            inv = inventory_tree(project)
+            p = build_plan(
+                inv,
+                mode=Mode.STAMP_ONLY,
+                legacy_rubric="anvil-deck-v1",
+            )
+            self.assertEqual(len(p.reviews), 1)
+            rp = p.reviews[0]
+            self.assertFalse(rp.skipped)
+            self.assertEqual(rp.skill, "deck")
 
 
 if __name__ == "__main__":

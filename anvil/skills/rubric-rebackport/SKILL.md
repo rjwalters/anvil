@@ -175,12 +175,30 @@ The detector infers the owning skill for each review via:
    the project `BRIEF.md` `documents:` block's `artifact_type` field if
    present).
 2. Fallback: the parent thread's body filename (`memo.md` →
-   `anvil:memo`, `proposal.md` → `anvil:proposal`, etc.).
+   `anvil:memo`, `proposal.md` → `anvil:proposal`, `deck.md` →
+   `anvil:deck`, `slides.md` → `anvil:slides`, `ip-uspto.md` →
+   `anvil:ip-uspto`, etc.). The full table lives at
+   `lib/detect.py:_BODY_FILENAME_TO_SKILL` (issue #374 added the
+   deck / slides / ip-uspto rows).
 3. Fallback: the parent thread's `_progress.json.thread` slug, which
    often encodes the skill.
-4. If none of the above resolve, the review is skipped with an
-   operator-visible note. The operator can re-run with `--skill=` to
-   force.
+4. If none of the above resolve, the planner records `inferred_skill
+   = None`. The operator can re-run with `--skill=<name>` to assert
+   the skill — when inference returned None, the planner promotes
+   `--skill=<name>` to a force-set and stamps the review under that
+   skill's rubric. (When inference returned a *different* skill,
+   `--skill=<name>` is a filter and the review is skipped with an
+   `outside scope` note.) See `commands/rubric-rebackport.md` for
+   the full `--skill` semantics matrix.
+
+   **Prior-release behavior** (`anvil:rubric-rebackport` shipped one
+   release ago): `--skill=<name>` was a pure post-inference filter,
+   so a review with `inferred_skill is None` would be skipped with
+   `outside --skill=<name> scope (inferred skill: None)` even when
+   the operator's assertion carried enough information to stamp.
+   Issue #374 promoted `--skill` to force-set semantics on the None
+   case so the canary's deck threads (with `aldus/aldus.4/deck.md`,
+   no BRIEF) can be stamped.
 
 ## Heuristic rubric inference (stamp-only fallback)
 
