@@ -1,13 +1,13 @@
 # Anvil - Repository Guide
 
 **Anvil Version**: 0.4.0
-**Status**: canary-hardened; **10 skills shipped** (8 artifact-class skills + 2 bridge tools: `anvil:project-migrate`, `anvil:rubric-rebackport`); all 8 artifact-class rubrics on /44 with dim 9 *Rhetorical economy* (ip-uspto on /45 with dim 9 *Claim-spec correspondence*); per-review version stamping (`rubric_id` / `rubric_total` / `advance_threshold`) shipped in v0.4.0; sidecar atomicity primitive (`anvil/lib/sidecar.py`) consumed by 38 critic-writing commands across all 8 skills. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
+**Status**: canary-hardened; **11 skills shipped** (8 artifact-class skills + 2 bridge tools: `anvil:project-migrate`, `anvil:rubric-rebackport` + 1 packaging utility: `anvil:project-share`); all 8 artifact-class rubrics on /44 with dim 9 *Rhetorical economy* (ip-uspto on /45 with dim 9 *Claim-spec correspondence*); per-review version stamping (`rubric_id` / `rubric_total` / `advance_threshold`) shipped in v0.4.0; sidecar atomicity primitive (`anvil/lib/sidecar.py`) consumed by 38 critic-writing commands across all 8 skills. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
 
 Anvil is a sibling framework to [Loom](https://github.com/rjwalters/loom). Where Loom orchestrates AI code development using GitHub/Gitea as the coordination layer, Anvil orchestrates AI artifact creation using the **filesystem** as the coordination layer.
 
-Eight artifact classes ship as v0 skills (`anvil:memo`, `anvil:pub`, `anvil:report`, `anvil:deck`, `anvil:slides`, `anvil:ip-uspto`, `anvil:installation`, `anvil:proposal`). Each composes a `draft → review → revise → (audit) → figures` lifecycle, a tunable 9-dimension /44 rubric (ip-uspto on /45), opinionated templates, and a worked example. See `README.md` for the consumer-facing install + usage guide. Two **bridge tool** skills ship alongside: `anvil:project-migrate` (#297) migrates existing studio projects to the post-#295 / post-#296 canonical model (project root + `BRIEF.md` absorbing all config + `<slug>.md` body filename); `anvil:rubric-rebackport` (#358) stamps or rescores legacy /40 reviews under the per-review version stamping contract shipped in v0.4.0.
+Eight artifact classes ship as v0 skills (`anvil:memo`, `anvil:pub`, `anvil:report`, `anvil:deck`, `anvil:slides`, `anvil:ip-uspto`, `anvil:installation`, `anvil:proposal`). Each composes a `draft → review → revise → (audit) → figures` lifecycle, a tunable 9-dimension /44 rubric (ip-uspto on /45), opinionated templates, and a worked example. See `README.md` for the consumer-facing install + usage guide. Two **bridge tool** skills ship alongside: `anvil:project-migrate` (#297) migrates existing studio projects to the post-#295 / post-#296 canonical model (project root + `BRIEF.md` absorbing all config + `<slug>.md` body filename); `anvil:rubric-rebackport` (#358) stamps or rescores legacy /40 reviews under the per-review version stamping contract shipped in v0.4.0. One **packaging utility** skill rounds out the set: `anvil:project-share` (#396) collects each thread's `.latest`-resolved source + PDF + assets + per-thread refs and the shared `research/` pool into one shareable, provenance-stamped `SHARE/` folder (marker-guarded blow-away rebuild; `--dry-run` / `--zip` flags).
 
 ## Pattern overview
 
@@ -31,7 +31,8 @@ This is a general pattern for rigorous review/revise loops, designed for AI-agen
 anvil/
   skills/        Per-artifact-type skills (memo, pub, report, deck, slides,
                  ip-uspto, installation, proposal) plus two bridge tools
-                 (project-migrate, rubric-rebackport). Each has SKILL.md +
+                 (project-migrate, rubric-rebackport) and one packaging
+                 utility (project-share). Each has SKILL.md +
                  commands/ + (optional) rubric.md, templates/, assets/,
                  examples/, tests/, lib/.
   lib/           Shared framework primitives.
