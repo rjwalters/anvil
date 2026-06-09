@@ -33,48 +33,52 @@ If a draft is a talk that lives or dies on technical accuracy, pedagogy, and tim
 
 ## Artifact contract
 
-A **slides thread** is a single talk delivered to a specific audience in a specific time slot. A thread is identified by a slug (e.g., `kdd-2026-keynote`, `intro-to-anvil`, `q3-arch-review`). Each thread occupies a portfolio directory that contains:
+A **slides thread** is a single talk delivered to a specific audience in a specific time slot. A thread is identified by a slug (e.g., `kdd-2026-keynote`, `intro-to-anvil`, `q3-arch-review`). Each thread lives inside a **project root** that carries a project-level `BRIEF.md` (the post-#296 config locus — frontmatter `documents:` list naming every thread in the project). Within the project root, each thread occupies a directory named for its slug; the thread's version dirs and critic siblings are **nested under that thread directory** per the issue #295 project-org model (extended to this skill under issue #382):
 
 ```
-<portfolio>/
-  <thread>/                          Optional thread root with brief and reference material
-    BRIEF.md                         Brief (audience, time slot, learning goals, anchor refs)
+<project>/                           Project root (carries the project-level BRIEF; issues #295/#296)
+  BRIEF.md                           Project-level brief (frontmatter `documents:` list + prose; config locus per #296)
+  research/                          Optional shared evidence pool across documents
+  <thread>/                          Thread root (named for the slug)
+    BRIEF.md                         Thread-level brief (audience, time slot, learning goals, anchor refs)
     refs/                            Optional reference material (papers, prior decks, datasets)
-  <thread>.0.outline/                Pre-draft narrative outline (read-only critic-shaped sibling)
-    outline.md                       Title, audience, time slot, hook, beats, takeaway, Q&A anticipations
-    _progress.json                   Phase state for the outline
-  <thread>.1/                        First drafted version (immutable once written)
-    deck.md                          Marp markdown source (one slide per `---` block)
-    notes/                           Per-slide presenter notes (one file per slide; mirrors deck order)
-    figures/                         Generated/embedded figures referenced from deck.md
-    _progress.json                   Phase state for this version
-    changelog.md                     (revisions only) Maps prior critic notes to changes
-  <thread>.1.review/                 Reviewer output for version 1 (read-only)
-    verdict.md                       Top-level decision (advance / block) + total /40
-    scoring.md                       Per-dimension scores against the slides rubric
-    comments.md                      Slide-level comments keyed to slide numbers
-    _progress.json
-  <thread>.1.audit/                  MANDATORY — Auditor critic sibling (fact-check)
-    verdict.md                       Audit verdict + critical-flag status (any `wrong` claim sets it)
-    claims.md                        Every technical claim enumerated with verdict + citation
-    _progress.json
-  <thread>.1.rehearse/               OPTIONAL — Time-budget + density check
-    timing.md                        Per-slide and aggregate spoken-time estimates
-    density.md                       Per-slide word/bullet counts + flags
-    _progress.json
-  <thread>.2/                        Revised version (after revise consumes v1 + critic siblings)
-  <thread>.2.review/
-  <thread>.2.audit/
-  ...
-  <thread>.{N}/                      Terminal READY version
-  <thread>.{N}.handout/              TERMINAL-ONLY — leave-behind PDF export
-    handout.pdf                      2-up / 4-up / notes-below layout
-    _progress.json
+    <thread>.0.outline/              Pre-draft narrative outline (read-only critic-shaped sibling)
+      outline.md                     Title, audience, time slot, hook, beats, takeaway, Q&A anticipations
+      _progress.json                 Phase state for the outline
+    <thread>.1/                      First drafted version (immutable once written)
+      deck.md                        Marp markdown source (one slide per `---` block; skill-fixed filename — see body-filename note below)
+      notes/                         Per-slide presenter notes (one file per slide; mirrors deck order)
+      figures/                       Generated/embedded figures referenced from deck.md
+      _progress.json                 Phase state for this version
+      changelog.md                   (revisions only) Maps prior critic notes to changes
+    <thread>.1.review/               Reviewer output for version 1 (read-only)
+      verdict.md                     Top-level decision (advance / block) + total /40
+      scoring.md                     Per-dimension scores against the slides rubric
+      comments.md                    Slide-level comments keyed to slide numbers
+      _progress.json
+    <thread>.1.audit/                MANDATORY — Auditor critic sibling (fact-check)
+      verdict.md                     Audit verdict + critical-flag status (any `wrong` claim sets it)
+      claims.md                      Every technical claim enumerated with verdict + citation
+      _progress.json
+    <thread>.1.rehearse/             OPTIONAL — Time-budget + density check
+      timing.md                      Per-slide and aggregate spoken-time estimates
+      density.md                     Per-slide word/bullet counts + flags
+      _progress.json
+    <thread>.2/                      Revised version (after revise consumes v1 + critic siblings)
+    <thread>.2.review/
+    <thread>.2.audit/
+    ...
+    <thread>.{N}/                    Terminal READY version
+    <thread>.{N}.handout/            TERMINAL-ONLY — leave-behind PDF export
+      handout.pdf                    2-up / 4-up / notes-below layout
+      _progress.json
 ```
 
-Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
+**Body filename convention — `deck.md` is retained (slug-echo deferred).** Memo's post-#295 contract renames the body file to echo the slug (`<thread>.md`). The slides skill deliberately does NOT adopt the slug-echo body rename in v1: `deck.md` is the Marp source filename consumed by `marp` CLI invocations across the slides commands and the `templates/deck.md.j2` template (shared shape with `anvil:deck`). The slug-echo migration for slides is tracked as a follow-on; until it lands, `deck.md` is the canonical body filename inside every `<thread>.{N}/` version dir. The directory nesting above is load-bearing today; the body filename is not.
 
-The outline lives at `<thread>.0.outline/` — sibling-shaped (read-only critic-style directory feeding the drafter), but indexed as `.0` because no `<thread>.0/` version exists. This is a deliberate naming choice so the outline appears in the portfolio orchestrator's enumeration alongside other siblings; orchestrators look for `<thread>.<N>.<phase>/` patterns and `N=0` is reserved for pre-draft phases. **Reader-guidance invariant**: orchestrators, anomaly detectors, and any other consumer MUST treat the absence of `<thread>.0/` as expected when `<thread>.0.outline/` exists, NOT as a version-number gap; consult `_progress.json.for_version` (which records `0` for the outline) to disambiguate sibling-vs-version semantics. The `slides` portfolio orchestrator's gap detector (`commands/slides.md` step 5) carries this exemption explicitly.
+Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place. Threads authored before the nesting landed (version dirs as siblings of the thread root, directly under the project root) are migrated by `anvil:project-migrate`.
+
+The outline lives at `<thread>/<thread>.0.outline/` — sibling-shaped (read-only critic-style directory feeding the drafter), but indexed as `.0` because no `<thread>/<thread>.0/` version exists. This is a deliberate naming choice so the outline appears in the portfolio orchestrator's enumeration alongside other siblings; orchestrators look for `<thread>.<N>.<phase>/` patterns and `N=0` is reserved for pre-draft phases. **Reader-guidance invariant**: orchestrators, anomaly detectors, and any other consumer MUST treat the absence of `<thread>.0/` as expected when `<thread>.0.outline/` exists, NOT as a version-number gap; consult `_progress.json.for_version` (which records `0` for the outline) to disambiguate sibling-vs-version semantics. The `slides` portfolio orchestrator's gap detector (`commands/slides.md` step 5) carries this exemption explicitly.
 
 ## State machine
 
@@ -103,7 +107,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 - **Density flag** — any slide exceeds 50 words OR 7 bullets. Blocks (forces a slide split).
 - **Time flag** — projected duration >110% of the venue slot. Blocks (forces a cut).
 
-**Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Configurable per-thread via `<thread>/.anvil.json` with `{ "max_iterations": <N> }`. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+**Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Configurable per-thread via `<thread>/.anvil.json` with `{ "max_iterations": <N> }` in v1; the **v2 convergence target is the project-level `BRIEF.md`** (the post-#296 config locus — memo already carries the per-document override on its `documents:` entries, and `anvil:project-migrate` merges a thread's `.anvil.json` into the project BRIEF when migrating older layouts). Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
 **Re-running siblings on revision**: `audit`, `rehearse`, and `vision` are critic-shaped and are re-discovered on each loop. After a revision lands a new `<thread>.{N+1}/`, the orchestrator re-runs `slides-review`, `slides-audit`, `slides-rehearse`, and `slides-vision` against the new version. `handout` is terminal-only and runs once on the final READY+AUDITED+REHEARSED version.
 

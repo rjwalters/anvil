@@ -10,3 +10,13 @@ consumers and tests keep working unchanged.
 """
 
 from anvil.lib.project_brief import *  # noqa: F401,F403
+
+# Names the canonical module exposes as module attributes without listing
+# them in ``__all__`` (historically importable from this path — e.g. the
+# proposal-side tests import ``BRIEF_FILENAME`` from a top-level
+# ``project_brief`` module). A star import would drop them; re-export
+# explicitly to keep the historical surface intact.
+from anvil.lib.project_brief import (  # noqa: F401
+    BRIEF_FILENAME,
+    DOCUMENTS_FRONTMATTER_KEY,
+)
