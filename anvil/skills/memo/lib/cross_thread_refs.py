@@ -136,7 +136,7 @@ from typing import List, Optional
 # issue #288). Local re-export preserves the historical import path
 # (``cross_thread_refs.LATEST``) so downstream callers keep working
 # unchanged.
-from latest_resolution import LATEST, resolve_latest
+from anvil.skills.memo.lib.latest_resolution import LATEST, resolve_latest
 
 # Regex for the two shipped cross-thread reference shapes:
 #
