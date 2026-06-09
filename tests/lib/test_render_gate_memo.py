@@ -613,6 +613,330 @@ def test_gate_memo_records_latex_header_includes_skip_on_html_chain(
 
 
 # ---------------------------------------------------------------------------
+# Consumer pandoc passthrough: render_template / render_lua_filters /
+# render_metadata (issue #391)
+# ---------------------------------------------------------------------------
+
+
+def _capture_pandoc_cmd(monkeypatch) -> list[list[str]]:
+    """Install a pandoc-capturing ``subprocess.run`` stub; return the
+    capture list. Non-pandoc commands fall through to the real run."""
+    captured: list[list[str]] = []
+    real_run = subprocess.run
+
+    def _run(cmd, **kwargs):
+        if cmd and cmd[0] == "pandoc":
+            captured.append(list(cmd))
+            if "-o" in cmd:
+                idx = cmd.index("-o")
+                target = Path(cmd[idx + 1])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"%PDF-1.5\n%fake fixture\n")
+            return _FakeCompletedProcess(returncode=0, stdout="", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    return captured
+
+
+def _all_engines_available(monkeypatch) -> None:
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: True)
+    monkeypatch.setattr(shutil, "which", lambda name: "/x/" + name)
+
+
+def test_render_memo_source_consumer_template_xelatex(
+    monkeypatch, memo_version_dir, tmp_path
+):
+    """AC 1: ``render_template`` (a ``.tex`` BRIEF-relative path) +
+    ``render_engine: xelatex`` → pandoc gets ``--template
+    <project-root>/<path>`` and the framework/theme template is NOT
+    passed. Provenance records the resolved consumer path."""
+    _all_engines_available(monkeypatch)
+    captured = _capture_pandoc_cmd(monkeypatch)
+
+    # Project root is the version dir's grandparent (tmp_path here:
+    # tmp_path/bessemer/bessemer.1/ per the fixture).
+    consumer_tpl = tmp_path / "sphere-memo-template.tex"
+    consumer_tpl.write_text("\\documentclass{article}\n", encoding="utf-8")
+
+    provenance: dict = {}
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, _exit, engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=MEMO_ENGINE_XELATEX,
+        render_template="sphere-memo-template.tex",
+        provenance=provenance,
+    )
+    assert status == COMPILE_OK
+    assert engine == MEMO_ENGINE_XELATEX
+
+    cmd = captured[0]
+    idx = cmd.index("--template")
+    assert cmd[idx + 1] == str(consumer_tpl)
+    # Exactly one --template flag — the framework template.tex must not
+    # also be passed.
+    assert cmd.count("--template") == 1
+    assert provenance["template"] == str(consumer_tpl)
+    assert provenance.get("skips", []) == []
+
+
+def test_render_memo_source_lua_filters_declaration_order(
+    monkeypatch, memo_version_dir, tmp_path
+):
+    """AC 2: ``render_lua_filters: [a.lua, b.lua]`` → ``--lua-filter
+    <root>/a.lua --lua-filter <root>/b.lua`` in declaration order — on
+    an HTML-chain engine too (the knob is engine-agnostic)."""
+    _all_engines_available(monkeypatch)
+    captured = _capture_pandoc_cmd(monkeypatch)
+
+    (tmp_path / "a.lua").write_text("-- a\n", encoding="utf-8")
+    (tmp_path / "b.lua").write_text("-- b\n", encoding="utf-8")
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, _exit, engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        render_lua_filters=["a.lua", "b.lua"],
+    )
+    assert status == COMPILE_OK
+    assert engine == MEMO_ENGINE_WEASYPRINT  # default auto-priority
+
+    cmd = captured[0]
+    filter_args = [
+        cmd[i + 1] for i, tok in enumerate(cmd) if tok == "--lua-filter"
+    ]
+    assert filter_args == [str(tmp_path / "a.lua"), str(tmp_path / "b.lua")]
+
+
+def test_render_memo_source_metadata_flags_and_version_expansion(
+    monkeypatch, memo_version_dir
+):
+    """AC 3: each ``render_metadata`` entry → one ``-M key=value`` flag;
+    a literal ``{N}`` in a value expands to the version number parsed
+    from the ``<slug>.{N}`` version-dir name (``bessemer.1`` → 1)."""
+    _all_engines_available(monkeypatch)
+    captured = _capture_pandoc_cmd(monkeypatch)
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, _exit, _engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        render_metadata={
+            "doc-type": "Investment Memo",
+            "doc-version": "Draft v{N}",
+            "brace-passthrough": "{other} stays",
+        },
+    )
+    assert status == COMPILE_OK
+
+    cmd = captured[0]
+    meta_args = [cmd[i + 1] for i, tok in enumerate(cmd) if tok == "-M"]
+    assert "doc-type=Investment Memo" in meta_args
+    # {N} expanded to the fixture's version number (bessemer.1).
+    assert "doc-version=Draft v1" in meta_args
+    # Only {N} is recognized; other brace text passes through verbatim.
+    assert "brace-passthrough={other} stays" in meta_args
+
+
+def test_render_memo_source_template_engine_mismatch_skipped(
+    monkeypatch, memo_version_dir, tmp_path
+):
+    """AC 4: a ``.tex`` ``render_template`` with an HTML-chain dispatch
+    (the canary's regression shape) → consumer template skipped, default
+    chain used, skip breadcrumb recorded."""
+    _all_engines_available(monkeypatch)
+    captured = _capture_pandoc_cmd(monkeypatch)
+
+    consumer_tpl = tmp_path / "sphere-memo-template.tex"
+    consumer_tpl.write_text("\\documentclass{article}\n", encoding="utf-8")
+
+    provenance: dict = {}
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, _exit, engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=None,  # auto-priority → weasyprint
+        render_template="sphere-memo-template.tex",
+        provenance=provenance,
+    )
+    assert status == COMPILE_OK
+    assert engine == MEMO_ENGINE_WEASYPRINT
+
+    cmd = captured[0]
+    assert str(consumer_tpl) not in cmd
+    # Default HTML chain still applied (framework template.html exists).
+    assert "--template" in cmd
+    assert provenance["template"] == "framework-default"
+    skips = provenance.get("skips", [])
+    assert len(skips) == 1
+    assert "render_template" in skips[0]
+    assert "weasyprint" in skips[0]
+
+
+def test_render_memo_source_missing_template_and_filter_fall_back(
+    monkeypatch, memo_version_dir, tmp_path
+):
+    """AC 5: missing template / filter files → breadcrumbs + fallback to
+    the default chain; surviving filters still apply; never raises."""
+    _all_engines_available(monkeypatch)
+    captured = _capture_pandoc_cmd(monkeypatch)
+
+    (tmp_path / "present.lua").write_text("-- ok\n", encoding="utf-8")
+
+    provenance: dict = {}
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, _exit, engine, _stderr = _render_memo_source(
+        memo_version_dir,
+        out_pdf,
+        requested_engine=MEMO_ENGINE_XELATEX,
+        render_template="missing-template.tex",
+        render_lua_filters=["missing.lua", "present.lua"],
+        provenance=provenance,
+    )
+    assert status == COMPILE_OK
+    assert engine == MEMO_ENGINE_XELATEX
+
+    cmd = captured[0]
+    assert "missing-template.tex" not in " ".join(cmd)
+    filter_args = [
+        cmd[i + 1] for i, tok in enumerate(cmd) if tok == "--lua-filter"
+    ]
+    assert filter_args == [str(tmp_path / "present.lua")]
+    skips = provenance.get("skips", [])
+    assert len(skips) == 2
+    assert any("missing-template.tex" in s and "not found" in s for s in skips)
+    assert any("missing.lua" in s and "not found" in s for s in skips)
+    # Default template chain still recorded as provenance.
+    assert provenance["template"] == "framework-default"
+
+
+def test_render_memo_source_absent_knobs_byte_identical(
+    monkeypatch, memo_version_dir
+):
+    """AC 6 regression guard: with all three #391 knobs absent the pandoc
+    command is byte-identical to the legacy invocation shape."""
+    _all_engines_available(monkeypatch)
+    captured = _capture_pandoc_cmd(monkeypatch)
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    status, _exit, engine, _stderr = _render_memo_source(
+        memo_version_dir, out_pdf
+    )
+    assert status == COMPILE_OK
+    assert engine == MEMO_ENGINE_WEASYPRINT
+
+    memo_lib = Path(_render.__file__).parent / "memo"
+    expected = [
+        "pandoc",
+        str(memo_version_dir / "bessemer.md"),
+        "-o",
+        str(out_pdf),
+        "--pdf-engine=weasyprint",
+        "--template",
+        str(memo_lib / "template.html"),
+        "--css",
+        str(memo_lib / "styles.css"),
+        "--standalone",
+        "--fail-if-warnings",
+    ]
+    assert captured[0] == expected
+
+
+def test_gate_memo_passthrough_skip_breadcrumb_and_provenance(
+    monkeypatch, memo_version_dir, fake_pdfinfo_path, tmp_path
+):
+    """AC 4 + 7 at the gate surface: the ext/engine-mismatch breadcrumb
+    lands in ``GateResult.reasons`` without failing the gate, and the
+    provenance fields (``engine_used`` / ``template_used``) + their
+    ``to_json`` keys are populated for memo-render's
+    ``phases.render.engine`` / ``.template`` recording."""
+    monkeypatch.setattr(_render, "check_pandoc_available", lambda: True)
+    monkeypatch.setattr(_render, "check_weasyprint_available", lambda: True)
+    monkeypatch.setattr(_render, "check_wkhtmltopdf_available", lambda: False)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setattr(subprocess, "run", _fake_pandoc(returncode=0))
+
+    consumer_tpl = tmp_path / "sphere-memo-template.tex"
+    consumer_tpl.write_text("\\documentclass{article}\n", encoding="utf-8")
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    result = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        out_pdf=out_pdf,
+        target_length=None,
+        render_template="sphere-memo-template.tex",
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    # Gate does not fail on the skip alone.
+    assert result.passed is True
+    skip_msgs = [r for r in result.reasons if "render_template" in r]
+    assert len(skip_msgs) == 1, (
+        f"expected render_template skip note in reasons; "
+        f"got {result.reasons!r}"
+    )
+    assert "weasyprint" in skip_msgs[0]
+    # Provenance (issue #391 acceptance bullet 3 / AC 7).
+    assert result.engine_used == MEMO_ENGINE_WEASYPRINT
+    assert result.template_used == "framework-default"
+    j = result.to_json()
+    assert j["engine_used"] == MEMO_ENGINE_WEASYPRINT
+    assert j["template_used"] == "framework-default"
+
+
+def test_gate_memo_consumer_template_provenance(
+    monkeypatch, memo_version_dir, fake_pdfinfo_path, tmp_path
+):
+    """AC 1 + 7 at the gate surface: a matching consumer template's
+    resolved path lands on ``GateResult.template_used``."""
+    _all_engines_available(monkeypatch)
+    monkeypatch.setattr(subprocess, "run", _fake_pandoc(returncode=0))
+
+    consumer_tpl = tmp_path / "sphere-memo-template.tex"
+    consumer_tpl.write_text("\\documentclass{article}\n", encoding="utf-8")
+
+    out_pdf = memo_version_dir / "bessemer.pdf"
+    result = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        out_pdf=out_pdf,
+        target_length=None,
+        render_engine=MEMO_ENGINE_XELATEX,
+        render_template="sphere-memo-template.tex",
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    assert result.engine_used == MEMO_ENGINE_XELATEX
+    assert result.template_used == str(consumer_tpl)
+    # No skip breadcrumbs for a clean consumer-template application.
+    assert not [r for r in result.reasons if "render_template" in r]
+
+
+def test_gate_memo_legacy_result_provenance_fields_default_none():
+    """Back-compat: a directly-constructed legacy GateResult carries
+    ``engine_used`` / ``template_used`` as ``None`` (defaulted fields),
+    and ``to_json`` serializes them as null."""
+    r = GateResult(
+        pdf_path="x.pdf",
+        log_path=None,
+        pages=None,
+        page_cap=None,
+        overfull_boxes=[],
+        overfull_threshold_pt=5.0,
+        compile_status=COMPILE_OK,
+        compile_exit_code=0,
+        placeholders=[],
+    )
+    assert r.engine_used is None
+    assert r.template_used is None
+    j = r.to_json()
+    assert j["engine_used"] is None
+    assert j["template_used"] is None
+
+
+# ---------------------------------------------------------------------------
 # _render_memo_source: graceful degrade + happy path
 # ---------------------------------------------------------------------------
 
