@@ -86,11 +86,18 @@ are consumed by external tooling (marp CLI, xelatex,
 (issue #382). The migration for those skills is directory nesting plus
 `.anvil.json` → BRIEF merge only.
 
-**Artifact types.** The BRIEF `documents:` entry written for every
-migrated thread defaults to `artifact_type: investment-memo` — the
-registered artifact-type enum is memo-scoped in v1. The plan surfaces a
-note on non-memo threads so the operator knows to revisit the entry when
-per-skill artifact types land.
+**Artifact types.** The registered artifact-type enum
+(`anvil/lib/project_brief.py::ArtifactType`) carries skill-identity
+values `deck`, `slides`, and `proposal` alongside the memo subtypes
+(issue #386). The migration infers the type from the retained body
+filename and writes it into the BRIEF `documents:` entry: `deck.md` →
+`deck`, `proposal.tex` → `proposal`. Threads with no retained body
+(memo-shaped `.md` bodies) default to `artifact_type: investment-memo`.
+The plan surfaces an inference note on every retained-body thread —
+including `.tex`-bodied proposal threads — and the deck note flags the
+deck-vs-slides ambiguity: `anvil:slides` threads also use `deck.md`, so
+body shape alone cannot distinguish them; edit the BRIEF entry to
+`slides` for a talk deck.
 
 ## Commands
 
