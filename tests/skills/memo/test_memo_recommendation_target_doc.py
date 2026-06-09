@@ -33,7 +33,11 @@ from pathlib import Path
 SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "memo"
 RUBRIC = SKILL_ROOT / "rubric.md"
 REVIEW_COMMAND = SKILL_ROOT / "commands" / "memo-review.md"
-PROJECT_BRIEF = SKILL_ROOT / "lib" / "project_brief.py"
+# Canonical module location post-#382 (promoted from the memo skill's
+# lib/ to anvil/lib/; the memo-side path is now a back-compat shim).
+PROJECT_BRIEF = (
+    Path(__file__).resolve().parents[3] / "anvil" / "lib" / "project_brief.py"
+)
 FRESH_TEMPLATE = SKILL_ROOT / "templates" / "BRIEF.fresh.md.example"
 
 

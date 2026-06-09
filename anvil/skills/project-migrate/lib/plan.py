@@ -47,6 +47,7 @@ from .detect import (
     ProjectInventory,
     Shape,
     ThreadInventory,
+    _RETAINED_BODY_FILENAMES,
     _SKILL_FIXED_BODY_FILENAMES,
     inventory_project,
 )
@@ -130,6 +131,15 @@ class BriefMergeOp:
         Optional per-version override map carried from a `.anvil.json`.
     rubric_overrides
         Optional rubric overrides block carried from a `.anvil.json`.
+    max_iterations
+        Optional iteration-cap override carried from a `.anvil.json`
+        (issue #382 — the deck-skill paired-override carrier). Only
+        carried when the paired contract holds (``>= 4`` with a
+        non-empty rationale); see :func:`_extract_iteration_cap`.
+    iteration_cap_rationale
+        The paired rationale for ``max_iterations``. Always present when
+        ``max_iterations`` is (the BRIEF parser rejects unbalanced
+        pairs at parse time).
     """
 
     slug: str
@@ -137,6 +147,8 @@ class BriefMergeOp:
     target_length: Optional[Tuple[int, int]] = None
     target_length_overrides: Optional[Dict[str, Tuple[int, int]]] = None
     rubric_overrides: Optional[dict] = None
+    max_iterations: Optional[int] = None
+    iteration_cap_rationale: Optional[str] = None
 
 
 @dataclass
@@ -277,6 +289,38 @@ def _extract_target_length(
             overrides = ov
 
     return flat, overrides
+
+
+def _extract_iteration_cap(
+    anvil_data: dict,
+) -> Tuple[Optional[int], Optional[str]]:
+    """Pull the paired iteration-cap override from a `.anvil.json` shape.
+
+    The deck skill's per-thread carrier (issue #382) pairs
+    ``max_iterations`` with a required ``iteration_cap_rationale``. The
+    project-BRIEF schema (`anvil/lib/project_brief.py`) enforces the
+    same contract STRICTLY at parse time, so the planner only carries
+    the pair into the BRIEF when it would survive that validation:
+
+    - ``max_iterations`` is an int ``>= 4`` (the principled floor —
+      ``project_brief.DEFAULT_MAX_ITERATIONS``), AND
+    - ``iteration_cap_rationale`` is a non-empty string.
+
+    Anything else returns ``(None, None)`` — the default cap applies
+    and the malformed/unpaired override is dropped (matching the deck
+    skill's lenient-fallback contract for `.anvil.json`). A bare
+    ``max_iterations: 4`` (the default, no rationale — the common memo
+    fixture shape) is also dropped: writing the default into the BRIEF
+    adds nothing and an unpaired key would be rejected by the strict
+    parser.
+    """
+    mi = anvil_data.get("max_iterations")
+    rationale = anvil_data.get("iteration_cap_rationale")
+    if not isinstance(mi, int) or isinstance(mi, bool) or mi < 4:
+        return None, None
+    if not isinstance(rationale, str) or not rationale.strip():
+        return None, None
+    return mi, rationale.strip()
 
 
 def _extract_rubric_overrides(anvil_data: dict) -> Optional[dict]:
@@ -421,11 +465,14 @@ def _plan_post_283_doc(
         data = _read_anvil_json(thread.anvil_json_path)
         target_length, overrides = _extract_target_length(data)
         rubric_overrides = _extract_rubric_overrides(data)
+        max_iterations, cap_rationale = _extract_iteration_cap(data)
         plan.brief_merge = BriefMergeOp(
             slug=thread.slug,
             target_length=target_length,
             target_length_overrides=overrides,
             rubric_overrides=rubric_overrides,
+            max_iterations=max_iterations,
+            iteration_cap_rationale=cap_rationale,
         )
         plan.anvil_json_to_delete = thread.anvil_json_path
         plan.notes.append(
@@ -446,17 +493,26 @@ def _plan_pre_283_doc(
     thread: ThreadInventory,
     stems_to_rewrite: Dict[str, str],
 ) -> DocumentPlan:
-    """Build a plan for a thread under PRE_283_CLASSIC shape.
+    """Build a plan for a thread whose version dirs sit at the project root.
 
-    The thread's version dirs are directly under the project root (no
-    ``<slug>/`` parent). Steps:
+    Covers both the memo classic shape (no ``<slug>/`` parent at all)
+    and the nested-but-flat deck/slides/proposal shape (issue #382 —
+    a ``<slug>/`` thread root with BRIEF/refs/assets exists as a
+    SIBLING of the flat ``<slug>.N/`` version dirs; the studio canary's
+    hand-fix ``2cf3f37`` is the reference shape). Steps:
 
-    1. Create the ``<slug>/`` parent (implicit — happens during rename).
-    2. Rename each ``<stem>.N/`` → ``<slug>/<slug>.N/``.
-    3. Rename body files inside (``memo.md`` → ``<slug>.md``).
+    1. Create the ``<slug>/`` parent when absent (implicit — happens
+       during rename; an existing thread root is kept, its contents
+       untouched).
+    2. Rename each ``<stem>.N/`` → ``<slug>/<slug>.N/`` (critic
+       siblings move alongside).
+    3. Rename skill-fixed body files inside (``memo.md`` → ``<slug>.md``).
+       Retained body filenames (``deck.md``, ``proposal.tex``) are NOT
+       renamed — the slug-echo migration is scoped out for those skills.
     4. Cross-thread refs use old stems → rewrite.
-    5. ``.anvil.json`` at project root (if it claims this thread) → merge
-       into BRIEF.
+    5. Per-thread ``.anvil.json`` (inside the thread root) or the
+       project-root ``.anvil.json`` (if it claims this thread) → merge
+       into BRIEF, delete after.
     """
     plan = DocumentPlan(
         slug=thread.slug,
@@ -536,27 +592,64 @@ def _plan_pre_283_doc(
                     f"{target_sibling.relative_to(inv.project_dir)}"
                 )
 
-    # Anvil JSON merge. For pre-#283 the .anvil.json typically lives at
-    # the project root (one per project); claim it for this thread when
-    # no other thread has.
-    root_anvil = inv.project_dir / ANVIL_JSON_FILENAME
-    if root_anvil.is_file() and root_anvil in inv.extra_anvil_jsons:
-        data = _read_anvil_json(root_anvil)
+    # Anvil JSON merge. Two carriers, in precedence order:
+    #
+    # 1. A per-thread .anvil.json inside the sibling thread root
+    #    (<project>/<slug>/.anvil.json — the deck-skill carrier on
+    #    nested-but-flat threads, issue #382). Recorded by the detector
+    #    as ``thread.anvil_json_path``.
+    # 2. The project-root .anvil.json (the memo classic one-per-project
+    #    location); claim it for this thread when no other thread has.
+    claimed_anvil: Optional[Path] = None
+    if thread.anvil_json_path is not None:
+        claimed_anvil = thread.anvil_json_path
+    else:
+        root_anvil = inv.project_dir / ANVIL_JSON_FILENAME
+        if root_anvil.is_file() and root_anvil in inv.extra_anvil_jsons:
+            claimed_anvil = root_anvil
+
+    if claimed_anvil is not None:
+        data = _read_anvil_json(claimed_anvil)
         target_length, overrides = _extract_target_length(data)
         rubric_overrides = _extract_rubric_overrides(data)
+        max_iterations, cap_rationale = _extract_iteration_cap(data)
         plan.brief_merge = BriefMergeOp(
             slug=thread.slug,
             target_length=target_length,
             target_length_overrides=overrides,
             rubric_overrides=rubric_overrides,
+            max_iterations=max_iterations,
+            iteration_cap_rationale=cap_rationale,
         )
-        plan.anvil_json_to_delete = root_anvil
+        plan.anvil_json_to_delete = claimed_anvil
         plan.notes.append(
-            f"Merge {root_anvil.relative_to(inv.project_dir)} into BRIEF; "
+            f"Merge {claimed_anvil.relative_to(inv.project_dir)} into BRIEF; "
             f"delete after merge."
         )
+        if data.get("max_iterations") is not None and max_iterations is None:
+            plan.notes.append(
+                f"{thread.slug}: max_iterations override NOT carried into "
+                f"BRIEF (default cap, missing/empty rationale, or below "
+                f"the >=4 floor); the default applies."
+            )
     else:
         plan.brief_merge = BriefMergeOp(slug=thread.slug)
+
+    # Surface the retained-body decision for non-memo threads so the
+    # operator sees (a) why no body rename was planned and (b) that the
+    # BRIEF's artifact_type defaulted to the memo enum value (the
+    # registered artifact-type set is memo-scoped in v1; edit the BRIEF
+    # entry when per-skill artifact types land).
+    retained = sorted(
+        b for b in thread.body_filenames if b in _RETAINED_BODY_FILENAMES
+    )
+    if retained:
+        plan.notes.append(
+            f"{thread.slug}: body filename {', '.join(retained)} retained "
+            f"(slug-echo rename is scoped out for deck/slides/proposal per "
+            f"issue #382); artifact_type in BRIEF defaults to "
+            f"'investment-memo' — edit after migration if needed."
+        )
 
     return plan
 
@@ -642,11 +735,28 @@ def build_plan(
 
     if shape == Shape.POST_283_ANVIL_JSON:
         for thread in inventory.threads:
-            plan.documents.append(
-                _plan_post_283_doc(inventory, thread, stems_to_rewrite)
-            )
-        # Also delete any extra .anvil.json files.
-        plan.extra_anvil_jsons_to_delete.extend(inventory.extra_anvil_jsons)
+            # Mixed-grammar projects (issue #382): a project BRIEF may
+            # exist (e.g., memo threads already migrated) while a
+            # deck/slides/proposal thread still sits flat at the project
+            # root. Flat threads need the nesting move, not the
+            # in-place post-#283 cleanup — dispatch per thread.
+            if thread.parent_dir == inventory.project_dir:
+                plan.documents.append(
+                    _plan_pre_283_doc(inventory, thread, stems_to_rewrite)
+                )
+            else:
+                plan.documents.append(
+                    _plan_post_283_doc(inventory, thread, stems_to_rewrite)
+                )
+        # Also delete any extra .anvil.json files (excluding any already
+        # claimed by a flat-thread doc plan above).
+        already_claimed = {
+            doc.anvil_json_to_delete for doc in plan.documents
+            if doc.anvil_json_to_delete is not None
+        }
+        for extra in inventory.extra_anvil_jsons:
+            if extra not in already_claimed:
+                plan.extra_anvil_jsons_to_delete.append(extra)
         return plan
 
     if shape == Shape.PRE_283_CLASSIC:

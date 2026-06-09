@@ -319,6 +319,19 @@ def _format_target_length_overrides(
     return out
 
 
+def _format_iteration_cap_rationale(rationale: str) -> List[str]:
+    """Format the iteration_cap_rationale as a YAML literal block scalar.
+
+    The rationale is operator-authored prose (often multi-line per the
+    deck-skill `.anvil.json` precedent); a literal block (`|`) preserves
+    it verbatim without quote-escaping concerns.
+    """
+    out: List[str] = ["    iteration_cap_rationale: |"]
+    for line in rationale.splitlines() or [""]:
+        out.append(f"      {line}".rstrip())
+    return out
+
+
 def _format_rubric_overrides(ro: dict) -> List[str]:
     """Format a rubric_overrides block as YAML lines (indented for BRIEF)."""
     out: List[str] = ["    rubric_overrides:"]
@@ -438,6 +451,18 @@ def _write_project_brief(
             ro = entry.get("rubric_overrides")
             if not isinstance(ro, dict):
                 ro = None
+            # Preserve a pre-existing paired iteration-cap override
+            # (issue #382 — written by an earlier migration or by the
+            # operator per the memo per-document override contract).
+            mi = entry.get("max_iterations")
+            rationale = entry.get("iteration_cap_rationale")
+            if not isinstance(mi, int) or isinstance(mi, bool):
+                mi = None
+            if not isinstance(rationale, str) or not rationale.strip():
+                rationale = None
+            if mi is None or rationale is None:
+                mi = None
+                rationale = None
             merges.append(
                 BriefMergeOp(
                     slug=slug,
@@ -445,6 +470,8 @@ def _write_project_brief(
                     target_length=tl_tuple,
                     target_length_overrides=tlo_map if tlo_map else None,
                     rubric_overrides=ro,
+                    max_iterations=mi,
+                    iteration_cap_rationale=rationale,
                 )
             )
             seen_slugs.add(slug)
@@ -477,6 +504,13 @@ def _write_project_brief(
         if merge.target_length_overrides:
             frontmatter_lines.extend(
                 _format_target_length_overrides(merge.target_length_overrides)
+            )
+        if merge.max_iterations is not None and merge.iteration_cap_rationale:
+            frontmatter_lines.append(
+                f"    max_iterations: {merge.max_iterations}"
+            )
+            frontmatter_lines.extend(
+                _format_iteration_cap_rationale(merge.iteration_cap_rationale)
             )
         if merge.rubric_overrides:
             frontmatter_lines.extend(

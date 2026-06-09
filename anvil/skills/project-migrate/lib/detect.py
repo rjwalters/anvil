@@ -11,7 +11,14 @@ choose the right migration steps. Three shapes are recognized:
   body filenames are still skill-fixed (``memo.md``).
 - ``Shape.PRE_283_CLASSIC`` — no project-level ``BRIEF.md``; ``memo.N/``
   sibling version dirs directly under the project root; skill-fixed
-  ``memo.md`` bodies.
+  ``memo.md`` bodies. This shape ALSO covers the nested-but-flat
+  deck/slides/proposal variant (issue #382 — the studio canary's
+  ``series-a-deck`` shape): a thread-root directory (``<slug>/`` with
+  BRIEF + refs + assets) sitting as a sibling of flat ``<slug>.N/``
+  version dirs at the project root. The slug heuristic resolves the
+  stem itself as the slug (the stem is not a skill name), and any
+  per-thread ``.anvil.json`` inside the thread root is recorded for
+  the BRIEF merge.
 
 ``Shape.UNKNOWN`` is returned for inputs that don't match any of the three
 patterns (e.g., an empty directory, or a directory whose contents look like
@@ -74,6 +81,14 @@ _VERSION_DIR_RE = re.compile(r"^(?P<stem>.+)\.(?P<num>\d+)$")
 # Skill-local body filenames historically shipped by anvil skills. When we
 # see one of these in a thread dir, we know the thread is pre-#295 (the
 # slug-echo contract had not yet landed).
+#
+# NOTE (issue #382): ``deck.md`` (the Marp source used by both anvil:deck
+# and anvil:slides) and ``proposal.tex`` (the XeLaTeX source used by
+# anvil:proposal) are deliberately NOT in this tuple. Those skills retain
+# their skill-fixed body filenames in v1 — the slug-echo body rename is
+# scoped out because the filenames are consumed by external tooling
+# (marp CLI, xelatex, anvil-proposal.cls). The migration for those
+# skills is directory nesting only.
 _SKILL_FIXED_BODY_FILENAMES = (
     "memo.md",
     "proposal.md",
@@ -81,6 +96,14 @@ _SKILL_FIXED_BODY_FILENAMES = (
     "installation.md",
     "pub.md",
 )
+
+# Body filenames that are canonical *as-is* for skills that retained a
+# skill-fixed body name post-#295 (issue #382). A version dir carrying
+# one of these (plus any auxiliary markdown like ``speaker-notes.md``)
+# counts as fully migrated; only the ``_SKILL_FIXED_BODY_FILENAMES``
+# above are pre-#295 evidence. ``proposal.tex`` needs no entry — the
+# body-filename observation only collects ``*.md`` files.
+_RETAINED_BODY_FILENAMES = frozenset({"deck.md"})
 
 # Sibling directories that are never thread dirs (review siblings, audit
 # siblings, generic critic siblings, plus bookkeeping dirs the operator
@@ -508,13 +531,23 @@ def inventory_project(project_dir: Path) -> ProjectInventory:
             slug = project_slug
         else:
             slug = stem
+        # Nested-but-flat thread roots (issue #382 — the studio canary's
+        # deck shape): a sibling ``<project>/<stem>/`` directory carrying
+        # the thread-level BRIEF / refs / assets may exist alongside the
+        # flat ``<stem>.N/`` version dirs. When it carries a per-thread
+        # ``.anvil.json`` (the deck iteration-cap-rationale carrier),
+        # record it so the planner can merge it into the project BRIEF.
+        anvil_json_path = None
+        thread_root_candidate = project_dir / stem / ANVIL_JSON_FILENAME
+        if thread_root_candidate.is_file():
+            anvil_json_path = thread_root_candidate
         inv.threads.append(
             ThreadInventory(
                 slug=slug,
                 parent_dir=project_dir,
                 version_dirs=version_dirs,
                 body_filenames=sorted(set(body_files)),
-                anvil_json_path=None,
+                anvil_json_path=anvil_json_path,
             )
         )
 
@@ -588,17 +621,19 @@ def _classify(inv: ProjectInventory) -> Shape:
         and not classic_threads
         and not has_anvil_json
     ):
-        # Verify every thread's body filename is <slug>.md.
+        # Verify no thread retains a pre-#295 skill-fixed body filename.
+        #
+        # The check is "no skill-fixed body present", NOT "every body is
+        # `<slug>.md`": skills that retained their body filenames
+        # post-#295 (deck/slides keep `deck.md` per issue #382's
+        # slug-echo scope-out; auxiliary markdown like
+        # `speaker-notes.md` is artifact content, not a body) must
+        # classify as fully migrated once nested. Only the filenames in
+        # `_SKILL_FIXED_BODY_FILENAMES` are pre-#295 evidence.
         fully = True
         for t in nested_threads:
-            expected = f"{t.slug}.md"
-            non_changelog = [
-                b for b in t.body_filenames if b != "changelog.md"
-            ]
-            # An empty version dir (no body yet) is tolerated as fully
-            # migrated — the contract only enforces "no wrong filename".
-            for body in non_changelog:
-                if body != expected:
+            for body in t.body_filenames:
+                if body in _SKILL_FIXED_BODY_FILENAMES:
                     fully = False
                     break
             if not fully:
