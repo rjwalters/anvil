@@ -41,8 +41,27 @@ thread root (e.g., `<project>/<slug>/`), a project root (e.g.,
   to disk.
 - `--rescore` requires `--legacy-rubric`. Without it the command exits
   non-zero with a diagnostic.
-- `--skill=<name>` scopes the walk: reviews owned by other skills are
-  reported in the inventory but skipped from the plan.
+- `--skill=<name>` is a hybrid filter / operator-asserted force-set
+  (issue #374 — semantics changed from filter-only in v0.4.x):
+  - When inference returned **None** for a review (no `BRIEF.md`
+    entry, no body-filename match), the operator assertion is taken
+    as authoritative. The review is treated as if `inferred_skill ==
+    <name>` and stamped normally. The plan records a note of the
+    form `skill forced by --skill=<name> (inference returned None)`.
+  - When inference returned a **different** skill, the review is
+    skipped with `outside --skill=<name> scope` — i.e., filter
+    semantics are preserved for the disagree case.
+  - When inference returned the **same** skill, `--skill=<name>` is
+    a no-op for that review.
+
+  **Prior-release behavior** (`anvil:rubric-rebackport` shipped one
+  release ago in PR #362): `--skill=<name>` was a pure post-inference
+  filter, so reviews where inference returned None were skipped with
+  `outside --skill=<name> scope (inferred skill: None)`. The new
+  force-set behavior unblocks the canary's deck threads (and any
+  other skill whose body filename is not slug-echoed, e.g.,
+  `aldus/aldus.4/deck.md` instead of `aldus/aldus.4/aldus.md`) where
+  the operator knows the skill but the heuristic cannot infer it.
 
 ### 1. Detect
 
@@ -175,7 +194,9 @@ The report follows this shape:
 ## Skipped reviews
 
 - `<review-id-3>`: skill could not be inferred (no `BRIEF.md`, no body
-  filename match). Re-run with `--skill=<name>` to force.
+  filename match). Re-run with `--skill=<name>` to assert the skill
+  (the planner will treat the review as if inference returned `<name>`
+  and stamp it).
 
 ## Verification preview
 
