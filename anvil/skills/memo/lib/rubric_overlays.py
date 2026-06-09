@@ -36,7 +36,12 @@ Public API
     the matching slug, reading its ``artifact_type``, and loading the
     overlay. Returns ``None`` when no project BRIEF is found (back-compat
     for threads outside the portfolio-as-thread-root layout) or when
-    the thread's slug is not listed in the BRIEF.
+    the thread's slug is not listed in the BRIEF. Raises a clear
+    skill-mismatch ``OverlayLoadError`` when the entry declares a
+    non-memo skill-identity type (``deck`` / ``slides`` / ``proposal``
+    — issue #386): memo rubric overlays apply only to the memo-scoped
+    subset ``MEMO_ARTIFACT_TYPES``, and silently scoring a deck against
+    the memo rubric would be worse than failing loudly.
 
 ``RubricOverlay``
     Typed Pydantic model. Fields: ``artifact_type``, ``description``,
@@ -70,7 +75,11 @@ from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from anvil.skills.memo.lib.project_brief import ArtifactType, load_project_brief
+from anvil.skills.memo.lib.project_brief import (
+    ArtifactType,
+    MEMO_ARTIFACT_TYPES,
+    load_project_brief,
+)
 from anvil.skills.memo.lib.project_discovery import discover_thread_root
 
 
@@ -250,6 +259,26 @@ def select_overlay_for_thread(
 
     for entry in brief.documents:
         if entry.slug == thread_slug:
+            # Memo-scoped subset guard (issue #386). Skill-identity
+            # artifact types (deck / slides / proposal) are registered
+            # in the shared enum but select NO memo overlay — a memo
+            # command running against such a thread is operator error
+            # that deserves a loud, self-explaining failure instead of
+            # a confusing "No overlay file found" message (or worse, a
+            # silent identity overlay scoring a deck against the memo
+            # rubric).
+            if entry.artifact_type not in MEMO_ARTIFACT_TYPES:
+                memo_values = sorted(t.value for t in MEMO_ARTIFACT_TYPES)
+                raise OverlayLoadError(
+                    f"Thread {thread_slug!r} declares artifact_type="
+                    f"{entry.artifact_type.value!r} in the project BRIEF — "
+                    f"this looks like a {entry.artifact_type.value!r} "
+                    f"thread, not a memo. Memo rubric overlays apply only "
+                    f"to memo artifact types: {memo_values}. Run the "
+                    f"owning skill's commands (anvil:"
+                    f"{entry.artifact_type.value}) against this thread "
+                    f"instead, or fix the BRIEF entry if the type is wrong."
+                )
             return load_overlay(entry.artifact_type)
 
     # Thread is in a project but not listed in the BRIEF — preserve

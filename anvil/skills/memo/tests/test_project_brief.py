@@ -365,6 +365,80 @@ class TestUnknownArtifactType(_TmpProjectBase):
 
 
 # ---------------------------------------------------------------------------
+# Skill-identity artifact types (issue #386)
+# ---------------------------------------------------------------------------
+
+
+class TestSkillIdentityArtifactTypes(_TmpProjectBase):
+    """Issue #386: deck / slides / proposal are registered values.
+
+    For non-memo documents ``artifact_type`` identifies which skill owns
+    the thread; it selects NO memo rubric overlay (memo's overlay
+    dispatch excludes them via ``MEMO_ARTIFACT_TYPES``).
+    """
+
+    def test_skill_identity_values_accepted(self) -> None:
+        for value in ("deck", "slides", "proposal"):
+            with self.subTest(artifact_type=value):
+                fm = textwrap.dedent(
+                    f"""\
+                    project: tiny
+                    documents:
+                      - slug: some-thread
+                        artifact_type: {value}
+                    """
+                ).rstrip()
+                _write_brief(self.project_dir, fm)
+                brief = load_project_brief_strict(self.project_dir)
+                self.assertEqual(
+                    brief.documents[0].artifact_type, ArtifactType(value)
+                )
+
+    def test_pitch_deck_rejected_listing_all_registered_values(self) -> None:
+        """The studio's informal 'pitch-deck' stays unregistered — the
+        closed-ended error lists all eight registered values so the
+        operator can self-correct."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: series-a-deck
+                artifact_type: pitch-deck
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        msg = str(cm.exception)
+        self.assertIn("pitch-deck", msg)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 8)
+        for registered in REGISTERED_ARTIFACT_TYPES:
+            self.assertIn(registered, msg)
+
+    def test_memo_subset_excludes_skill_identity_values(self) -> None:
+        from project_brief import MEMO_ARTIFACT_TYPES  # noqa: PLC0415
+
+        self.assertEqual(
+            MEMO_ARTIFACT_TYPES,
+            frozenset(
+                {
+                    ArtifactType.INVESTMENT_MEMO,
+                    ArtifactType.POSITION_PAPER,
+                    ArtifactType.TACTICAL_PLAN,
+                    ArtifactType.VISION_DOCUMENT,
+                    ArtifactType.DESCRIPTIVE_THESIS,
+                }
+            ),
+        )
+        for skill_identity in (
+            ArtifactType.DECK,
+            ArtifactType.SLIDES,
+            ArtifactType.PROPOSAL,
+        ):
+            self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
+
+
+# ---------------------------------------------------------------------------
 # Slug-directory mismatch (Open Question #1)
 # ---------------------------------------------------------------------------
 
