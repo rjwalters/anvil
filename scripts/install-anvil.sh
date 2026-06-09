@@ -47,6 +47,13 @@
 #   .claude/skills/anvil-<name>/SKILL.md  Thin Claude registration shim
 #                                         (depth 1: Claude Code only discovers
 #                                         SKILL.md at .claude/skills/<name>/.)
+#   .claude/agents/anvil-<skill>-<phase>.md  Per-skill-phase subagent
+#                                            registrations (issue #377).
+#                                            Mirrors loom-* agent files.
+#                                            Pattern-matched copy so the
+#                                            installer never disturbs
+#                                            non-anvil agents under
+#                                            .claude/agents/ (e.g. loom-*).
 #   CLAUDE.md                          Updated with additive <!-- BEGIN ANVIL --> block.
 #
 # Anvil is forge-optional: git is not required in the target.
@@ -877,6 +884,60 @@ for skill in "${SELECTED_SKILLS[@]}"; do
   # accurately report what a real run WOULD install (relabel branch below).
   [[ "$DRY_RUN" == true ]] || ok "skill '$skill' installed"
 done
+
+# ----- Stage 7.5: copy Anvil subagent definitions (issue #377) -------------
+# Per-skill-phase subagent registrations (anvil-<skill>-<phase>.md) shipped
+# under anvil/agents/ in the source repo. Each file mirrors Loom's
+# .claude/agents/loom-<role>.md pattern: thin frontmatter (name, description,
+# tools) + a short system-prompt body delegating to the canonical command
+# under .anvil/skills/<skill>/commands/<command>.md.
+#
+# Copy mode: blanket replace_tree from source. Agents are NOT consumer-
+# override targets (the canonical body lives in the source command file the
+# agent points at; the agent shim only declares registry metadata). The
+# `--force` flag is therefore not needed for the agents/ copy — every install
+# refreshes the full agent set. Skills, by contrast, ARE override targets
+# (consumers can patch templates/, rubric.md, etc.), which is why Stage 7
+# carries the override-detection decision matrix.
+#
+# Filter behavior: the agents/ copy is NOT scoped by --skills=. The full
+# agent registry ships even when the operator pins a strict skill subset
+# (e.g., --skills=memo). Rationale: a skill-pinned install can still spawn
+# agents for non-installed skills if the consumer is running the source
+# checkout side-by-side; the agent shims are cheap and parsing failures (no
+# command body to follow) would surface immediately when dispatched. The
+# canary's actual fan-out pattern always installs the full skill set, so the
+# narrowed-install case is purely a documentation / dev path.
+info "Stage 7.5: copy Anvil subagent definitions (anvil/agents -> .claude/agents)"
+SRC_AGENTS="$ANVIL_ROOT/anvil/agents"
+DST_AGENTS="$TARGET/.claude/agents"
+INSTALLED_AGENTS_COUNT=0
+if [[ -d "$SRC_AGENTS" ]]; then
+  # Count source agents up front so the action label is honest under --dry-run.
+  AGENT_COUNT="$(find "$SRC_AGENTS" -maxdepth 1 -name 'anvil-*.md' -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
+  if [[ "$AGENT_COUNT" -gt 0 ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      # Dry-run: no side effects on disk. Only the planned action line is
+      # surfaced so the operator sees what a real run would copy.
+      echo "  [dry-run] copy $AGENT_COUNT agent files from $SRC_AGENTS to $DST_AGENTS"
+    else
+      # Per-file copy (not replace_tree) so we don't blow away any non-anvil
+      # agents the consumer has added under .claude/agents/ (e.g., loom-*
+      # agents from a sibling Loom install). Pattern-match on `anvil-*.md`
+      # restricts the install footprint to the Anvil-owned namespace.
+      mkdir -p "$DST_AGENTS"
+      while IFS= read -r -d '' agent_file; do
+        cp "$agent_file" "$DST_AGENTS/"
+        INSTALLED_AGENTS_COUNT=$((INSTALLED_AGENTS_COUNT + 1))
+      done < <(find "$SRC_AGENTS" -maxdepth 1 -name 'anvil-*.md' -type f -print0)
+      ok "$INSTALLED_AGENTS_COUNT subagent registration(s) installed at $DST_AGENTS"
+    fi
+  else
+    note "no anvil-*.md files found under $SRC_AGENTS (skipping)"
+  fi
+else
+  note "source agents dir not found: $SRC_AGENTS (skipping; pre-#377 source checkout?)"
+fi
 
 # ----- Stage 8: CLAUDE.md additive merge ------------------------------------
 info "Stage 8: CLAUDE.md additive merge"
