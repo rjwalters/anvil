@@ -112,16 +112,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-# project_brief is a sibling module under anvil/skills/memo/lib/ (it owns
-# the typed ``RubricOverrides`` model after the issue #296 consolidation).
-# Import using the package-relative form so tests under tests/test_*.py
-# and the production reviewer code path both resolve the same module.
-try:
-    # Production: ``anvil`` is on PYTHONPATH as an installable package.
-    from anvil.skills.memo.lib.project_brief import RubricOverrides
-except ImportError:  # pragma: no cover
-    # Test / standalone path: the tests add the lib dir to sys.path directly.
-    from project_brief import RubricOverrides  # type: ignore[no-redef]
+from anvil.skills.memo.lib.project_brief import RubricOverrides
 
 
 # The verbatim suffix prefix shape. Per the issue body of #233 and AC2 of

@@ -64,7 +64,7 @@ _HERE = Path(__file__).resolve().parent
 _LIB = _HERE.parent / "lib"
 sys.path.insert(0, str(_LIB))
 
-from latest_resolution import (  # noqa: E402
+from anvil.skills.memo.lib.latest_resolution import (  # noqa: E402
     LATEST,
     resolve_latest,
 )
