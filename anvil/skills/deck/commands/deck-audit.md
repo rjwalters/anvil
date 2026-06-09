@@ -6,8 +6,8 @@ description: Fact / number / citation auditor for the deck skill. Verifies every
 # deck-audit — Fact / citation auditor
 
 **Role**: auditor.
-**Reads**: latest `<thread>.{N}/` (specifically `deck.md`, `speaker-notes.md`, `figures/src/*.csv`, and — when `imagery_policy: generative-eligible` — `assets/_prompts.json` via `anvil/skills/deck/lib/prompt_journal.py`), `<thread>/BRIEF.md`, `<thread>/refs/**`.
-**Writes**: `<thread>.{N}.audit/` with `_summary.md`, `findings.md`, `audit-trail.md` (line-by-line evidence), `_meta.json`, `_progress.json`.
+**Reads**: latest `<thread>/<thread>.{N}/` (the version dir is nested under the thread root per the artifact contract; specifically `deck.md`, `speaker-notes.md`, `figures/src/*.csv`, and — when `imagery_policy: generative-eligible` — `assets/_prompts.json` via `anvil/skills/deck/lib/prompt_journal.py`), `<thread>/BRIEF.md`, `<thread>/refs/**`.
+**Writes**: `<thread>/<thread>.{N}.audit/` with `_summary.md`, `findings.md`, `audit-trail.md` (line-by-line evidence), `_meta.json`, `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.audit/` references below are shorthand for these nested paths.
 
 This auditor is sharper than the generic `audit` critic on other skills (e.g., `memo`): it specifically enforces the deck no-fabrication contract. A deck that ships to investors with a single unattested customer logo is a deck that loses the firm's credibility on first reference-check.
 
@@ -18,11 +18,13 @@ The auditor does **not own any rubric dimension directly** — it does not score
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` (usually a version where `verdict.md` has `advance: true`; audit is typically run as the final pre-send gate).
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/` (usually a version where `verdict.md` has `advance: true`; audit is typically run as the final pre-send gate).
 - **Brief**: `<thread>/BRIEF.md` — canonical source of truth for traction numbers, team bios, assets.
 - **Refs**: `<thread>/refs/**` — secondary sources the brief itself was derived from. Audit can drill through to refs when the brief cites them.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir under audit:
 
 ```
 <thread>.{N}.audit/
@@ -37,7 +39,7 @@ The auditor does **not own any rubric dimension directly** — it does not score
 
 ## Procedure
 
-1. **Discover state** + **resume check** (standard). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.audit)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.audit.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.audit/` exists — the atomic-rename contract guarantees the dir only exists when complete.
+1. **Discover state** + **resume check** (standard). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.audit)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.audit.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.audit/` exists — the atomic-rename contract guarantees the dir only exists when complete.
 2. **Open the staged sidecar** for the audit dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.audit, required_files=["_summary.md", "findings.md", "audit-trail.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.audit.tmp/`), NOT inside the final `<thread>.{N}.audit/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` + `_meta.json`.
 3. **Enumerate claims**: walk every slide in `<thread>.{N}/deck.md` and extract:
    - **Numbers**: every number that appears in body text or in a chart (read from `figures/src/*.csv` if a chart is data-driven).

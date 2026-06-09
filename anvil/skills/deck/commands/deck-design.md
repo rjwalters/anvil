@@ -6,8 +6,8 @@ description: Visual / design critic for the deck skill. Renders deck.pdf to per-
 # deck-design — Visual / design critic
 
 **Role**: design critic.
-**Reads**: `<thread>.{N}/deck.pdf` (renders from `deck.md` if not yet present); produces per-slide PNGs as the artifact actually evaluated.
-**Writes**: `<thread>.{N}.design/` with per-slide PNGs in `slides/`, plus `_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`.
+**Reads**: `<thread>/<thread>.{N}/deck.pdf` (the version dir is nested under the thread root per the artifact contract; renders from `deck.md` if not yet present); produces per-slide PNGs as the artifact actually evaluated.
+**Writes**: `<thread>/<thread>.{N}.design/` with per-slide PNGs in `slides/`, plus `_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.design/` references below are shorthand for these nested paths.
 
 A markdown-source-only design critic is structurally weak — it can count bullets and word density but cannot see actual visual hierarchy, contrast, or chart legibility. This critic therefore renders the deck to PDF first, splits into per-slide PNGs, and evaluates those.
 
@@ -20,11 +20,13 @@ Total ownership: 5/40. Other dimensions remain `null` in this critic's `_summary
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Rendered PDF**: `<thread>.{N}/deck.pdf` — produced by `deck-figures` or by this critic on demand.
 - **Marp theme**: `anvil/skills/deck/assets/anvil-deck.css` (or consumer override at `.anvil/skills/deck/templates/<their-theme>.css`).
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir under critique:
 
 ```
 <thread>.{N}.design/
@@ -41,7 +43,7 @@ Total ownership: 5/40. Other dimensions remain `null` in this critic's `_summary
 
 ## Procedure
 
-1. **Discover state** + **resume check** (standard). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.design)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.design.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.design/` exists — the atomic-rename contract guarantees the dir only exists when complete.
+1. **Discover state** + **resume check** (standard). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.design)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.design.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.design/` exists — the atomic-rename contract guarantees the dir only exists when complete.
 2. **Open the staged sidecar** for the design dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.design, required_files=["_summary.md", "findings.md", "comments.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.design.tmp/`), NOT inside the final `<thread>.{N}.design/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` + `_meta.json`.
 3. **Ensure deck.pdf exists**:
    - If `<thread>.{N}/deck.pdf` exists and is newer than `deck.md`, use it.

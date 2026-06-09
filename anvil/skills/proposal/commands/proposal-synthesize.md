@@ -6,8 +6,8 @@ description: Synthesizer command for the proposal skill. Runs after all critic s
 # proposal-synthesize — Synthesizer
 
 **Role**: synthesizer (`role: synthesizer`; `scorecard_kind: human-verdict`).
-**Reads**: `<thread>.{N}/proposal.tex`; ALL `<thread>.{N}.<critic>/` siblings at the same `N` (REQUIRED: `.review/`, `.audit/`; OPTIONAL: `.perspective/`, any consumer `.<critic>/`).
-**Writes**: `<thread>.{N}.synthesis/` with `verdict.md`, `synthesis.md`, `gaps.json`, `_meta.json`, and `_progress.json`.
+**Reads**: `<thread>/<thread>.{N}/proposal.tex` (the version dir is nested under the thread root per the artifact contract); ALL `<thread>.{N}.<critic>/` siblings at the same `N` (REQUIRED: `.review/`, `.audit/`; OPTIONAL: `.perspective/`, any consumer `.<critic>/`).
+**Writes**: `<thread>/<thread>.{N}.synthesis/` with `verdict.md`, `synthesis.md`, `gaps.json`, `_meta.json`, and `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.<critic>/` references below are shorthand for these nested paths.
 
 The synthesis sibling directory is **read-only once written**. Revisions consume it; they never modify it.
 
@@ -26,12 +26,14 @@ The reviser then sees N gaps (each with a single coordinated `recommended_respon
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/proposal.tex`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/proposal.tex` under the thread root `<thread>/`.
 - **REQUIRED critic siblings**: BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` MUST be present. The synthesizer refuses to run if either is missing (matches `proposal-revise`'s precondition). The error message is `"both review and audit are required before synthesizing; run the missing critic first"`.
 - **OPTIONAL critic siblings**: `<thread>.{N}.perspective/` (the proposal-perspective external-substrate critic; see `proposal-perspective.md`) and any consumer `<thread>.{N}.<critic>/` opt-in. Discovered by globbing `<thread>.{N}.*/` minus the bare version dir and minus `.synthesis/` itself.
 - **Schema**: `anvil/skills/proposal/lib/synthesis_schema.py` (pydantic `GapList`) and the companion JSON Schema at `anvil/skills/proposal/lib/synthesis_schema.json`. The synthesizer's `gaps.json` output MUST validate against the pydantic model.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir:
 
 ```
 <thread>.{N}.synthesis/
@@ -77,7 +79,7 @@ The reviser reads each `gap` and produces ONE coordinated response per gap (inst
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex` AND BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md`. If either required critic sibling is missing, exit with the error message above. Glob for optional siblings: `<thread>.{N}.*/` minus `<thread>.{N}/` and minus `<thread>.{N}.synthesis/`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.synthesis)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.synthesis.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376).
+1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex` AND BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` under the thread root `<thread>/`. If either required critic sibling is missing, exit with the error message above. Glob for optional siblings within the thread root: `<thread>.{N}.*/` minus `<thread>.{N}/` and minus `<thread>.{N}.synthesis/`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.synthesis)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.synthesis.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376).
 2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a completed synthesis means the final-named `<thread>.{N}.synthesis/` dir exists — the atomic-rename contract guarantees the dir only exists when complete. If `<thread>.{N}.synthesis/` exists, the synthesis is complete — exit early with a notice (idempotent).
 3. **Crash recovery**: per issue #350, a partial synthesis manifests as a leading-dot `.<thread>.{N}.synthesis.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.synthesis/` exists without `gaps.json`, delete and re-run.
 4. **Open the staged sidecar** for the synthesis dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.synthesis, required_files=["verdict.md", "synthesis.md", "gaps.json", "_meta.json", "_progress.json"])`. Every file write from this step through the final `_progress.json` update MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.synthesis.tmp/`), NOT inside the final `<thread>.{N}.synthesis/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`: `phases.synthesize.state = in_progress`, `phases.synthesize.started = <ISO>`, `for_version = N`. Initialize `_meta.json` with `role: "synthesizer"` AND `scorecard_kind: "human-verdict"` (see `anvil/lib/snippets/scorecard_kind.md` and the §"Aggregator behavior" note below).

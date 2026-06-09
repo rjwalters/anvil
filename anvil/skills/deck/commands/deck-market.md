@@ -6,8 +6,8 @@ description: Market/TAM-credibility critic for the deck skill. Verifies TAM/SAM/
 # deck-market — Market / competitor critic
 
 **Role**: market and competitor critic.
-**Reads**: latest `<thread>.{N}/deck.md` (market and competition slides + any supporting figures and `figures/src/*.csv`); `<thread>/BRIEF.md`; optional `<thread>.{M}.perspective/candidates.md` for `M ≤ N` (the latest perspective sibling at or before the current version — see `anvil/lib/snippets/perspective.md`; gracefully absent on threads that have never run `deck-perspective`).
-**Writes**: `<thread>.{N}.market/` with `_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`.
+**Reads**: latest `<thread>/<thread>.{N}/deck.md` (the version dir is nested under the thread root per the artifact contract; market and competition slides + any supporting figures and `figures/src/*.csv`); `<thread>/BRIEF.md`; optional `<thread>.{M}.perspective/candidates.md` for `M ≤ N` (the latest perspective sibling at or before the current version — see `anvil/lib/snippets/perspective.md`; gracefully absent on threads that have never run `deck-perspective`).
+**Writes**: `<thread>/<thread>.{N}.market/` with `_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.<critic>/` references below are shorthand for these nested paths.
 
 This critic verifies the market case the deck makes. It computes TAM/SAM/SOM arithmetic, checks bottom-up vs top-down framing, and evaluates competitor positioning. Market-math errors and top-down-only sizing are high-frequency disqualifiers at investor diligence; this critic catches them before send.
 
@@ -21,13 +21,15 @@ Total ownership: 10/40. Other dimensions are scored by other critics and remain 
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Brief**: `<thread>/BRIEF.md` (sections "Market" and "Competition" specifically; other sections for grounding).
 - **Source data**: `<thread>.{N}/figures/src/*.csv` (if market sizing uses a chart, the source data lives here).
 - **Optional perspective sibling**: `<thread>.{M}.perspective/candidates.md` for the highest `M ≤ N` (per `anvil/lib/snippets/perspective.md`). If present, widens the competitor cross-check substrate beyond the brief. Gracefully absent on threads with no perspective sibling — no error, no finding. See step 5 "Cross-check against perspective candidates" for the discovery rule.
 - **Optional override**: `.anvil/skills/deck/rubric.overrides.md`.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir under critique:
 
 ```
 <thread>.{N}.market/
@@ -43,7 +45,7 @@ Total ownership: 10/40. Other dimensions are scored by other critics and remain 
 
 ## Procedure
 
-1. **Discover state** + **resume check** (standard). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.market)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.market.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.market/` exists — the atomic-rename contract guarantees the dir only exists when complete.
+1. **Discover state** + **resume check** (standard). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.market)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.market.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.market/` exists — the atomic-rename contract guarantees the dir only exists when complete.
 2. **Open the staged sidecar** for the market dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.market, required_files=["_summary.md", "findings.md", "comments.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.market.tmp/`), NOT inside the final `<thread>.{N}.market/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` + `_meta.json`.
 3. **Read inputs**: load `deck.md`, identify market slide(s) and competition slide(s). Load `BRIEF.md` market and competition sections. Load any market-chart source data from `figures/src/*.csv`.
 4. **Evaluate market size credibility** (Dim 3, weight 5):

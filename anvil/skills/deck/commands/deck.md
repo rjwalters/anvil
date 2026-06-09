@@ -6,7 +6,7 @@ description: Portfolio orchestrator for pitch-deck threads. Discovers all deck t
 # deck — Portfolio orchestrator
 
 **Role**: portfolio orchestrator (read-only; reports state, does not mutate).
-**Reads**: all `<thread>.*/` directories under the current working directory.
+**Reads**: all `<thread>/` thread directories under the current working directory (the project root), and the `<thread>.{N}/` / `<thread>.{N}.<critic>/` directories nested within each thread root per the artifact contract.
 **Writes**: nothing on disk. Returns a status report.
 
 ## Purpose
@@ -15,18 +15,18 @@ A single command an operator (or orchestrating agent) runs to see the state of e
 
 ## Inputs
 
-- **CWD**: the portfolio directory containing deck threads.
-- **Discovery rule**: a thread is detected by the presence of any `<slug>.{N}/` directory (with `_progress.json`) OR a bare `<slug>/BRIEF.md`. The slug is the directory name up to the first `.<digit>`. A bare `<slug>/` directory without versioned siblings:
+- **CWD**: the project root containing deck thread directories (`<slug>/`). Version dirs are nested INSIDE each thread root (`<slug>/<slug>.{N}/`), per the post-#382 artifact contract in `SKILL.md`.
+- **Discovery rule** (two-level): a thread is a `<slug>/` directory under cwd that contains either a `BRIEF.md` OR any nested `<slug>.{N}/` version dir (with `_progress.json`). A `<slug>/` thread dir without versioned children:
   - With `BRIEF.md` present → state `BRIEF_DONE`.
   - Without `BRIEF.md` → state `EMPTY`.
 
 ## Procedure
 
-1. Enumerate directories under cwd matching `<slug>`, `<slug>.{N}`, or `<slug>.{N}.<critic>` (where `<critic>` ∈ {`review`, `narrative`, `market`, `design`, `audit`, ...}).
-2. Group by slug. For each slug, identify:
+1. Enumerate `<slug>/` thread directories under cwd (the project root). Then, **within each thread root**, enumerate the nested `<slug>.{N}` and `<slug>.{N}.<critic>` directories (where `<critic>` ∈ {`review`, `narrative`, `market`, `design`, `audit`, ...}). Version dirs and critic siblings live INSIDE the thread root, not as siblings of `<slug>/` at the project root — flat-shape leftovers at the project root are pre-#382 residue; recommend `anvil:project-migrate`.
+2. For each thread root `<slug>/`, identify:
    - Whether `<slug>/BRIEF.md` exists.
-   - The latest `N` for which `<slug>.{N}/deck.md` exists.
-   - Which sibling critic dirs exist at that `N` (glob `<slug>.{N}.*/`).
+   - The latest `N` for which `<slug>.{N}/deck.md` exists within the thread root.
+   - Which sibling critic dirs exist at that `N` (glob `<slug>.{N}.*/` within the thread root).
    - The aggregated verdict (advance / block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present, augmented by other critic `_summary.md` files at the same `N`.
    - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or `<slug>/.anvil.json` if the per-thread override is set). Also read `metadata.iteration_cap_rationale` from the version dir — non-null indicates a valid paired override is in effect (per `SKILL.md` §"State machine" → "Per-thread override contract"). The orchestrator surfaces the rationale (truncated to ~80 chars with a trailing `…` when longer) in the portfolio table's `Iter` column so the operator sees *why* this thread is exceptional in the portfolio view — e.g. `4/6 (override: Well-conditioned thread: trajectory v1→v4 monotonically improving…)`.
    - Whether `<slug>.{N}/deck.pdf` exists (required for `deck-design` to evaluate; flagged as a gap if absent).

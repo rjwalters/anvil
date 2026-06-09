@@ -6,8 +6,8 @@ description: Generative-imagery command for the deck skill. Opt-in via `imagery_
 # deck-imagegen — Generative-imagery command (opt-in)
 
 **Role**: generative-imagery dispatcher.
-**Reads**: latest `<thread>.{N}/deck.md`, `<thread>/BRIEF.md` (for the `imagery_policy` opt-in + style preset), and the consumer-registered backend adapter (per `commands/deck-imagegen-adapter.md`).
-**Writes**: PNG assets into `<thread>.{N}/assets/` and a prompt journal at `<thread>.{N}/assets/_prompts.json`.
+**Reads**: latest `<thread>/<thread>.{N}/deck.md` (the version dir is nested under the thread root per the artifact contract), `<thread>/BRIEF.md` (for the `imagery_policy` opt-in + style preset), and the consumer-registered backend adapter (per `commands/deck-imagegen-adapter.md`).
+**Writes**: PNG assets into `<thread>.{N}/assets/` and a prompt journal at `<thread>.{N}/assets/_prompts.json` (same nested version dir; bare `<thread>.{N}/` references below are shorthand).
 
 Generative imagery is opt-in. Decks without `imagery_policy: generative-eligible` in `BRIEF.md` frontmatter are unaffected — `deck-imagegen` is a no-op (or a refusal) on those threads. The default policy is `deterministic-only`, which preserves the historical hybrid asset policy (Mermaid + matplotlib + consumer-provided assets; see `SKILL.md` § "Asset generation").
 
@@ -16,12 +16,14 @@ This command exists because aesthetic-craft venture categories (consumer product
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **`<thread>/BRIEF.md`**: read frontmatter for `imagery_policy` (REQUIRED gate) and `imagery_style` (optional style preset key; see `commands/imagery-style-presets.md` when shipped per Epic #130 Phase 1C / issue #133).
 - **`.anvil/config.toml`**: read `[deck.imagegen] backend` to discover the consumer-registered adapter. See `commands/deck-imagegen-adapter.md` for the adapter contract and registration mechanics.
 - **`deck.md` imagery markers**: the drafter MAY annotate a slide that needs a generative asset with an HTML comment of the form `<!-- anvil-imagegen: <slot> [style=<preset>] [steps=<N>] -->` immediately above the `![alt](assets/generated/<slot>.png)` reference. `<slot>` is the asset's stable filename stem; `<style>` (optional) overrides the brief-level style preset for this single slide; `<steps>` (optional) overrides the adapter's default step count. The `assets/generated/` namespace is the canonical generative-asset location per Phase 1B (see `commands/deck-draft.md` §"Respecting imagery_policy" and issue #132).
 
 ## Outputs
+
+Nested under the thread root `<thread>/`:
 
 ```
 <thread>.{N}/
@@ -61,7 +63,7 @@ After a successful run:
 
 The full dispatch loop is implemented in `anvil/skills/deck/lib/imagegen.py` (`run_imagegen`); the steps below correspond to that runtime so the doc + code stay coupled. Each step is paragraph-form so an LLM agent reading the spec can follow the same logic when invoking the runtime by hand (e.g., `python -m anvil.skills.deck.lib.imagegen ...` once a thin CLI wrapper lands).
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the portfolio (the lookup pattern is `<thread>.{digits}/`, intentionally skipping critic siblings like `<thread>.{N}.review/`). Read `<thread>/BRIEF.md` frontmatter and prepare to read `.anvil/config.toml`.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/` (the lookup pattern is `<thread>.{digits}/` within the thread root, intentionally skipping critic siblings like `<thread>.{N}.review/`). Read `<thread>/BRIEF.md` frontmatter and prepare to read `.anvil/config.toml`.
 
 2. **Precondition 1 — opt-in gate**: parse the `BRIEF.md` YAML frontmatter and inspect `imagery_policy`. If absent OR not equal to `generative-eligible` (case-sensitive), abort with an `ImagegenError` whose message names the policy and points at `commands/deck-brief.md` § "imagery_policy". Record `phases.imagegen.state = skipped` in `_progress.json` with the policy value as the `reason`. This is documented as "clean exit" (the deck simply isn't on the generative-imagery path); the framework surfaces it as a refusal so an operator who expected dispatch sees the gap.
 

@@ -6,8 +6,8 @@ description: Vision-model critic for the slides skill. Renders the talk deck to 
 # slides-vision — Vision-language-model critic
 
 **Role**: rendered-artifact critic.
-**Reads**: `<thread>.{N}/deck.md` (renders to `deck.pdf` + per-page PNGs on demand).
-**Writes**: `<thread>.{N}.vision/` with `_review.json` (canonical schema, `kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/`.
+**Reads**: `<thread>/<thread>.{N}/deck.md` (the version dir is nested under the thread root per the artifact contract; renders to `deck.pdf` + per-page PNGs on demand).
+**Writes**: `<thread>/<thread>.{N}.vision/` with `_review.json` (canonical schema, `kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/`. Bare `<thread>.{N}/` / `<thread>.{N}.vision/` references below are shorthand for these nested paths.
 
 This critic exists because the slides markdown-source critics (`slides-review`, `slides-audit`, `slides-rehearse`) never *look at* the rendered output, and the deterministic `slide-content-overflow` lint (`anvil/lib/marp_lint.py`) only catches the source-only patterns it was written for. The lint and the vision critic are deliberately layered: the lint is fast, deterministic, and source-based (it catches the figure-plus-bullets and `_class: ask` overflow patterns from issues #24/#25 at review time); this critic catches the rest — true rendered overflow from font fallback or theme overrides, label cropping, palette adherence, mathtext artifacts, and slide density at projection scale — none of which is visible in the markdown source. See the `slides-review` "What it does NOT catch" list in `SKILL.md`; this critic is what catches those cases.
 
@@ -40,12 +40,14 @@ These two flag types are defined in `anvil/lib/vision.py` (`CRITICAL_FLAG_RENDER
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Rendered PDF**: `<thread>.{N}/deck.pdf` — produced by `slides-figures`/`slides-handout` or by this critic on demand via `anvil.lib.render.render_marp_to_pdf` (which invokes Marp with the framework-pinned `--config-file anvil/lib/marp/config.yml` per #32).
 - **Per-page PNGs**: produced by `anvil.lib.render.render_pdf_to_pngs` from the PDF.
 - **VLM**: Anthropic SDK by default; consumers without an API key inject a callback per `anvil/lib/vision.py`.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir under critique:
 
 ```
 <thread>.{N}.vision/
@@ -60,7 +62,7 @@ These two flag types are defined in `anvil/lib/vision.py` (`CRITICAL_FLAG_RENDER
 
 ## Procedure
 
-1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`). Find the highest `N` with `<thread>.{N}/deck.md`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.vision)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.vision.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). If `<thread>.{N}.vision/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early (idempotent).
+1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`). Find the highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.vision)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.vision.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). If `<thread>.{N}.vision/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early (idempotent).
 2. **Open the staged sidecar** for the vision dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.vision, required_files=["_review.json", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.vision.tmp/`), NOT inside the final `<thread>.{N}.vision/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`:
    ```json
    {

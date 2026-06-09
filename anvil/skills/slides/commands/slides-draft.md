@@ -6,12 +6,12 @@ description: Drafter command for the slides skill. Produces a new slides version
 # slides-draft — Drafter
 
 **Role**: drafter.
-**Reads**: `<thread>/BRIEF.md` (if present), `<thread>/refs/**` (if present), `<thread>.0.outline/outline.md` (if present). For revise-from-feedback path: also the latest `<thread>.{N}/` and all `<thread>.{N}.*/` critic siblings.
-**Writes**: `<thread>.{N+1}/` containing `deck.md`, `notes/<NN>-<slug>.md` per slide, optional `figures/`, and `_progress.json`.
+**Reads**: `<thread>/BRIEF.md` (if present), `<thread>/refs/**` (if present), `<thread>/<thread>.0.outline/outline.md` (if present — nested under the thread root per the artifact contract). For revise-from-feedback path: also the latest `<thread>.{N}/` and all `<thread>.{N}.*/` critic siblings.
+**Writes**: `<thread>/<thread>.{N+1}/` containing `deck.md`, `notes/<NN>-<slug>.md` per slide, optional `figures/`, and `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.<critic>/` references below are shorthand for these nested paths.
 
 ## Inputs
 
-- **Thread slug** (positional argument): identifies the thread within the cwd portfolio.
+- **Thread slug** (positional argument): identifies the thread directory `<thread>/` under the project root (cwd).
 - **Brief** (`<thread>/BRIEF.md`): freeform prose, optionally with YAML frontmatter (see `slides-outline.md` for recognized keys).
 - **Outline** (`<thread>.0.outline/outline.md`): if present, the narrative spine to expand into slides. If absent, the drafter operates from the brief directly and produces a less-narrative-shaped first draft (Dimension 3 score will likely suffer; orchestrators should run `slides-outline` first).
 - **References** (`<thread>/refs/**`): supporting material. Treated as read-only context.
@@ -19,7 +19,7 @@ description: Drafter command for the slides skill. Produces a new slides version
 
 ## Outputs
 
-A new version directory:
+A new version directory, nested under the thread root `<thread>/`:
 
 ```
 <thread>.{N+1}/
@@ -36,7 +36,7 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
 
 ## Procedure
 
-1. **Discover thread state**: enumerate existing `<thread>.{N}/` dirs (N ≥ 1). Compute the next `N`.
+1. **Discover thread state**: enumerate existing `<thread>.{N}/` version dirs (N ≥ 1) under the thread root `<thread>/`. Compute the next `N`.
 2. **Resume check**: if `<thread>.{N+1}/_progress.json` exists with `draft.state == in_progress`, treat as a crashed prior run. Delete any partial `deck.md` and re-draft. If `draft.state == done`, the version is already drafted — exit early with a notice (this command is idempotent: it does not overwrite a completed draft).
 3. **Read inputs**: load `BRIEF.md` (if present), enumerate `refs/`, and load `outline.md` from `<thread>.0.outline/` if present. If revising from feedback, also load the prior version's `deck.md` + `notes/` and concatenate all critic siblings' verdicts and findings.
 4. **Initialize `_progress.json`**: write `phases.draft.state = in_progress`, `phases.draft.started = <ISO timestamp>`, `metadata.iteration = N+1`, `metadata.max_iterations` (inherit from `<thread>/.anvil.json` if set, else 4).

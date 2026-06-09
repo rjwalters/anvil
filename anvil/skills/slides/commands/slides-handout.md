@@ -6,8 +6,8 @@ description: Handout exporter for the slides skill. Terminal-only command. Produ
 # slides-handout — Handout exporter (terminal)
 
 **Role**: handout exporter.
-**Reads**: latest `<thread>.{N}/deck.md`, `<thread>.{N}/notes/*.md`, `<thread>.{N}/figures/`. Reads sibling progress files to verify READY+AUDITED+REHEARSED.
-**Writes**: `<thread>.{N}.handout/handout.pdf` and `<thread>.{N}.handout/_progress.json`.
+**Reads**: latest `<thread>/<thread>.{N}/deck.md`, `<thread>/<thread>.{N}/notes/*.md`, `<thread>/<thread>.{N}/figures/` (the version dir is nested under the thread root per the artifact contract). Reads sibling progress files to verify READY+AUDITED+REHEARSED.
+**Writes**: `<thread>/<thread>.{N}.handout/handout.pdf` and `<thread>/<thread>.{N}.handout/_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.<critic>/` references below are shorthand for these nested paths.
 
 This is a **terminal-only** command. It runs once on the final converged version of the deck to produce a leave-behind PDF for the audience. The handout sibling is not consumed by any further skill phase; it exists for the consumer.
 
@@ -31,6 +31,8 @@ The handout exporter produces the leave-behind variant from the same `deck.md` s
 
 ## Outputs
 
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir:
+
 ```
 <thread>.{N}.handout/
   handout.pdf          The leave-behind PDF
@@ -39,7 +41,7 @@ The handout exporter produces the leave-behind variant from the same `deck.md` s
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 2. **Verify READY**: read `<thread>.{N}.review/verdict.md`. If `advance != true` or there are critical flags, exit with an error: "thread is not READY; run `slides-revise` and re-review first."
 3. **Verify AUDITED**: read `<thread>.{N}.audit/verdict.md`. If any claim is verdicted `wrong`, exit with an error: "audit flag set on version <N>; resolve and re-audit first."
 4. **Verify REHEARSED**: read `<thread>.{N}.rehearse/density.md` and `timing.md`. If the density flag or time flag is set, exit with an error: "density or time flag set on version <N>; resolve and re-rehearse first."

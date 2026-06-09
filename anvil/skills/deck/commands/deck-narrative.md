@@ -6,8 +6,8 @@ description: Narrative-arc critic for the deck skill. Reads the deck end-to-end 
 # deck-narrative — Narrative-arc critic
 
 **Role**: narrative-arc critic.
-**Reads**: latest `<thread>.{N}/deck.md` (full read, in slide order) + `speaker-notes.md` + `<thread>/BRIEF.md`.
-**Writes**: `<thread>.{N}.narrative/` with `_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`.
+**Reads**: latest `<thread>/<thread>.{N}/deck.md` (the version dir is nested under the thread root per the artifact contract; full read, in slide order) + `speaker-notes.md` + `<thread>/BRIEF.md`.
+**Writes**: `<thread>/<thread>.{N}.narrative/` with `_summary.md`, `findings.md`, `comments.md`, `_meta.json`, `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.narrative/` references below are shorthand for these nested paths.
 
 This critic evaluates the deck as a **single story** rather than slide-by-slide. The other critics look at individual slides; this critic asks whether the slides cohere into an argument that ends in an ask.
 
@@ -23,11 +23,13 @@ Other rubric dimensions are scored by other critics and remain `null` in this cr
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Brief**: `<thread>/BRIEF.md` (to verify the deck's ask matches the brief's ask).
 - **Optional rubric override**: `.anvil/skills/deck/rubric.overrides.md`.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir under critique:
 
 ```
 <thread>.{N}.narrative/
@@ -42,7 +44,7 @@ Other rubric dimensions are scored by other critics and remain `null` in this cr
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.narrative)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.narrative.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). If `<thread>.{N}.narrative/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early (idempotent).
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.narrative)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.narrative.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). If `<thread>.{N}.narrative/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early (idempotent).
 2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial narrative critic left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.narrative.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.narrative/` exists WITHOUT `_summary.md`, delete the dir and re-run.
 3. **Open the staged sidecar** for the narrative dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.narrative, required_files=["_summary.md", "findings.md", "comments.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.narrative.tmp/`), NOT inside the final `<thread>.{N}.narrative/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json` and `_meta.json`.
 4. **Read deck.md end-to-end** as one document. Read speaker-notes.md in parallel. Read BRIEF.md for the canonical ask.

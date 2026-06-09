@@ -6,18 +6,20 @@ description: Figurer command for the slides skill. Generates diagrams and data p
 # slides-figures — Figurer
 
 **Role**: figurer.
-**Reads**: latest `<thread>.{N}/deck.md` and `<thread>.{N}/figures/` (and `<thread>.{N}/figures/_specs.md` if the drafter left one).
-**Writes**: figure files into `<thread>.{N}/figures/`. Idempotent.
+**Reads**: latest `<thread>/<thread>.{N}/deck.md` and `<thread>/<thread>.{N}/figures/` (the version dir is nested under the thread root per the artifact contract; also `figures/_specs.md` if the drafter left one).
+**Writes**: figure files into `<thread>.{N}/figures/` (same nested version dir; bare `<thread>.{N}/` references below are shorthand). Idempotent.
 
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Figure references**: extracted from `deck.md` by scanning for image references (`![alt](figures/<name>.<ext>)`).
 - **Figure specs**: if the drafter wrote `<thread>.{N}/figures/_specs.md`, it lists each referenced figure with intended content, source data location, and rendering recommendation.
 - **Brief and refs**: `<thread>/BRIEF.md` and `<thread>/refs/**` provide source data for data-driven plots.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`:
 
 ```
 <thread>.{N}/figures/

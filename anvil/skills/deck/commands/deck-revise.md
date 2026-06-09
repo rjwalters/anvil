@@ -6,19 +6,21 @@ description: Reviser command for the deck skill. Discovers all critic siblings a
 # deck-revise — Reviser
 
 **Role**: reviser. Implements the canonical "N parallel critics, one reviser" pattern.
-**Reads**: latest `<thread>.{N}/` and ALL `<thread>.{N}.*/` critic siblings discovered by the glob `<thread>.{N}.*/` minus the bare `<thread>.{N}/`.
-**Writes**: `<thread>.{N+1}/` containing the revised `deck.md`, updated `speaker-notes.md` and `figures/`, `_progress.json`, and `_revision-log.md` mapping each critic finding to a change.
+**Reads**: latest `<thread>/<thread>.{N}/` and ALL `<thread>/<thread>.{N}.*/` critic siblings (nested under the thread root per the artifact contract) discovered by the glob `<thread>.{N}.*/` within the thread root, minus the bare `<thread>.{N}/`.
+**Writes**: `<thread>/<thread>.{N+1}/` containing the revised `deck.md`, updated `speaker-notes.md` and `figures/`, `_progress.json`, and `_revision-log.md` mapping each critic finding to a change. Bare `<thread>.{N}/` / `<thread>.{N}.<critic>/` references below are shorthand for these nested paths.
 
 This command consumes any number of critic siblings at the current version and produces a single revised version that addresses them.
 
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version**: highest `N` with `<thread>.{N}/deck.md`.
-- **Critic siblings**: ALL `<thread>.{N}.<critic>/` directories at that `N`. At minimum the `.review/` sibling is required (the general reviewer writes the aggregated `verdict.md` the reviser uses as a starting point). Specialist critics (`.narrative/`, `.market/`, `.design/`) contribute additional dimension scores and findings.
+- **Latest version**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
+- **Critic siblings**: ALL `<thread>.{N}.<critic>/` directories at that `N` (also under the thread root). At minimum the `.review/` sibling is required (the general reviewer writes the aggregated `verdict.md` the reviser uses as a starting point). Specialist critics (`.narrative/`, `.market/`, `.design/`) contribute additional dimension scores and findings.
 - **Brief**: `<thread>/BRIEF.md` (re-read; numeric/name facts must continue to trace to the brief in the revised version).
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of `<thread>.{N}/`:
 
 ```
 <thread>.{N+1}/
@@ -43,8 +45,9 @@ This is the canonical aggregation algorithm for the multi-critic reviser pattern
 Glob the critic siblings:
 
 ```bash
-# Conceptual; reviser implements equivalent file enumeration
-critic_dirs = glob("<thread>.{N}.*/") - glob("<thread>.{N}/")
+# Conceptual; reviser implements equivalent file enumeration.
+# The glob is rooted at the thread root <thread>/ (NOT the project root).
+critic_dirs = glob("<thread>/<thread>.{N}.*/") - glob("<thread>/<thread>.{N}/")
 ```
 
 Each matched directory is a critic sibling. Read its `_summary.md` (the JSON-in-markdown scorecard) and `findings.md` (the itemized findings list).
@@ -70,7 +73,7 @@ For the decision:
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` AND at least `<thread>.{N}.review/verdict.md`. If no review exists, exit: `no review to revise against; run deck-review first`.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` AND at least `<thread>.{N}.review/verdict.md` under the thread root `<thread>/`. If no review exists, exit: `no review to revise against; run deck-review first`.
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` AND `deck.md` + `_revision-log.md` exist, exit (idempotent).
 3. **Iteration cap check**: resolve the effective cap via the **paired-override validation** documented in `SKILL.md` §"State machine" → "Per-thread override contract":
    - Read `<thread>/.anvil.json` (graceful-degradation via `_read_anvil_json`; missing/malformed → `{}`).
@@ -82,7 +85,7 @@ For the decision:
 4. **Aggregate verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` AND no critical flags AND no `[blocker]`/`[major]` findings remain across any critic sibling → thread is already `READY`, exit with notice. (Operator can force-run by deleting the verdict or bumping iteration manually.)
 5. **Initialize `_progress.json`** for `<thread>.{N+1}/`: `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations` (effective cap from step 3), `metadata.iteration_cap_rationale` (carried from step 3 — non-null when a valid override is in effect, `null` otherwise), `metadata.revised_from = N`.
 6. **Run discover-glob → aggregate**:
-   - Enumerate `<thread>.{N}.*/` directories.
+   - Enumerate `<thread>.{N}.*/` directories under the thread root.
    - Parse each `_summary.md` and `findings.md`.
    - Compute aggregated dimension scores, aggregated critical flag, aggregated decision.
    - Note any missing critic (`design` skipped, `market` not yet run, etc.) — they appear in `_revision-log.md` as gaps for the next iteration.

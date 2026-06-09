@@ -7,13 +7,13 @@ description: Intake command for the deck skill. Converts founder raw input (tran
 
 **Role**: intake.
 **Reads**: `<thread>/refs/**` (transcripts, founder memos, website exports, prior decks, exported financials).
-**Writes**: `<thread>/BRIEF.md` (canonical) and `<thread>.0/` (immutable record of the intake pass with its own `_progress.json`).
+**Writes**: `<thread>/BRIEF.md` (canonical) and `<thread>/<thread>.0/` (immutable record of the intake pass with its own `_progress.json` — the intake version dir is nested under the thread root per the artifact contract). Bare `<thread>.0/` references below are shorthand for this nested path.
 
 Brief intake is the pre-draft gate. Pitch decks fail catastrophically when the drafter hallucinates traction or invents market numbers, so the intake's job is to surface what is **actually known** vs. what is **assumed or absent** — and to put the drafter under a no-fabrication contract.
 
 ## Inputs
 
-- **Thread slug** (positional argument): identifies the thread within the cwd portfolio.
+- **Thread slug** (positional argument): identifies the thread directory `<thread>/` under the project root (cwd).
 - **Reference material** (`<thread>/refs/`): anything the founder provides. Transcripts of founder calls, copy from the company website, prior pitch decks (any format), spreadsheets with traction data, term sheets from prior rounds, LinkedIn exports for the team. Treated as read-only context.
 - **Optional consumer overrides**:
   - `.anvil/skills/deck/brief.template.md` — alternative brief shape if the consumer wants different sections.
@@ -24,10 +24,10 @@ Brief intake is the pre-draft gate. Pitch decks fail catastrophically when the d
 ```
 <thread>/
   BRIEF.md           Canonical brief, consumed by drafter and audit
-<thread>.0/
-  BRIEF.md           Immutable snapshot of the brief as produced by this intake run
-  _progress.json     Phase state with brief: done
-  intake-notes.md    What was inferred vs. extracted, what is missing, recommended founder follow-ups
+  <thread>.0/
+    BRIEF.md           Immutable snapshot of the brief as produced by this intake run
+    _progress.json     Phase state with brief: done
+    intake-notes.md    What was inferred vs. extracted, what is missing, recommended founder follow-ups
 ```
 
 ## BRIEF.md schema
