@@ -23,8 +23,13 @@ Public modules:
 - ``sidecar``: directory-level atomic writes for critic sibling dirs.
   ``staged_sidecar`` is a context manager that writes files into a
   leading-dot staging dir and renames atomically on clean completion;
-  ``cleanup_stale_staging`` is the startup-time sweep that removes
-  ``.*.tmp/`` leftovers from prior interrupts. See issue #350 and
+  ``cleanup_one_staging`` is the per-critic entry-step sweep that
+  removes only the staging dir corresponding to a single ``final_dir``
+  (parallel-safe; the load-bearing surface for fan-out workflows —
+  issue #376); ``cleanup_stale_staging`` is the operator-facing
+  portfolio-wide sweep that removes ALL ``.*.tmp/`` leftovers under a
+  parent (maintenance use only — see issue #376 for why it is unsafe
+  from per-critic entry steps). See issue #350 and
   ``anvil/lib/snippets/progress.md`` §"Crash recovery contract".
 """
 
@@ -66,6 +71,7 @@ from anvil.lib.rubric import (
 from anvil.lib.sidecar import (
     STAGING_SUFFIX,
     SidecarIncompleteError,
+    cleanup_one_staging,
     cleanup_stale_staging,
     staged_sidecar,
     staging_path_for,
@@ -96,6 +102,7 @@ __all__ = [
     "bib_key",
     "check_stable",
     "cite",
+    "cleanup_one_staging",
     "cleanup_stale_staging",
     "decide_termination",
     "discover_venue_rubric",

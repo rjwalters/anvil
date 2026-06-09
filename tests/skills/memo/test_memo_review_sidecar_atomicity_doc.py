@@ -1,16 +1,21 @@
-"""Doc-coverage guard for the memo-review staged-sidecar wiring (issue #350).
+"""Doc-coverage guard for the memo-review staged-sidecar wiring (issue
+#350, #376).
 
 The Studio canary surfaced 13 partial critic-sibling directories from
 mid-cycle interrupts — see issue #350 for the failure landscape. The
 pilot-on-memo migration ships in two layers:
 
 1. ``anvil/lib/sidecar.py`` — the framework primitive (``staged_sidecar``
-   context manager + ``cleanup_stale_staging`` startup sweep). Covered
-   by ``tests/lib/test_sidecar.py``.
+   context manager + ``cleanup_one_staging`` per-critic entry-step
+   sweep + ``cleanup_stale_staging`` operator-facing portfolio-wide
+   sweep). Covered by ``tests/lib/test_sidecar.py``. The per-critic
+   surface ``cleanup_one_staging`` is parallel-safe under fan-out
+   workflows; ``cleanup_stale_staging`` remains for operator-time
+   maintenance only (issue #376).
 2. ``anvil/skills/memo/commands/memo-review.md`` — the per-command
    migration that wires the primitive into the reviewer's procedure.
    This file pins the prose shape so the wiring can't silently drift
-   back to a pre-#350 form.
+   back to a pre-#350 form or to the pre-#376 portfolio-wide sweep.
 
 Per the per-skill test filename convention (#58 — distinct filenames
 across skills, ``__init__.py`` chains in every test dir), this file is
@@ -52,6 +57,7 @@ def test_sidecar_lib_exposes_required_api():
     from anvil.lib.sidecar import (  # noqa: F401
         STAGING_SUFFIX,
         SidecarIncompleteError,
+        cleanup_one_staging,
         cleanup_stale_staging,
         staged_sidecar,
         staging_path_for,
@@ -66,6 +72,7 @@ def test_sidecar_reexported_from_anvil_lib_package():
     import anvil.lib
 
     assert hasattr(anvil.lib, "staged_sidecar")
+    assert hasattr(anvil.lib, "cleanup_one_staging")
     assert hasattr(anvil.lib, "cleanup_stale_staging")
     assert hasattr(anvil.lib, "staging_path_for")
     assert hasattr(anvil.lib, "SidecarIncompleteError")
@@ -102,11 +109,24 @@ def test_memo_review_doc_names_required_files_manifest():
 
 
 def test_memo_review_doc_step_1_invokes_cleanup_sweep():
-    """The Discover state step MUST invoke cleanup_stale_staging on the
-    portfolio root before the resume check fires.
+    """The Discover state step MUST invoke the per-critic
+    ``cleanup_one_staging`` sweep on this critic's final_dir before
+    the resume check fires (issue #376 — the pre-#376 portfolio-wide
+    ``cleanup_stale_staging`` is unsafe under parallel fan-out).
     """
     text = _read(MEMO_REVIEW_DOC)
-    assert "cleanup_stale_staging" in text
+    assert "cleanup_one_staging" in text
+
+
+def test_memo_review_doc_step_1_does_not_use_portfolio_wide_sweep():
+    """Regression guard: the Step-1 entry sweep MUST NOT be
+    ``cleanup_stale_staging(<portfolio_root>)`` — that call shape sweeps
+    sibling critics' in-flight staging dirs and is the root cause of
+    issue #376.
+    """
+    text = _read(MEMO_REVIEW_DOC)
+    assert "cleanup_stale_staging(<portfolio_root>)" not in text
+    assert "cleanup_stale_staging(<project_root>)" not in text
 
 
 def test_memo_review_doc_describes_atomic_rename_contract():
@@ -151,7 +171,24 @@ def test_progress_snippet_distinguishes_version_dir_from_sidecar_dir():
 
 
 def test_progress_snippet_references_cleanup_stale_staging():
-    """The sweep is the load-bearing operator-facing surface — it must
-    be named in the snippet."""
+    """The portfolio-wide sweep remains the operator-facing maintenance
+    surface — it must be named in the snippet (issue #376)."""
     text = _read(PROGRESS_SNIPPET)
     assert "cleanup_stale_staging" in text
+
+
+def test_progress_snippet_references_cleanup_one_staging():
+    """The per-critic, parallel-safe entry-step sweep
+    (``cleanup_one_staging``) is the load-bearing surface for the 41
+    wired commands — it must be named in the snippet (issue #376)."""
+    text = _read(PROGRESS_SNIPPET)
+    assert "cleanup_one_staging" in text
+
+
+def test_progress_snippet_documents_parallel_safety_contract():
+    """The snippet must call out the parallel-safety contract that
+    distinguishes the per-critic sweep from the portfolio-wide sweep
+    (issue #376)."""
+    text = _read(PROGRESS_SNIPPET)
+    assert "parallel-safe" in text or "parallel safety" in text.lower()
+    assert "#376" in text

@@ -40,6 +40,7 @@ from anvil.lib.review_schema import Kind, Review, Score
 from anvil.lib.sidecar import (
     STAGING_SUFFIX,
     SidecarIncompleteError,
+    cleanup_one_staging,
     cleanup_stale_staging,
     staged_sidecar,
     staging_path_for,
@@ -325,6 +326,211 @@ def test_cleanup_stale_staging_logs_at_info(tmp_path, caplog):
     assert len(sweep_records) == 1
     assert ".thread.1.review.tmp" in sweep_records[0].message
     assert ".thread.1.audit.tmp" in sweep_records[0].message
+
+
+# ---------------------------------------------------------------------------
+# cleanup_one_staging — per-critic entry-step sweep (issue #376)
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_one_staging_targets_only_named_staging_path(tmp_path):
+    """The narrowed sweep removes ONLY the staging path corresponding to
+    the given ``final_dir``; sibling staging dirs under the same parent
+    are preserved (issue #376 parallel-safety contract).
+    """
+    portfolio = tmp_path / "p"
+    portfolio.mkdir()
+    a_staging = portfolio / ".thread.4.perspective.tmp"
+    b_staging = portfolio / ".thread.4.hyperlinks.tmp"
+    a_staging.mkdir()
+    (a_staging / "marker").write_text("A")
+    b_staging.mkdir()
+    (b_staging / "marker").write_text("B")
+
+    removed = cleanup_one_staging(portfolio / "thread.4.perspective")
+
+    assert removed is True
+    assert not a_staging.exists()
+    # Sibling staging dir is preserved — the parallel-safety guarantee.
+    assert b_staging.exists()
+    assert (b_staging / "marker").read_text() == "B"
+
+
+def test_cleanup_one_staging_noop_when_staging_missing(tmp_path):
+    """No staging dir present → returns False, no-op."""
+    portfolio = tmp_path / "p"
+    portfolio.mkdir()
+    removed = cleanup_one_staging(portfolio / "thread.4.review")
+    assert removed is False
+
+
+def test_cleanup_one_staging_idempotent(tmp_path):
+    """Second call returns False because the first removed the target."""
+    portfolio = tmp_path / "p"
+    portfolio.mkdir()
+    staging = portfolio / ".thread.4.review.tmp"
+    staging.mkdir()
+
+    first = cleanup_one_staging(portfolio / "thread.4.review")
+    second = cleanup_one_staging(portfolio / "thread.4.review")
+    assert first is True
+    assert second is False
+    assert not staging.exists()
+
+
+def test_cleanup_one_staging_safe_when_parent_missing(tmp_path):
+    """A non-existent parent directory yields a False no-op."""
+    final = tmp_path / "no-such-portfolio" / "thread.4.review"
+    removed = cleanup_one_staging(final)
+    assert removed is False
+
+
+def test_cleanup_one_staging_does_not_touch_final_dir(tmp_path):
+    """The final dir is never touched — only the staging path is swept."""
+    portfolio = tmp_path / "p"
+    portfolio.mkdir()
+    final = portfolio / "thread.4.review"
+    final.mkdir()
+    (final / "verdict.md").write_text("complete review")
+
+    removed = cleanup_one_staging(final)
+
+    assert removed is False
+    assert final.exists()
+    assert (final / "verdict.md").read_text() == "complete review"
+
+
+def test_cleanup_one_staging_skips_file_with_staging_shape(tmp_path):
+    """If the staging path is a file (not a dir), it is left alone."""
+    portfolio = tmp_path / "p"
+    portfolio.mkdir()
+    fake = portfolio / ".thread.4.review.tmp"
+    fake.write_text("but I am a file")
+
+    removed = cleanup_one_staging(portfolio / "thread.4.review")
+
+    assert removed is False
+    assert fake.exists()
+    assert fake.read_text() == "but I am a file"
+
+
+def test_cleanup_one_staging_logs_at_info(tmp_path, caplog):
+    """A successful removal logs at INFO level."""
+    portfolio = tmp_path / "p"
+    portfolio.mkdir()
+    (portfolio / ".thread.4.review.tmp").mkdir()
+
+    with caplog.at_level(logging.INFO, logger="anvil.lib.sidecar"):
+        removed = cleanup_one_staging(portfolio / "thread.4.review")
+
+    assert removed is True
+    records = [r for r in caplog.records if "cleanup_one_staging" in r.message]
+    assert len(records) == 1
+    assert ".thread.4.review.tmp" in records[0].message
+
+
+# ---------------------------------------------------------------------------
+# Parallel-fan-out regression (issue #376)
+# ---------------------------------------------------------------------------
+
+
+def test_parallel_staged_sidecars_do_not_disturb_each_other(tmp_path):
+    """The race window from issue #376: spawn N staged_sidecar context
+    managers concurrently under the SAME portfolio root with DISTINCT
+    ``final_dir`` values. Each entry uses ``cleanup_one_staging`` (the
+    parallel-safe per-critic sweep). All threads should hold their
+    staging dirs open simultaneously, then rename to their final dirs
+    without disturbing each other's staging dirs.
+
+    Pre-issue-#376 code paths used ``cleanup_stale_staging(parent)`` at
+    entry, which would have nuked sibling critics' in-flight staging
+    dirs — this test would have surfaced the race. The new contract
+    bounds each entry sweep to its own staging path.
+    """
+    import threading
+
+    portfolio = tmp_path / "portfolio"
+    portfolio.mkdir()
+
+    names = ("perspective", "hyperlinks", "citations", "image-accessibility")
+    final_dirs = [portfolio / f"thread.4.{n}" for n in names]
+
+    # Pre-seed one stale staging dir per critic to verify each
+    # entry-step sweep removes ITS OWN stale staging dir without
+    # touching siblings.
+    for fd in final_dirs:
+        staging = staging_path_for(fd)
+        staging.mkdir()
+        (staging / "stale-leftover.md").write_text("from a prior crash")
+
+    barrier = threading.Barrier(len(names))
+    mid_barrier = threading.Barrier(len(names))
+    errors: List[tuple] = []
+
+    def run(final_dir: Path, name: str) -> None:
+        try:
+            # Maximize interleaving of entry sweeps.
+            barrier.wait(timeout=5)
+            cleanup_one_staging(final_dir)
+            with staged_sidecar(
+                final_dir, required_files=("verdict.md", "scoring.md")
+            ) as staging:
+                # Verify the stale leftover is gone — our own sweep
+                # removed it.
+                assert not (staging / "stale-leftover.md").exists()
+                (staging / "verdict.md").write_text(f"verdict for {name}")
+                # Hold all critics inside their staging dirs
+                # simultaneously to maximize the race window.
+                mid_barrier.wait(timeout=5)
+                (staging / "scoring.md").write_text(f"scoring for {name}")
+        except Exception as e:  # pragma: no cover — only on regression
+            errors.append((name, type(e).__name__, str(e)))
+
+    threads = [
+        threading.Thread(target=run, args=(fd, n))
+        for fd, n in zip(final_dirs, names)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    assert errors == [], f"Parallel critics disturbed each other: {errors}"
+    for fd, name in zip(final_dirs, names):
+        assert fd.exists(), f"Final dir {fd} missing — race window struck"
+        assert (fd / "verdict.md").read_text() == f"verdict for {name}"
+        assert (fd / "scoring.md").read_text() == f"scoring for {name}"
+        # The pre-seeded stale-leftover.md is gone (sweep removed it).
+        assert not (fd / "stale-leftover.md").exists()
+
+
+def test_cleanup_stale_staging_would_disturb_parallel_critics(tmp_path):
+    """Counter-example: the operator-facing ``cleanup_stale_staging``
+    sweeps ALL ``.tmp/`` dirs under the parent — pinning the
+    documented unsafe-for-per-critic-entry contract from issue #376.
+
+    This test confirms that the legacy primitive's behavior is unchanged
+    (backwards-compatible) AND that its scope is portfolio-wide — which
+    is why a parallel fan-out workflow MUST use ``cleanup_one_staging``
+    instead.
+    """
+    portfolio = tmp_path / "p"
+    portfolio.mkdir()
+    a = portfolio / ".thread.4.perspective.tmp"
+    b = portfolio / ".thread.4.hyperlinks.tmp"
+    a.mkdir()
+    b.mkdir()
+
+    removed = cleanup_stale_staging(portfolio)
+
+    # The legacy sweep removed BOTH — demonstrating why it is unsafe
+    # to call from a per-critic entry step in a parallel workflow.
+    assert sorted(p.name for p in removed) == [
+        ".thread.4.hyperlinks.tmp",
+        ".thread.4.perspective.tmp",
+    ]
+    assert not a.exists()
+    assert not b.exists()
 
 
 # ---------------------------------------------------------------------------
