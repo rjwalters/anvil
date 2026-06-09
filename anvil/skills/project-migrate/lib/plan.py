@@ -47,10 +47,23 @@ from .detect import (
     ProjectInventory,
     Shape,
     ThreadInventory,
-    _RETAINED_BODY_FILENAMES,
     _SKILL_FIXED_BODY_FILENAMES,
     inventory_project,
 )
+
+
+# Artifact-type inference from retained body filenames (issue #386).
+# A retained body identifies the owning skill, so the planner writes
+# the matching skill-identity artifact_type (registered in
+# ``anvil/lib/project_brief.py`` under #386) instead of silently
+# defaulting to 'investment-memo'. ``deck.md`` is ambiguous between
+# anvil:deck and anvil:slides (both use it) — the planner defaults to
+# 'deck' and the inference note tells the operator to edit the BRIEF
+# entry to 'slides' for talk decks.
+_RETAINED_BODY_ARTIFACT_TYPES: Dict[str, str] = {
+    "deck.md": "deck",
+    "proposal.tex": "proposal",
+}
 
 
 # Cross-thread reference pattern. Looks for ``<stem>.<N>`` tokens that
@@ -123,8 +136,13 @@ class BriefMergeOp:
         The slug for this document.
     artifact_type
         Registered artifact type per ``project_brief.REGISTERED_ARTIFACT_TYPES``.
-        Defaults to ``"investment-memo"`` (the most common shape) — operator
-        can edit the BRIEF after migration if the type is wrong.
+        Defaults to ``"investment-memo"`` (the most common shape, and the
+        no-information fallback for memo-shaped threads). When the thread
+        carries a retained body filename the planner overwrites the
+        default with the inferred skill-identity type (``deck.md`` →
+        ``deck``, ``proposal.tex`` → ``proposal`` — issue #386); the
+        operator can edit the BRIEF after migration if the inference is
+        wrong (e.g. ``slides`` for a ``deck.md``-bodied talk deck).
     target_length
         Optional ``[min_words, max_words]`` carried from a `.anvil.json`.
     target_length_overrides
@@ -485,6 +503,10 @@ def _plan_post_283_doc(
         # checks the existing entry to avoid clobbering operator-set fields.
         plan.brief_merge = BriefMergeOp(slug=thread.slug)
 
+    # Nested-but-unmigrated deck/slides/proposal threads carry retained
+    # bodies too — apply the same artifact-type inference (#386).
+    _apply_retained_body_inference(plan, thread)
+
     return plan
 
 
@@ -636,22 +658,70 @@ def _plan_pre_283_doc(
         plan.brief_merge = BriefMergeOp(slug=thread.slug)
 
     # Surface the retained-body decision for non-memo threads so the
-    # operator sees (a) why no body rename was planned and (b) that the
-    # BRIEF's artifact_type defaulted to the memo enum value (the
-    # registered artifact-type set is memo-scoped in v1; edit the BRIEF
-    # entry when per-skill artifact types land).
-    retained = sorted(
-        b for b in thread.body_filenames if b in _RETAINED_BODY_FILENAMES
-    )
-    if retained:
-        plan.notes.append(
-            f"{thread.slug}: body filename {', '.join(retained)} retained "
-            f"(slug-echo rename is scoped out for deck/slides/proposal per "
-            f"issue #382); artifact_type in BRIEF defaults to "
-            f"'investment-memo' — edit after migration if needed."
-        )
+    # operator sees (a) why no body rename was planned and (b) which
+    # artifact_type the BRIEF entry was inferred to carry (issue #386).
+    # Keys off the dedicated retained-body inventory surface so it fires
+    # for `.tex`-bodied proposal threads too (the pre-#386 silent-default
+    # gap: `body_filenames` is `*.md`-only, so proposal threads got the
+    # 'investment-memo' default with no note at all).
+    _apply_retained_body_inference(plan, thread)
 
     return plan
+
+
+def _apply_retained_body_inference(
+    plan: DocumentPlan, thread: ThreadInventory
+) -> None:
+    """Infer the BRIEF artifact_type from a retained body filename (#386).
+
+    When the thread's inventory observed a retained body
+    (``deck.md`` / ``proposal.tex``), set the inferred skill-identity
+    artifact_type on the plan's :class:`BriefMergeOp` and surface an
+    operator-facing note. ``deck.md`` infers ``deck`` with an explicit
+    slides-ambiguity caveat (``anvil:slides`` threads also use
+    ``deck.md`` — body shape alone cannot distinguish them). No retained
+    body → no-op (memo-shaped threads keep the 'investment-memo'
+    default with no note, as before).
+    """
+    retained = sorted(set(thread.retained_body_filenames))
+    if not retained:
+        return
+
+    inferred_types = sorted(
+        {
+            _RETAINED_BODY_ARTIFACT_TYPES[b]
+            for b in retained
+            if b in _RETAINED_BODY_ARTIFACT_TYPES
+        }
+    )
+    note = (
+        f"{thread.slug}: body filename {', '.join(retained)} retained "
+        f"(slug-echo rename is scoped out for deck/slides/proposal per "
+        f"issue #382)"
+    )
+    if len(inferred_types) == 1:
+        inferred = inferred_types[0]
+        if plan.brief_merge is not None:
+            plan.brief_merge.artifact_type = inferred
+        note += (
+            f"; artifact_type inferred as '{inferred}' from "
+            f"{', '.join(retained)}"
+        )
+        if inferred == "deck":
+            note += (
+                " (note: anvil:slides threads also use deck.md — edit "
+                "the BRIEF entry to 'slides' for a talk deck)"
+            )
+        note += " — edit the BRIEF entry if wrong."
+    else:
+        # Conflicting retained bodies across version dirs — cannot infer
+        # a single type; keep the default and say so.
+        note += (
+            f"; conflicting retained bodies prevent artifact_type "
+            f"inference — BRIEF entry defaults to "
+            f"'{BriefMergeOp.artifact_type}'; edit after migration."
+        )
+    plan.notes.append(note)
 
 
 def _iter_critic_siblings(version_dir: Path) -> List[Path]:

@@ -131,6 +131,36 @@ class TestMixedProjectApply(unittest.TestCase):
             )
             self.assertEqual(result.verify_result.root_version_dirs, [])
 
+    def test_merged_brief_carries_inferred_artifact_types(self) -> None:
+        """Issue #386: the post-apply BRIEF round-trips through the
+        strict parser and carries the inferred skill-identity types —
+        the migration output is honest, not 'investment-memo' everywhere."""
+        try:
+            from anvil.lib.project_brief import (
+                ArtifactType,
+                load_project_brief_strict,
+            )
+        except ImportError:
+            self.skipTest("anvil.lib not importable in this environment")
+            return
+        with TemporaryDirectory() as td:
+            project = build_mixed_memo_deck_proposal(Path(td))
+            result = run(project, apply=True)
+            self.assertTrue(result.success)
+            brief = load_project_brief_strict(project)
+            by_slug = {d.slug: d for d in brief.documents}
+            self.assertEqual(
+                by_slug["series-a-deck"].artifact_type, ArtifactType.DECK
+            )
+            self.assertEqual(
+                by_slug["gossamer-lan"].artifact_type,
+                ArtifactType.PROPOSAL,
+            )
+            self.assertEqual(
+                by_slug["aldus"].artifact_type,
+                ArtifactType.INVESTMENT_MEMO,
+            )
+
     def test_discovery_resolves_every_thread_type(self) -> None:
         """Cross-skill smoke: the promoted anvil.lib discovery primitive
         resolves paths inside memo, deck, and proposal threads alike."""

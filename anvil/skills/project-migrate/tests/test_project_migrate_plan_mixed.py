@@ -156,6 +156,75 @@ class TestMixedProjectPlan(unittest.TestCase):
             ]
             self.assertEqual(tex_renames, [])
 
+    def test_artifact_types_inferred_from_retained_bodies(self) -> None:
+        """Issue #386: deck.md → 'deck'; proposal.tex → 'proposal';
+        memo threads keep the 'investment-memo' default."""
+        with TemporaryDirectory() as td:
+            project = build_mixed_memo_deck_proposal(Path(td))
+            plan = build_plan(project)
+            by_slug = {d.slug: d for d in plan.documents}
+
+            self.assertEqual(
+                by_slug["series-a-deck"].brief_merge.artifact_type, "deck"
+            )
+            self.assertEqual(
+                by_slug["gossamer-lan"].brief_merge.artifact_type,
+                "proposal",
+            )
+            self.assertEqual(
+                by_slug["aldus"].brief_merge.artifact_type,
+                "investment-memo",
+            )
+
+    def test_proposal_thread_gets_inference_note(self) -> None:
+        """The pre-#386 silent-default gap: a .tex-bodied proposal
+        thread emitted only rename notes while the BRIEF entry silently
+        got 'investment-memo'. The retained-body note must fire."""
+        with TemporaryDirectory() as td:
+            project = build_mixed_memo_deck_proposal(Path(td))
+            plan = build_plan(project)
+            doc = next(
+                d for d in plan.documents if d.slug == "gossamer-lan"
+            )
+            inference_notes = [
+                n
+                for n in doc.notes
+                if "proposal.tex" in n and "inferred as 'proposal'" in n
+            ]
+            self.assertEqual(
+                len(inference_notes),
+                1,
+                f"expected one proposal inference note; got {doc.notes}",
+            )
+
+    def test_deck_inference_note_mentions_slides_ambiguity(self) -> None:
+        """anvil:slides threads also use deck.md — the note must say so."""
+        with TemporaryDirectory() as td:
+            project = build_mixed_memo_deck_proposal(Path(td))
+            plan = build_plan(project)
+            doc = next(
+                d for d in plan.documents if d.slug == "series-a-deck"
+            )
+            note = next(
+                (n for n in doc.notes if "inferred as 'deck'" in n), None
+            )
+            self.assertIsNotNone(
+                note, f"expected a deck inference note; got {doc.notes}"
+            )
+            self.assertIn("slides", note)
+
+    def test_memo_thread_gets_no_retained_body_note(self) -> None:
+        with TemporaryDirectory() as td:
+            project = build_mixed_memo_deck_proposal(Path(td))
+            plan = build_plan(project)
+            doc = next(d for d in plan.documents if d.slug == "aldus")
+            self.assertEqual(
+                [n for n in doc.notes if "retained" in n],
+                [],
+                f"memo threads must not get a retained-body note; "
+                f"got {doc.notes}",
+            )
+
     def test_default_max_iterations_not_carried_without_rationale(
         self,
     ) -> None:

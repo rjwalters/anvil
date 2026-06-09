@@ -131,6 +131,36 @@ class TestMixedProjectDetection(unittest.TestCase):
                 [],
             )
 
+    def test_retained_body_surface_observes_tex_without_classify_leak(
+        self,
+    ) -> None:
+        """Issue #386: proposal.tex appears on the dedicated
+        retained-body inventory surface but stays OUT of body_filenames
+        (`_classify` evidence is *.md-only by design)."""
+        with TemporaryDirectory() as td:
+            project = build_mixed_memo_deck_proposal(Path(td))
+            inv = inventory_project(project)
+            by_slug = {t.slug: t for t in inv.threads}
+
+            self.assertIn("proposal.tex", detect._RETAINED_BODY_FILENAMES)
+            self.assertEqual(
+                by_slug["gossamer-lan"].retained_body_filenames,
+                ["proposal.tex"],
+            )
+            self.assertNotIn(
+                "proposal.tex", by_slug["gossamer-lan"].body_filenames
+            )
+
+            self.assertEqual(
+                by_slug["series-a-deck"].retained_body_filenames,
+                ["deck.md"],
+            )
+            # Memo threads observe no retained body.
+            self.assertEqual(by_slug["aldus"].retained_body_filenames, [])
+
+            # And classification is unchanged by the new surface.
+            self.assertEqual(detect_shape(project), Shape.PRE_283_CLASSIC)
+
     def test_fully_migrated_mixed_tree_classifies_fully_migrated(
         self,
     ) -> None:
