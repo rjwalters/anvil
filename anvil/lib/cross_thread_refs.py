@@ -104,17 +104,17 @@ per the issue body's explicit guidance: "do NOT bolt onto
 ``resolve_refs_dirs`` whose contract is single-thread + portfolio
 research". This module is the cross-thread sibling.
 
-Skill-local first
+Promotion history
 -----------------
 
-Lives under ``anvil/skills/memo/lib/`` per the CLAUDE.md "skill-local
-first, lib promotion later" pattern and the precedent set by
-``refs_resolver.py`` (PR #281), ``rubric_overrides_suffix.py``
-(PR #265), and ``project_discovery.py`` (PR #290). Promotion to
-``anvil/lib/`` is queued for the second-consumer trigger — likely
-``anvil:proposal`` (which has its own portfolio shape with synthesis
-clusters) or ``anvil:pub``. Until then this module has zero
-``anvil.*`` runtime imports.
+Shipped skill-local under ``anvil/skills/memo/lib/`` per the CLAUDE.md
+"skill-local first, lib promotion later" pattern (precedent:
+``refs_resolver.py`` PR #281, ``rubric_overrides_suffix.py`` PR #265,
+``project_discovery.py`` PR #290). Promoted to ``anvil/lib/`` under
+issue #382 when ``anvil:deck`` / ``anvil:slides`` / ``anvil:proposal``
+became the 2nd–4th consumers of the project-org primitives. The memo
+path (``anvil/skills/memo/lib/cross_thread_refs.py``) remains as a
+back-compat re-export shim.
 
 No new Python deps
 ------------------
