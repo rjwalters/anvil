@@ -302,6 +302,16 @@ class GateResult:
     # Internal: which gate dimensions failed. Drives to_review's CriticalFlag
     # emission and to_json's per-dimension status.
     failed_gates: set[str] = field(default_factory=set)
+    # Render provenance (issue #391, memo kind only; None on the LaTeX
+    # gate). ``engine_used`` is the engine that actually ran (may differ
+    # from the requested one on PATH fallthrough); ``template_used`` is
+    # the resolved consumer template path string, or a symbolic
+    # "framework-default" / "theme:<name>" / "pandoc-default" marker
+    # when no consumer template applied. Recorded so the
+    # "re-rendered with the wrong template" regression class is
+    # detectable on disk by diffing ``_progress.json`` across versions.
+    engine_used: Optional[str] = None
+    template_used: Optional[str] = None
 
     def to_json(self) -> dict:
         """Emit the JSON shape called out in the issue body.
@@ -326,6 +336,8 @@ class GateResult:
             "findings": [f.to_dict() for f in self.findings],
             "pass": self.passed,
             "reasons": list(self.reasons),
+            "engine_used": self.engine_used,
+            "template_used": self.template_used,
         }
 
     def to_critical_flags(self) -> list[CriticalFlag]:
@@ -550,6 +562,9 @@ def gate(
     words_per_page: Optional[int] = None,
     render_engine: Optional[str] = None,
     latex_header_includes: Optional[str] = None,
+    render_template: Optional[str] = None,
+    render_lua_filters: Optional[list[str]] = None,
+    render_metadata: Optional[dict] = None,
     log_path: Optional[Path] = None,
     source_paths: Optional[list[Path]] = None,
     page_cap: Optional[int] = None,
@@ -593,6 +608,23 @@ def gate(
       ``xcolor`` / ``tabularx`` / custom environments referenced by
       ``{=latex}`` raw blocks without maintaining a full
       ``template.tex`` override.
+      Optional ``render_template`` / ``render_lua_filters`` /
+      ``render_metadata`` (issue #391) are the per-document consumer
+      pandoc passthrough knobs resolved from the matching
+      ``BriefDocument`` fields. ``render_template`` is a consumer-owned
+      pandoc template path (BRIEF-relative paths are resolved against
+      ``version_dir.parent.parent``, the project root under the
+      post-#295/#296 canonical model; absolute paths used as-is) — it
+      short-circuits the theme/framework template **iff** its extension
+      matches the dispatched engine chain and the file exists; on
+      mismatch or missing file the default chain applies with a
+      breadcrumb in ``reasons`` (the #347 silent-with-record skip).
+      ``render_lua_filters`` (``--lua-filter`` per entry, declaration
+      order) and ``render_metadata`` (``-M key=value`` per entry, with
+      the literal ``{N}`` token in values expanded to the version
+      number parsed from the ``<slug>.{N}`` version-dir name) are
+      engine-agnostic and always applied when set. Render provenance is
+      surfaced on ``GateResult.engine_used`` / ``template_used``.
       Routes through :func:`_gate_memo` which invokes
       :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
       engine, then runs the five memo-specific checks. See module
@@ -652,6 +684,9 @@ def gate(
             words_per_page=words_per_page,
             render_engine=render_engine,
             latex_header_includes=latex_header_includes,
+            render_template=render_template,
+            render_lua_filters=render_lua_filters,
+            render_metadata=render_metadata,
         )
     if kind != "latex":
         raise ValueError(
@@ -1022,6 +1057,10 @@ def _render_memo_source(
     out_pdf: Path,
     requested_engine: Optional[str] = None,
     latex_header_includes: Optional[str] = None,
+    render_template: Optional[str] = None,
+    render_lua_filters: Optional[list[str]] = None,
+    render_metadata: Optional[dict] = None,
+    provenance: Optional[dict] = None,
 ) -> tuple[str, int, str, str]:
     """Run pandoc → (weasyprint OR wkhtmltopdf OR xelatex) over the
     version dir's body markdown and write ``out_pdf``.
@@ -1070,6 +1109,46 @@ def _render_memo_source(
         the skip in the audit trail) — this matches the
         engine-scoping policy that ``latex_header_includes`` is for
         LaTeX content only and the HTML chain has no analogue.
+    render_template:
+        Optional per-document consumer-owned pandoc template path
+        (issue #391). Relative paths are resolved against
+        ``version_dir.parent.parent`` (the project root — the
+        directory containing ``BRIEF.md`` under the post-#295/#296
+        canonical ``<project>/<slug>/<slug>.{N}/`` model); absolute
+        paths are used as-is. Applied as ``--template <path>``
+        *instead of* the theme/framework template **iff** the file
+        exists AND its extension matches the dispatched chain
+        (``.tex`` / ``.latex`` on xelatex; ``.html`` / ``.htm`` on
+        weasyprint / wkhtmltopdf). On mismatch or missing file the
+        existing resolver chain applies and a skip breadcrumb is
+        recorded in ``provenance["skips"]`` (the caller surfaces it
+        in ``reasons``). The HTML chain's ``--css`` flag is NOT
+        suppressed by a consumer template — a self-contained
+        template simply ignores it.
+    render_lua_filters:
+        Optional list of pandoc Lua filter paths (issue #391),
+        resolved like ``render_template``. Engine-agnostic: each
+        existing filter is passed as ``--lua-filter <path>`` in
+        declaration order on every chain; a missing filter file is
+        skipped with a ``provenance["skips"]`` breadcrumb (remaining
+        filters still apply).
+    render_metadata:
+        Optional map of pandoc metadata entries (issue #391). Each
+        ``key: value`` pair is passed as ``-M key=value``.
+        Engine-agnostic. The literal token ``{N}`` in a *value* is
+        expanded to the version number parsed from the
+        ``<slug>.{N}`` version-dir name (e.g., ``Draft v{N}`` →
+        ``Draft v7`` for ``<slug>.7/``); when the dir name carries
+        no version suffix the value passes through verbatim.
+    provenance:
+        Optional caller-owned dict the function fills with render
+        provenance (issue #391): ``provenance["template"]`` is the
+        template provenance string (resolved consumer path,
+        ``"theme:<name>"``, ``"framework-default"``, or
+        ``"pandoc-default"`` when no ``--template`` flag was passed)
+        and ``provenance["skips"]`` is a list of breadcrumb strings
+        for skipped consumer inputs. Untouched when no engine ran
+        (pandoc/engines unavailable, missing body markdown).
 
     Returns
     -------
@@ -1174,18 +1253,132 @@ def _render_memo_source(
             theme_name=theme_name,
         )
 
+    # Issue #391: per-doc consumer pandoc passthrough. Paths are
+    # BRIEF-relative — resolved against the project root
+    # (``version_dir.parent.parent`` under the post-#295/#296 canonical
+    # ``<project>/<slug>/<slug>.{N}/`` model — the directory containing
+    # BRIEF.md). Resolution happens here at render time (not persisted
+    # as absolute paths) so ``_progress.json`` stays portable across
+    # repo moves/clones and re-running memo-render alone picks up
+    # template/filter edits. Absolute paths are used as-is.
+    project_root = version_dir.parent.parent
+
+    def _resolve_consumer_path(raw: str) -> Path:
+        p = Path(raw)
+        return p if p.is_absolute() else (project_root / p)
+
+    def _note_skip(msg: str) -> None:
+        if provenance is not None:
+            provenance.setdefault("skips", []).append(msg)
+
+    def _record_template(value: str) -> None:
+        if provenance is not None:
+            provenance["template"] = value
+
+    def _default_template_provenance(resolved: Path, asset_name: str) -> str:
+        if resolved == memo_lib / asset_name:
+            return "framework-default"
+        if theme_name:
+            return f"theme:{theme_name}"
+        return str(resolved)
+
+    # Consumer template: extension-matched against the dispatched chain
+    # (the #347 silent-with-record pattern — no parse-time engine
+    # coupling, because the requested engine can legitimately fall
+    # through on a machine missing the binary). A ``.tex`` template on
+    # an HTML-chain dispatch (the canary's regression shape) is skipped
+    # with a breadcrumb and the default resolver chain applies.
+    consumer_template: Optional[Path] = None
+    if render_template is not None:
+        candidate = _resolve_consumer_path(render_template)
+        suffix = candidate.suffix.lower()
+        chain_exts = (
+            (".html", ".htm")
+            if engine in (MEMO_ENGINE_WEASYPRINT, MEMO_ENGINE_WKHTMLTOPDF)
+            else (".tex", ".latex")
+        )
+        if suffix not in chain_exts:
+            _note_skip(
+                f"{DIM_MEMO_COMPILE}: render_template {render_template!r} "
+                f"extension {suffix or '(none)'} does not match the "
+                f"dispatched engine={engine!r} chain (expected one of "
+                f"{list(chain_exts)}); consumer template skipped, "
+                f"default template chain used."
+            )
+        elif not candidate.is_file():
+            _note_skip(
+                f"{DIM_MEMO_COMPILE}: render_template {render_template!r} "
+                f"not found at {candidate}; consumer template skipped, "
+                f"default template chain used."
+            )
+        else:
+            consumer_template = candidate
+
     if engine in (MEMO_ENGINE_WEASYPRINT, MEMO_ENGINE_WKHTMLTOPDF):
-        html_template = _resolve(MEMO_ASSET_TEMPLATE_HTML)
         styles_css = _resolve(MEMO_ASSET_STYLES_CSS)
-        if html_template.exists():
-            cmd.extend(["--template", str(html_template)])
+        if consumer_template is not None:
+            cmd.extend(["--template", str(consumer_template)])
+            _record_template(str(consumer_template))
+        else:
+            html_template = _resolve(MEMO_ASSET_TEMPLATE_HTML)
+            if html_template.exists():
+                cmd.extend(["--template", str(html_template)])
+                _record_template(
+                    _default_template_provenance(
+                        html_template, MEMO_ASSET_TEMPLATE_HTML
+                    )
+                )
+            else:
+                _record_template("pandoc-default")
         if styles_css.exists():
             cmd.extend(["--css", str(styles_css)])
         cmd.append("--standalone")
     else:  # xelatex
-        tex_template = _resolve(MEMO_ASSET_TEMPLATE_TEX)
-        if tex_template.exists():
-            cmd.extend(["--template", str(tex_template)])
+        if consumer_template is not None:
+            cmd.extend(["--template", str(consumer_template)])
+            _record_template(str(consumer_template))
+        else:
+            tex_template = _resolve(MEMO_ASSET_TEMPLATE_TEX)
+            if tex_template.exists():
+                cmd.extend(["--template", str(tex_template)])
+                _record_template(
+                    _default_template_provenance(
+                        tex_template, MEMO_ASSET_TEMPLATE_TEX
+                    )
+                )
+            else:
+                _record_template("pandoc-default")
+
+    # Issue #391: Lua filters + metadata flags. Both are
+    # engine-agnostic — they act on pandoc's front-end and are valid on
+    # every chain — so they are always passed when set. Filters apply
+    # in declaration order (pandoc applies ``--lua-filter`` flags in
+    # order); a missing filter file is skipped with a breadcrumb while
+    # the remaining filters still apply (non-blocking render contract).
+    if render_lua_filters:
+        for raw_filter in render_lua_filters:
+            filter_path = _resolve_consumer_path(raw_filter)
+            if not filter_path.is_file():
+                _note_skip(
+                    f"{DIM_MEMO_COMPILE}: render_lua_filters entry "
+                    f"{raw_filter!r} not found at {filter_path}; "
+                    f"filter skipped."
+                )
+                continue
+            cmd.extend(["--lua-filter", str(filter_path)])
+    if render_metadata:
+        # ``{N}`` version-token expansion: the single recognized token
+        # in metadata *values* is the version number parsed from the
+        # ``<slug>.{N}`` version-dir name (load-bearing for the
+        # canary's ``doc-version: "Draft v{N}"`` stamp). No other
+        # tokens; other brace text passes through verbatim.
+        version_match = re.match(r"^.+\.(\d+)$", version_dir.name)
+        version_number = version_match.group(1) if version_match else None
+        for meta_key, meta_value in render_metadata.items():
+            value_str = str(meta_value)
+            if version_number is not None:
+                value_str = value_str.replace("{N}", version_number)
+            cmd.extend(["-M", f"{meta_key}={value_str}"])
     # --fail-if-warnings rolls unresolved template variables into the
     # compile gate (per Epic #158 §"Out of v0 gate scope") so the
     # placeholder + image checks don't have to re-derive them.
@@ -1489,6 +1682,9 @@ def _gate_memo(
     words_per_page: Optional[int] = None,
     render_engine: Optional[str] = None,
     latex_header_includes: Optional[str] = None,
+    render_template: Optional[str] = None,
+    render_lua_filters: Optional[list[str]] = None,
+    render_metadata: Optional[dict] = None,
 ) -> GateResult:
     """Five-dimension memo render-gate (kind="memo").
 
@@ -1514,6 +1710,19 @@ def _gate_memo(
     appended to ``reasons`` for the audit trail without flipping any
     gate status. When ``None``, no include is added (no regression on
     legacy callers).
+
+    The optional ``render_template`` / ``render_lua_filters`` /
+    ``render_metadata`` parameters (issue #391) carry the per-document
+    consumer pandoc passthrough knobs forwarded from the matching
+    ``BriefDocument`` fields. Plumbed verbatim to
+    :func:`_render_memo_source` (see its docstring for the resolution,
+    extension-matching, and ``{N}``-expansion semantics). Skip
+    breadcrumbs the renderer records (template extension/engine
+    mismatch, missing template or filter file) are appended to
+    ``reasons`` — silent-with-record, never a gate failure on their
+    own. Render provenance lands on ``GateResult.engine_used`` /
+    ``template_used`` so memo-render can persist
+    ``_progress.json.phases.render.engine`` / ``.template``.
     """
     if out_pdf is None:
         # PDF output basename echoes the thread slug per #295 (e.g.
@@ -1526,11 +1735,19 @@ def _gate_memo(
     failed: set[str] = set()
 
     # --- Step 1: invoke the renderer ---------------------------------------
+    # ``render_provenance`` is the issue #391 out-channel: the renderer
+    # fills ``template`` (provenance string) + ``skips`` (breadcrumbs)
+    # without disturbing the pinned 4-tuple return contract.
+    render_provenance: dict = {}
     compile_status, exit_code, engine_used, stderr_text = _render_memo_source(
         version_dir,
         out_pdf,
         requested_engine=render_engine,
         latex_header_includes=latex_header_includes,
+        render_template=render_template,
+        render_lua_filters=render_lua_filters,
+        render_metadata=render_metadata,
+        provenance=render_provenance,
     )
 
     # --- Record fallthrough when the requested engine was overridden ------
@@ -1570,6 +1787,15 @@ def _gate_memo(
             f"dispatched engine={engine_used!r} is not xelatex; preamble "
             f"include skipped (latex_header_includes is xelatex-only)."
         )
+
+    # --- Record consumer template/filter skips (issue #391) ----------------
+    # The renderer recorded a breadcrumb for each consumer passthrough
+    # input it had to skip (template extension/engine mismatch, missing
+    # template file, missing Lua filter file). Surface them in
+    # ``reasons`` — silent-with-record per the #347 skip contract: not
+    # a gate failure, not a finding, just an audit trail entry so the
+    # operator can see why their template/filter didn't apply.
+    reasons.extend(render_provenance.get("skips", []))
 
     # --- Check 1: memo_compile_success -------------------------------------
     compile_exit_code: Optional[int] = exit_code if exit_code != -1 else None
@@ -1880,6 +2106,8 @@ def _gate_memo(
         passed=not failed,
         reasons=reasons,
         failed_gates=failed,
+        engine_used=engine_used or None,
+        template_used=render_provenance.get("template"),
     )
 
 

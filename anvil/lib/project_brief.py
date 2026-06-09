@@ -390,6 +390,9 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "target_length_overrides",
     "rubric_overrides",
     "render_engine",
+    "render_template",
+    "render_lua_filters",
+    "render_metadata",
     "latex_header_includes",
     "max_iterations",
     "iteration_cap_rationale",
@@ -663,6 +666,60 @@ class BriefDocument(BaseModel):
         theme-level default knob shipped by parallel issue #322 sits
         *below* this per-doc value in precedence (per-thread >
         per-project > per-theme > framework default).
+    render_template
+        Optional per-document consumer-owned pandoc template (issue
+        #391). A path string — resolved relative to the directory
+        containing ``BRIEF.md`` (the project root) at render time;
+        absolute paths are accepted and used as-is. When set, the memo
+        render chain passes ``--template <resolved-path>`` to pandoc
+        *instead of* the theme/framework template, **iff** the template
+        extension matches the dispatched engine chain (``.tex`` /
+        ``.latex`` on the ``xelatex`` chain; ``.html`` / ``.htm`` on the
+        ``weasyprint`` / ``wkhtmltopdf`` chain). On extension/engine
+        mismatch or a missing file, the consumer template is skipped
+        with a breadcrumb in ``render_gate.reasons`` and the existing
+        resolver chain (theme > framework default) applies — the
+        #347-style silent-with-record skip. Precedence: per-doc
+        ``render_template`` > theme-resolved template > framework
+        default, consistent with the documented
+        ``per-thread > per-project > per-theme > framework`` ordering.
+
+        Parse-time validation enforces type only (non-empty string;
+        whitespace-only normalizes to ``None``). File existence is a
+        render-time concern — BRIEF parsing must not depend on cwd.
+    render_lua_filters
+        Optional per-document list of pandoc Lua filter paths (issue
+        #391). Each entry is resolved like :attr:`render_template`
+        (BRIEF-relative or absolute). Engine-agnostic — Lua filters act
+        on pandoc's front-end and are valid on every chain; each
+        resolved filter is passed as ``--lua-filter <path>`` in
+        declaration order. A missing filter file is skipped with a
+        breadcrumb in ``render_gate.reasons``; the remaining filters
+        still apply. Empty list normalizes to ``None``.
+    render_metadata
+        Optional per-document map of pandoc metadata entries (issue
+        #391). Each ``key: value`` pair becomes one ``-M key=value``
+        flag. Values must be scalars (str / int / float / bool) and are
+        coerced to strings at parse time (bools to ``"true"`` /
+        ``"false"``). Engine-agnostic — always passed when set.
+
+        One recognized token: a literal ``{N}`` in a metadata *value*
+        is replaced with the version number (parsed from the
+        ``<slug>.{N}`` version-dir name) at render time — e.g.,
+        ``doc-version: "Draft v{N}"`` renders as ``Draft v7`` for
+        ``<slug>.7/``. No other tokens are recognized; other brace text
+        passes through verbatim. Empty map normalizes to ``None``.
+
+        Example (the studio canary's branded-bundle shape)::
+
+            documents:
+              - slug: investment-memo
+                render_engine: xelatex
+                render_template: sphere-memo-template.tex
+                render_lua_filters: [strip-alt.lua]
+                render_metadata:
+                  doc-type: "Investment Memo"
+                  doc-version: "Draft v{N}"
     latex_header_includes
         Optional per-document preamble extension threaded into pandoc's
         ``header-includes`` slot when the dispatched engine is
@@ -773,6 +830,9 @@ class BriefDocument(BaseModel):
     render_engine: Optional[
         Literal["weasyprint", "xelatex", "wkhtmltopdf"]
     ] = Field(default=None)
+    render_template: Optional[str] = Field(default=None)
+    render_lua_filters: Optional[List[str]] = Field(default=None)
+    render_metadata: Optional[Dict[str, str]] = Field(default=None)
     latex_header_includes: Optional[str] = Field(default=None)
     max_iterations: Optional[int] = Field(default=None)
     iteration_cap_rationale: Optional[str] = Field(default=None)
@@ -1296,6 +1356,134 @@ def _validate_latex_header_includes(raw: Any, field_path: str) -> Optional[str]:
     return raw
 
 
+def _validate_render_template(raw: Any, field_path: str) -> Optional[str]:
+    """Validate a raw ``render_template`` value (issue #391).
+
+    Type-and-emptiness only: the value must be a string; empty /
+    whitespace-only normalizes to ``None`` (back-compat — a YAML author
+    can write ``render_template:`` with nothing on the right-hand side).
+    Surrounding whitespace is stripped (a path with accidental trailing
+    whitespace is never intentional).
+
+    No file-existence check at parse time — BRIEF parsing must not
+    depend on cwd, and the template is a render-time input (a missing
+    file at render time produces a breadcrumb + fallback to the default
+    chain, per the non-blocking render contract). Engine-scoping
+    (extension match against the dispatched chain) is likewise a
+    render-time concern, for the same reason documented in
+    :func:`_validate_latex_header_includes`: the requested engine can
+    legitimately fall through on a machine missing the binary.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a string path; got "
+            f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
+            f"value as a path relative to the directory containing "
+            f"BRIEF.md (e.g., `render_template: sphere-memo-template.tex`)."
+        )
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    return stripped
+
+
+def _validate_render_lua_filters(
+    raw: Any, field_path: str
+) -> Optional[List[str]]:
+    """Validate a raw ``render_lua_filters`` value (issue #391).
+
+    Must be a list of non-empty strings (paths, BRIEF-relative or
+    absolute). An empty list normalizes to ``None`` (back-compat).
+    Non-list values and non-string / empty elements raise ``ValueError``
+    with the offending field path. Declaration order is preserved —
+    pandoc applies Lua filters in flag order.
+
+    No file-existence checks at parse time (render-time concern; see
+    :func:`_validate_render_template`).
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a list of path strings; got "
+            f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
+            f"value as a YAML list (e.g., "
+            f"`render_lua_filters: [strip-alt.lua]`)."
+        )
+    if len(raw) == 0:
+        return None
+    out: List[str] = []
+    for j, item in enumerate(raw):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                f"BRIEF.{field_path}[{j}] must be a non-empty path "
+                f"string; got {type(item).__name__}: {item!r} — "
+                f"suggested fix: write each entry as a path relative to "
+                f"the directory containing BRIEF.md."
+            )
+        out.append(item.strip())
+    return out
+
+
+# Scalar types accepted as ``render_metadata`` values. ``bool`` is listed
+# explicitly (it is also an ``int`` subclass) so the coercion branch below
+# can emit pandoc-conventional lowercase ``true`` / ``false``.
+_RENDER_METADATA_SCALARS = (str, int, float, bool)
+
+
+def _validate_render_metadata(
+    raw: Any, field_path: str
+) -> Optional[Dict[str, str]]:
+    """Validate a raw ``render_metadata`` value (issue #391).
+
+    Must be a mapping of non-empty string keys to scalar values
+    (str / int / float / bool). Scalars are coerced to strings at parse
+    time (bools to lowercase ``"true"`` / ``"false"`` per pandoc/YAML
+    convention) so downstream consumers deal in one shape. An empty map
+    normalizes to ``None`` (back-compat). Non-mapping values, non-string
+    keys, and non-scalar values (lists, maps, ``None``) raise
+    ``ValueError`` with the offending field path.
+
+    The ``{N}`` version token in values is *not* expanded here — it is a
+    render-time substitution (the version number is unknowable at parse
+    time). Values are carried verbatim.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a mapping of string keys to "
+            f"scalar values; got {type(raw).__name__}: {raw!r} — "
+            f"suggested fix: write the value as a YAML map (e.g., "
+            f'`render_metadata:` then `  doc-type: "Investment Memo"`).'
+        )
+    if len(raw) == 0:
+        return None
+    out: Dict[str, str] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError(
+                f"BRIEF.{field_path} keys must be non-empty strings; "
+                f"got {type(key).__name__}: {key!r} — suggested fix: "
+                f"quote the key as a string."
+            )
+        if isinstance(value, bool):
+            out[key] = "true" if value else "false"
+        elif isinstance(value, _RENDER_METADATA_SCALARS):
+            out[key] = str(value)
+        else:
+            raise ValueError(
+                f"BRIEF.{field_path}[{key!r}] must be a scalar "
+                f"(str / int / float / bool); got "
+                f"{type(value).__name__}: {value!r} — suggested fix: "
+                f"flatten nested values into one scalar per key "
+                f"(pandoc receives each entry as `-M key=value`)."
+            )
+    return out
+
+
 def _normalize_iteration_cap_rationale(raw: Any, field_path: str) -> Optional[str]:
     """Normalize a raw ``iteration_cap_rationale`` value (issue #349).
 
@@ -1515,6 +1703,21 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
             field_path=f"documents[{i}].render_engine",
         )
 
+        render_template = _validate_render_template(
+            entry.get("render_template"),
+            field_path=f"documents[{i}].render_template",
+        )
+
+        render_lua_filters = _validate_render_lua_filters(
+            entry.get("render_lua_filters"),
+            field_path=f"documents[{i}].render_lua_filters",
+        )
+
+        render_metadata = _validate_render_metadata(
+            entry.get("render_metadata"),
+            field_path=f"documents[{i}].render_metadata",
+        )
+
         latex_header_includes = _validate_latex_header_includes(
             entry.get("latex_header_includes"),
             field_path=f"documents[{i}].latex_header_includes",
@@ -1547,6 +1750,9 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
                 target_length_overrides=target_length_overrides,
                 rubric_overrides=rubric_overrides,
                 render_engine=render_engine,
+                render_template=render_template,
+                render_lua_filters=render_lua_filters,
+                render_metadata=render_metadata,
                 latex_header_includes=latex_header_includes,
                 max_iterations=max_iterations,
                 iteration_cap_rationale=iteration_cap_rationale,
