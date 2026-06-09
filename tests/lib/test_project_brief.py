@@ -325,3 +325,154 @@ def test_unknown_artifact_type_rejected(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="pitch-deck"):
         load_project_brief(project)
+
+
+# ---------------------------------------------------------------------------
+# Issue #394: registered canary genres + the consumer artifact-type tier
+# ---------------------------------------------------------------------------
+
+
+def _write_consumer_overlay(consumer_root: Path, type_name: str) -> Path:
+    """Materialize a minimal valid consumer overlay JSON for ``type_name``."""
+    import json
+
+    overlay_dir = consumer_root / ".anvil" / "skills" / "memo" / "rubric_overlays"
+    overlay_dir.mkdir(parents=True, exist_ok=True)
+    path = overlay_dir / f"{type_name}.json"
+    path.write_text(
+        json.dumps(
+            {
+                "artifact_type": type_name,
+                "description": f"Consumer-declared {type_name} overlay.",
+                "weight_adjustments": {"dim_6": -2},
+                "calibration_prose": {"dim_1": f"{type_name} calibration."},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.parametrize("value", ["challenge-memo", "strategy-memo"])
+def test_canary_memo_genres_registered(tmp_path: Path, value: str) -> None:
+    """Issue #394 part 1: the canary-proven genres are registered enum
+    members — a BRIEF declaring either parses cleanly."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        documents:
+          - slug: some-thread
+            artifact_type: {value}
+        """,
+    )
+    brief = load_project_brief(project)
+    assert brief is not None
+    assert brief.documents[0].artifact_type.value == value
+
+
+def test_consumer_overlay_backed_type_accepted(tmp_path: Path) -> None:
+    """Issue #394 part 2: an unregistered type backed by
+    ``<consumer>/.anvil/skills/memo/rubric_overlays/<type>.json`` parses
+    cleanly (consumer root discovered via the ``.anvil/`` marker walk)."""
+    _write_consumer_overlay(tmp_path, "field-note")
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: notes
+            artifact_type: field-note
+        """,
+    )
+    brief = load_project_brief(project)
+    assert brief is not None
+    doc = brief.documents[0]
+    # Consumer types are carried as validated plain strings that
+    # interoperate with the str-enum frozenset membership checks.
+    assert doc.artifact_type == "field-note"
+    assert isinstance(doc.artifact_type, str)
+
+
+def test_consumer_root_explicit_override(tmp_path: Path) -> None:
+    """The explicit ``consumer_root`` parameter bypasses the marker walk
+    (testability + callers that already know the root)."""
+    consumer = tmp_path / "elsewhere"
+    _write_consumer_overlay(consumer, "field-note")
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: notes
+            artifact_type: field-note
+        """,
+    )
+    # Without the override there is no .anvil ancestor → rejected.
+    with pytest.raises(ValueError, match="field-note"):
+        load_project_brief(project)
+    # With the override the consumer tier resolves.
+    brief = load_project_brief(project, consumer_root=consumer)
+    assert brief is not None
+    assert brief.documents[0].artifact_type == "field-note"
+
+
+def test_unknown_type_error_names_consumer_extension_path(
+    tmp_path: Path,
+) -> None:
+    """An unregistered type with NO consumer overlay still fails loudly,
+    and the error enumerates registered values, discovered consumer
+    types, and the consumer-overlay extension path."""
+    _write_consumer_overlay(tmp_path, "field-note")
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: notes
+            artifact_type: lab-journal
+        """,
+    )
+    with pytest.raises(ValueError) as excinfo:
+        load_project_brief(project)
+    msg = str(excinfo.value)
+    assert "lab-journal" in msg
+    assert "challenge-memo" in msg  # registered set enumerated
+    assert "field-note" in msg  # discovered consumer types enumerated
+    assert ".anvil" in msg  # extension path named
+
+
+def test_no_anvil_ancestor_skips_consumer_tier(tmp_path: Path) -> None:
+    """Source-tree / tmp runs without a ``.anvil/`` ancestor skip the
+    consumer tier gracefully: registered types parse, unregistered types
+    raise with the generic extension-path hint."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: acme
+            artifact_type: investment-memo
+        """,
+    )
+    brief = load_project_brief(project)
+    assert brief is not None
+
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: acme
+            artifact_type: field-note
+        """,
+    )
+    with pytest.raises(
+        ValueError, match=r"\.anvil/skills/memo/rubric_overlays"
+    ):
+        load_project_brief(project)

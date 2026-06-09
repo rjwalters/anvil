@@ -3,8 +3,21 @@
 
 Given a thread root, walk up to find ``<project>/BRIEF.md``, parse its
 ``documents:`` list, find the entry matching the thread's slug, read its
-``artifact_type``, and return the matching rubric overlay loaded from
-``anvil/skills/memo/rubric_overlays/<artifact-type>.json``.
+``artifact_type``, and return the matching rubric overlay resolved
+two-tier (issue #394) — consumer first, shipped second:
+
+1. **Consumer tier**:
+   ``<consumer>/.anvil/skills/memo/rubric_overlays/<artifact-type>.json``
+   where ``<consumer>`` carries the ``.anvil/`` install marker. This is
+   how a consumer declares a memo genre with no framework release, and
+   also how a consumer recalibrates a *shipped* type without forking
+   anvil (consumer wins on collision — the ``discover_venue_rubric``
+   precedent from the pub skill).
+2. **Shipped tier**: ``anvil/skills/memo/rubric_overlays/<artifact-type>.json``.
+
+Both tiers are parsed with the same strict schema (dim-key validation,
+filename ↔ declared-type consistency, ``OverlayLoadError`` on any
+malformation).
 
 The overlay declares per-dimension ``weight_adjustments`` (deltas
 applied to the base ``rubric.md`` weights) plus optional
@@ -26,22 +39,27 @@ status quo).
 Public API
 ----------
 
-``load_overlay(artifact_type) -> RubricOverlay``
-    Load the overlay JSON for one registered ``ArtifactType``. Raises
+``load_overlay(artifact_type, consumer_overlays_dir=None) -> RubricOverlay``
+    Load the overlay JSON for one artifact type (a registered
+    ``ArtifactType`` member or a consumer-declared type string —
+    issue #394). Resolution order: ``consumer_overlays_dir`` first
+    (when supplied), shipped ``OVERLAYS_DIR`` second. Raises
     ``OverlayLoadError`` (subclass of ``ValueError``) on missing or
     malformed overlay files.
 
-``select_overlay_for_thread(thread_dir, project_dir=None) -> RubricOverlay | None``
+``select_overlay_for_thread(thread_dir, project_dir=None, consumer_root=None) -> RubricOverlay | None``
     Resolve a thread's overlay by walking to the project BRIEF, finding
     the matching slug, reading its ``artifact_type``, and loading the
-    overlay. Returns ``None`` when no project BRIEF is found (back-compat
-    for threads outside the portfolio-as-thread-root layout) or when
-    the thread's slug is not listed in the BRIEF. Raises a clear
-    skill-mismatch ``OverlayLoadError`` when the entry declares a
-    non-memo skill-identity type (``deck`` / ``slides`` / ``proposal``
-    — issue #386): memo rubric overlays apply only to the memo-scoped
-    subset ``MEMO_ARTIFACT_TYPES``, and silently scoring a deck against
-    the memo rubric would be worse than failing loudly.
+    overlay (two-tier — consumer first, shipped second). Returns
+    ``None`` when no project BRIEF is found (back-compat for threads
+    outside the portfolio-as-thread-root layout) or when the thread's
+    slug is not listed in the BRIEF. Raises a clear skill-mismatch
+    ``OverlayLoadError`` when the entry declares a non-memo
+    skill-identity type — issue #386, keyed on the explicit
+    ``SKILL_IDENTITY_ARTIFACT_TYPES`` set (``deck`` / ``slides`` /
+    ``proposal``) since #394, so consumer-declared memo types don't
+    trip the rejection: silently scoring a deck against the memo rubric
+    would be worse than failing loudly.
 
 ``RubricOverlay``
     Typed Pydantic model. Fields: ``artifact_type``, ``description``,
@@ -71,13 +89,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from anvil.skills.memo.lib.project_brief import (
     ArtifactType,
     MEMO_ARTIFACT_TYPES,
+    SKILL_IDENTITY_ARTIFACT_TYPES,
+    consumer_overlay_dir_for,
     load_project_brief,
 )
 from anvil.skills.memo.lib.project_discovery import discover_thread_root
@@ -112,9 +132,16 @@ class RubricOverlay(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    artifact_type: ArtifactType = Field(
+    # Union keeps already-typed ArtifactType instances as enum members
+    # while letting consumer-declared types (issue #394) — and the
+    # plain strings JSON parsing produces — pass through as validated
+    # str. str-enum members and plain strings interoperate for
+    # equality / hashing, so callers can compare either way.
+    artifact_type: Union[ArtifactType, str] = Field(
         ...,
-        description="The registered ArtifactType this overlay applies to.",
+        description="The artifact type this overlay applies to — a "
+        "registered ArtifactType value or a consumer-declared type "
+        "(issue #394).",
     )
     description: str = Field(
         ...,
@@ -155,22 +182,60 @@ def _validate_dim_keys(d: Dict[str, object], field: str, source: Path) -> None:
             )
 
 
-def load_overlay(artifact_type: ArtifactType) -> RubricOverlay:
-    """Load the overlay JSON for one ArtifactType.
+def _artifact_type_value(artifact_type: Union[ArtifactType, str]) -> str:
+    """Return the string value of a registered-or-consumer artifact type."""
+    if isinstance(artifact_type, ArtifactType):
+        return artifact_type.value
+    return str(artifact_type)
+
+
+def load_overlay(
+    artifact_type: Union[ArtifactType, str],
+    consumer_overlays_dir: Optional[Path] = None,
+) -> RubricOverlay:
+    """Load the overlay JSON for one artifact type (two-tier per #394).
+
+    Resolution order — first existing file wins:
+
+    1. ``<consumer_overlays_dir>/<type>.json`` (when supplied) — the
+       consumer tier. Lets a consumer declare new memo genres AND
+       recalibrate shipped types without forking anvil.
+    2. ``OVERLAYS_DIR/<type>.json`` — the shipped registry.
+
+    Both tiers are parsed with identical strictness.
 
     Raises
     ------
     OverlayLoadError
-        If the overlay file does not exist, contains invalid JSON, fails
-        schema validation, declares the wrong artifact_type, or uses an
-        unknown dim key in weight_adjustments / calibration_prose.
+        If no overlay file exists in either tier, the file contains
+        invalid JSON, fails schema validation, declares the wrong
+        artifact_type, or uses an unknown dim key in
+        weight_adjustments / calibration_prose.
     """
-    overlay_path = OVERLAYS_DIR / f"{artifact_type.value}.json"
-    if not overlay_path.is_file():
+    type_value = _artifact_type_value(artifact_type)
+    candidates = []
+    if consumer_overlays_dir is not None:
+        candidates.append(Path(consumer_overlays_dir) / f"{type_value}.json")
+    candidates.append(OVERLAYS_DIR / f"{type_value}.json")
+
+    overlay_path = next((p for p in candidates if p.is_file()), None)
+    if overlay_path is None:
         registered = sorted(p.stem for p in OVERLAYS_DIR.glob("*.json"))
+        consumer_note = ""
+        if consumer_overlays_dir is not None:
+            consumer_dir = Path(consumer_overlays_dir)
+            consumer_types = (
+                sorted(p.stem for p in consumer_dir.glob("*.json"))
+                if consumer_dir.is_dir()
+                else []
+            )
+            consumer_note = (
+                f" Consumer overlays at {consumer_dir}: {consumer_types}."
+            )
         raise OverlayLoadError(
-            f"No overlay file found for artifact_type={artifact_type.value!r} "
-            f"at {overlay_path}. Registered overlays: {registered}."
+            f"No overlay file found for artifact_type={type_value!r} "
+            f"at {candidates[-1]}. Registered overlays: {registered}."
+            f"{consumer_note}"
         )
     try:
         raw = json.loads(overlay_path.read_text(encoding="utf-8"))
@@ -198,11 +263,13 @@ def load_overlay(artifact_type: ArtifactType) -> RubricOverlay:
 
     # Filename ↔ artifact_type consistency. Catches typos where the
     # overlay JSON declares one type but lives under a different filename.
-    if overlay.artifact_type != artifact_type:
+    # str-value comparison works uniformly across enum members and
+    # consumer-declared plain strings.
+    if _artifact_type_value(overlay.artifact_type) != type_value:
         raise OverlayLoadError(
             f"{overlay_path}: declares artifact_type="
-            f"{overlay.artifact_type.value!r} but expected "
-            f"{artifact_type.value!r} (filename mismatch)."
+            f"{_artifact_type_value(overlay.artifact_type)!r} but expected "
+            f"{type_value!r} (filename mismatch)."
         )
 
     return overlay
@@ -211,13 +278,15 @@ def load_overlay(artifact_type: ArtifactType) -> RubricOverlay:
 def select_overlay_for_thread(
     thread_dir: Path,
     project_dir: Optional[Path] = None,
+    consumer_root: Optional[Path] = None,
 ) -> Optional[RubricOverlay]:
     """Resolve and load the overlay for a thread, or None if not applicable.
 
     Walks up from ``thread_dir`` via :func:`project_discovery.discover_thread_root`
     to find the project BRIEF. If the thread's slug appears in the BRIEF's
     ``documents:`` list, loads the overlay matching that entry's
-    ``artifact_type``. Returns ``None`` when:
+    ``artifact_type`` (two-tier resolution — consumer overlay registry
+    first, shipped registry second; issue #394). Returns ``None`` when:
 
     - No project BRIEF is found on the walk-upward path (classic layout
       thread — preserves v0 behavior; no overlay applied).
@@ -240,6 +309,12 @@ def select_overlay_for_thread(
         skips :func:`discover_thread_root` and reads the BRIEF directly
         from ``<project_dir>/BRIEF.md``. Useful for callers that already
         know the project root.
+    consumer_root
+        Optional explicit consumer root for the #394 consumer overlay
+        tier. When ``None`` (default) the consumer root is discovered
+        by walking upward from the project root to the ``.anvil/``
+        install marker; when no marker exists the consumer tier is
+        skipped (shipped overlays only).
     """
     thread_dir = Path(thread_dir)
 
@@ -253,21 +328,25 @@ def select_overlay_for_thread(
         project_dir = Path(project_dir)
         thread_slug = thread_dir.name
 
-    brief = load_project_brief(project_dir)
+    brief = load_project_brief(project_dir, consumer_root=consumer_root)
     if brief is None:
         return None
 
     for entry in brief.documents:
         if entry.slug == thread_slug:
-            # Memo-scoped subset guard (issue #386). Skill-identity
-            # artifact types (deck / slides / proposal) are registered
-            # in the shared enum but select NO memo overlay — a memo
-            # command running against such a thread is operator error
-            # that deserves a loud, self-explaining failure instead of
-            # a confusing "No overlay file found" message (or worse, a
-            # silent identity overlay scoring a deck against the memo
-            # rubric).
-            if entry.artifact_type not in MEMO_ARTIFACT_TYPES:
+            # Skill-identity guard (issue #386; re-keyed explicit under
+            # #394). Skill-identity artifact types (deck / slides /
+            # proposal) are registered in the shared enum but select NO
+            # memo overlay — a memo command running against such a
+            # thread is operator error that deserves a loud,
+            # self-explaining failure instead of a confusing "No
+            # overlay file found" message (or worse, a silent identity
+            # overlay scoring a deck against the memo rubric). The
+            # guard is keyed on the explicit SKILL_IDENTITY set, NOT
+            # "anything outside MEMO_ARTIFACT_TYPES" — consumer-declared
+            # memo types (#394) are legitimately outside the registered
+            # memo subset and must flow through to load_overlay.
+            if entry.artifact_type in SKILL_IDENTITY_ARTIFACT_TYPES:
                 memo_values = sorted(t.value for t in MEMO_ARTIFACT_TYPES)
                 raise OverlayLoadError(
                     f"Thread {thread_slug!r} declares artifact_type="
@@ -279,7 +358,17 @@ def select_overlay_for_thread(
                     f"{entry.artifact_type.value}) against this thread "
                     f"instead, or fix the BRIEF entry if the type is wrong."
                 )
-            return load_overlay(entry.artifact_type)
+            # Memo-registered OR consumer-declared types resolve
+            # two-tier (consumer wins). Defense in depth: a type that
+            # is neither (e.g. its consumer overlay JSON was deleted
+            # after the BRIEF was parsed) fails loudly inside
+            # load_overlay with the available-set error.
+            return load_overlay(
+                entry.artifact_type,
+                consumer_overlays_dir=consumer_overlay_dir_for(
+                    project_dir, consumer_root
+                ),
+            )
 
     # Thread is in a project but not listed in the BRIEF — preserve
     # v0 behavior (no overlay).

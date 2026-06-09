@@ -84,19 +84,29 @@ This module reads that shape and surfaces it as a typed
 Public API
 ----------
 ``ArtifactType``
-    Closed-ended enum of registered artifact types. Unknown values raise
-    a validation error listing the registered set. Seed values per the
-    curator's confirmation: ``investment-memo``, ``position-paper``,
+    Enum of registered artifact types. Unknown values raise a
+    validation error listing the registered set — unless backed by a
+    consumer overlay JSON (the #394 consumer extension tier; see
+    "Artifact-type validation" below). Seed values per the curator's
+    confirmation: ``investment-memo``, ``position-paper``,
     ``tactical-plan``, ``vision-document``, ``descriptive-thesis``.
     Issue #386 grew the set with skill-identity values ``deck``,
     ``slides``, ``proposal`` — for non-memo documents ``artifact_type``
     identifies which skill owns the thread rather than selecting a memo
-    rubric overlay subtype.
+    rubric overlay subtype. Issue #394 grew the memo-scoped subset with
+    the canary-proven ``challenge-memo`` and ``strategy-memo`` genres.
 
 ``MEMO_ARTIFACT_TYPES``
-    The memo-scoped subset of :class:`ArtifactType` — the values that
-    select a memo rubric overlay. Memo's overlay dispatch fails loudly
-    for types outside this set.
+    The memo-scoped subset of :class:`ArtifactType` — the registered
+    values that select a shipped memo rubric overlay. Consumer-declared
+    types (issue #394) are additionally memo-scoped by construction
+    (their overlay JSONs live under the memo consumer registry).
+
+``SKILL_IDENTITY_ARTIFACT_TYPES``
+    The skill-identity subset of :class:`ArtifactType` (``deck`` /
+    ``slides`` / ``proposal``). Memo's overlay dispatch fails loudly
+    for exactly this set (issue #386, re-keyed explicit under #394 so
+    consumer-declared memo types don't trip the rejection).
 
 ``BriefDocument``
     Pydantic model for one entry in the ``documents:`` list. Carries
@@ -179,22 +189,42 @@ entirely. Lifecycle commands that already know which slug they're
 operating on (e.g., the reviewer with a thread root in hand) can opt into
 the check; pure parser consumers don't need to.
 
-Artifact-type enum (Open Question #5 resolution)
-------------------------------------------------
-**Closed-ended.** Unknown ``artifact_type`` values raise a clear
-``ValueError`` listing the registered set. This prevents typos silently
-degrading to no-overlay behavior. The registered values are
-:data:`REGISTERED_ARTIFACT_TYPES`. Two kinds of value coexist (#386):
+Artifact-type validation (Open Question #5 resolution; two-tier per #394)
+-------------------------------------------------------------------------
+**Closed-ended with a consumer extension tier.** Unknown
+``artifact_type`` values raise a clear ``ValueError`` listing the
+registered set (and any discovered consumer-declared types). This
+prevents typos silently degrading to no-overlay behavior. The
+registered values are :data:`REGISTERED_ARTIFACT_TYPES`. Two kinds of
+registered value coexist (#386):
 
-- **Memo overlay subtypes** (the five seed values): adding one requires
-  a code change here, membership in :data:`MEMO_ARTIFACT_TYPES`, AND a
-  matching overlay JSON in the memo skill's ``rubric_overlays/``
-  registry (#286).
-- **Skill-identity values** (``deck``, ``slides``, ``proposal``):
-  identify which non-memo skill owns the thread. Adding one requires a
-  code change here plus SKILL.md documentation in the owning skill —
-  and it must be left OUT of :data:`MEMO_ARTIFACT_TYPES` (no memo
-  overlay JSON; memo commands fail loudly on these types).
+- **Memo overlay subtypes** (the seven memo-scoped values): adding one
+  requires a code change here, membership in
+  :data:`MEMO_ARTIFACT_TYPES`, AND a matching overlay JSON in the memo
+  skill's ``rubric_overlays/`` registry (#286).
+- **Skill-identity values** (``deck``, ``slides``, ``proposal`` —
+  enumerated in :data:`SKILL_IDENTITY_ARTIFACT_TYPES`): identify which
+  non-memo skill owns the thread. Adding one requires a code change
+  here plus SKILL.md documentation in the owning skill — and it must be
+  left OUT of :data:`MEMO_ARTIFACT_TYPES` (no memo overlay JSON; memo
+  commands fail loudly on these types).
+
+Issue #394 adds a **second validation tier**: an unregistered
+``artifact_type`` is accepted IFF a consumer overlay JSON exists at
+``<consumer>/.anvil/skills/memo/rubric_overlays/<type>.json``, where
+``<consumer>`` is the directory carrying the ``.anvil/`` install marker
+(located via :func:`anvil.lib.theme.find_consumer_root`, the same walk
+the theme catalog and the pub skill's consumer venue-rubric tier use).
+This lets a consumer register memo genres without a framework PR while
+keeping the enum honest — an unknown type with NO consumer overlay
+still fails loudly at parse time. Consumer-declared values are carried
+as validated plain ``str`` on :class:`BriefDocument` (str-enum members
+and plain strings interoperate for equality, hashing, and frozenset
+membership, so downstream ``in MEMO_ARTIFACT_TYPES`` checks keep
+working). The loaders compute the consumer-types set once per parse;
+an explicit ``consumer_root`` parameter override keeps the parser
+testable from tmp dirs (source-tree runs without a ``.anvil/`` ancestor
+simply skip the consumer tier).
 
 Validation discipline — BRIEF-side is STRICT
 --------------------------------------------
@@ -245,7 +275,7 @@ from __future__ import annotations
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import warnings
 
@@ -260,23 +290,29 @@ from anvil.lib.project_discovery import (
     BRIEF_FILENAME,
     DOCUMENTS_FRONTMATTER_KEY,
 )
+from anvil.lib.theme import find_consumer_root
 
 
-# The registered artifact types. The first five are the seed memo
-# subtypes per the curator's confirmation comment on #283; the last
-# three are skill-identity values added under #386 (deck / slides /
-# proposal threads in a shared project BRIEF). Unknown values are
-# rejected with a clear error listing this set — closed-ended enum
-# governance per Open Question #5.
+# The registered artifact types. The first seven are memo subtypes
+# (five seeds per the curator's confirmation comment on #283, plus the
+# canary-proven challenge-memo / strategy-memo registered under #394);
+# the last three are skill-identity values added under #386 (deck /
+# slides / proposal threads in a shared project BRIEF). Unknown values
+# are rejected with a clear error listing this set UNLESS a consumer
+# overlay JSON backs them (the #394 consumer extension tier — see
+# `discover_consumer_artifact_types` below).
 #
-# Registering a new MEMO subtype requires:
+# Registering a new MEMO subtype upstream requires:
 #   1. Adding the literal here (and to MEMO_ARTIFACT_TYPES below).
 #   2. Landing a matching overlay file (sub-deliverable 3 / #286).
 #   3. Documenting the new shape in `anvil/skills/memo/SKILL.md`.
+# A consumer can instead declare a type with NO framework release by
+# shipping `<consumer>/.anvil/skills/memo/rubric_overlays/<type>.json`.
 #
 # Registering a new SKILL-IDENTITY value requires:
-#   1. Adding the literal here (NOT to MEMO_ARTIFACT_TYPES — no memo
-#      overlay JSON; memo commands fail loudly on non-memo types).
+#   1. Adding the literal here AND to SKILL_IDENTITY_ARTIFACT_TYPES
+#      below (NOT to MEMO_ARTIFACT_TYPES — no memo overlay JSON; memo
+#      commands fail loudly on non-memo types).
 #   2. Documenting it in the owning skill's SKILL.md.
 REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "investment-memo",
@@ -284,6 +320,8 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "tactical-plan",
     "vision-document",
     "descriptive-thesis",
+    "challenge-memo",
+    "strategy-memo",
     "deck",
     "slides",
     "proposal",
@@ -313,6 +351,18 @@ class ArtifactType(str, Enum):
     DESCRIPTIVE_THESIS
         Descriptive case for a team / market / shape (e.g., the canary's
         "team thesis").
+    CHALLENGE_MEMO
+        Tests a NAMED positioning thesis against evidence and delivers
+        a verdict on the test (holds / breaks / holds-with-amendments)
+        rather than an invest / pass / check-size decision. Registered
+        under #394 from the canary's ``broadcom-thesis`` /
+        ``sensor-stack`` threads.
+    STRATEGY_MEMO
+        Internal playbook (e.g., a fundraising strategy): the
+        recommendation is the actionability of the play; financial
+        scoring targets the soundness of the anchors the play leans on
+        rather than venture-style unit economics. Registered under
+        #394 from the canary's ``fundraising-strategy`` thread.
     DECK
         Skill-identity value (#386): an ``anvil:deck`` pitch-deck thread.
         Not a memo subtype — selects no memo rubric overlay.
@@ -330,6 +380,8 @@ class ArtifactType(str, Enum):
     TACTICAL_PLAN = "tactical-plan"
     VISION_DOCUMENT = "vision-document"
     DESCRIPTIVE_THESIS = "descriptive-thesis"
+    CHALLENGE_MEMO = "challenge-memo"
+    STRATEGY_MEMO = "strategy-memo"
     DECK = "deck"
     SLIDES = "slides"
     PROPOSAL = "proposal"
@@ -349,8 +401,88 @@ MEMO_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.TACTICAL_PLAN,
         ArtifactType.VISION_DOCUMENT,
         ArtifactType.DESCRIPTIVE_THESIS,
+        ArtifactType.CHALLENGE_MEMO,
+        ArtifactType.STRATEGY_MEMO,
     }
 )
+
+
+# The skill-identity subset of the registry (issue #386, made explicit
+# under #394): values that name which NON-memo skill owns a thread in a
+# shared project BRIEF. Memo's overlay dispatch
+# (`anvil/skills/memo/lib/rubric_overlays.py::select_overlay_for_thread`)
+# raises a clear skill-mismatch error for exactly this set. The guard
+# is keyed on THIS explicit set rather than "everything outside
+# MEMO_ARTIFACT_TYPES" so that consumer-declared memo types (the #394
+# extension tier — plain strings outside the enum, backed by a consumer
+# overlay JSON) do not trip the deck/slides/proposal rejection.
+SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
+    {
+        ArtifactType.DECK,
+        ArtifactType.SLIDES,
+        ArtifactType.PROPOSAL,
+    }
+)
+
+
+# ---------------------------------------------------------------------------
+# Consumer artifact-type extension tier (issue #394)
+# ---------------------------------------------------------------------------
+
+# Relative path (under the consumer root) of the consumer-owned memo
+# rubric-overlay registry. Mirrors the pub skill's consumer venue-rubric
+# tier (`<consumer>/.anvil/skills/pub/rubrics/<venue>.yaml` — see
+# `anvil/lib/rubric.py::discover_venue_rubric`).
+CONSUMER_MEMO_OVERLAYS_RELPATH: str = ".anvil/skills/memo/rubric_overlays"
+
+
+def consumer_overlay_dir_for(
+    project_dir: Path, consumer_root: Optional[Path] = None
+) -> Optional[Path]:
+    """Return the consumer memo-overlay directory for ``project_dir``.
+
+    Resolves the consumer root (the directory carrying the ``.anvil/``
+    install marker) by walking upward from ``project_dir`` via
+    :func:`anvil.lib.theme.find_consumer_root`, unless an explicit
+    ``consumer_root`` override is supplied (test fixtures / callers
+    that already know the root). Returns ``None`` when no consumer
+    root exists — e.g., source-tree runs without a ``.anvil/``
+    ancestor — in which case the #394 consumer tier is simply skipped.
+
+    The returned path is NOT required to exist; callers check
+    ``is_dir()`` / ``is_file()`` as appropriate.
+    """
+    root = (
+        Path(consumer_root)
+        if consumer_root is not None
+        else find_consumer_root(Path(project_dir))
+    )
+    if root is None:
+        return None
+    return root / CONSUMER_MEMO_OVERLAYS_RELPATH
+
+
+def discover_consumer_artifact_types(
+    project_dir: Path, consumer_root: Optional[Path] = None
+) -> frozenset:
+    """Return the set of consumer-declared artifact types (issue #394).
+
+    A consumer declares a memo artifact type — with no framework
+    release — by shipping an overlay JSON at
+    ``<consumer>/.anvil/skills/memo/rubric_overlays/<type>.json``. The
+    declared type is the filename stem. Returns an empty frozenset when
+    no consumer root or no overlay directory exists.
+
+    Discovery is filename-only by design: strict parsing of the overlay
+    content (schema, dim keys, filename↔declared-type consistency) is
+    deferred to load time
+    (``anvil/skills/memo/lib/rubric_overlays.py::load_overlay``), where
+    a malformed file raises ``OverlayLoadError`` naming the path.
+    """
+    overlay_dir = consumer_overlay_dir_for(project_dir, consumer_root)
+    if overlay_dir is None or not overlay_dir.is_dir():
+        return frozenset()
+    return frozenset(p.stem for p in overlay_dir.glob("*.json"))
 
 
 # Frontmatter delimiter — three hyphens on their own line, per the
@@ -635,10 +767,18 @@ class BriefDocument(BaseModel):
         characters (alphanumerics, hyphens, underscores) — the on-disk
         directory naming convention.
     artifact_type
-        Registered artifact type. Drives rubric overlay selection in
-        sub-deliverable 3 (#286). Validated against
-        :data:`REGISTERED_ARTIFACT_TYPES` — unknown values raise a clear
-        error listing the registered set.
+        Registered artifact type (an :class:`ArtifactType` member) or a
+        consumer-declared type (a validated plain ``str`` backed by a
+        consumer overlay JSON — issue #394). Drives rubric overlay
+        selection in sub-deliverable 3 (#286). Validated two-tier
+        against :data:`REGISTERED_ARTIFACT_TYPES` and the discovered
+        consumer overlay registry — values in neither tier raise a
+        clear error listing both sets and the consumer-overlay
+        extension path. Never a free string. Registered values are
+        normalized to enum members; consumer values stay plain strings
+        (str-enum members and plain strings interoperate for equality
+        / hashing, so membership checks against
+        :data:`MEMO_ARTIFACT_TYPES` work uniformly).
     target_length
         Optional word-count range for this document. When set, the
         drafter / reviser's resolution helper uses it as the document-
@@ -823,7 +963,13 @@ class BriefDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     slug: str = Field(..., min_length=1)
-    artifact_type: ArtifactType = Field(...)
+    # Union keeps registered values as enum members (strict union match
+    # on an already-normalized ArtifactType instance) while letting
+    # consumer-declared types (issue #394) pass through as plain str.
+    # _normalize_documents always routes raw input through
+    # _validate_artifact_type first — this field never sees a free
+    # string.
+    artifact_type: Union[ArtifactType, str] = Field(...)
     target_length: Optional[TargetLengthRange] = Field(default=None)
     target_length_overrides: Optional[TargetLengthOverrides] = Field(default=None)
     rubric_overrides: Optional[RubricOverrides] = Field(default=None)
@@ -1268,11 +1414,23 @@ def _normalize_rubric_overrides(
     )
 
 
-def _validate_artifact_type(raw: Any, field_path: str) -> ArtifactType:
-    """Convert a raw ``artifact_type`` string to the typed enum.
+def _validate_artifact_type(
+    raw: Any,
+    field_path: str,
+    consumer_types: frozenset = frozenset(),
+    consumer_overlay_dir: Optional[Path] = None,
+) -> Union[ArtifactType, str]:
+    """Validate a raw ``artifact_type`` string — two-tier per #394.
 
-    Closed-ended per Open Question #5: unknown values raise
-    ``ValueError`` listing the registered set so a typo produces a
+    Tier 1 (closed-ended per Open Question #5): values in
+    :data:`REGISTERED_ARTIFACT_TYPES` normalize to the typed enum.
+    Tier 2 (consumer extension, issue #394): values backed by a
+    consumer overlay JSON (``consumer_types`` — the filename stems
+    discovered under
+    ``<consumer>/.anvil/skills/memo/rubric_overlays/``) are accepted as
+    validated plain strings. Anything else raises ``ValueError``
+    listing the registered set, any discovered consumer types, and the
+    consumer-overlay extension path, so a typo produces a
     self-correcting error.
     """
     if not isinstance(raw, str):
@@ -1284,13 +1442,26 @@ def _validate_artifact_type(raw: Any, field_path: str) -> ArtifactType:
     try:
         return ArtifactType(raw)
     except ValueError:
-        registered = list(REGISTERED_ARTIFACT_TYPES)
-        raise ValueError(
-            f"BRIEF.{field_path}: unknown artifact_type {raw!r}. "
-            f"Registered values: {registered}. "
-            f"Suggested fix: replace with one of the registered values "
-            f"or open an issue to register a new artifact type."
-        )
+        pass
+    if raw in consumer_types:
+        return raw
+    registered = list(REGISTERED_ARTIFACT_TYPES)
+    discovered = sorted(consumer_types)
+    where = (
+        str(consumer_overlay_dir)
+        if consumer_overlay_dir is not None
+        else f"<consumer>/{CONSUMER_MEMO_OVERLAYS_RELPATH}"
+    )
+    raise ValueError(
+        f"BRIEF.{field_path}: unknown artifact_type {raw!r}. "
+        f"Registered values: {registered}. "
+        f"Consumer-declared types (overlay JSONs at {where}): "
+        f"{discovered}. "
+        f"Suggested fix: replace with one of the registered or "
+        f"consumer-declared values, add a consumer overlay JSON at "
+        f"{where}/{raw}.json (no framework release needed — issue "
+        f"#394), or open an issue to register a new artifact type."
+    )
 
 
 def _validate_render_engine(raw: Any, field_path: str) -> Optional[str]:
@@ -1596,7 +1767,11 @@ def _validate_paired_iteration_cap_override(
         )
 
 
-def _normalize_documents(raw: Any) -> List[BriefDocument]:
+def _normalize_documents(
+    raw: Any,
+    consumer_types: frozenset = frozenset(),
+    consumer_overlay_dir: Optional[Path] = None,
+) -> List[BriefDocument]:
     """Convert the raw ``documents:`` list into typed ``BriefDocument`` entries.
 
     Validates:
@@ -1604,7 +1779,9 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
     - ``documents`` is a non-empty list.
     - Each entry is a dict.
     - Each entry has a non-empty string ``slug``.
-    - Each entry has a valid ``artifact_type`` (registered enum value).
+    - Each entry has a valid ``artifact_type`` (registered enum value,
+      or a consumer-overlay-backed type from ``consumer_types`` —
+      issue #394).
     - Optional ``target_length`` parses cleanly.
     - Optional ``target_length_overrides`` parses cleanly.
     - Optional ``rubric_overrides`` parses cleanly.
@@ -1677,6 +1854,8 @@ def _normalize_documents(raw: Any) -> List[BriefDocument]:
         artifact_type = _validate_artifact_type(
             artifact_type_raw,
             field_path=f"documents[{i}].artifact_type",
+            consumer_types=consumer_types,
+            consumer_overlay_dir=consumer_overlay_dir,
         )
 
         raw_tl = entry.get("target_length")
@@ -1862,7 +2041,9 @@ def _validate_slug_directory_divergence(
 
 
 def _parse_brief_body(
-    frontmatter: Dict[str, Any], project_dir: Path
+    frontmatter: Dict[str, Any],
+    project_dir: Path,
+    consumer_root: Optional[Path] = None,
 ) -> ProjectBrief:
     """Parse a frontmatter dict into a :class:`ProjectBrief`.
 
@@ -1871,6 +2052,11 @@ def _parse_brief_body(
     ``theme``. Other keys are ignored (forward-compat surface for
     project-level fields that may land later — e.g., a ``voice:``
     block).
+
+    The consumer artifact-type set (issue #394) is discovered ONCE per
+    parse here and threaded down to the per-entry ``artifact_type``
+    validator. ``consumer_root`` overrides the upward ``.anvil/``
+    marker walk (testability from tmp dirs).
     """
     project_raw = frontmatter.get("project")
     if not isinstance(project_raw, str) or not project_raw.strip():
@@ -1886,8 +2072,14 @@ def _parse_brief_body(
     hard_rules = _normalize_string_list(
         frontmatter.get("hard_rules"), "hard_rules"
     )
+    consumer_overlay_dir = consumer_overlay_dir_for(project_dir, consumer_root)
+    consumer_types = discover_consumer_artifact_types(
+        project_dir, consumer_root
+    )
     documents = _normalize_documents(
-        frontmatter.get(DOCUMENTS_FRONTMATTER_KEY)
+        frontmatter.get(DOCUMENTS_FRONTMATTER_KEY),
+        consumer_types=consumer_types,
+        consumer_overlay_dir=consumer_overlay_dir,
     )
     theme = _normalize_theme(frontmatter.get("theme"))
 
@@ -1910,6 +2102,7 @@ def load_project_brief(
     project_dir: Path,
     *,
     validate_dirs: bool = False,
+    consumer_root: Optional[Path] = None,
 ) -> Optional[ProjectBrief]:
     """Lenient loader for ``<project_dir>/BRIEF.md``.
 
@@ -1942,6 +2135,12 @@ def load_project_brief(
         on-disk slug-shaped subdirectories under ``project_dir``. Listed-
         but-missing triggers a ``UserWarning``; on-disk-but-unlisted
         raises ``ValueError``. Default False — pure schema parsing only.
+    consumer_root
+        Optional explicit consumer root for the #394 consumer
+        artifact-type tier. When ``None`` (default) the consumer root
+        is discovered by walking upward from ``project_dir`` to the
+        ``.anvil/`` install marker; when no marker exists the consumer
+        tier is skipped (registered types only).
 
     Returns
     -------
@@ -1965,7 +2164,7 @@ def load_project_brief(
     if fm is None:
         return None
 
-    brief = _parse_brief_body(fm, project_dir)
+    brief = _parse_brief_body(fm, project_dir, consumer_root=consumer_root)
 
     if validate_dirs:
         _validate_slug_directory_divergence(brief, project_dir)
@@ -1977,6 +2176,7 @@ def load_project_brief_strict(
     project_dir: Path,
     *,
     validate_dirs: bool = False,
+    consumer_root: Optional[Path] = None,
 ) -> ProjectBrief:
     """Strict loader for ``<project_dir>/BRIEF.md``.
 
@@ -1996,6 +2196,8 @@ def load_project_brief_strict(
     project_dir
         Directory containing the project BRIEF.
     validate_dirs
+        See :func:`load_project_brief`.
+    consumer_root
         See :func:`load_project_brief`.
 
     Returns
@@ -2028,7 +2230,7 @@ def load_project_brief_strict(
             f"matching `---` line."
         )
 
-    brief = _parse_brief_body(fm, project_dir)
+    brief = _parse_brief_body(fm, project_dir, consumer_root=consumer_root)
 
     if validate_dirs:
         _validate_slug_directory_divergence(brief, project_dir)
@@ -2262,6 +2464,7 @@ def body_filename_for(slug: str) -> str:
 __all__ = [
     "ArtifactType",
     "BriefDocument",
+    "CONSUMER_MEMO_OVERLAYS_RELPATH",
     "CalibrationOverride",
     "DEFAULT_MAX_ITERATIONS",
     "MAX_DIM",
@@ -2270,9 +2473,12 @@ __all__ = [
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
     "RubricOverrides",
+    "SKILL_IDENTITY_ARTIFACT_TYPES",
     "TargetLengthOverrides",
     "TargetLengthRange",
     "body_filename_for",
+    "consumer_overlay_dir_for",
+    "discover_consumer_artifact_types",
     "load_project_brief",
     "load_project_brief_strict",
     "load_recommendation_target",
