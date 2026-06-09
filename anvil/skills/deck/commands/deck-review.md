@@ -28,6 +28,7 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
 - **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Rubric**: `anvil/skills/deck/rubric.md` (9 dimensions, /44, ≥39 threshold, four critical flags).
 - **Optional consumer override**: `.anvil/skills/deck/rubric.overrides.md`.
+- **Optional per-doc `rubric_overrides`** (issue #393, mirroring the memo #233 / #265 / #296 contract): the `rubric_overrides:` block on the matching `documents:` entry in the **project-level** `BRIEF.md` (the parent of the thread root, post-#382 nested model), parsed via `anvil/lib/project_brief.py::load_rubric_overrides_for_slug`. Carries per-dimension `dim_N_calibration` verbatim-suffix calibrations and `dim_N_waiver` operator-directed dimension exclusions (rationale-as-value). See step 5e (load), step 8 (calibration suffixes), step 9 (`_summary.md` audit block), and step 12 (waiver-normalized verdict).
 - **Sibling critics at same `N`** (read but not modified): `<thread>.{N}.narrative/_summary.md`, `<thread>.{N}.market/_summary.md`, `<thread>.{N}.design/_summary.md`. These contribute to the aggregated `verdict.md` if present.
 - **Optional `--rescore-mode <rescore-id>` flag** (issue #368): when set, the reviewer re-routes its staged_sidecar output from `<thread>.{N}.review/` to `<thread>.{N}.review.rescore-<rescore-id>/`, re-targets the prior-review lookup to `<thread>.{N}.review/` (NOT `<thread>.{N-1}.review/`) since the current version's legacy review IS the prior review for a rescore pass, and stamps `_meta.json` with `rescore_state: "completed"` + `rescore_id: "<rescore-id>"` (overwriting any placeholder `rescore_state: "scheduled"` left behind by `anvil:rubric-rebackport --rescore --apply`). Specialist critics (`deck-narrative`, `deck-market`, `deck-design`, `deck-vision`) are NOT rescored by this flag in v0 — only the aggregator `deck-review` rescores; specialist rescoring is a separate follow-on per the deck-review split-init precedent in PR #363. When the flag is unset, behavior is byte-identical to the default review path. See steps 3 + 4 for the full re-routing contract.
 
@@ -99,6 +100,14 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
    - **Escape hatch**: `<!-- anvil-lint-disable: deck_memo_parity -->` placed on the same line as a deliberately-deck-only or deliberately-memo-only claim (or on the line directly above) downgrades that finding from `warning` to `info`. Use case: the memo says "we considered FTC enforcement" but the deck deliberately omits it for narrative density — the operator marks the claim and the lint stops complaining. Comma-separated rule lists (`<!-- anvil-lint-disable: deck_memo_parity, slide-content-overflow -->`) are honored.
    - **Canary anchor**: the load-bearing failure mode this lint catches is Citation Clear memo.4 ↔ deck.3, where the reviser introduced an insurer benchmark "~50–60% completion" into memo.4 that deck.3 lacked and no anvil primitive detected the drift (issue #200). The lint's first warning on the citation-clear thread on Phase A ship is the regression anchor.
    - Cache the `LintResult` for the `_summary.md` and `findings.md` writes below. **Do NOT OR this lint's findings into `lint_critical_flag`** — Phase A is observational only.
+5e. **Load `rubric_overrides` from the per-doc BRIEF entry** — issue #393 (the deck-side mirror of memo-review step 4h):
+   - Invoke `anvil/lib/project_brief.py::load_rubric_overrides_for_slug(<project_dir>, <slug>)`. The **project dir is the parent of the thread root** (the directory that contains the project-level `BRIEF.md` with the typed `documents:` schema, NOT the thread root itself and NOT a version subdirectory — the thread-level `<thread>/BRIEF.md` read at step 5 for claim grounding is a DIFFERENT surface). The slug is the thread's directory name. The loader returns a `RubricOverrides` instance per the schema documented in `project_brief.py`'s module docstring.
+   - The instance carries (deck-relevant fields):
+     - `calibrations: List[CalibrationOverride]` — per-dimension `dim_N_calibration` entries `(dimension: int 1-9, text: str)`. Consumed at step 8: the verbatim text attaches as a suffix to the affected dimension's `scoring.md` justification — but ONLY for dimensions this reviewer owns (2, 5, 6); calibrations on specialist-owned dims are surfaced in the `_summary.md.rubric_overrides` audit block and left to the specialist critics (deferred per the PR #363 split-init precedent — in v0 only this aggregator consumes overrides).
+     - `waivers: List[WaiverOverride]` — per-dimension `dim_N_waiver` entries `(dimension: int 1-9, rationale: str)` (issue #393). An operator-directed exclusion: the waived dimension is removed from BOTH the numerator and the denominator of the verdict at step 12, and the rationale is quoted **verbatim** in `verdict.md`. The rationale is mandatory — the loader rejects an unjustified waiver at parse time, and rejects a dimension that is both waived and calibrated.
+     - `unknown_keys: Dict[str, Any]` — forward-compat passthrough, surfaced in `_summary.md.rubric_overrides.unknown_keys` for operator visibility.
+   - **Graceful-degrade when absent**: the loader returns an empty `RubricOverrides` for any of: missing project BRIEF, malformed BRIEF, BRIEF that does not list this slug, BRIEF entry without a `rubric_overrides:` block. The reviewer's behavior on an empty instance is **byte-identical** to the pre-#393 status quo: no suffixes attached, no waiver normalization, `_summary.md.rubric_overrides` emitted with `ran: false` (or omitted). This is the load-bearing backwards-compat contract for threads that declare no overrides.
+   - Cache the `RubricOverrides` instance for steps 8, 9, 12, and 13.
 6. **Score owned dimensions**:
    - **Dim 2 — Problem clarity** (0–5): Does the problem slide convey what hurts, for whom, how much, in <30 seconds? Cite specific slide language. Vague problems, self-evident problems, or problems explained only via solution score low.
    - **Dim 5 — Traction / proof** (0–5): Does the traction slide show real evidence at the stage's level? Are projections clearly labeled as projections? Cross-check every number against `BRIEF.md` — any number on the slide not in the brief is a `Fabricated traction` critical flag.
@@ -120,6 +129,7 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
    - `Fabricated traction`: any traction number or customer logo on a slide not attested in `BRIEF.md`.
    - `Fabricated team credentials`: any bio claim not attested in `BRIEF.md`.
    - Open-ended: "any other issue a sophisticated investor would catch and disqualify on." Raise as the fourth-category flag with a one-paragraph justification.
+   - **Critical flags are NOT waivable** (issue #393 boundary): a `dim_N_waiver` from step 5e removes scoring weight ONLY. If content belonging to a waived dimension appears on a slide anyway (e.g., a team bio on a deck whose dim 6 is waived under a no-team-content directive), the flag machinery applies in full — a fabricated bio still raises `Fabricated team credentials` and still blocks advance regardless of the waiver.
 8. **Write `scoring.md`** as a markdown table for owned dimensions (others omitted or shown as N/A):
    ```
    | # | Dimension          | Weight | Score | Justification |
@@ -128,6 +138,8 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
    | 5 | Traction / proof   | 5      | 3     | Slide 8 lists 8 paying customers and 3 LOIs (all verified in brief). Missing: retention/cohort data and revenue cadence. |
    | 6 | Team credibility   | 4      | 3     | Founder bios are specific (prior roles named). Gap: no advisors slide; brief lists 2 advisors. |
    ```
+
+   **Rubric overrides — calibration suffixes** (issue #393, same verbatim-suffix contract as memo-review step 5): for each OWNED dimension N (2, 5, 6) with a `dim_N_calibration` declared in the cached `RubricOverrides` (step 5e), append the verbatim calibration text as a suffix to that dimension's justification BEFORE writing it to `scoring.md`. The mechanical helper is `anvil/lib/rubric_overrides_suffix.py::apply_calibration_to_justification(justification, overrides, dimension)` (single dim) or `apply_calibrations_to_scores(scores, overrides)` (batch) — invoke the helper rather than reproducing the suffix format by hand; the helper is the schema-of-record for the `"calibration applied: <verbatim override text>"` shape (prefix with one trailing space; override text byte-for-byte verbatim; one space joining suffix to existing prose; suffix becomes the whole justification when the reviewer wrote none). Zero-impact when the cached `RubricOverrides` is `None` / empty: the helper returns the input justification byte-for-byte unchanged — the scoring write path is byte-identical to pre-#393 behavior. A **waived** dimension is still scored and justified here (the score is observational; exclusion happens at verdict aggregation, step 12) — note the waiver in the justification (e.g., "waived per operator directive — excluded from verdict math; see verdict.md").
 9. **Write `_summary.md`** as a JSON-in-markdown scorecard with a top-level `rubric` block (issue #346) sibling to `lint`. The `lint` block is populated from the cached `LintResult` returned by step 5b; the `rubric` block carries the rubric the reviewer scored against so a downstream consumer aggregating across versions does not need to walk back to `anvil/skills/deck/rubric.md` (which may have changed between v3 and v5 of a long thread that spanned the `/40 → /44` migration):
    ```markdown
    # Review summary
@@ -192,6 +204,17 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
          "infos_by_token": []
        }
      },
+     "rubric_overrides": {
+       "ran": true,
+       "calibrations_applied": [
+         { "dimension": 5, "text": "pre-revenue pilot-stage deck — score traction on pilot conversion evidence, not revenue" }
+       ],
+       "waivers": [
+         { "dimension": 6, "rationale": "Operator directive 2026-06-09: no team content in this deck; team story lives in the team-thesis memo thread.", "weight": 4 }
+       ],
+       "waived_weight": 4,
+       "unknown_keys": []
+     },
      "critical_flag": false,
      "critical_flag_notes": []
    }
@@ -205,6 +228,13 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
      - auto-shrink: `{ "type": "auto_shrink_fit_compression", "slide_refs": ["Slide 9"], "justification": "Marp silent auto-shrink detected on N slide(s) — rendered PNG bbox shows slide content occupies <50% of peer-class median height. See lint.auto_shrink.findings for the per-slide breakdown." }`.
      Both flag categories live under the "fourth-category critical flag" bucket (per `rubric.md`'s open-ended slot for "any other issue a sophisticated investor would catch and disqualify on") — a deck whose slides visibly read smaller than peer slides reads as unfinished.
    - If a non-lint critical flag is also raised, populate `critical_flag_notes` with one object per flag: `{ "type": "fabricated_traction", "slide_ref": "Slide 8", "justification": "..." }`.
+   - The top-level `rubric_overrides` block (issue #393) is populated from the cached `RubricOverrides` from step 5e. The block lives at the **top level** of `_summary.md` (sibling to `rubric` and `lint`), NOT nested under `lint` — the `lint` namespace is reserved for deterministic mechanical checks; `rubric_overrides` is **per-thread reviewer configuration** (same rationale as the memo-review step 9 block). Shape:
+     - `ran` (`bool`): `true` when the loader returned a non-empty `RubricOverrides`; `false` when the loader returned an empty instance (no project BRIEF, no matching `documents:` entry, no `rubric_overrides:` block — the lenient-form contract). When `ran: false`, add `reason` (`str`) — e.g. `"no rubric_overrides block on BRIEF.md documents entry"` — and omit the remaining fields.
+     - `calibrations_applied` (`list[dict]`, only when `ran: true`): one `{dimension, text}` entry per `dim_N_calibration`, text **verbatim** (the same string suffixed into `scoring.md` for owned dims). `[]` when none.
+     - `waivers` (`list[dict]`, only when `ran: true`): one `{dimension, rationale, weight}` entry per `dim_N_waiver` — `rationale` verbatim from the BRIEF, `weight` the rubric weight the waiver removes from the verdict pool. `[]` when none.
+     - `waived_weight` (`int`, only when `ran: true`): sum of the `weight` fields across `waivers` — the denominator reduction step 12 applies. `0` when no waivers.
+     - `unknown_keys` (`list[str]`, only when `ran: true`): keys the loader preserved under forward-compat passthrough.
+   - **The `rubric_overrides` block does NOT participate in `critical_flag`** — it is observational reviewer-configuration metadata. The load-bearing surfacing is the `scoring.md` suffix (calibrations, step 8) and the waiver-normalized verdict + verbatim rationale quotes in `verdict.md` (waivers, steps 12–13); this block is the structured shadow / audit trail. Critical flags remain fully in force on waived dimensions per step 7.
 10. **Write slide-level `comments.md`**: list specific feedback keyed to slide number + heading. Group by severity (`blocker` / `major` / `minor` / `nit`). Example:
     ```
     ## Slide 8 — Traction
@@ -289,7 +319,13 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
     - Glob `<thread>.{N}.*/_summary.md` (siblings + self). Parse each.
     - For each rubric dimension, compute the aggregate score as the mean of non-null critic scores. Round to one decimal for display; sum for total.
     - For critical flag, take logical OR of all critic flags **including both pre-flight lints** (source-side `marp_lint` from step 5b AND post-render `auto_shrink_detector` from step 5c). If this `_summary.md`'s own `lint.errors > 0` OR `lint.auto_shrink.errors > 0`, the aggregated critical flag is true regardless of any other critic.
-    - Decision: `advance = (total >= 39) AND (no critical flag)`. When `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags; when `lint.auto_shrink.errors > 0`, the verdict additionally lists `Slide auto-shrink (lint)`. The rubric total is reported honestly but does not save the verdict.
+    - **Waiver normalization** (issue #393): when the cached `RubricOverrides` (step 5e) carries waivers, each waived dimension is removed from BOTH the numerator and the denominator of the threshold check:
+      - **Numerator**: exclude waived dims' aggregate scores from the total — `total_over_remaining = sum(aggregate score of every NON-waived dim)`.
+      - **Denominator / threshold**: scale the nominal threshold proportionally — `normalized_threshold = 39 × (44 − waived_weight) / 44`, where `waived_weight` is the sum of the waived dims' rubric weights. Compare against the **exact fraction** — do NOT round (e.g., dim 6 weight 4 waived: `39 × 40/44 = 390/11 ≈ 35.45`, so a 36/40 advances and a 35/40 does not). The mechanical helpers are `anvil/lib/rubric_overrides_suffix.py::normalized_advance_threshold(39, 44, waived_weight)` and `meets_normalized_threshold(total_over_remaining, 39, 44, waived_weight)` — invoke them rather than reproducing the fraction math by hand.
+      - **Critical flags are NOT waivable**: the critical-flag OR above runs over ALL dims including waived ones. A waiver removes scoring weight only.
+      - **`_meta.json` stamping stays NOMINAL** (issue #346 contract): `rubric_total: 44` and `advance_threshold: 39` identify the rubric version and are NOT rewritten under a waiver. The per-review waiver record + effective normalized threshold live in the `_summary.md.rubric_overrides` block (step 9) and the `verdict.md` prose (step 13).
+      - **Zero-impact when no waivers**: `waived_weight = 0`, `normalized_threshold = 39`, and the decision below is byte-identical to pre-#393 behavior.
+    - Decision: `advance = (total_over_remaining >= normalized_threshold) AND (no critical flag)` — which with no waivers reduces to the nominal `advance = (total >= 39) AND (no critical flag)`. When `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags; when `lint.auto_shrink.errors > 0`, the verdict additionally lists `Slide auto-shrink (lint)`. The rubric total is reported honestly but does not save the verdict.
 
     **Append `score_history` row with `rubric_id` (issue #346)**: the orchestrator (the command that drives review→revise iterations) appends one row to `<thread>.{N}/_progress.json.metadata.score_history` per finished review iteration. Per `anvil/lib/snippets/progress.md` §"Convergence fields → score_history", the canonical row shape is `{iteration, total, threshold, rubric_id}` — for the deck skill at /44, that's `{iteration: <N>, total: <aggregated-total>, threshold: 39, rubric_id: "anvil-deck-v2"}`. A thread that spans the `/40 → /44` migration records different `rubric_id` values across its rows; readers tolerate rows missing `rubric_id` per the backwards-compat contract (treat as `"unknown/legacy"`).
 12b. **Emit rubric-version-transition subsection in `findings.md` when the prior rubric differs (issue #346)**: when the cached `prior_rubric_id` from step 4 is non-`None` AND differs from the current `"anvil-deck-v2"`, OR when `prior_rubric_id == None` AND a prior review sibling exists (legacy pre-#346 review), append a `## Rubric version transition` subsection to `findings.md` (sibling to the existing `## Findings`, `## Lint findings`, `## Auto-shrink lint findings`, and `## Parity-lint findings` subsections). Three shapes:
@@ -347,6 +383,18 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
     2. Resolve the 2 overflow-lint errors on slides 4 and 7 (critical flag — blocks advance).
     3. Slide 11 projection — replace hockey stick with month-by-month build.
     4. Slide 8 ARR discrepancy ($420k vs brief $380k).
+    ```
+
+    **Waiver surfacing in `verdict.md`** (issue #393): when the cached `RubricOverrides` carries waivers, the verdict MUST state the normalized judgment explicitly and quote each waiver rationale **verbatim** — an investor-send reviewer reads this artifact and must see what was excluded and why. The header lines change shape and a `## Waived dimensions` section is added (the dimension-summary table marks waived rows `waived` in the score column):
+
+    ```markdown
+    **Total**: 36.0 / 40 (waiver-normalized; nominal rubric /44 with dim 6 waived, weight 4)
+    **Decision**: `advance: true` (36.0 ≥ normalized threshold 39 × 40/44 = 390/11 ≈ 35.45)
+    **Critical flags**: 0
+
+    ## Waived dimensions
+
+    - **Dim 6 — Team credibility (weight 4)**: waived per project BRIEF `rubric_overrides.dim_6_waiver`. Operator rationale (verbatim): "Operator directive 2026-06-09: no team content in this deck; team story lives in the team-thesis memo thread." Waiver removes scoring weight only — critical flags (e.g. `Fabricated team credentials`) remain in force on this dimension.
     ```
 14. **Update `_meta.json`** inside the staging dir: `finished: <ISO>`.
 15. **Update `_progress.json`** inside the staging dir: `phases.review.state = done`, `phases.review.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.review.tmp/` → `<thread>.{N}.review/`. The final-named dir only ever exists in **complete** form.

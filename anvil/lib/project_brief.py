@@ -124,6 +124,13 @@ Public API
     Per-dimension override: holds the dimension number (1-9) and the
     calibration prose. Returned by ``RubricOverrides.calibrations``.
 
+``WaiverOverride``
+    Per-dimension waiver (issue #393): holds the dimension number (1-9)
+    and the mandatory operator rationale (rationale-as-value on disk:
+    ``dim_6_waiver: "<why>"``). Returned by ``RubricOverrides.waivers``.
+    A waived dimension is removed from both the numerator and the
+    denominator at verdict time; critical flags are NOT waivable.
+
 ``ProjectBrief``
     Pydantic model for the parsed BRIEF. Carries ``project``,
     ``audience``, ``hard_rules``, and ``documents``.
@@ -363,16 +370,23 @@ _FRONTMATTER_DELIM = "---"
 # documented in ``anvil/skills/memo/SKILL.md`` §"Length targets".
 _WORDS_PER_PAGE = 600
 
-# Memo rubric dimension range. The memo rubric ships 9 dimensions per
-# ``anvil/skills/memo/rubric.md``; the ``dim_N_calibration`` key range
-# is the closed interval [1, 9]. Other skills' rubrics may differ; if
-# this loader is ever promoted to anvil/lib/ the range must be
-# parameterized.
+# Rubric dimension range for the ``dim_N_calibration`` / ``dim_N_waiver``
+# key families: the closed interval [1, 9]. Both shipped consumers (memo
+# per ``anvil/skills/memo/rubric.md``, deck per
+# ``anvil/skills/deck/rubric.md`` — the issue #393 second consumer) carry
+# 9-dimension rubrics, so the range holds as-is. If a future consumer
+# ships a rubric with a different dimension count, the range must be
+# parameterized per artifact type.
 MIN_DIM = 1
 MAX_DIM = 9
 
 # `dim_N_calibration` is a templated key; the regex below pins the shape.
 _DIM_CALIBRATION_RE = re.compile(r"^dim_(\d+)_calibration$")
+
+# `dim_N_waiver` is the operator-directed dimension-exclusion key family
+# (issue #393). Rationale-as-value shape: the YAML value IS the mandatory
+# non-empty rationale string (`dim_6_waiver: "<why this dim is excluded>"`).
+_DIM_WAIVER_RE = re.compile(r"^dim_(\d+)_waiver$")
 
 # Recognized top-level keys inside a ``rubric_overrides:`` block.
 # Anything else is preserved verbatim under ``unknown_keys`` (forward-
@@ -540,6 +554,51 @@ class CalibrationOverride(BaseModel):
     )
 
 
+class WaiverOverride(BaseModel):
+    """One per-dimension waiver — an operator-directed content exclusion (issue #393).
+
+    Returned by ``RubricOverrides.waivers`` as a list, sorted by dimension
+    number. A waived dimension is removed from BOTH the numerator and the
+    denominator of the verdict computation; the advance threshold scales
+    proportionally (``nominal_threshold * (nominal_total - waived_weight)
+    / nominal_total`` — see
+    ``anvil/lib/rubric_overrides_suffix.py::normalized_advance_threshold``).
+
+    The on-disk shape is **rationale-as-value**: ``dim_6_waiver: "<why>"``.
+    The rationale is MANDATORY — an unjustified waiver is rejected at
+    parse time (paired-rationale discipline, same as the iteration-cap
+    override / ``--polish`` reason precedent). The rationale is surfaced
+    **verbatim** in the reviewer's ``verdict.md`` so an investor-send
+    reader sees what was excluded and why.
+
+    Waivers remove scoring weight ONLY. Critical flags are NOT waivable:
+    a dim-6 waiver does not suppress the ``Fabricated team credentials``
+    flag machinery — if waived-dimension content appears in the artifact
+    anyway, the flag fires in full.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: int = Field(
+        ...,
+        ge=MIN_DIM,
+        le=MAX_DIM,
+        description=(
+            "Rubric dimension number (1-9). The on-disk key is "
+            "``dim_<dimension>_waiver``."
+        ),
+    )
+    rationale: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Mandatory operator rationale for the exclusion. Verbatim text "
+            "— no rewording, no truncation. Quoted verbatim in verdict.md; "
+            "the author's exact wording is the load-bearing audit trail."
+        ),
+    )
+
+
 class RubricOverrides(BaseModel):
     """Parsed ``rubric_overrides`` block from a BRIEF document entry.
 
@@ -569,6 +628,15 @@ class RubricOverrides(BaseModel):
         description=(
             "Per-dimension calibration overrides, sorted by dimension. "
             "Each entry corresponds to a ``dim_<N>_calibration`` key on disk."
+        ),
+    )
+    waivers: List[WaiverOverride] = Field(
+        default_factory=list,
+        description=(
+            "Per-dimension waivers (issue #393), sorted by dimension. Each "
+            "entry corresponds to a ``dim_<N>_waiver`` key on disk "
+            "(rationale-as-value). A dimension may carry a calibration OR "
+            "a waiver, never both — the parser rejects the conflict."
         ),
     )
     target_length: Optional[TargetLengthRange] = Field(
@@ -606,6 +674,7 @@ class RubricOverrides(BaseModel):
         return (
             self.memo_subtype is None
             and not self.calibrations
+            and not self.waivers
             and self.target_length is None
             and not self.unknown_keys
         )
@@ -620,6 +689,19 @@ class RubricOverrides(BaseModel):
         for entry in self.calibrations:
             if entry.dimension == dimension:
                 return entry.text
+        return None
+
+    def waiver_for(self, dimension: int) -> Optional[str]:
+        """Return the waiver rationale for ``dimension`` or ``None`` (issue #393).
+
+        Convenience accessor for the reviewer's verdict aggregation:
+        ``override.waiver_for(6)`` returns the operator's verbatim waiver
+        rationale for rubric dim 6, or ``None`` when the dimension is not
+        waived.
+        """
+        for entry in self.waivers:
+            if entry.dimension == dimension:
+                return entry.rationale
         return None
 
 
@@ -1164,6 +1246,17 @@ def _parse_dim_calibration_key(key: str) -> Optional[int]:
         return None
 
 
+def _parse_dim_waiver_key(key: str) -> Optional[int]:
+    """Return the dimension number from a ``dim_<N>_waiver`` key, or ``None`` (issue #393)."""
+    m = _DIM_WAIVER_RE.match(key)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
 def _normalize_rubric_overrides(
     raw: Any, field_path: str
 ) -> Optional[RubricOverrides]:
@@ -1181,10 +1274,13 @@ def _normalize_rubric_overrides(
 
     Per-field validation is STRICT however: a malformed
     ``memo_subtype`` (non-string, empty), a ``dim_N_calibration`` with
-    a non-string value, an out-of-range dim number, or a malformed
-    ``target_length`` raises ``ValueError`` with the field path. The
-    BRIEF-side reader is the schema-of-record now — silent drops would
-    confuse the operator.
+    a non-string value, a ``dim_N_waiver`` with a missing / empty /
+    non-string rationale (issue #393 — an unjustified waiver is rejected
+    at parse time), an out-of-range dim number, a dimension that is BOTH
+    waived and calibrated (contradictory — the error names both keys), or
+    a malformed ``target_length`` raises ``ValueError`` with the field
+    path. The BRIEF-side reader is the schema-of-record now — silent
+    drops would confuse the operator.
 
     Returns ``None`` for an absent value (raw is None). Returns an
     empty :class:`RubricOverrides` for a non-dict or empty dict (with
@@ -1202,10 +1298,12 @@ def _normalize_rubric_overrides(
 
     memo_subtype: Optional[str] = None
     calibrations: List[CalibrationOverride] = []
+    waivers: List[WaiverOverride] = []
     target_length: Optional[TargetLengthRange] = None
     unknown_keys: Dict[str, Any] = {}
 
     seen_dims: set[int] = set()
+    seen_waiver_dims: set[int] = set()
 
     for key, value in raw.items():
         if key == "memo_subtype":
@@ -1245,6 +1343,36 @@ def _normalize_rubric_overrides(
             calibrations.append(CalibrationOverride(dimension=dim, text=value))
             continue
 
+        waiver_dim = _parse_dim_waiver_key(key)
+        if waiver_dim is not None:
+            if waiver_dim < MIN_DIM or waiver_dim > MAX_DIM:
+                raise ValueError(
+                    f"BRIEF.{field_path}.{key}: dimension {waiver_dim} out "
+                    f"of range [{MIN_DIM}, {MAX_DIM}]."
+                )
+            if waiver_dim in seen_waiver_dims:
+                raise ValueError(
+                    f"BRIEF.{field_path}.{key}: dimension {waiver_dim} "
+                    f"waived more than once (canonical form is "
+                    f"`dim_{waiver_dim}_waiver`)."
+                )
+            # Rationale-as-value shape (issue #393): the YAML value IS the
+            # mandatory rationale. An unjustified waiver (missing / empty /
+            # whitespace-only / non-string value) is rejected at parse time
+            # — paired-rationale discipline, same as the iteration-cap
+            # override precedent.
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"BRIEF.{field_path}.{key}: a waiver REQUIRES a "
+                    f"non-empty rationale string as its value (got "
+                    f"{value!r}); suggested fix: write "
+                    f'`dim_{waiver_dim}_waiver: "<why this dimension is '
+                    f'excluded, e.g. an operator directive>"`.'
+                )
+            seen_waiver_dims.add(waiver_dim)
+            waivers.append(WaiverOverride(dimension=waiver_dim, rationale=value))
+            continue
+
         # Unknown key — preserve verbatim with a warning so a future
         # shipped key (e.g. concision_discipline) can land in BRIEF.md
         # ahead of loader support without breaking existing consumers.
@@ -1257,12 +1385,31 @@ def _normalize_rubric_overrides(
             stacklevel=4,
         )
 
-    # Sort calibrations by dimension for deterministic iteration order.
+    # A dimension that is BOTH waived and calibrated is contradictory —
+    # a waiver excludes the dimension from judgment; a calibration tunes
+    # how the dimension is judged. Reject with an error naming both keys
+    # (issue #393 AC3). Checked after the loop so the rejection is
+    # independent of YAML key order.
+    conflicted = sorted(seen_dims & seen_waiver_dims)
+    if conflicted:
+        dim = conflicted[0]
+        raise ValueError(
+            f"BRIEF.{field_path}: dimension {dim} is both waived and "
+            f"calibrated — `dim_{dim}_waiver` and `dim_{dim}_calibration` "
+            f"are contradictory (a waiver excludes the dimension from "
+            f"judgment; a calibration tunes how it is judged). Keep "
+            f"exactly one of the two keys."
+        )
+
+    # Sort calibrations + waivers by dimension for deterministic iteration
+    # order.
     calibrations.sort(key=lambda c: c.dimension)
+    waivers.sort(key=lambda w: w.dimension)
 
     return RubricOverrides(
         memo_subtype=memo_subtype,
         calibrations=calibrations,
+        waivers=waivers,
         target_length=target_length,
         unknown_keys=unknown_keys,
     )
@@ -2272,6 +2419,7 @@ __all__ = [
     "RubricOverrides",
     "TargetLengthOverrides",
     "TargetLengthRange",
+    "WaiverOverride",
     "body_filename_for",
     "load_project_brief",
     "load_project_brief_strict",
