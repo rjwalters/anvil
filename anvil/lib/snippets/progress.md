@@ -245,7 +245,17 @@ well — belt-and-suspenders rejection).
 The reference implementation ships at `anvil/lib/sidecar.py`:
 
 ```python
-from anvil.lib.sidecar import staged_sidecar, cleanup_stale_staging
+from anvil.lib.sidecar import (
+    staged_sidecar,
+    cleanup_one_staging,
+    cleanup_stale_staging,
+)
+
+# Per-critic entry-step sweep — called by each command's "Discover
+# state" step BEFORE opening the staged_sidecar context. Parallel-safe:
+# targets ONLY the staging dir corresponding to this critic's
+# final_dir (issue #376).
+cleanup_one_staging(Path("<thread>.{N}.review"))
 
 with staged_sidecar(
     final_dir=Path("<thread>.{N}.review"),
@@ -257,15 +267,27 @@ with staged_sidecar(
 # On clean __exit__: required-files manifest verified, dir renamed.
 # On exception or missing required: staging dir left in place for GC.
 
-# Startup-time sweep — called by each command's "Discover state" step.
+# Operator-facing portfolio-wide sweep — maintenance use only, NOT
+# safe to call from a per-critic entry step in a parallel fan-out
+# workflow (see issue #376).
 cleanup_stale_staging(portfolio_dir)
 ```
 
-On startup, every command that operates on a thread SHOULD first call
-`cleanup_stale_staging(portfolio_dir)` to sweep `.<slug>.*.tmp/` dirs
-from prior interrupts before doing its own work. Restart-on-detection
-is the v0 contract — resume-from-staging is deferred (critics are
-cheap; a restart preserves more invariants).
+On entry, every command that operates on a thread SHOULD first call
+`cleanup_one_staging(<final_dir>)` — passing the SAME `final_dir` it is
+about to hand to `staged_sidecar` — to sweep a `.<final_dir>.tmp/` left
+behind by a prior crashed run of THIS SAME critic on THIS SAME version.
+The per-critic sweep is **parallel-safe**: when N critics fan out
+concurrently under the same portfolio root (the canonical anvil:deck
+workflow — 4 critics × N decks — and the increasingly canonical memo
+workflow — perspective + hyperlinks + citations + image-accessibility),
+each one's entry-step sweep is bounded to its own staging path. The
+operator-facing `cleanup_stale_staging(portfolio_dir)` sweeps ALL
+`.<slug>.*.tmp/` shapes under `portfolio_dir` — including in-flight
+staging dirs from sibling critics — and MUST NOT be called from a
+per-critic entry step in any parallel fan-out workflow (issue #376).
+Restart-on-detection is the v0 contract — resume-from-staging is
+deferred (critics are cheap; a restart preserves more invariants).
 
 Resume-state recovery for a partially-staged sidecar is unnecessary:
 the staging dir is silently swept and the command re-enters its phase

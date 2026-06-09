@@ -29,10 +29,21 @@ This module provides the directory-level analog:
    ``<slug>.<N>.<tag>/``.
 3. On exception or missing-required-file, the staged dir is **left in
    place** so a forensic check can see what was produced, and the next
-   startup sweeps it.
-4. A startup-time sweep (:func:`cleanup_stale_staging`) walks a parent
-   directory for ``*.tmp/`` leading-dot dirs and removes them, logging
-   the count.
+   per-critic sweep removes it.
+4. A per-critic entry-step sweep (:func:`cleanup_one_staging`) targets
+   only the *single* staging path that corresponds to the calling
+   critic's intended ``final_dir``. It is the load-bearing surface for
+   the 41 wired commands across 8 skills and is **parallel-safe**:
+   concurrent critics writing different sidecars under the same
+   portfolio root never sweep each other's in-flight staging dirs
+   (issue #376).
+5. An operator-facing portfolio-wide sweep
+   (:func:`cleanup_stale_staging`) walks a parent directory for
+   ``*.tmp/`` leading-dot dirs and removes them, logging the count. It
+   is **NOT** safe to call from a per-critic entry step in a parallel
+   fan-out workflow — it will sweep sibling critics' in-flight staging
+   dirs. Reserve it for operator-time maintenance (e.g. a one-shot
+   portfolio orphan-cleanup pass).
 
 The leading-dot + ``.tmp`` suffix shape is **safe from accidental
 discovery** by :func:`anvil.lib.critics.discover_critics`:
@@ -52,7 +63,16 @@ API
 
 .. code-block:: python
 
-    from anvil.lib.sidecar import staged_sidecar, cleanup_stale_staging
+    from anvil.lib.sidecar import (
+        staged_sidecar,
+        cleanup_one_staging,
+        cleanup_stale_staging,
+    )
+
+    # Per-critic entry-step sweep: targets ONLY the staging path
+    # corresponding to this critic's intended final_dir. Parallel-safe
+    # under fan-out workflows (issue #376).
+    cleanup_one_staging(Path("output/acme-seed.3.review"))
 
     # Stage + atomically rename a critic sibling directory.
     with staged_sidecar(
@@ -64,7 +84,9 @@ API
         (staging / "scoring.md").write_text(...)
         # ... and so on for every required file.
 
-    # On a startup, sweep any leftover staging dirs from prior interrupts.
+    # Operator-facing portfolio-wide sweep — maintenance use only, NOT
+    # safe to call from a per-critic entry step in a parallel fan-out
+    # workflow (see issue #376).
     cleanup_stale_staging(Path("output"))
 
 Contract
@@ -81,11 +103,20 @@ Contract
   :class:`FileExistsError` immediately — atomic rename only works onto a
   non-existent target, and silently overwriting would defeat the
   immutability guarantee documented in ``anvil/lib/snippets/version_layout.md``.
+- ``cleanup_one_staging(final_dir)`` removes exactly the staging path
+  at ``staging_path_for(final_dir)`` if it exists and matches the
+  leading-dot + ``.tmp`` shape this module owns. Returns ``True`` if a
+  staging dir was removed, ``False`` otherwise. Idempotent and safe to
+  call repeatedly. This is the per-critic entry-step sweep — it never
+  touches sibling critics' staging dirs (issue #376).
 - ``cleanup_stale_staging(parent)`` walks ``parent`` for direct children
   whose name starts with ``.`` AND ends with ``.tmp`` (the leading-dot
   + suffix shape this module owns) and removes them. It is idempotent
   and safe to call repeatedly. It logs the removed-dir names at INFO
-  level via the :mod:`logging` standard library.
+  level via the :mod:`logging` standard library. **Operator-facing
+  maintenance surface only** — calling this from a per-critic entry
+  step in a parallel fan-out workflow will sweep sibling critics'
+  in-flight staging dirs (issue #376).
 
 Subprocess-only by default
 --------------------------
@@ -111,6 +142,7 @@ __all__ = [
     "SidecarIncompleteError",
     "staged_sidecar",
     "staging_path_for",
+    "cleanup_one_staging",
     "cleanup_stale_staging",
 ]
 
@@ -225,8 +257,9 @@ def staged_sidecar(
     SidecarIncompleteError
         If clean context exit finds any name in ``required_files``
         missing from the staging dir. The staging dir is left in place
-        for forensic inspection; the next
-        :func:`cleanup_stale_staging` call will remove it.
+        for forensic inspection; the next per-critic invocation's
+        :func:`cleanup_one_staging` call (or an operator-time
+        :func:`cleanup_stale_staging` sweep) will remove it.
     Exception
         Anything raised in the context body propagates unchanged. The
         staging dir is left in place (no rename); the exception
@@ -254,7 +287,8 @@ def staged_sidecar(
         except RuntimeError:
             ...
         # The staging dir .<name>.tmp/ exists with verdict.md only; the
-        # final dir was never created. The next startup sweeps the .tmp/.
+        # final dir was never created. The next entry-step
+        # cleanup_one_staging(final_dir) call sweeps the .tmp/.
     """
     final_dir = Path(final_dir)
     staging = staging_path_for(final_dir)
@@ -270,8 +304,9 @@ def staged_sidecar(
     # If a previous interrupt left a staging dir with the same name in
     # place, wipe it before we re-enter — otherwise our mkdir would fail
     # and we'd be unable to make forward progress. This is the only path
-    # where staged_sidecar deletes; cleanup_stale_staging is the
-    # operator-facing sweep.
+    # where staged_sidecar itself deletes; cleanup_one_staging is the
+    # per-critic entry-step sweep and cleanup_stale_staging is the
+    # operator-facing portfolio-wide sweep.
     if staging.exists():
         _log.info(
             "staged_sidecar: removing prior staging dir %s (interrupted "
@@ -289,7 +324,7 @@ def staged_sidecar(
         # next-startup GC. Do NOT rename.
         _log.info(
             "staged_sidecar: exception in body; leaving staging dir %s "
-            "for next-startup cleanup_stale_staging() sweep",
+            "for next-invocation cleanup_one_staging() sweep",
             staging,
         )
         raise
@@ -329,7 +364,91 @@ def _missing_required_files(
 
 
 # ---------------------------------------------------------------------------
-# Startup-time sweep
+# Per-critic entry-step sweep (parallel-safe)
+# ---------------------------------------------------------------------------
+
+
+def cleanup_one_staging(final_dir: Path) -> bool:
+    """Remove only the staging dir corresponding to ``final_dir``.
+
+    Computes ``staging_path_for(final_dir)`` and removes that single
+    directory if (a) it exists, (b) it is a directory, and (c) its name
+    matches the leading-dot + :data:`STAGING_SUFFIX` shape this module
+    owns. Returns ``True`` iff a staging dir was actually removed.
+
+    This is the **per-critic entry-step sweep** — the load-bearing
+    surface for the 41 wired commands across 8 skills. It is
+    **parallel-safe**: when two critics fan out concurrently under the
+    same portfolio root with distinct ``final_dir`` values, each one
+    targets only its own staging path and never disturbs the sibling's
+    in-flight staging dir (issue #376).
+
+    Idempotent: a second call on the same ``final_dir`` returns
+    ``False`` because the first call already removed (or found absent)
+    the target.
+
+    Safe when:
+
+    - The staging path does not exist (returns ``False``).
+    - The parent directory does not exist (returns ``False``).
+    - The path exists but is a file, not a directory (returns ``False``
+      — this module never deletes files).
+    - The staging name does not match the leading-dot + ``.tmp`` shape
+      (returns ``False`` — defensive against external callers passing a
+      ``final_dir`` whose derived staging name happens to be unusual).
+
+    Logs at INFO level the removed path (one log line per removal).
+
+    Parameters
+    ----------
+    final_dir:
+        The intended final path for the critic sibling directory. The
+        staging path is computed via :func:`staging_path_for`. The
+        ``final_dir`` itself is NOT touched by this function.
+
+    Returns
+    -------
+    ``True`` if a staging directory was removed, ``False`` otherwise.
+
+    Examples
+    --------
+    Happy path — a leftover staging dir from a prior crash is swept::
+
+        cleanup_one_staging(Path("output/thread.4.review"))
+        # If output/.thread.4.review.tmp/ exists, it is removed.
+
+    No-op — nothing to sweep::
+
+        cleanup_one_staging(Path("output/thread.4.review"))
+        # If output/.thread.4.review.tmp/ does not exist, returns False.
+
+    Parallel-safety guarantee::
+
+        # Critic A and Critic B fan out concurrently:
+        cleanup_one_staging(Path("p/thread.4.perspective"))  # touches A only
+        cleanup_one_staging(Path("p/thread.4.hyperlinks"))   # touches B only
+        # Each call's scope is bounded to a single staging path.
+    """
+    final_dir = Path(final_dir)
+    staging = staging_path_for(final_dir)
+
+    if not staging.exists():
+        return False
+    if not staging.is_dir():
+        return False
+    if not _is_staging_dirname(staging.name):
+        return False
+
+    shutil.rmtree(staging)
+    _log.info(
+        "cleanup_one_staging: removed stale staging dir %s",
+        staging,
+    )
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Operator-facing portfolio-wide sweep
 # ---------------------------------------------------------------------------
 
 
@@ -353,6 +472,17 @@ def cleanup_stale_staging(parent: Path) -> List[Path]:
 
     Logs at INFO level the count and names of removed dirs (one log line
     per call).
+
+    **Operator-facing maintenance surface only.** This function sweeps
+    *every* leading-dot ``.tmp/`` staging dir under ``parent`` — including
+    staging dirs that belong to **other critics currently writing**.
+    Calling this from a per-critic entry step in a parallel fan-out
+    workflow (e.g. memo-perspective + memo-hyperlinks running
+    concurrently) causes the second-starting critic to ``rmtree`` the
+    first-starting critic's in-flight staging dir mid-write, producing
+    silently-truncated final sidecars (issue #376). Per-critic entry
+    steps MUST use :func:`cleanup_one_staging` instead; this function is
+    reserved for operator-time portfolio-wide orphan cleanup.
 
     Parameters
     ----------

@@ -52,7 +52,7 @@ def test_ip_uspto_finalize_doc_names_required_files_manifest():
 
 def test_ip_uspto_finalize_doc_invokes_cleanup_sweep():
     text = _read()
-    assert "cleanup_stale_staging" in text
+    assert "cleanup_one_staging" in text
 
 
 def test_ip_uspto_finalize_doc_describes_atomic_rename_contract():

@@ -32,7 +32,7 @@ This command is the memo-skill analog of `memo-render` for the citation-coverage
   _findings.json  Structured payload from CoverageResult.to_json() (informational companion).
 ```
 
-**Atomicity** (issue #350): when `--write-review` is set, the citations sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The two files (`_review.json`, `_findings.json`) are staged under a leading-dot sibling `.<thread>.{N}.citations.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.citations/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.citations.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+**Atomicity** (issue #350, #376): when `--write-review` is set, the citations sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The two files (`_review.json`, `_findings.json`) are staged under a leading-dot sibling `.<thread>.{N}.citations.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.citations/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.citations.tmp/` dir on disk that the next invocation's `cleanup_one_staging(<thread>.{N}.citations)` per-critic sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
 
 The `_review.json` carries:
 
@@ -43,7 +43,7 @@ The `_review.json` carries:
 
 ## Procedure
 
-1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `<thread>.md` present. If no such version exists, exit with a notice (`No memo version found; nothing to scan.`). When `--write-review` is set, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<thread>.{N}/`. This removes any leftover `.<thread>.<M>.citations.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed session (issue #350). The sweep is idempotent and logs at INFO level the count + names of removed dirs.
+1. **Discover state**: enumerate `<thread>.{N}/` dirs; pick the highest `N` with `<thread>.md` present. If no such version exists, exit with a notice (`No memo version found; nothing to scan.`). When `--write-review` is set, **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.citations)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.citations.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). The sweep is idempotent and logs at INFO level when it removes a dir.
 2. **Invoke the citation-coverage scan**: call
 
    ```python
