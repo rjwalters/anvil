@@ -6,8 +6,8 @@ description: Rehearser command for the slides skill. Deterministic-first time-bu
 # slides-rehearse — Rehearser
 
 **Role**: rehearser (time-budget + density check).
-**Reads**: latest `<thread>.{N}/deck.md` AND `<thread>.{N}/notes/*.md` AND `<thread>/BRIEF.md` (for `time_slot_minutes`).
-**Writes**: `<thread>.{N}.rehearse/` with `timing.md`, `density.md`, and `_progress.json`.
+**Reads**: latest `<thread>/<thread>.{N}/deck.md` AND `<thread>/<thread>.{N}/notes/*.md` (the version dir is nested under the thread root per the artifact contract) AND `<thread>/BRIEF.md` (for `time_slot_minutes`).
+**Writes**: `<thread>/<thread>.{N}.rehearse/` with `timing.md`, `density.md`, and `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.rehearse/` references below are shorthand for these nested paths.
 
 This is the rehearsal critic — it does NOT produce a 1-40 rubric score (that's the reviewer's job). It produces two deterministic critical-flag verdicts (density flag and time flag) that the reviewer propagates.
 
@@ -18,11 +18,13 @@ Two of the three structural critical flags (density and time) are mechanical —
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Brief**: `<thread>/BRIEF.md` for `time_slot_minutes` frontmatter. If absent, defaults to 45 minutes and warns.
 - **Per-thread overrides**: `<thread>/.anvil.json` may set `time_per_slide_seconds_base` to override the default 90s base.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir under rehearsal:
 
 ```
 <thread>.{N}.rehearse/
@@ -35,7 +37,7 @@ Two of the three structural critical flags (density and time) are mechanical —
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.rehearse)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.rehearse.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). If `<thread>.{N}.rehearse/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early with a notice (idempotent).
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.rehearse)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.rehearse.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). If `<thread>.{N}.rehearse/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early with a notice (idempotent).
 2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial rehearse left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.rehearse.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.rehearse/` exists without complete output, delete and re-run.
 3. **Open the staged sidecar** for the rehearse dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.rehearse, required_files=["timing.md", "density.md", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.rehearse.tmp/`), NOT inside the final `<thread>.{N}.rehearse/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`: `phases.rehearse.state = in_progress`, `phases.rehearse.started = <ISO>`, `for_version: <N>`.
 4. **Parse the deck**: split `deck.md` on `---` slide separators. Skip the Marp frontmatter block at the top (everything before the first slide-delimiting `---` that follows the frontmatter block). For each slide:

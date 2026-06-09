@@ -7,7 +7,7 @@ description: Outliner command for the slides skill. Produces a pre-draft narrati
 
 **Role**: outliner (pre-draft narrative shaping).
 **Reads**: `<thread>/BRIEF.md`, `<thread>/refs/**` (if present).
-**Writes**: `<thread>.0.outline/outline.md` and `<thread>.0.outline/_progress.json`.
+**Writes**: `<thread>/<thread>.0.outline/outline.md` and `<thread>/<thread>.0.outline/_progress.json` (the outline sibling is nested under the thread root per the artifact contract; bare `<thread>.0.outline/` references below are shorthand).
 
 The outline sibling is **read-only once written** (state: `done` in its own `_progress.json`). The drafter consumes it without modifying it.
 
@@ -38,6 +38,8 @@ If any such heading is present AND the section has more than 3 lines of content,
 - **References** (`<thread>/refs/**`): any supporting material (papers, prior decks, datasets). Treated as read-only context.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`:
 
 ```
 <thread>.0.outline/

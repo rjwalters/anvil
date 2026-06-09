@@ -6,7 +6,7 @@ description: Portfolio orchestrator for proposal threads. Discovers all proposal
 # proposal — Portfolio orchestrator
 
 **Role**: portfolio orchestrator (read-only; reports state, does not mutate).
-**Reads**: all `<thread>.*/` directories under the current working directory.
+**Reads**: all `<thread>/` thread directories under the current working directory (the project root), and the `<thread>.{N}/` / `<thread>.{N}.<critic>/` directories nested within each thread root per the artifact contract.
 **Writes**: nothing on disk. Returns a status report.
 
 ## Purpose
@@ -15,14 +15,14 @@ A single command that an operator (or orchestrating agent) runs to see the state
 
 ## Inputs
 
-- **CWD**: the portfolio directory containing proposal threads.
-- **Discovery rule**: a thread is detected by the presence of any `<slug>.{N}/` directory (with `_progress.json`). The slug is the directory name up to the first `.<digit>`. A bare `<slug>/` directory without any versioned siblings is treated as a brief-only thread in state `EMPTY`.
+- **CWD**: the project root containing proposal thread directories (`<slug>/`). Version dirs are nested INSIDE each thread root (`<slug>/<slug>.{N}/`), per the post-#382 artifact contract in `SKILL.md`.
+- **Discovery rule** (two-level): a thread is a `<slug>/` directory under cwd that contains any nested `<slug>.{N}/` version dir (with `_progress.json`). A `<slug>/` thread dir without any versioned children is treated as a brief-only thread in state `EMPTY`.
 
 ## Procedure
 
-1. Enumerate all directories under cwd matching the pattern `<slug>` or `<slug>.{N}` or `<slug>.{N}.<critic>` (where `<critic>` ∈ {`review`, `audit`, `synthesis`, `perspective`, `critic`, ...}).
-2. Group by slug. For each slug, identify:
-   - The latest `N` for which `<slug>.{N}/` exists.
+1. Enumerate `<slug>/` thread directories under cwd (the project root). Then, **within each thread root**, enumerate the nested `<slug>.{N}` and `<slug>.{N}.<critic>` directories (where `<critic>` ∈ {`review`, `audit`, `synthesis`, `perspective`, `critic`, ...}). Version dirs and critic siblings live INSIDE the thread root, not as siblings of `<slug>/` at the project root — flat-shape leftovers at the project root are pre-#382 residue; recommend `anvil:project-migrate`.
+2. For each thread root `<slug>/`, identify:
+   - The latest `N` for which `<slug>.{N}/` exists within the thread root.
    - Which sibling critic dirs exist at that `N` — specifically whether BOTH `<slug>.{N}.review/` AND `<slug>.{N}.audit/` are present (both are required to leave `DRAFTED`), and whether `<slug>.{N}.synthesis/` is present (the optional synthesizer sibling — when present and complete, the thread is in the transient `SYNTHESIZED` state between `REVIEWED+AUDITED` and `REVISED`; see `proposal-synthesize.md`).
    - The review verdict (advance/block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present, and the audit verdict (pass/fail, critical flags) from `<slug>.{N}.audit/verdict.md` if present.
    - The synthesis verdict (gap count, severity breakdown) from `<slug>.{N}.synthesis/verdict.md` + the machine-readable gap list `<slug>.{N}.synthesis/gaps.json` if present.

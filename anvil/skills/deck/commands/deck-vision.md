@@ -6,8 +6,8 @@ description: Vision-model critic for the deck skill. Renders the deck to PDF and
 # deck-vision — Vision-language-model critic
 
 **Role**: rendered-artifact critic.
-**Reads**: `<thread>.{N}/deck.md` (renders to `deck.pdf` + per-page PNGs on demand).
-**Writes**: `<thread>.{N}.vision/` with `_review.json` (canonical schema, `kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/`.
+**Reads**: `<thread>/<thread>.{N}/deck.md` (the version dir is nested under the thread root per the artifact contract; renders to `deck.pdf` + per-page PNGs on demand).
+**Writes**: `<thread>/<thread>.{N}.vision/` with `_review.json` (canonical schema, `kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/`. Bare `<thread>.{N}/` / `<thread>.{N}.vision/` references below are shorthand for these nested paths.
 
 This critic exists because Anvil's markdown-source critics never *look at* the rendered output. Three open deck bugs — #23 (mathtext italicizing `$11B` as `11B`), #24 (vertical overflow on figure+bullets slides), #25 (`_class: ask` H1+H2 overflow) — are all symptoms of the same gap: text-only critics can't see what the slide actually shows. The static lint in `anvil/lib/marp_lint.py` catches the obvious cases; this critic catches the rest (label cropping, palette adherence, mathtext artifacts, slide-density at projection scale).
 
@@ -40,12 +40,14 @@ Other vision findings surface as `Finding` items with severity `major` / `minor`
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Rendered PDF**: `<thread>.{N}/deck.pdf` — produced by `deck-figures` or by this critic on demand via `anvil.lib.render.render_marp_to_pdf`.
 - **Per-page PNGs**: produced by `anvil.lib.render.render_pdf_to_pngs` from the PDF.
 - **VLM**: Anthropic SDK by default; consumers without an API key inject a callback per `anvil/lib/vision.py`.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` version dir under critique:
 
 ```
 <thread>.{N}.vision/
@@ -60,7 +62,7 @@ Other vision findings surface as `Finding` items with severity `major` / `minor`
 
 ## Procedure
 
-1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.vision)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.vision.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.vision/` exists — the atomic-rename contract guarantees the dir only exists when complete.
+1. **Discover state** + **resume check** (per `anvil/lib/snippets/progress.md`). Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.vision)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.vision.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). The "completed" check is satisfied when the final-named `<thread>.{N}.vision/` exists — the atomic-rename contract guarantees the dir only exists when complete.
 2. **Open the staged sidecar** for the vision dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.vision, required_files=["_review.json", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.vision.tmp/`), NOT inside the final `<thread>.{N}.vision/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`:
    ```json
    {
