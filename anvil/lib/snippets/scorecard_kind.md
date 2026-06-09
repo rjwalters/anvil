@@ -89,6 +89,20 @@ against which rubric and may compare `/40` scores against `/44`
 thresholds. See `rubric.md` §"Per-review version stamping" for the
 full contract.
 
+**Arithmetic validation consumer (issue #392)**: the `rubric_total` /
+`advance_threshold` stamps are consumed by
+`anvil/lib/scorecard_check.py`, which validates the *emitted* scorecard
+against the *stamped* rubric — per-dimension weights must sum to the
+effective pool (`rubric_total` plus any artifact-type overlay
+`weight_adjustments`), each score must be a non-negative integer ≤ its
+weight, the declared total must equal Σ per-dimension scores, and
+`advance: true` requires total ≥ `advance_threshold` with zero critical
+flags. A sidecar missing the stamps yields an info-level
+`pool_unstamped` finding (the internal checks still run). Write-time
+consumers (memo-review step 7b, the pilot) hard-fail on findings; read
+time, findings downgrade the sidecar's verdict to advisory — the
+sidecar itself is never mutated.
+
 The `scorecard_kind` field takes one of two values:
 
 ### `human-verdict`

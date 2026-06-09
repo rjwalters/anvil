@@ -20,6 +20,16 @@ Public modules:
   ``deck-revise`` step 9.5; available to every other ``*-revise``
   command on adoption. See ``anvil/lib/snippets/critics.md``'s
   "Deterministic-checks family" section.
+- ``scorecard_check``: deterministic scorecard arithmetic validation
+  (issue #392). ``check_scorecard`` is a pure function of
+  ``(Review, rubric stamps)`` — weights sum to the effective pool,
+  per-dim scores within bounds, declared total equals Σ per-dim,
+  advance consistent with threshold + critical flags;
+  ``check_review_dir`` is the filesystem convenience that loads a
+  critic sibling via ``critics.load_review`` and reads the issue-#346
+  stamps from ``_meta.json``. Write-time consumers hard-fail on
+  findings (memo-review step 7b, the pilot); read-time consumers
+  treat a finding-bearing sidecar's verdict as advisory.
 - ``sidecar``: directory-level atomic writes for critic sibling dirs.
   ``staged_sidecar`` is a context manager that writes files into a
   leading-dot staging dir and renames atomically on clean completion;
