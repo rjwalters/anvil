@@ -210,6 +210,57 @@ skipped and the skip is recorded in `_progress.json.render_gate.reasons`
 for the render-time plumbing and `memo-draft` step 5c / `memo-revise`
 step 6 for the draft / revise-side `_progress.json` carry.
 
+#### Per-doc `render_template` / `render_lua_filters` / `render_metadata` (issue #391)
+
+For consumers with an **existing, richer pandoc template** (branded
+eyebrow, doc-version stamp, custom callout environments) plus Lua
+filters and per-doc metadata, the BRIEF schema exposes three flat
+per-document passthrough knobs:
+
+```yaml
+# <project>/BRIEF.md
+documents:
+  - slug: investment-memo
+    artifact_type: investment-memo
+    render_engine: xelatex
+    render_template: sphere-memo-template.tex   # resolved against the project root
+    render_lua_filters: [strip-alt.lua]         # --lua-filter per entry, in order
+    render_metadata:                            # -M key=value per entry
+      doc-type: "Investment Memo"
+      doc-version: "Draft v{N}"                 # {N} = version number, expanded at render time
+```
+
+Semantics:
+
+- `render_template` is applied as `--template <path>` **instead of**
+  the theme/framework template, **iff** the file exists and its
+  extension matches the dispatched engine chain (`.tex`/`.latex` on
+  xelatex; `.html`/`.htm` on weasyprint/wkhtmltopdf). On mismatch or
+  a missing file the default resolver chain applies and a skip
+  breadcrumb lands in `_progress.json.render_gate.reasons` — the same
+  silent-with-record contract as `latex_header_includes`.
+- `render_lua_filters` and `render_metadata` are engine-agnostic
+  (they act on pandoc's front-end) and always applied when set.
+- Paths are resolved against the directory containing `BRIEF.md`
+  at render time (absolute paths used as-is), so re-running
+  `memo-render` alone picks up template/filter edits.
+- `_progress.json.phases.render.engine` / `.template` record which
+  engine and template produced the PDF, so a styling regression is
+  detectable on disk.
+
+**Decision matrix** — pick the lightest tier that covers the need:
+
+| Need | Knob |
+|---|---|
+| A few packages / colors / environments for `{=latex}` blocks | `latex_header_includes` (lightest) |
+| A consumer-owned template + filters + per-doc metadata for one or a few docs | `render_template` / `render_lua_filters` / `render_metadata` |
+| A reusable brand across many projects / portfolios | theme tier (`.anvil/themes/<theme>/memo/<asset>`) |
+
+Precedence at render time: per-doc `render_template` > theme-resolved
+template > consumer single-tenant override > framework default.
+A consumer `.tex` template should preserve the pandoc 3.x compat
+block (next section) just like a `template.tex` override.
+
 #### `template.tex` override: preserve the pandoc 3.x compat block
 
 The shipped `template.tex` ships a "Pandoc 3.x emission compatibility"
