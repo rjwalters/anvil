@@ -396,7 +396,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
 
     def test_pitch_deck_rejected_listing_all_registered_values(self) -> None:
         """The studio's informal 'pitch-deck' stays unregistered — the
-        closed-ended error lists all eight registered values so the
+        closed-ended error lists all ten registered values so the
         operator can self-correct."""
         fm = textwrap.dedent(
             """\
@@ -411,7 +411,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 8)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 10)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -427,6 +427,8 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.TACTICAL_PLAN,
                     ArtifactType.VISION_DOCUMENT,
                     ArtifactType.DESCRIPTIVE_THESIS,
+                    ArtifactType.CHALLENGE_MEMO,
+                    ArtifactType.STRATEGY_MEMO,
                 }
             ),
         )
@@ -436,6 +438,54 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.PROPOSAL,
         ):
             self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
+
+    def test_skill_identity_set_is_explicit(self) -> None:
+        """Issue #394: the #386 guard is re-keyed onto an explicit set."""
+        from project_brief import (  # noqa: PLC0415
+            SKILL_IDENTITY_ARTIFACT_TYPES,
+        )
+
+        self.assertEqual(
+            SKILL_IDENTITY_ARTIFACT_TYPES,
+            frozenset(
+                {
+                    ArtifactType.DECK,
+                    ArtifactType.SLIDES,
+                    ArtifactType.PROPOSAL,
+                }
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Registered memo genres added under #394 (challenge-memo / strategy-memo)
+# ---------------------------------------------------------------------------
+
+
+class TestCanaryMemoGenres(_TmpProjectBase):
+    """Issue #394: the canary-proven challenge-memo / strategy-memo
+    genres are registered memo subtypes — a BRIEF declaring either
+    parses cleanly to the enum member."""
+
+    def test_new_memo_genres_accepted(self) -> None:
+        for value in ("challenge-memo", "strategy-memo"):
+            with self.subTest(artifact_type=value):
+                fm = textwrap.dedent(
+                    f"""\
+                    project: tiny
+                    documents:
+                      - slug: some-thread
+                        artifact_type: {value}
+                    """
+                ).rstrip()
+                _write_brief(self.project_dir, fm)
+                brief = load_project_brief_strict(self.project_dir)
+                self.assertEqual(
+                    brief.documents[0].artifact_type, ArtifactType(value)
+                )
+                self.assertIsInstance(
+                    brief.documents[0].artifact_type, ArtifactType
+                )
 
 
 # ---------------------------------------------------------------------------
