@@ -32,7 +32,10 @@ _LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from project_brief import REGISTERED_ARTIFACT_TYPES, ArtifactType  # noqa: E402
+from project_brief import (  # noqa: E402
+    MEMO_ARTIFACT_TYPES,
+    ArtifactType,
+)
 from rubric_overlays import (  # noqa: E402
     OVERLAYS_DIR,
     OverlayLoadError,
@@ -43,20 +46,37 @@ from rubric_overlays import (  # noqa: E402
 
 
 class TestRegistryShape(unittest.TestCase):
-    """The shipped overlay registry covers every registered ArtifactType."""
+    """The shipped overlay registry covers every MEMO artifact type.
 
-    def test_one_overlay_file_per_registered_artifact_type(self) -> None:
+    Issue #386 grew the shared enum with skill-identity values (deck /
+    slides / proposal) that select NO memo overlay — the registry is
+    scoped to ``MEMO_ARTIFACT_TYPES``, not the full enum.
+    """
+
+    def test_one_overlay_file_per_memo_artifact_type(self) -> None:
         shipped = {p.stem for p in OVERLAYS_DIR.glob("*.json")}
-        registered = set(REGISTERED_ARTIFACT_TYPES)
+        memo_scoped = {t.value for t in MEMO_ARTIFACT_TYPES}
         self.assertEqual(
             shipped,
-            registered,
-            "Every registered ArtifactType must have a shipped overlay JSON; "
-            "and the registry must NOT contain orphans for unknown types.",
+            memo_scoped,
+            "Every memo-scoped ArtifactType must have a shipped overlay "
+            "JSON; and the registry must NOT contain orphans — in "
+            "particular no identity deck/slides/proposal overlays "
+            "(those would silently mis-score non-memo artifacts).",
         )
 
+    def test_skill_identity_types_have_no_overlay_files(self) -> None:
+        for at in (ArtifactType.DECK, ArtifactType.SLIDES, ArtifactType.PROPOSAL):
+            with self.subTest(artifact_type=at.value):
+                self.assertNotIn(at, MEMO_ARTIFACT_TYPES)
+                self.assertFalse(
+                    (OVERLAYS_DIR / f"{at.value}.json").exists(),
+                    f"{at.value}.json must NOT ship in memo's overlay "
+                    "registry (issue #386).",
+                )
+
     def test_all_shipped_overlays_load_without_error(self) -> None:
-        for at in ArtifactType:
+        for at in sorted(MEMO_ARTIFACT_TYPES, key=lambda t: t.value):
             with self.subTest(artifact_type=at.value):
                 overlay = load_overlay(at)
                 self.assertIsInstance(overlay, RubricOverlay)
@@ -76,7 +96,7 @@ class TestInvestmentMemoIdentity(unittest.TestCase):
         )
 
     def test_non_investment_memo_overlays_are_not_identity(self) -> None:
-        for at in ArtifactType:
+        for at in sorted(MEMO_ARTIFACT_TYPES, key=lambda t: t.value):
             if at == ArtifactType.INVESTMENT_MEMO:
                 continue
             with self.subTest(artifact_type=at.value):
@@ -106,7 +126,7 @@ class TestWeightAdjustments(unittest.TestCase):
     }
 
     def test_no_overlay_drives_any_dim_negative(self) -> None:
-        for at in ArtifactType:
+        for at in sorted(MEMO_ARTIFACT_TYPES, key=lambda t: t.value):
             overlay = load_overlay(at)
             for dim, delta in overlay.weight_adjustments.items():
                 base = self.BASE_WEIGHTS[dim]
@@ -121,7 +141,7 @@ class TestWeightAdjustments(unittest.TestCase):
 
     def test_dim_keys_are_dim_1_through_dim_9(self) -> None:
         valid = {f"dim_{n}" for n in range(1, 10)}
-        for at in ArtifactType:
+        for at in sorted(MEMO_ARTIFACT_TYPES, key=lambda t: t.value):
             overlay = load_overlay(at)
             for dim in overlay.weight_adjustments:
                 self.assertIn(dim, valid)
@@ -140,13 +160,16 @@ class TestSelectOverlayForThread(unittest.TestCase):
         self.tmp.cleanup()
 
     def _write_project(
-        self, doc_slugs_and_types: list[tuple[str, str]]
+        self,
+        doc_slugs_and_types: list[tuple[str, str]],
+        project_name: str = "test-project",
     ) -> Path:
         """Create a project with a BRIEF.md listing the given (slug, type) pairs.
 
-        Each thread directory is materialized empty.
+        Each thread directory is materialized empty. ``project_name``
+        lets a single test build several projects in one tmp dir.
         """
-        project_root = self.tmp_path / "test-project"
+        project_root = self.tmp_path / project_name
         project_root.mkdir()
 
         documents_block = "\n".join(
@@ -213,6 +236,46 @@ class TestSelectOverlayForThread(unittest.TestCase):
         overlay = select_overlay_for_thread(thread_dir, project_dir=project_root)
         self.assertIsNotNone(overlay)
         self.assertEqual(overlay.artifact_type, ArtifactType.VISION_DOCUMENT)
+
+    def test_non_memo_artifact_type_raises_skill_mismatch(self) -> None:
+        """Issue #386: a memo command pointed at a deck/slides/proposal-
+        typed thread fails LOUDLY with a self-explaining skill-mismatch
+        error — not a confusing 'No overlay file found' message, and
+        never a silent identity overlay."""
+        for value in ("deck", "slides", "proposal"):
+            with self.subTest(artifact_type=value):
+                slug = f"{value}-thread"
+                project_root = self._write_project(
+                    [(slug, value)], project_name=f"project-{value}"
+                )
+                thread_dir = project_root / slug
+                with self.assertRaises(OverlayLoadError) as ctx:
+                    select_overlay_for_thread(
+                        thread_dir, project_dir=project_root
+                    )
+                msg = str(ctx.exception)
+                # Names the artifact_type and the slug.
+                self.assertIn(value, msg)
+                self.assertIn(slug, msg)
+                # States the memo-only constraint.
+                self.assertIn("memo artifact types", msg)
+                # Not the missing-overlay-file diagnostic.
+                self.assertNotIn("No overlay file found", msg)
+
+    def test_memo_types_unaffected_by_subset_guard(self) -> None:
+        """Every memo-scoped type still resolves through the guard to
+        its overlay — the guard keeps existing memo paths byte-identical."""
+        for at in sorted(MEMO_ARTIFACT_TYPES, key=lambda t: t.value):
+            with self.subTest(artifact_type=at.value):
+                slug = f"{at.value}-thread"
+                project_root = self._write_project(
+                    [(slug, at.value)], project_name=f"project-{at.value}"
+                )
+                overlay = select_overlay_for_thread(
+                    project_root / slug, project_dir=project_root
+                )
+                self.assertIsNotNone(overlay)
+                self.assertEqual(overlay.artifact_type, at)
 
 
 class TestLoadOverlayErrors(unittest.TestCase):
