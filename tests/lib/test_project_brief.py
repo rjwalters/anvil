@@ -109,10 +109,31 @@ def test_unpaired_max_iterations_rejected(tmp_path: Path) -> None:
         load_project_brief(project)
 
 
+@pytest.mark.parametrize("value", ["deck", "slides", "proposal"])
+def test_skill_identity_artifact_types_accepted(
+    tmp_path: Path, value: str
+) -> None:
+    """Issue #386: the enum grew skill-identity values so migration can
+    write honest types for deck/slides/proposal threads."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        documents:
+          - slug: some-thread
+            artifact_type: {value}
+        """,
+    )
+    brief = load_project_brief(project)
+    assert brief is not None
+    assert brief.documents[0].artifact_type.value == value
+
+
 def test_unknown_artifact_type_rejected(tmp_path: Path) -> None:
-    """The registered artifact-type set is memo-scoped in v1 — this is
-    the documented reason project-migrate defaults non-memo threads to
-    'investment-memo' (issue #382 out-of-scope #5)."""
+    """Closed-ended governance retained (#386): the studio's informal
+    'pitch-deck' is NOT registered — the error lists the registered set
+    so the fix is self-correcting."""
     project = tmp_path / "proj"
     _write_brief(
         project,
@@ -120,8 +141,8 @@ def test_unknown_artifact_type_rejected(tmp_path: Path) -> None:
         project: proj
         documents:
           - slug: series-a-deck
-            artifact_type: deck
+            artifact_type: pitch-deck
         """,
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="pitch-deck"):
         load_project_brief(project)

@@ -88,6 +88,15 @@ Public API
     a validation error listing the registered set. Seed values per the
     curator's confirmation: ``investment-memo``, ``position-paper``,
     ``tactical-plan``, ``vision-document``, ``descriptive-thesis``.
+    Issue #386 grew the set with skill-identity values ``deck``,
+    ``slides``, ``proposal`` — for non-memo documents ``artifact_type``
+    identifies which skill owns the thread rather than selecting a memo
+    rubric overlay subtype.
+
+``MEMO_ARTIFACT_TYPES``
+    The memo-scoped subset of :class:`ArtifactType` — the values that
+    select a memo rubric overlay. Memo's overlay dispatch fails loudly
+    for types outside this set.
 
 ``BriefDocument``
     Pydantic model for one entry in the ``documents:`` list. Carries
@@ -174,10 +183,18 @@ Artifact-type enum (Open Question #5 resolution)
 ------------------------------------------------
 **Closed-ended.** Unknown ``artifact_type`` values raise a clear
 ``ValueError`` listing the registered set. This prevents typos silently
-degrading to no-overlay behavior. Adding a new artifact type requires a
-code change here (and a matching overlay landing in the file the overlay
-selector reads in #286). The seed values are
-:data:`REGISTERED_ARTIFACT_TYPES`.
+degrading to no-overlay behavior. The registered values are
+:data:`REGISTERED_ARTIFACT_TYPES`. Two kinds of value coexist (#386):
+
+- **Memo overlay subtypes** (the five seed values): adding one requires
+  a code change here, membership in :data:`MEMO_ARTIFACT_TYPES`, AND a
+  matching overlay JSON in the memo skill's ``rubric_overlays/``
+  registry (#286).
+- **Skill-identity values** (``deck``, ``slides``, ``proposal``):
+  identify which non-memo skill owns the thread. Adding one requires a
+  code change here plus SKILL.md documentation in the owning skill —
+  and it must be left OUT of :data:`MEMO_ARTIFACT_TYPES` (no memo
+  overlay JSON; memo commands fail loudly on these types).
 
 Validation discipline — BRIEF-side is STRICT
 --------------------------------------------
@@ -245,19 +262,31 @@ from anvil.lib.project_discovery import (
 )
 
 
-# The seed list of registered artifact types per the curator's
-# confirmation comment on #283. Unknown values are rejected with a
-# clear error listing this set — closed-ended enum governance per
-# Open Question #5. Adding a new artifact type requires:
-#   1. Adding the literal here.
+# The registered artifact types. The first five are the seed memo
+# subtypes per the curator's confirmation comment on #283; the last
+# three are skill-identity values added under #386 (deck / slides /
+# proposal threads in a shared project BRIEF). Unknown values are
+# rejected with a clear error listing this set — closed-ended enum
+# governance per Open Question #5.
+#
+# Registering a new MEMO subtype requires:
+#   1. Adding the literal here (and to MEMO_ARTIFACT_TYPES below).
 #   2. Landing a matching overlay file (sub-deliverable 3 / #286).
 #   3. Documenting the new shape in `anvil/skills/memo/SKILL.md`.
+#
+# Registering a new SKILL-IDENTITY value requires:
+#   1. Adding the literal here (NOT to MEMO_ARTIFACT_TYPES — no memo
+#      overlay JSON; memo commands fail loudly on non-memo types).
+#   2. Documenting it in the owning skill's SKILL.md.
 REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "investment-memo",
     "position-paper",
     "tactical-plan",
     "vision-document",
     "descriptive-thesis",
+    "deck",
+    "slides",
+    "proposal",
 )
 
 
@@ -284,6 +313,16 @@ class ArtifactType(str, Enum):
     DESCRIPTIVE_THESIS
         Descriptive case for a team / market / shape (e.g., the canary's
         "team thesis").
+    DECK
+        Skill-identity value (#386): an ``anvil:deck`` pitch-deck thread.
+        Not a memo subtype — selects no memo rubric overlay.
+    SLIDES
+        Skill-identity value (#386): an ``anvil:slides`` talk-deck
+        thread. Not a memo subtype — selects no memo rubric overlay.
+    PROPOSAL
+        Skill-identity value (#386): an ``anvil:proposal`` LaTeX
+        customer-proposal thread. Not a memo subtype — selects no memo
+        rubric overlay.
     """
 
     INVESTMENT_MEMO = "investment-memo"
@@ -291,6 +330,27 @@ class ArtifactType(str, Enum):
     TACTICAL_PLAN = "tactical-plan"
     VISION_DOCUMENT = "vision-document"
     DESCRIPTIVE_THESIS = "descriptive-thesis"
+    DECK = "deck"
+    SLIDES = "slides"
+    PROPOSAL = "proposal"
+
+
+# The memo-scoped subset of the registry: values that select a memo
+# rubric overlay (one overlay JSON per member ships under
+# `anvil/skills/memo/rubric_overlays/`). Skill-identity values (deck /
+# slides / proposal) are deliberately excluded — memo's overlay dispatch
+# (`anvil/skills/memo/lib/rubric_overlays.py::select_overlay_for_thread`)
+# raises a clear skill-mismatch error for them instead of silently
+# scoring a non-memo artifact against the memo rubric (#386).
+MEMO_ARTIFACT_TYPES: frozenset = frozenset(
+    {
+        ArtifactType.INVESTMENT_MEMO,
+        ArtifactType.POSITION_PAPER,
+        ArtifactType.TACTICAL_PLAN,
+        ArtifactType.VISION_DOCUMENT,
+        ArtifactType.DESCRIPTIVE_THESIS,
+    }
+)
 
 
 # Frontmatter delimiter — three hyphens on their own line, per the
@@ -1999,6 +2059,7 @@ __all__ = [
     "CalibrationOverride",
     "DEFAULT_MAX_ITERATIONS",
     "MAX_DIM",
+    "MEMO_ARTIFACT_TYPES",
     "MIN_DIM",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
