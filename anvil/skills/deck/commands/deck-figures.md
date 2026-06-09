@@ -6,21 +6,23 @@ description: Figurer for the deck skill. Renders Mermaid diagrams and matplotlib
 # deck-figures — Figurer + PDF renderer
 
 **Role**: figurer (and PDF renderer).
-**Reads**: latest `<thread>.{N}/deck.md` and `<thread>.{N}/figures/src/**`.
-**Writes**: rendered images into `<thread>.{N}/figures/` and the full `<thread>.{N}/deck.pdf`.
+**Reads**: latest `<thread>/<thread>.{N}/deck.md` and `<thread>/<thread>.{N}/figures/src/**` (the version dir is nested under the thread root per the artifact contract).
+**Writes**: rendered images into `<thread>.{N}/figures/` and the full `<thread>.{N}/deck.pdf` (same nested version dir; bare `<thread>.{N}/` references below are shorthand).
 
 This figurer is the asset-pipeline implementer for the deck skill. It handles the two asset categories anvil ships (Mermaid + matplotlib), then renders the complete deck PDF that downstream critics (especially `deck-design`) and the operator consume.
 
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md`.
+- **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Figure sources**: `<thread>.{N}/figures/src/` containing:
   - `*.mmd` — Mermaid diagram source (architecture, flowchart, sequence).
   - `*.py` — Matplotlib Python script (data-driven chart).
   - `*.csv` — Source data for any matplotlib chart.
 
 ## Outputs
+
+Nested under the thread root `<thread>/`:
 
 ```
 <thread>.{N}/
@@ -34,7 +36,7 @@ This figurer is the asset-pipeline implementer for the deck skill. It handles th
 
 ## Procedure
 
-1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md`. Read `_progress.json`.
+1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`. Read `_progress.json`.
 2. **Resume check** + idempotence:
    - For each `figures/src/*.mmd`: check if `figures/<name>.png` exists AND is newer than the `.mmd` source. If so, skip.
    - For each `figures/src/*.py`: check if `figures/<name>.png` exists AND is newer than the `.py` script AND any referenced `.csv`. If so, skip.
