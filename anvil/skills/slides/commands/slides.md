@@ -6,7 +6,7 @@ description: Portfolio orchestrator for slides threads. Discovers all slides thr
 # slides — Portfolio orchestrator
 
 **Role**: portfolio orchestrator (read-only; reports state, does not mutate).
-**Reads**: all `<thread>.*/` directories under the current working directory.
+**Reads**: all `<thread>/` thread directories under the current working directory (the project root), and the `<thread>.{N}/` / `<thread>.{N}.<phase>/` directories nested within each thread root per the artifact contract.
 **Writes**: nothing on disk. Returns a status report.
 
 ## Purpose
@@ -15,15 +15,15 @@ A single command that an operator (or orchestrating agent) runs to see the state
 
 ## Inputs
 
-- **CWD**: the portfolio directory containing slides threads.
-- **Discovery rule**: a thread is detected by the presence of any `<slug>.{N}/` directory (with `_progress.json`) OR a `<slug>.0.outline/` directory. The slug is the directory name up to the first `.<digit>`. A bare `<slug>/` directory without any versioned or outline siblings is treated as a brief-only thread in state `EMPTY`.
+- **CWD**: the project root containing slides thread directories (`<slug>/`). Version dirs are nested INSIDE each thread root (`<slug>/<slug>.{N}/`), per the post-#382 artifact contract in `SKILL.md`.
+- **Discovery rule** (two-level): a thread is a `<slug>/` directory under cwd that contains any nested `<slug>.{N}/` version dir (with `_progress.json`) OR a nested `<slug>.0.outline/` directory. A `<slug>/` thread dir without any versioned or outline children is treated as a brief-only thread in state `EMPTY`.
 
 ## Procedure
 
-1. Enumerate all directories under cwd matching the patterns `<slug>`, `<slug>.{N}`, or `<slug>.{N}.<phase>` (where `<phase>` ∈ {`outline`, `review`, `audit`, `rehearse`, `handout`, ...} and `N` is a non-negative integer).
-2. Group by slug. For each slug, identify:
-   - Whether `<slug>.0.outline/outline.md` exists.
-   - The latest `N > 0` for which `<slug>.{N}/` exists.
+1. Enumerate `<slug>/` thread directories under cwd (the project root). Then, **within each thread root**, enumerate the nested `<slug>.{N}` and `<slug>.{N}.<phase>` directories (where `<phase>` ∈ {`outline`, `review`, `audit`, `rehearse`, `handout`, ...} and `N` is a non-negative integer). Version dirs and phase siblings live INSIDE the thread root, not as siblings of `<slug>/` at the project root — flat-shape leftovers at the project root are pre-#382 residue; recommend `anvil:project-migrate`.
+2. For each thread root `<slug>/`, identify:
+   - Whether `<slug>.0.outline/outline.md` exists within the thread root.
+   - The latest `N > 0` for which `<slug>.{N}/` exists within the thread root.
    - Which sibling critic / phase dirs exist at that `N` (`review`, `audit`, `rehearse`, `handout`).
    - The verdict (advance/block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present.
    - The audit flag from `<slug>.{N}.audit/verdict.md` if present.
