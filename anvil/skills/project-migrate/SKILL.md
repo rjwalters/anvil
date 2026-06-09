@@ -50,19 +50,47 @@ migration.
 
 ## Recognized current shapes
 
-The detector recognizes three pre-migration shapes:
+The detector recognizes three pre-migration shapes. **Deck, slides, and
+proposal threads are in scope** alongside memo (issue #382 — the parallel
+rollout of the #295/#296 model to the other rich-command-set skills):
 
 1. **Pre-#283 classic** — `memo.N/` siblings of the portfolio dir, optional
    per-thread `BRIEF.md`, skill-fixed `memo.md` body. No project-level
-   `BRIEF.md`.
+   `BRIEF.md`. This shape ALSO covers the **nested-but-flat**
+   deck/slides/proposal variant (the studio canary's `series-a-deck`
+   shape): a thread-root directory (`<slug>/` carrying the thread-level
+   BRIEF + refs + assets and optionally a per-thread `.anvil.json`)
+   sitting as a SIBLING of flat `<slug>.N/` version dirs at the project
+   root. The migration moves the version dirs (and critic siblings) IN
+   under the thread root; the thread-root contents stay where they are
+   (the studio hand-fix `2cf3f37` is the reference shape).
 2. **Post-#283 with `.anvil.json`** — project root with `BRIEF.md` listing
    `documents:`, per-thread directories under
    `<project>/<slug>/<slug>.N/memo.md`, separate per-thread `.anvil.json`
    files carrying `target_length` / `target_length_overrides` /
-   `rubric_overrides`.
+   `rubric_overrides` (or, on deck threads, the paired `max_iterations` +
+   `iteration_cap_rationale` override). Mixed-grammar projects — a
+   BRIEF-bearing project where some threads are nested and others still
+   sit flat — dispatch per thread: flat threads get the nesting move,
+   nested threads get the in-place cleanup.
 3. **Fully-migrated** — project root, `BRIEF.md` absorbs all per-doc config,
-   body filename is `<slug>.md`. This is the target shape; the migration is a
-   no-op on this input (idempotence contract).
+   no skill-fixed body filename remains. This is the target shape; the
+   migration is a no-op on this input (idempotence contract).
+
+**Body filenames per skill.** Memo bodies are renamed to the slug-echo
+shape (`memo.md` → `<slug>.md`). Deck/slides (`deck.md`) and proposal
+(`proposal.tex`) **retain their skill-fixed body filenames** — the
+slug-echo rename is scoped out for those skills because the filenames
+are consumed by external tooling (marp CLI, xelatex,
+`anvil-proposal.cls`); see the per-skill SKILL.md body-filename notes
+(issue #382). The migration for those skills is directory nesting plus
+`.anvil.json` → BRIEF merge only.
+
+**Artifact types.** The BRIEF `documents:` entry written for every
+migrated thread defaults to `artifact_type: investment-memo` — the
+registered artifact-type enum is memo-scoped in v1. The plan surfaces a
+note on non-memo threads so the operator knows to revisit the entry when
+per-skill artifact types land.
 
 ## Commands
 
@@ -126,15 +154,21 @@ one-shot. The on-disk evidence is the rewritten project tree itself.
 
 ## Tests
 
-Fixtures under `tests/fixtures/`:
+Fixtures are programmatic builders in `tests/_fixtures.py` (trees are
+constructed in tmp dirs rather than baked on disk):
 
-- `pre_283_classic/` — pre-#283 layout (memo.N siblings, no project BRIEF,
-  `memo.md` bodies).
-- `post_283_anvil_json/` — post-#283 with `.anvil.json` (project BRIEF +
+- `build_pre_283_classic` — pre-#283 layout (memo.N siblings, no project
+  BRIEF, `memo.md` bodies).
+- `build_post_283_anvil_json` — post-#283 with `.anvil.json` (project BRIEF +
   per-thread `.anvil.json`).
-- `fully_migrated/` — target shape (no-op test).
-- `bessemer_shaped/` — sanitized multi-thread snapshot exercising the canary
-  case (multiple `memo.N` versions, critic siblings).
+- `build_fully_migrated` — target shape (no-op test).
+- `build_bessemer_shaped` — sanitized multi-thread snapshot exercising the
+  canary case (multiple `memo.N` versions, critic siblings).
+- `build_aldus_shaped_deck` — sanitized snapshot of the studio's
+  pre-`2cf3f37` deck thread (thread root with BRIEF + refs + assets +
+  `.anvil.json` as a sibling of flat version dirs; issue #382).
+- `build_mixed_memo_deck_proposal` — the mixed-skill canary case: one
+  project root with flat memo + deck + proposal threads (issue #382).
 
 Test files:
 
@@ -146,4 +180,13 @@ Test files:
 - `test_project_migrate_idempotent.py` — apply on fully-migrated input is a
   no-op (zero diff).
 - `test_project_migrate_verify.py` — post-apply the project rounds-trips
-  through `discover_thread_root` + `load_project_brief`.
+  through `discover_thread_root` + `load_project_brief` (incl. the mixed
+  fixture through the promoted `anvil.lib` primitives).
+- `test_project_migrate_detect_mixed.py` — nested-but-flat + mixed-skill
+  classification and inventory (issue #382).
+- `test_project_migrate_plan_mixed.py` — nesting renames, critic-sibling
+  moves, retained-body no-rename, iteration-cap pair extraction.
+- `test_project_migrate_apply_mixed.py` — nested tree correctness +
+  cross-skill discovery smoke through `anvil.lib.project_discovery`.
+- `test_project_migrate_idempotent_mixed.py` — re-apply on a migrated
+  mixed project is zero diff.

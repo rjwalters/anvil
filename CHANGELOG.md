@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **#295/#296 project-org nesting for `anvil:deck` / `anvil:slides` / `anvil:proposal` + project-migrate deck handling** (issue #382). The three remaining rich-command-set artifact skills adopt the nested `<project>/<slug>/<slug>.N/` artifact contract (SKILL.md trees rewritten; project-level `BRIEF.md` documented as the config locus per #296). The **slug-echo body rename is deliberately scoped out** for these skills — `deck.md` (Marp CLI) and `proposal.tex` (xelatex + `anvil-proposal.cls`) are consumed by external tooling; each SKILL.md carries an explicit body-filename note and the migration is directory nesting only (matching the studio hand-fix `2cf3f37`). Proposal SKILL.md's four `.anvil.json` references are retired per #296 (iteration cap repointed at the project-BRIEF paired override; render-gate `page_cap` flagged TBD-on-BRIEF-grow mirroring memo's `words_per_page` prose). `anvil:project-migrate` now recognizes the **nested-but-flat** shape (thread root with BRIEF/refs/assets/.anvil.json as a sibling of flat version dirs), plans the `<slug>.N` → `<slug>/<slug>.N` nesting move (critic siblings included), merges the deck paired `max_iterations` + `iteration_cap_rationale` override into the project BRIEF (only when it would survive the strict parser), dispatches mixed-grammar projects per thread, and stays idempotent on migrated mixed trees (the FULLY_MIGRATED body check now keys on skill-fixed bodies rather than slug-echo). New fixtures `build_aldus_shaped_deck` + `build_mixed_memo_deck_proposal` and four new mixed-shape test files.
+
+### Changed
+
+- **Lib promotion (factoring A of issue #382)**: `latest_resolution.py`, `project_discovery.py`, `project_brief.py`, and `cross_thread_refs.py` move from `anvil/skills/memo/lib/` to `anvil/lib/` — deck/slides/proposal are the 2nd–4th consumers of the project-org primitives, firing the CLAUDE.md "wait for the second consumer before generalizing" rule. The memo paths remain as back-compat re-export shims (both `anvil.skills.memo.lib.X` and `anvil.lib.X` import paths work; `rubric_overlays.py` stays memo-local — overlay JSONs are memo-artifact-type-specific). `anvil/lib/render_gate.py`'s theme-discovery tier drops its memo-lib sys.path injection in favor of plain `anvil.lib` sibling imports. New canonical-path test files under `tests/lib/` pin shim identity + representative behavior for all four modules.
+
 ## [0.4.0] — 2026-06-08
 
 ### Summary
