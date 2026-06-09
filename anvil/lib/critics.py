@@ -242,11 +242,11 @@ def _adapt_memo_legacy(critic_dir: Path) -> Review:
     scoring_md = (critic_dir / "scoring.md").read_text()
     comments_md = (critic_dir / "comments.md").read_text()
 
-    total, threshold = _parse_memo_verdict_total(verdict_md)
-    advance = _parse_memo_verdict_decision(verdict_md)
+    total, threshold = parse_memo_verdict_total(verdict_md)
+    advance = parse_memo_verdict_decision(verdict_md)
     critical_flags = _parse_memo_critical_flags(verdict_md)
 
-    scores = _parse_memo_scoring_table(scoring_md)
+    scores = parse_memo_scoring_table(scoring_md)
     findings = _parse_memo_comments(comments_md)
 
     # Derive verdict using the canonical decision rule, but defer to the
@@ -276,14 +276,27 @@ def _adapt_memo_legacy(critic_dir: Path) -> Review:
     )
 
 
-def _parse_memo_verdict_total(text: str) -> Tuple[Optional[int], Optional[int]]:
+def parse_memo_verdict_total(text: str) -> Tuple[Optional[int], Optional[int]]:
+    """Parse ``Total: X/Y`` from memo verdict.md prose.
+
+    Returns ``(total, denominator)`` where the denominator is the declared
+    point pool (e.g. the ``44`` in ``41/44``), or ``(None, None)`` when no
+    total line is found. Public per issue #392 — consumed by
+    ``anvil/lib/scorecard_check.py`` in addition to the legacy adapter.
+    """
     m = _MEMO_TOTAL.search(text)
     if not m:
         return None, None
     return int(m.group(1)), int(m.group(2))
 
 
-def _parse_memo_verdict_decision(text: str) -> Optional[bool]:
+def parse_memo_verdict_decision(text: str) -> Optional[bool]:
+    """Parse ``Decision: advance: true|false`` from memo verdict.md prose.
+
+    Returns ``None`` when no decision line is found. Public per issue
+    #392 — consumed by ``anvil/lib/scorecard_check.py`` in addition to
+    the legacy adapter.
+    """
     m = _MEMO_DECISION.search(text)
     if not m:
         return None
@@ -331,7 +344,15 @@ def _parse_memo_critical_flags(text: str) -> List[CriticalFlag]:
     return flags
 
 
-def _parse_memo_scoring_table(text: str) -> List[Score]:
+def parse_memo_scoring_table(text: str) -> List[Score]:
+    """Parse the memo ``scoring.md`` markdown table into ``Score`` rows.
+
+    Recognizes the ``| # | Dimension | Weight | Score | Justification |``
+    row shape. Raises ``pydantic.ValidationError`` when a parsed row
+    violates the ``Score`` bounds contract (score > weight, negative
+    score). Public per issue #392 — consumed by
+    ``anvil/lib/scorecard_check.py`` in addition to the legacy adapter.
+    """
     scores: List[Score] = []
     for line in text.splitlines():
         m = _MEMO_SCORE_ROW.match(line)
@@ -395,6 +416,13 @@ def _parse_memo_comments(text: str) -> List[Finding]:
             )
         )
     return findings
+
+
+# Backwards-compat aliases for the pre-#392 private names. New consumers
+# should import the public names above.
+_parse_memo_verdict_total = parse_memo_verdict_total
+_parse_memo_verdict_decision = parse_memo_verdict_decision
+_parse_memo_scoring_table = parse_memo_scoring_table
 
 
 # --- ip-uspto legacy adapter ------------------------------------------------
@@ -798,6 +826,9 @@ __all__ = [
     "CriticDiscoveryError",
     "discover_critics",
     "load_review",
+    "parse_memo_scoring_table",
+    "parse_memo_verdict_total",
+    "parse_memo_verdict_decision",
     "aggregate",
     "compute_verdict",
 ]
