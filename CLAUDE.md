@@ -1,13 +1,13 @@
 # Anvil - Repository Guide
 
 **Anvil Version**: 0.4.0
-**Status**: v0.2.0 — canary-hardened; 9 skills shipped (8 artifact-class skills + `anvil:project-migrate` bridge tool); memo + proposal rubrics moved to /44 (dim 9 *Rhetorical economy*); proposal synthesis pipeline + memo rubric_overrides ship in this release. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
+**Status**: canary-hardened; **10 skills shipped** (8 artifact-class skills + 2 bridge tools: `anvil:project-migrate`, `anvil:rubric-rebackport`); all 8 artifact-class rubrics on /44 with dim 9 *Rhetorical economy* (ip-uspto on /45 with dim 9 *Claim-spec correspondence*); per-review version stamping (`rubric_id` / `rubric_total` / `advance_threshold`) shipped in v0.4.0; sidecar atomicity primitive (`anvil/lib/sidecar.py`) consumed by 38 critic-writing commands across all 8 skills. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
 
 Anvil is a sibling framework to [Loom](https://github.com/rjwalters/loom). Where Loom orchestrates AI code development using GitHub/Gitea as the coordination layer, Anvil orchestrates AI artifact creation using the **filesystem** as the coordination layer.
 
-Eight artifact classes ship as v0 skills (`anvil:memo`, `anvil:pub`, `anvil:report`, `anvil:deck`, `anvil:slides`, `anvil:ip-uspto`, `anvil:installation`, `anvil:proposal`). Each composes a `draft → review → revise → (audit) → figures` lifecycle, a tunable 8-dimension /40 rubric, opinionated templates, and a worked example. See `README.md` for the consumer-facing install + usage guide. A ninth skill, `anvil:project-migrate` (issue #297), is a one-shot bridge tool that migrates existing studio projects to the post-#295 / post-#296 model (project root + `BRIEF.md` absorbing all config + `<slug>.md` body filename).
+Eight artifact classes ship as v0 skills (`anvil:memo`, `anvil:pub`, `anvil:report`, `anvil:deck`, `anvil:slides`, `anvil:ip-uspto`, `anvil:installation`, `anvil:proposal`). Each composes a `draft → review → revise → (audit) → figures` lifecycle, a tunable 9-dimension /44 rubric (ip-uspto on /45), opinionated templates, and a worked example. See `README.md` for the consumer-facing install + usage guide. Two **bridge tool** skills ship alongside: `anvil:project-migrate` (#297) migrates existing studio projects to the post-#295 / post-#296 canonical model (project root + `BRIEF.md` absorbing all config + `<slug>.md` body filename); `anvil:rubric-rebackport` (#358) stamps or rescores legacy /40 reviews under the per-review version stamping contract shipped in v0.4.0.
 
 ## Pattern overview
 
@@ -15,7 +15,7 @@ Anvil codifies a pattern for iterative AI-assisted authoring:
 
 - **Versioned directories** (`{thread}.{N}/`) are the unit of artifact state. Each version is immutable.
 - **Sibling critic directories** (`.review/`, `.audit/`, `.<critic>/`) hold read-only review output.
-- **8-dimension scored rubric** (/40 total) drives convergence. Threshold ≥32 to advance; ≥35 for legal/customer-facing work; critical-flag short-circuits.
+- **9-dimension scored rubric** (/44 total; ip-uspto on /45) drives convergence. General threshold ≥35 to advance; ≥39 for customer-facing work (`report`, `deck`, `ip-uspto`); critical-flag short-circuits. Per-review version stamping (`rubric_id`/`rubric_total`/`advance_threshold` in `_meta.json`) lets legacy /40 reviews and new /44+ reviews coexist without verdict-logic ambiguity.
 - **`_progress.json` checkpointing** per version directory tracks phase state and enables resume.
 - **State machine**: `EMPTY → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED` (with skill-specific extensions like `CUSTOMER-READY` for `report` and `FINALIZED` for `ip-uspto`).
 - **Command set per skill**: `draft → review → revise → audit → figures`, plus per-skill specialists.
@@ -30,9 +30,10 @@ This is a general pattern for rigorous review/revise loops, designed for AI-agen
 ```
 anvil/
   skills/        Per-artifact-type skills (memo, pub, report, deck, slides,
-                 ip-uspto, installation, proposal) plus the project-migrate
-                 bridge tool. Each has SKILL.md + commands/ + (optional)
-                 rubric.md, templates/, assets/, examples/, tests/, lib/.
+                 ip-uspto, installation, proposal) plus two bridge tools
+                 (project-migrate, rubric-rebackport). Each has SKILL.md +
+                 commands/ + (optional) rubric.md, templates/, assets/,
+                 examples/, tests/, lib/.
   lib/           Shared framework primitives.
     snippets/    Pure-markdown conventions every skill reads.
     review_schema.py + .json    Typed _review.json contract.
@@ -43,6 +44,8 @@ anvil/
     render.py                   Marp/pandoc/PDF→PNG + preflight helpers.
     vision.py                   VLM critic primitive.
     render_gate.py              LaTeX-skill analog of marp_lint.
+    sidecar.py                  staged_sidecar context manager + atomic
+                                rename for crash-safe critic-sibling writes.
     figures/                    palette.py + anvil.mplstyle + mermaid-theme.json.
     marp/                       Pinned Marp config.
   templates/     SKILL.md scaffolds.
