@@ -987,21 +987,13 @@ def _discover_memo_theme_context(
 
     # Tier 2: locate project root + read BRIEF for theme: field.
     try:
-        # Lazy import: project_discovery lives under the memo skill's
-        # lib/ which isn't always on sys.path at module-import time.
-        # Reuse the resolution logic from the discovery primitive
-        # rather than re-rolling the walk-up.
-        import sys
-
-        memo_lib = (
-            Path(__file__).parent.parent / "skills" / "memo" / "lib"
-        )
-        memo_lib_str = str(memo_lib)
-        if memo_lib_str not in sys.path:
-            sys.path.insert(0, memo_lib_str)
-
-        from project_discovery import discover_thread_root  # type: ignore
-        from project_brief import load_project_brief  # type: ignore
+        # Lazy import: keeps the pydantic dependency of project_brief
+        # off this module's import-time path. The discovery + BRIEF
+        # primitives were promoted from the memo skill's lib/ to
+        # anvil/lib/ under issue #382, so this is now a plain sibling
+        # import (no sys.path injection needed).
+        from anvil.lib.project_brief import load_project_brief
+        from anvil.lib.project_discovery import discover_thread_root
 
         discovery = discover_thread_root(version_dir)
         if discovery is not None:
