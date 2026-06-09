@@ -38,7 +38,7 @@ This command is the report-skill's **figure-content VLM critic** — a vision-la
   _review.json    Canonical Review payload (kind=vision, critic_id=figure-content).
 ```
 
-**Atomicity** (issue #350): when `--write-review` is set, the figure-content sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The `_review.json` file is staged under a leading-dot sibling `.<thread>.{N}.figure-content.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.figure-content/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.figure-content.tmp/` dir on disk that the next invocation's `cleanup_stale_staging` sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+**Atomicity** (issue #350, #376): when `--write-review` is set, the figure-content sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The `_review.json` file is staged under a leading-dot sibling `.<thread>.{N}.figure-content.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.figure-content/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.figure-content.tmp/` dir on disk that the next invocation's `cleanup_one_staging(<thread>.{N}.figure-content)` per-critic sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
 
 `_review.json` carries the standard `anvil/lib/review_schema.py::Review` shape:
 
@@ -81,7 +81,7 @@ The VLM may also emit narrative-level findings (`severity=blocker|major|minor|ni
 
 ## Procedure
 
-1. **Discover state**: take the `version_dir` positional arg; verify it exists. If not, exit code 2 with a clear error. When `--write-review` is set, **sweep stale staging dirs from prior interrupts** by invoking `anvil/lib/sidecar.py::cleanup_stale_staging(<portfolio_root>)` where `<portfolio_root>` is the directory that contains `<version_dir>`. This removes any leftover `.<thread>.<M>.figure-content.tmp/` (and other `.<...>.tmp/`) shapes left behind by a previously-killed session (issue #350).
+1. **Discover state**: take the `version_dir` positional arg; verify it exists. If not, exit code 2 with a clear error. When `--write-review` is set, **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<version_dir>.figure-content)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<version_dir>.figure-content.tmp/` from a previously-killed run of this same figure-content critic on THIS version (issue #350). Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched.
 2. **Discover figures** (`figure_content.discover_figures`):
    - **PDF path**: when `<slug>.pdf` exists AND `pdftoppm` is on PATH, rasterize each page to a PNG in a tempdir at the requested DPI. Each page becomes one `FigureRecord` (provenance `pdf-page`, label `page-N`).
    - **figures/ dir path**: walk `<version_dir>/figures/` recursively for `.png` / `.jpg` / `.jpeg` / `.webp` / `.gif` sources. Each becomes one `FigureRecord` (provenance `figures-dir`, label `figures/<rel-path>`).
