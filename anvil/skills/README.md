@@ -52,6 +52,15 @@ The current skill index:
   post-#295 / post-#296 model (project root + `BRIEF.md` absorbing all
   config + `<slug>.md` body filename). Opinionated, idempotent, dry-run
   first. See `project-migrate/SKILL.md`.
+- `anvil:rubric-rebackport` — bridge tool stamping or rescoring legacy /40
+  reviews under the per-review rubric version stamping contract
+  (`rubric_id` / `rubric_total` / `advance_threshold`). See
+  `rubric-rebackport/SKILL.md`.
+- `anvil:project-share` — recurring packaging tool: collects each thread's
+  `.latest`-resolved source + PDF + assets + refs and the shared
+  `research/` pool into one shareable, provenance-stamped `SHARE/` folder
+  (optionally zipped). Marker-guarded blow-away rebuild; `--dry-run` flag.
+  See `project-share/SKILL.md`.
 
 ## Subagent dispatch (`anvil-<skill>-<phase>`)
 
