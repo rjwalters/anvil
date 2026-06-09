@@ -40,7 +40,7 @@ Public API
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -539,9 +539,26 @@ def build_plan(
         ``Mode.RESCORE``; optional for ``Mode.STAMP_ONLY`` (heuristic
         fallback kicks in).
     skill_filter
-        When set, only reviews whose inferred skill matches are
-        included in the plan. Other reviews are surfaced as skipped
-        with an "outside scope" note.
+        When set, `--skill=<name>` acts as a hybrid filter / force-set
+        on the planner's view of each review's skill (issue #374):
+
+        - When `inferred_skill is None` (inference returned no skill),
+          the review is treated as if `inferred_skill == skill_filter`
+          (operator-asserted override). A note records the override so
+          the report is explicit about the assertion.
+        - When `inferred_skill` is set AND disagrees with `skill_filter`,
+          the review is skipped with an "outside scope" reason
+          (filter semantics — pinned by `test_skill_filter_still_filters
+          _when_inference_disagrees`).
+        - When `inferred_skill` is set AND agrees, normal stamping (the
+          flag is a no-op for that review).
+
+        Rationale for the force-set-on-None semantics: when the body
+        filename heuristic misses (no slug-echoed body file, no BRIEF
+        entry), `inferred_skill` is None and the legacy filter semantics
+        would skip the review even though the operator's assertion
+        carries enough information to stamp. The shift is documented
+        in `commands/rubric-rebackport.md` and `SKILL.md`.
     """
     plan = Plan(
         project_tree=inventory.project_tree,
@@ -551,6 +568,24 @@ def build_plan(
     )
 
     for review in inventory.reviews:
+        # Force-set hook (issue #374): when `--skill=<X>` is set AND
+        # inference returned None, override the per-review snapshot's
+        # inferred_skill with the operator-asserted value so downstream
+        # `_resolve_target_rubric()` finds a non-None skill. We also
+        # tag the planner-visible source so the report makes the
+        # override explicit.
+        forced_skill_override: Optional[str] = None
+        if (
+            skill_filter is not None
+            and review.inferred_skill is None
+        ):
+            forced_skill_override = skill_filter
+            review = replace(
+                review,
+                inferred_skill=skill_filter,
+                skill_source="operator-forced",
+            )
+
         if review.is_stamped and (
             review.progress_score_history_unstamped_rows == 0
         ):
@@ -566,6 +601,10 @@ def build_plan(
             continue
 
         if skill_filter is not None and review.inferred_skill != skill_filter:
+            # Filter semantics: inference returned a concrete skill that
+            # disagrees with the operator assertion. Skip with the
+            # historical reason string so callers parsing `outside ...
+            # scope` notes continue to work.
             rp = ReviewPlan(
                 review_id=review.review_id,
                 review_dir=review.review_dir,
@@ -581,13 +620,16 @@ def build_plan(
             continue
 
         if mode is Mode.STAMP_ONLY:
-            plan.reviews.append(
-                _plan_stamp_only_review(review, legacy_rubric)
-            )
+            rp = _plan_stamp_only_review(review, legacy_rubric)
         else:
-            plan.reviews.append(
-                _plan_rescore_review(review, legacy_rubric)
+            rp = _plan_rescore_review(review, legacy_rubric)
+
+        if forced_skill_override is not None:
+            rp.notes.append(
+                f"skill forced by `--skill={forced_skill_override}` "
+                "(inference returned None)"
             )
+        plan.reviews.append(rp)
 
     return plan
 

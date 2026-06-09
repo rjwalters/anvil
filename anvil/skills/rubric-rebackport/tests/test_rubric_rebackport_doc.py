@@ -42,6 +42,33 @@ class TestCommandFlags(unittest.TestCase):
     def test_documents_skill_filter_flag(self) -> None:
         self.assertIn("--skill=", self.cmd_text)
 
+    def test_documents_skill_flag_force_set_semantics(self) -> None:
+        """Per #374: `--skill=<X>` is a hybrid filter / force-set.
+
+        The commands doc must describe the force-set-on-None behavior
+        so operators understand the post-#374 contract change.
+        """
+        text = self.cmd_text.lower()
+        # Any of these terms is sufficient to convey the force-set
+        # semantics; the doc must include at least one.
+        force_terms = ("force", "assert", "override")
+        self.assertTrue(
+            any(term in text for term in force_terms),
+            "commands/rubric-rebackport.md must describe `--skill=<X>` "
+            "as force-set / operator-asserted (one of "
+            f"{force_terms} should appear near the --skill flag docs).",
+        )
+
+    def test_documents_skill_flag_prior_release_callout(self) -> None:
+        """Per #374: callout for the prior-release filter-only behavior.
+
+        The tool shipped one release ago with filter-only semantics;
+        documenting the shift is load-bearing for operators with
+        existing scripts.
+        """
+        text = self.cmd_text.lower()
+        self.assertIn("prior-release", text)
+
 
 class TestModeDispatchMatrixDocumented(unittest.TestCase):
     def setUp(self) -> None:
