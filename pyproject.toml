@@ -112,6 +112,19 @@ auto_shrink = [
     "Pillow>=10.0",
     "numpy>=1.24",
 ]
+# `anvil:memo` render-gate content-bbox image check (issue #395).
+# Check 3 of the advisory `memo_image_dimensions` gate dimension: flags
+# images whose non-background content bbox occupies < 25% of the canvas —
+# the precise signature of the matplotlib tight-bbox + rogue-artist +
+# transparent-canvas failure (16,622×5,652 px canary). Same Pillow/numpy
+# set as `[auto_shrink]` (the bbox algorithm is the same corner-sampling
+# approach); declared separately so consumers can opt in per capability.
+# The stdlib header checks (pixel ceiling, aspect, declared-vs-actual)
+# run without this extra.
+image_lint = [
+    "Pillow>=10.0",
+    "numpy>=1.24",
+]
 # Memo HTML-to-PDF render chain (preferred engine).
 # weasyprint 69.0 is not compatible with Python 3.14 (CSS module import fails).
 # Use xelatex as the fallback engine on Python 3.14+ until weasyprint ships
