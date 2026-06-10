@@ -137,6 +137,60 @@ class TestMigrateApplyBytePreservation:
         # The zeta carry still lands too.
         assert _ZETA_CARRY_LINE in out
 
+    def test_last_entry_carry_with_new_entry_appended(self, tmp_path):
+        """Judge-found blocker (PR #416): when the LAST listed entry
+        needs a field carry (its stop == end_idx) AND an unlisted slug
+        appends a new entry in the same run, both insertions land at the
+        same index. The carried field must attach to the LAST EXISTING
+        entry, with the new entry spliced BELOW it — not above, where
+        the carry would silently corrupt the new entry."""
+        zeta_entry = (
+            "  - slug: zeta-memo\n"
+            "    artifact_type: investment-memo  # TODO(operator): confirm\n"
+            "    render_engine: xelatex\n"
+            "    render_metadata:\n"
+            '      doc-type: "Investment Memo"\n'
+            "    latex_header_includes: |\n"
+            "      \\usepackage{xcolor}\n"
+        )
+        alpha_entry = (
+            "  - slug: alpha-memo\n"
+            "    artifact_type: position-paper\n"
+        )
+        # Alphabetical operator ordering: alpha first, zeta (the carry
+        # target) LAST in the documents block.
+        reordered = ENROLL_OPERATOR_BRIEF.replace(
+            zeta_entry + alpha_entry, alpha_entry + zeta_entry
+        )
+        assert reordered != ENROLL_OPERATOR_BRIEF  # replace() fired
+        project = build_post_283_with_operator_brief(
+            tmp_path, extra_unlisted_slug="gamma-memo"
+        )
+        (project / "BRIEF.md").write_text(reordered, encoding="utf-8")
+
+        result = run(project, apply=True)
+        assert result.success, result.report
+        out = (project / "BRIEF.md").read_text(encoding="utf-8")
+
+        # Byte-level pin: zeta's carry lands inside zeta's entry span,
+        # and the gamma entry follows AFTER it.
+        expected = reordered.replace(
+            "      \\usepackage{xcolor}\n"
+            "---\n",
+            "      \\usepackage{xcolor}\n"
+            + _ZETA_CARRY_LINE
+            + "  - slug: gamma-memo\n"
+            "    artifact_type: investment-memo\n"
+            "---\n",
+        )
+        assert expected != reordered  # replace() fired
+        assert out == expected
+        # Spell out the misattribution explicitly: the carry sits
+        # between zeta's last field and the gamma entry.
+        assert out.index("slug: zeta-memo") < out.index(_ZETA_CARRY_LINE)
+        assert out.index(_ZETA_CARRY_LINE) < out.index("slug: gamma-memo")
+        assert not (project / "zeta-memo" / ".anvil.json").exists()
+
     def test_reapply_is_byte_identical(self, tmp_path):
         project = build_post_283_with_operator_brief(tmp_path)
         first = run(project, apply=True)

@@ -1082,14 +1082,25 @@ def _merge_brief_documents(
         field_lines = _serialize_merge_fields(merge, skip=frozenset(skip))
         if not field_lines:
             continue
-        delta = (field_indent if field_indent is not None else 4) - 4
-        field_lines = _reindent_field_lines(field_lines, delta)
+        if field_indent is None:
+            # Entry with zero field lines: anchor to the dash line's own
+            # indent (fields sit two columns past the dash) so a deeply
+            # indented bare entry still gets valid YAML.
+            dash = lines[start]
+            field_indent = len(dash) - len(dash.lstrip(" ")) + 2
+        field_lines = _reindent_field_lines(field_lines, field_indent - 4)
         insertions.append((stop, [line + "\n" for line in field_lines]))
 
+    # Apply the new-entry splice FIRST. ``end_idx`` is >= every field
+    # insertion index, so the field indices below stay valid — and the
+    # tie matters: when the LAST listed entry needs a field append (its
+    # ``stop`` == ``end_idx``), the field lines must land ABOVE the new
+    # entries (inside the existing entry's span), not below them, where
+    # they would silently attach to the wrong (new) entry.
     if new_entry_lines:
-        insertions.append((end_idx, new_entry_lines))
+        lines[end_idx:end_idx] = new_entry_lines
 
-    # Apply insertions bottom-up so earlier indices stay valid.
+    # Then field insertions bottom-up so earlier indices stay valid.
     for idx, ins in sorted(insertions, key=lambda t: t[0], reverse=True):
         lines[idx:idx] = ins
 
