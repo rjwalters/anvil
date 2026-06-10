@@ -320,6 +320,51 @@ def check_auto_shrink_deps_available() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# image-lint preflight (OPTIONAL — memo image content-bbox sanity check)
+# ---------------------------------------------------------------------------
+
+# Remediation message surfaced when ``Pillow`` and/or ``numpy`` are absent
+# and the memo render-gate's content-bbox-vs-canvas check (issue #395,
+# check 3 of the ``memo_image_dimensions`` dimension) is requested. The
+# check lives in ``anvil/lib/render_gate.py`` and is OPTIONAL: the gate
+# graceful-skips the bbox check (with this message as a ``reasons``
+# breadcrumb) while the stdlib header checks (pixel ceiling, aspect ratio,
+# declared-vs-actual) still run.
+#
+# Mirrors the ``check_auto_shrink_deps_available`` (#102) preflight pattern;
+# the extra declares the same Pillow + numpy set as ``[auto_shrink]``.
+IMAGE_LINT_REMEDIATION = (
+    "Pillow and/or numpy not importable — required only for the optional "
+    "content-bbox-vs-canvas image check in the memo render gate (issue "
+    "#395). Install via the opt-in extra: `uv pip install -e .[image_lint]` "
+    "(or `pip install Pillow numpy`). The stdlib image-dimension checks "
+    "(pixel ceiling, aspect ratio, declared-vs-actual) still run without it."
+)
+
+
+def check_image_lint_deps_available() -> bool:
+    """Return ``True`` if both ``Pillow`` and ``numpy`` import cleanly.
+
+    Pure import-test — performs NO decoding and NO subprocess spawn. This
+    is the preflight guard the memo render-gate's ``memo_image_dimensions``
+    content-bbox check (issue #395) runs before opening any image with
+    PIL. Mirrors :func:`check_auto_shrink_deps_available` exactly (same
+    dependency set, same ``importlib.util.find_spec`` mechanism, same
+    graceful-skip contract): callers should NOT raise on a ``False``
+    return; they record :data:`IMAGE_LINT_REMEDIATION` as a breadcrumb
+    and continue with the stdlib-only checks.
+    """
+    for module_name in ("PIL", "numpy"):
+        try:
+            spec = importlib.util.find_spec(module_name)
+        except (ImportError, ValueError):
+            return False
+        if spec is None:
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Memo render chain preflight (pandoc + weasyprint / wkhtmltopdf / xelatex)
 # ---------------------------------------------------------------------------
 
@@ -709,12 +754,14 @@ def render_matplotlib_figures(figures_dir: Path) -> List[Path]:
 __all__ = [
     "AUTO_SHRINK_REMEDIATION",
     "DEFAULT_MARP_CONFIG",
+    "IMAGE_LINT_REMEDIATION",
     "MEMO_RENDERER_REMEDIATION",
     "MMDC_REMEDIATION",
     "PDFJAM_REMEDIATION",
     "XELATEX_REMEDIATION",
     "RenderError",
     "check_auto_shrink_deps_available",
+    "check_image_lint_deps_available",
     "check_mmdc_available",
     "check_pandoc_available",
     "check_pdfjam_available",
