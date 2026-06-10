@@ -95,6 +95,8 @@ Public API
     identifies which skill owns the thread rather than selecting a memo
     rubric overlay subtype. Issue #394 grew the memo-scoped subset with
     the canary-proven ``challenge-memo`` and ``strategy-memo`` genres.
+    Issue #408 added the skill-identity value ``pub`` (research-paper
+    threads, the project-migrate BRIEF-synthesis registry gap).
 
 ``MEMO_ARTIFACT_TYPES``
     The memo-scoped subset of :class:`ArtifactType` — the registered
@@ -104,9 +106,9 @@ Public API
 
 ``SKILL_IDENTITY_ARTIFACT_TYPES``
     The skill-identity subset of :class:`ArtifactType` (``deck`` /
-    ``slides`` / ``proposal``). Memo's overlay dispatch fails loudly
-    for exactly this set (issue #386, re-keyed explicit under #394 so
-    consumer-declared memo types don't trip the rejection).
+    ``slides`` / ``proposal`` / ``pub``). Memo's overlay dispatch fails
+    loudly for exactly this set (issue #386, re-keyed explicit under
+    #394 so consumer-declared memo types don't trip the rejection).
 
 ``BriefDocument``
     Pydantic model for one entry in the ``documents:`` list. Carries
@@ -303,8 +305,11 @@ from anvil.lib.theme import find_consumer_root
 # The registered artifact types. The first seven are memo subtypes
 # (five seeds per the curator's confirmation comment on #283, plus the
 # canary-proven challenge-memo / strategy-memo registered under #394);
-# the last three are skill-identity values added under #386 (deck /
-# slides / proposal threads in a shared project BRIEF). Unknown values
+# the last four are skill-identity values — deck / slides / proposal
+# added under #386, pub added under #408 (a pub-class LaTeX paper
+# thread in a shared project BRIEF previously had NO registered type,
+# so project-migrate's BRIEF synthesis silently defaulted a research
+# paper to 'investment-memo'). Unknown values
 # are rejected with a clear error listing this set UNLESS a consumer
 # overlay JSON backs them (the #394 consumer extension tier — see
 # `discover_consumer_artifact_types` below).
@@ -332,6 +337,7 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "deck",
     "slides",
     "proposal",
+    "pub",
 )
 
 
@@ -380,6 +386,12 @@ class ArtifactType(str, Enum):
         Skill-identity value (#386): an ``anvil:proposal`` LaTeX
         customer-proposal thread. Not a memo subtype — selects no memo
         rubric overlay.
+    PUB
+        Skill-identity value (#408): an ``anvil:pub`` LaTeX
+        research-paper thread. Not a memo subtype — selects no memo
+        rubric overlay. Registered so project-migrate's BRIEF
+        synthesis can name pub-class ``.tex``-bodied threads instead
+        of silently defaulting them to ``investment-memo``.
     """
 
     INVESTMENT_MEMO = "investment-memo"
@@ -392,12 +404,13 @@ class ArtifactType(str, Enum):
     DECK = "deck"
     SLIDES = "slides"
     PROPOSAL = "proposal"
+    PUB = "pub"
 
 
 # The memo-scoped subset of the registry: values that select a memo
 # rubric overlay (one overlay JSON per member ships under
 # `anvil/skills/memo/rubric_overlays/`). Skill-identity values (deck /
-# slides / proposal) are deliberately excluded — memo's overlay dispatch
+# slides / proposal / pub) are deliberately excluded — memo's overlay dispatch
 # (`anvil/skills/memo/lib/rubric_overlays.py::select_overlay_for_thread`)
 # raises a clear skill-mismatch error for them instead of silently
 # scoring a non-memo artifact against the memo rubric (#386).
@@ -415,7 +428,8 @@ MEMO_ARTIFACT_TYPES: frozenset = frozenset(
 
 
 # The skill-identity subset of the registry (issue #386, made explicit
-# under #394): values that name which NON-memo skill owns a thread in a
+# under #394; ``pub`` added under #408): values that name which
+# NON-memo skill owns a thread in a
 # shared project BRIEF. Memo's overlay dispatch
 # (`anvil/skills/memo/lib/rubric_overlays.py::select_overlay_for_thread`)
 # raises a clear skill-mismatch error for exactly this set. The guard
@@ -428,6 +442,7 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.DECK,
         ArtifactType.SLIDES,
         ArtifactType.PROPOSAL,
+        ArtifactType.PUB,
     }
 )
 

@@ -64,6 +64,24 @@ rollout of the #295/#296 model to the other rich-command-set skills):
    root. The migration moves the version dirs (and critic siblings) IN
    under the thread root; the thread-root contents stay where they are
    (the studio hand-fix `2cf3f37` is the reference shape).
+
+   **Bare sub-state (issue #408).** A pre-#283 classic project with NO
+   anvil config anywhere — no project BRIEF, no `.anvil.json`, no
+   skill-fixed or retained body filenames — is the **bare** shape: a
+   hand-rolled workflow that independently converged on the
+   `{thread}.{N}/` + `.review`/`.audit` grammar (e.g. `<slug>.N/`
+   dirs carrying `paper.tex` bodies, version gaps tolerated). Bare
+   projects classify and migrate as PRE_283_CLASSIC, but the project
+   BRIEF is **synthesized** from observed state (there is nothing to
+   merge from): every inferred or defaulted frontmatter value carries
+   a `# TODO(operator)` YAML comment, the BRIEF body carries a
+   mirrored operator-confirmation checklist (body prose survives
+   future BRIEF rewrites verbatim; YAML comments survive the no-op
+   idempotent path), and the dry-run report prints the full proposed
+   BRIEF text through the same `render_project_brief` code path the
+   apply step writes. Synthesis is automatic when the bare sub-state
+   is detected — dry-run-by-default is the safety surface; no extra
+   flag.
 2. **Post-#283 with `.anvil.json`** — project root with `BRIEF.md` listing
    `documents:`, per-thread directories under
    `<project>/<slug>/<slug>.N/memo.md`, separate per-thread `.anvil.json`
@@ -88,16 +106,33 @@ are consumed by external tooling (marp CLI, xelatex,
 
 **Artifact types.** The registered artifact-type enum
 (`anvil/lib/project_brief.py::ArtifactType`) carries skill-identity
-values `deck`, `slides`, and `proposal` alongside the memo subtypes
-(issue #386). The migration infers the type from the retained body
-filename and writes it into the BRIEF `documents:` entry: `deck.md` →
-`deck`, `proposal.tex` → `proposal`. Threads with no retained body
-(memo-shaped `.md` bodies) default to `artifact_type: investment-memo`.
+values `deck`, `slides`, `proposal` (issue #386), and `pub` (issue
+#408) alongside the memo subtypes. The migration infers the type from
+the retained body filename and writes it into the BRIEF `documents:`
+entry: `deck.md` → `deck`, `proposal.tex` → `proposal`. Threads with
+no retained body (memo-shaped `.md` bodies) default to
+`artifact_type: investment-memo`.
 The plan surfaces an inference note on every retained-body thread —
 including `.tex`-bodied proposal threads — and the deck note flags the
 deck-vs-slides ambiguity: `anvil:slides` threads also use `deck.md`, so
 body shape alone cannot distinguish them; edit the BRIEF entry to
 `slides` for a talk deck.
+
+On **bare** threads (issue #408) the inference extends to observed
+non-`.md` bodies (`*.tex`): a body with
+`\documentclass{anvil-proposal}` infers `proposal`; any other
+`\documentclass` infers `pub`; markdown-bodied bare threads keep the
+`investment-memo` default. Every bare inference — including the
+default — is paired with a `# TODO(operator)` confirmation marker;
+nothing is guessed silently. Observed body filenames (e.g.
+`paper.tex`) are **recorded but never renamed** — the #382 slug-echo
+carve-out applies because root-level build artifacts
+(`paper.tex`/`paper.pdf`) are direct evidence that external tooling
+consumes the fixed name; the plan emits a deferral note instead.
+Existing `.review`/`.audit` sidecars rename cleanly with the thread;
+hand-rolled unstamped review content stays invisible-but-intact to
+`discover_critics` per the #346 additive contract (rebackportable via
+`anvil:rubric-rebackport`).
 
 ## Commands
 
@@ -176,6 +211,10 @@ constructed in tmp dirs rather than baked on disk):
   `.anvil.json` as a sibling of flat version dirs; issue #382).
 - `build_mixed_memo_deck_proposal` — the mixed-skill canary case: one
   project root with flat memo + deck + proposal threads (issue #382).
+- `build_bare_version_dir_threads` — the bare adoption-target shape
+  (issue #408): `.tex` bodies, version gaps {1,3,4,5,6,7}, mixed
+  hand-rolled `.review`/`.audit` sidecars, root-level
+  `paper.tex`/`paper.pdf` build artifacts, `figures/`.
 
 Test files:
 
@@ -197,3 +236,8 @@ Test files:
   cross-skill discovery smoke through `anvil.lib.project_discovery`.
 - `test_project_migrate_idempotent_mixed.py` — re-apply on a migrated
   mixed project is zero diff.
+- `test_project_migrate_bare.py` — bare sub-state (issue #408):
+  characterization lock (PRE_283_CLASSIC), artifact-type inference +
+  TODO markers, dry-run BRIEF preview, apply + post-apply contracts
+  (`discover_thread_root`, strict load, verify, `discover_critics`
+  excludes unstamped sidecars), byte-identical idempotence.

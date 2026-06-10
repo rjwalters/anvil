@@ -574,8 +574,83 @@ def build_mixed_memo_deck_proposal(
     return project_dir
 
 
+def build_bare_version_dir_threads(
+    root: Path,
+    project_name: str = "paper",
+    *,
+    slug: str = "bispectral-imaging",
+    documentclass: str = "article",
+) -> Path:
+    """Build a BARE version-dir project (issue #408).
+
+    Anonymized reproduction of the adoption-target monorepo shape: a
+    hand-rolled review/revise workflow that independently converged on
+    Anvil's ``{thread}.{N}/`` + ``.review``/``.audit`` sibling grammar,
+    but carries ZERO anvil config (no BRIEF.md anywhere, no
+    ``.anvil.json``) and a fixed ``paper.tex`` body filename consumed
+    by external tooling (root-level ``paper.tex``/``paper.pdf`` build
+    artifacts).
+
+    Shape (version gaps deliberate — no ``.2``):
+
+      <project>/
+        <slug>.1/paper.tex
+        <slug>.3/paper.tex
+        <slug>.3.review/review.md      ← hand-rolled, unstamped
+        <slug>.4/paper.tex
+        <slug>.4.review/review.md
+        <slug>.5/paper.tex
+        <slug>.6/paper.tex
+        <slug>.6.audit/audit.md        ← hand-rolled, unstamped
+        <slug>.7/paper.tex
+        figures/fig1.png
+        paper.tex                      ← root-level build entrypoint
+        paper.pdf
+
+    ``documentclass`` parametrizes the inference path: ``article``
+    (default) infers ``pub``; ``anvil-proposal`` infers ``proposal``.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    versions = (1, 3, 4, 5, 6, 7)
+    for n in versions:
+        _write(
+            project_dir / f"{slug}.{n}" / "paper.tex",
+            f"\\documentclass{{{documentclass}}}\n"
+            "\\begin{document}\n"
+            f"Bispectral imaging draft v{n}.\n"
+            "\\end{document}\n",
+        )
+    # Hand-rolled review siblings: a bare `review.md` is NOT a
+    # recognizable payload for `discover_critics` (no `_review.json`,
+    # no legacy triple) — invisible-but-intact per the #346 additive
+    # contract; rebackportable later via anvil:rubric-rebackport.
+    for n in (3, 4):
+        _write(
+            project_dir / f"{slug}.{n}.review" / "review.md",
+            f"# Review of draft v{n}\n\nHand-rolled reviewer notes.\n",
+        )
+    _write(
+        project_dir / f"{slug}.6.audit" / "audit.md",
+        "# Audit of draft v6\n\nHand-rolled audit notes.\n",
+    )
+    # Root-level build artifacts: direct evidence that external tooling
+    # (latexmk / Makefile) consumes the fixed `paper.tex` name — the
+    # #382 slug-echo carve-out applies (record, never rename).
+    _write(
+        project_dir / "paper.tex",
+        f"\\documentclass{{{documentclass}}}\n"
+        "% build entrypoint consumed by latexmk\n",
+    )
+    _write(project_dir / "paper.pdf", "PDF-PLACEHOLDER\n")
+    _write(project_dir / "figures" / "fig1.png", "PNG-PLACEHOLDER\n")
+    return project_dir
+
+
 __all__ = [
     "build_aldus_shaped_deck",
+    "build_bare_version_dir_threads",
     "build_bessemer_shaped",
     "build_fully_migrated",
     "build_mixed_memo_deck_proposal",

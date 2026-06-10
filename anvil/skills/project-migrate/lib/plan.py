@@ -158,6 +158,21 @@ class BriefMergeOp:
         The paired rationale for ``max_iterations``. Always present when
         ``max_iterations`` is (the BRIEF parser rejects unbalanced
         pairs at parse time).
+    inferred
+        True when ``artifact_type`` was INFERRED from observed on-disk
+        state rather than carried from legacy config (issue #408 —
+        bare version-dir threads). Inferred values are proposals, not
+        facts; the serializer pairs them with ``todo_comment``.
+    todo_comment
+        Operator-confirmation marker (issue #408). When set, the BRIEF
+        serializer appends it as a YAML comment on the
+        ``artifact_type:`` line (e.g. ``artifact_type: pub  # TODO...``).
+        YAML comments are ignored by ``yaml.safe_load`` and harmless to
+        the no-pyyaml hand parser, and survive idempotent re-runs
+        byte-for-byte (the no-op path never rewrites the BRIEF). A
+        future NON-noop rewrite would drop them — which is why the
+        synthesized BRIEF also mirrors the TODO list into the body
+        prose (preserved verbatim on rewrite).
     """
 
     slug: str
@@ -167,6 +182,8 @@ class BriefMergeOp:
     rubric_overrides: Optional[dict] = None
     max_iterations: Optional[int] = None
     iteration_cap_rationale: Optional[str] = None
+    inferred: bool = False
+    todo_comment: Optional[str] = None
 
 
 @dataclass
@@ -185,6 +202,11 @@ class DocumentPlan:
     brief_merge: Optional[BriefMergeOp] = None
     anvil_json_to_delete: Optional[Path] = None
     notes: List[str] = field(default_factory=list)
+    # Operator-confirmation checklist items mirrored into the synthesized
+    # BRIEF's body prose (issue #408). Body prose is preserved verbatim
+    # on BRIEF rewrite, so these survive even a future non-noop rewrite
+    # that drops the YAML comments.
+    operator_todos: List[str] = field(default_factory=list)
 
     @property
     def is_noop(self) -> bool:
@@ -213,6 +235,15 @@ class Plan:
     # thread (the planner leaves them in place; operator decides).
     preexisting_brief_slugs: List[str] = field(default_factory=list)
     extra_anvil_jsons_to_delete: List[Path] = field(default_factory=list)
+    # True when the project is BARE (issue #408 — version-dir families
+    # with no anvil config anywhere): the project BRIEF will be
+    # SYNTHESIZED from observed state. The BRIEF serializer emits
+    # operator-confirmation TODO comments on every defaulted /
+    # inferred field when this is set. Automatic when the inventory's
+    # ``is_bare`` predicate holds — there is nothing to merge from, so
+    # synthesis is the only sane behavior and dry-run-by-default is
+    # the safety surface (no extra CLI flag).
+    synthesize_brief: bool = False
 
     def __post_init__(self) -> None:
         self.project_brief_path = self.project_dir / BRIEF_FILENAME
@@ -666,6 +697,13 @@ def _plan_pre_283_doc(
     # 'investment-memo' default with no note at all).
     _apply_retained_body_inference(plan, thread)
 
+    # Bare threads (issue #408): no anvil config anywhere means the
+    # BRIEF entry is SYNTHESIZED, so the silent 'investment-memo'
+    # default above becomes an inferred-with-note value paired with an
+    # operator-confirmation TODO marker.
+    if inv.is_bare:
+        _apply_bare_inference(plan, thread)
+
     return plan
 
 
@@ -724,6 +762,146 @@ def _apply_retained_body_inference(
     plan.notes.append(note)
 
 
+def _read_text_lenient(path: Path) -> str:
+    """Read ``path`` as UTF-8 text; return ``""`` on any failure."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _infer_tex_artifact_type(text: str) -> Optional[str]:
+    """Infer a skill-identity artifact_type from LaTeX body content.
+
+    Inference table (issue #408, curator-resolved):
+
+    - ``\\documentclass{anvil-proposal}`` (or any anvil-proposal.cls
+      reference) → ``proposal``
+    - any other ``\\documentclass`` → ``pub`` (registered as a
+      skill-identity value under #408)
+    - no ``\\documentclass`` → ``None`` (caller keeps the memo-class
+      default, still TODO-marked)
+    """
+    if "anvil-proposal" in text:
+        return "proposal"
+    if "\\documentclass" in text:
+        return "pub"
+    return None
+
+
+def _apply_bare_inference(plan: DocumentPlan, thread: ThreadInventory) -> None:
+    """Infer the BRIEF artifact_type for a BARE thread (issue #408).
+
+    Bare threads carry no anvil config, so every BRIEF value is a
+    synthesis-time proposal: the inference is recorded on the
+    :class:`BriefMergeOp` with ``inferred=True`` plus a ``todo_comment``
+    operator-confirmation marker, mirrored into ``plan.operator_todos``
+    (the body-prose checklist that survives BRIEF rewrites), and
+    surfaced as a plan note — never a silent default.
+
+    Inference inputs, in precedence order:
+
+    1. ``thread.observed_body_files`` (non-``.md`` candidate bodies,
+       ``*.tex``): read the newest version's observed body and apply
+       :func:`_infer_tex_artifact_type`. The observed body filename is
+       recorded-but-never-renamed (the #382 slug-echo carve-out:
+       root-level build artifacts are direct evidence that external
+       tooling consumes the fixed name) with a deferral note.
+    2. Markdown bodies (non-skill-fixed — skill-fixed bodies preclude
+       bareness): keep the memo-class ``investment-memo`` default,
+       TODO-marked.
+    """
+    if plan.brief_merge is None:
+        return
+
+    observed = sorted(set(thread.observed_body_files))
+    if observed:
+        # Read the newest version dir's observed body for content
+        # heuristics (the latest version is the best evidence of what
+        # the thread currently is).
+        sample_name: Optional[str] = None
+        sample_text = ""
+        for version_dir in reversed(thread.version_dirs):
+            for name in observed:
+                candidate = version_dir / name
+                if candidate.is_file():
+                    sample_name = name
+                    sample_text = _read_text_lenient(candidate)
+                    break
+            if sample_name is not None:
+                break
+        if sample_name is None:
+            sample_name = observed[0]
+
+        inferred = _infer_tex_artifact_type(sample_text)
+        if inferred is not None:
+            plan.brief_merge.artifact_type = inferred
+            plan.brief_merge.inferred = True
+            plan.brief_merge.todo_comment = (
+                f"TODO(operator): confirm — inferred from {sample_name} "
+                f"\\documentclass"
+            )
+            plan.notes.append(
+                f"{plan.slug}: artifact_type inferred as '{inferred}' from "
+                f"{sample_name} (\\documentclass scan; bare thread, no anvil "
+                f"config to merge from) — confirm in BRIEF (TODO marker "
+                f"emitted)."
+            )
+            plan.operator_todos.append(
+                f"`{plan.slug}`: confirm `artifact_type: {inferred}` "
+                f"(inferred from {sample_name})."
+            )
+        else:
+            plan.brief_merge.inferred = True
+            plan.brief_merge.todo_comment = (
+                f"TODO(operator): confirm — could not infer from "
+                f"{sample_name}; defaulted"
+            )
+            plan.notes.append(
+                f"{plan.slug}: artifact_type could not be inferred from "
+                f"{sample_name} (no \\documentclass found); defaulting to "
+                f"'{plan.brief_merge.artifact_type}' with a TODO marker — "
+                f"edit the BRIEF entry."
+            )
+            plan.operator_todos.append(
+                f"`{plan.slug}`: confirm `artifact_type: "
+                f"{plan.brief_merge.artifact_type}` (could not infer from "
+                f"{sample_name})."
+            )
+
+        # Body filename: record + defer, never rename (#382 carve-out).
+        observed_list = ", ".join(observed)
+        plan.notes.append(
+            f"{plan.slug}: body filename {observed_list} recorded but NOT "
+            f"renamed (slug-echo carve-out per issue #382 — external "
+            f"tooling such as latexmk/Makefile may consume the fixed "
+            f"name); rename manually if desired."
+        )
+        plan.operator_todos.append(
+            f"`{plan.slug}`: body filename `{observed_list}` retained "
+            f"inside version dirs — rename manually only if no external "
+            f"tooling consumes the fixed name."
+        )
+        return
+
+    # No observed candidate bodies: a markdown-bodied (or empty) bare
+    # thread keeps the memo-class default, TODO-marked.
+    plan.brief_merge.inferred = True
+    plan.brief_merge.todo_comment = (
+        "TODO(operator): confirm — memo-class default for a bare thread"
+    )
+    plan.notes.append(
+        f"{plan.slug}: artifact_type defaulted to "
+        f"'{plan.brief_merge.artifact_type}' (bare thread with markdown "
+        f"body; no anvil config to merge from) — confirm in BRIEF (TODO "
+        f"marker emitted)."
+    )
+    plan.operator_todos.append(
+        f"`{plan.slug}`: confirm `artifact_type: "
+        f"{plan.brief_merge.artifact_type}` (memo-class default)."
+    )
+
+
 def _iter_critic_siblings(version_dir: Path) -> List[Path]:
     """Return list of critic sibling dirs for ``version_dir``.
 
@@ -779,6 +957,11 @@ def build_plan(
         shape = _classify(inventory)
 
     plan = Plan(project_dir=project_dir, shape=shape)
+    # Bare sub-state (issue #408): synthesize the BRIEF automatically —
+    # there is no legacy config to merge from, so synthesis-with-TODO
+    # markers is the only sane behavior (dry-run-by-default is the
+    # operator's safety surface; no extra flag).
+    plan.synthesize_brief = inventory.is_bare
 
     # Build the stem rewrite map. Used for cross-thread reference rewriting.
     stems_to_rewrite: Dict[str, str] = {}
