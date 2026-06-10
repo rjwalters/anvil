@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-from .apply import ApplyResult, apply_plan
+from .apply import ApplyResult, apply_plan, render_project_brief
 from .detect import (
     ProjectInventory,
     Shape,
@@ -88,7 +88,13 @@ def _format_plan_report(
     lines.append(f"# Project migration: {project_dir.name}")
     lines.append("")
     lines.append(f"**Project root**: `{project_dir}`")
-    lines.append(f"**Detected shape**: `{shape.value}`")
+    shape_suffix = ""
+    if plan.synthesize_brief:
+        # Bare sub-state (issue #408) — same PRE_283_CLASSIC dispatch,
+        # but the BRIEF is synthesized from observed state rather than
+        # merged from legacy config.
+        shape_suffix = " (bare — BRIEF will be synthesized)"
+    lines.append(f"**Detected shape**: `{shape.value}`{shape_suffix}")
     lines.append(f"**Documents in plan**: {len(plan.documents)}")
     lines.append("")
 
@@ -155,9 +161,13 @@ def _format_plan_report(
                 if bm.rubric_overrides:
                     ro_keys = ", ".join(sorted(bm.rubric_overrides.keys()))
                     ro_str = f", rubric_overrides={{{ro_keys}}}"
+                inferred_str = ""
+                if bm.inferred:
+                    inferred_str = ", inferred — TODO marker emitted"
                 lines.append(
                     f"- BRIEF merge: add `documents:` entry "
-                    f"(artifact_type={bm.artifact_type}{tl_str}{ro_str})"
+                    f"(artifact_type={bm.artifact_type}{tl_str}{ro_str}"
+                    f"{inferred_str})"
                 )
             if doc.anvil_json_to_delete is not None:
                 try:
@@ -176,6 +186,30 @@ def _format_plan_report(
             except ValueError:
                 rel = path
             lines.append(f"- Delete: `{rel}`")
+        lines.append("")
+
+    # Full proposed BRIEF text (issue #408): rendered through the SAME
+    # code path the apply step writes (`render_project_brief`), so the
+    # dry-run preview is byte-identical to what `--apply` would write.
+    # Read-only — the formatter never touches disk beyond reading the
+    # existing BRIEF (the dry-run no-mutation contract holds).
+    if not plan.is_noop and any(
+        doc.brief_merge is not None for doc in plan.documents
+    ):
+        existing_text: Optional[str] = None
+        if plan.project_brief_path.is_file():
+            try:
+                existing_text = plan.project_brief_path.read_text(
+                    encoding="utf-8"
+                )
+            except OSError:
+                existing_text = None
+        rendered = render_project_brief(plan, existing_text=existing_text)
+        lines.append("## Proposed `BRIEF.md`")
+        lines.append("")
+        lines.append("````markdown")
+        lines.append(rendered.rstrip("\n"))
+        lines.append("````")
         lines.append("")
 
     lines.append("## Verification preview")
