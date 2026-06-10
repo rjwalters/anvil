@@ -648,11 +648,157 @@ def build_bare_version_dir_threads(
     return project_dir
 
 
+# Operator-authored project BRIEF used by the enrollment fixtures
+# (issue #406). Deliberately carries every byte-preservation tripwire
+# the curator verified the re-render path drops: a top-level `theme:`,
+# YAML comments (including a `# TODO(operator)` marker), per-doc
+# `render_*` / `latex_header_includes` keys, quoted strings, and
+# non-alphabetical entry order. The surgical-append tests assert this
+# text survives as a byte-identical prefix.
+ENROLL_OPERATOR_BRIEF = (
+    "---\n"
+    "project: corporate-memos\n"
+    "theme: sphere-brand  # operator-pinned theme\n"
+    "audience:\n"
+    '  - "Board of Directors"\n'
+    "hard_rules:\n"
+    "  - 'No forward-looking statements'\n"
+    "documents:\n"
+    "  - slug: zeta-memo\n"
+    "    artifact_type: investment-memo  # TODO(operator): confirm\n"
+    "    render_engine: xelatex\n"
+    "    render_metadata:\n"
+    '      doc-type: "Investment Memo"\n'
+    "    latex_header_includes: |\n"
+    "      \\usepackage{xcolor}\n"
+    "  - slug: alpha-memo\n"
+    "    artifact_type: position-paper\n"
+    "---\n"
+    "\n"
+    "# Project BRIEF\n"
+    "\n"
+    "Operator-authored prose that must survive byte-identically.\n"
+)
+
+
+def build_loose_file_in_existing_project(
+    root: Path,
+    project_name: str = "corporate-memos",
+    *,
+    loose_filename: str = "2026-05-19-board-update.md",
+) -> Path:
+    """Build a migrated project + one dated loose file (issue #406).
+
+    Shape:
+      <project>/
+        BRIEF.md                  ← operator-authored (tripwire-laden:
+                                    theme:, render_* keys, YAML
+                                    comments, quoting, zeta-before-alpha
+                                    entry order)
+        zeta-memo/zeta-memo.1/zeta-memo.md
+        alpha-memo/alpha-memo.1/alpha-memo.md
+        <loose_filename>          ← the enrollment target
+
+    Returns the project root path.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    _write(project_dir / "BRIEF.md", ENROLL_OPERATOR_BRIEF)
+    for slug in ("zeta-memo", "alpha-memo"):
+        _write(
+            project_dir / slug / f"{slug}.1" / f"{slug}.md",
+            f"# {slug} v1\n\nBody.\n",
+        )
+    _write(
+        project_dir / loose_filename,
+        "# Board update\n\nLoose memo awaiting enrollment.\n",
+    )
+    return project_dir
+
+
+def build_loose_file_no_project(
+    root: Path,
+    dir_name: str = "memos",
+) -> Path:
+    """Build a bare topical dir with dated loose files (issue #406).
+
+    Shape (both date forms from the issue's examples):
+      <dir>/
+        2026-05-19-topic-a.md     ← date PREFIX
+        topic-b-2026-05-19.md     ← date SUFFIX
+
+    No BRIEF anywhere — enrollment must synthesize one. Returns the
+    topical dir path.
+    """
+    topical_dir = root / dir_name
+    topical_dir.mkdir(parents=True, exist_ok=True)
+    _write(
+        topical_dir / "2026-05-19-topic-a.md",
+        "# Topic A\n\nLoose memo (date-prefixed filename).\n",
+    )
+    _write(
+        topical_dir / "topic-b-2026-05-19.md",
+        "# Topic B\n\nLoose memo (date-suffixed filename).\n",
+    )
+    return topical_dir
+
+
+def build_loose_file_batch(
+    root: Path,
+    dir_name: str = "ip",
+) -> Path:
+    """Build a batch of loose files (issue #406).
+
+    Shape:
+      <dir>/
+        2026-05-19-topic-a.md           ← enrolls (md, date prefix)
+        draft-response-2026-05-19.md    ← enrolls (md, date suffix)
+        whitepaper.tex                  ← enrolls (tex, \\documentclass
+                                          → pub inference)
+        2026-05-19-same-topic.md        ← collision pair member 1
+        same-topic-2026-05-20.md        ← collision pair member 2
+                                          (both derive `same-topic`)
+        notes.txt                       ← refused (non-md/tex)
+
+    No BRIEF anywhere. Returns the topical dir path; tests pass file
+    subsets to exercise the batch semantics.
+    """
+    topical_dir = root / dir_name
+    topical_dir.mkdir(parents=True, exist_ok=True)
+    _write(
+        topical_dir / "2026-05-19-topic-a.md",
+        "# Topic A\n\nAnalysis.\n",
+    )
+    _write(
+        topical_dir / "draft-response-2026-05-19.md",
+        "# Draft response\n\nCounterparty response.\n",
+    )
+    _write(
+        topical_dir / "whitepaper.tex",
+        "\\documentclass{article}\n"
+        "\\begin{document}\nWhitepaper draft.\n\\end{document}\n",
+    )
+    _write(
+        topical_dir / "2026-05-19-same-topic.md",
+        "# Same topic (one)\n",
+    )
+    _write(
+        topical_dir / "same-topic-2026-05-20.md",
+        "# Same topic (two)\n",
+    )
+    _write(topical_dir / "notes.txt", "scratch notes\n")
+    return topical_dir
+
+
 __all__ = [
+    "ENROLL_OPERATOR_BRIEF",
     "build_aldus_shaped_deck",
     "build_bare_version_dir_threads",
     "build_bessemer_shaped",
     "build_fully_migrated",
+    "build_loose_file_batch",
+    "build_loose_file_in_existing_project",
+    "build_loose_file_no_project",
     "build_mixed_memo_deck_proposal",
     "build_post_283_anvil_json",
     "build_pre_283_classic",

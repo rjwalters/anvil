@@ -28,10 +28,11 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as _dc_replace
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .detect import Shape
 from .plan import (
     BriefMergeOp,
     ContentRewrite,
@@ -375,6 +376,43 @@ def _format_rubric_overrides(ro: dict) -> List[str]:
     return out
 
 
+def _serialize_document_entry(merge: BriefMergeOp) -> List[str]:
+    """Serialize one ``documents:`` entry as YAML lines (no newlines).
+
+    Extracted from :func:`render_project_brief` (issue #406) so the
+    surgical-append path (:func:`_append_brief_documents`) emits entries
+    byte-identical to the full-render path. Honors the YAML comment
+    carriers: ``slug_comment`` on the ``- slug:`` line (enrollment
+    provenance) and ``todo_comment`` on the ``artifact_type:`` line
+    (the #408 operator-confirmation marker).
+    """
+    out: List[str] = []
+    slug_line = f"  - slug: {merge.slug}"
+    if merge.slug_comment:
+        slug_line += f"  # {merge.slug_comment}"
+    out.append(slug_line)
+    artifact_type_line = f"    artifact_type: {merge.artifact_type}"
+    if merge.todo_comment:
+        artifact_type_line += f"  # {merge.todo_comment}"
+    out.append(artifact_type_line)
+    if merge.target_length is not None:
+        out.append(
+            f"    target_length: {_format_target_length(merge.target_length)}"
+        )
+    if merge.target_length_overrides:
+        out.extend(
+            _format_target_length_overrides(merge.target_length_overrides)
+        )
+    if merge.max_iterations is not None and merge.iteration_cap_rationale:
+        out.append(f"    max_iterations: {merge.max_iterations}")
+        out.extend(
+            _format_iteration_cap_rationale(merge.iteration_cap_rationale)
+        )
+    if merge.rubric_overrides:
+        out.extend(_format_rubric_overrides(merge.rubric_overrides))
+    return out
+
+
 def render_project_brief(
     plan: Plan, *, existing_text: Optional[str] = None
 ) -> str:
@@ -523,30 +561,7 @@ def render_project_brief(
         frontmatter_lines.append("hard_rules: []")
     frontmatter_lines.append("documents:")
     for merge in merges:
-        frontmatter_lines.append(f"  - slug: {merge.slug}")
-        artifact_type_line = f"    artifact_type: {merge.artifact_type}"
-        if merge.todo_comment:
-            artifact_type_line += f"  # {merge.todo_comment}"
-        frontmatter_lines.append(artifact_type_line)
-        if merge.target_length is not None:
-            frontmatter_lines.append(
-                f"    target_length: {_format_target_length(merge.target_length)}"
-            )
-        if merge.target_length_overrides:
-            frontmatter_lines.extend(
-                _format_target_length_overrides(merge.target_length_overrides)
-            )
-        if merge.max_iterations is not None and merge.iteration_cap_rationale:
-            frontmatter_lines.append(
-                f"    max_iterations: {merge.max_iterations}"
-            )
-            frontmatter_lines.extend(
-                _format_iteration_cap_rationale(merge.iteration_cap_rationale)
-            )
-        if merge.rubric_overrides:
-            frontmatter_lines.extend(
-                _format_rubric_overrides(merge.rubric_overrides)
-            )
+        frontmatter_lines.extend(_serialize_document_entry(merge))
 
     # Body: keep existing body verbatim if any; else emit a stub. Under
     # bare synthesis the stub mirrors the TODO list into prose — body
@@ -646,6 +661,258 @@ def _split_brief_for_rewrite(text: str) -> Tuple[Dict[str, object], str]:
 
 
 # ---------------------------------------------------------------------------
+# Enrollment BRIEF write (issue #406) — surgical append, never re-render
+# ---------------------------------------------------------------------------
+
+
+# A top-level YAML frontmatter key: starts at column 0 with an
+# identifier followed by ':'. Literal block scalars and list entries are
+# indented, so they cannot false-trigger the block boundary.
+_TOP_LEVEL_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*:")
+
+# The `documents:` key in block form (nothing after the colon except an
+# optional trailing comment). An inline form (`documents: [...]`) is not
+# appendable and is rejected with a clear error.
+_DOCUMENTS_KEY_RE = re.compile(r"^documents:\s*(#.*)?$")
+
+_ENROLLMENT_LOG_HEADER = "## Enrollment log"
+
+
+def _append_brief_documents(existing_text: str, plan: Plan) -> str:
+    """Surgically append ``documents:`` entries to an existing BRIEF text.
+
+    The migrate-mode write path (:func:`render_project_brief`) round-trips
+    the frontmatter through a parsed dict, which is LOSSY: it drops
+    top-level ``theme:``, per-doc ``render_*`` / ``latex_header_includes``
+    keys, every YAML comment (including #408's ``TODO(operator)``
+    markers), quoting style, and entry order. Byte-identical preservation
+    of operator-authored content is only achievable by raw-text
+    insertion — so this function:
+
+    1. Locates the top-level ``documents:`` line in the raw frontmatter.
+    2. Finds the end of the ``documents:`` block (the next top-level
+       ``key:`` line, or the closing ``---``). Indented content —
+       list entries, literal block scalars — cannot false-trigger the
+       boundary.
+    3. Inserts the new entry lines (serialized via
+       :func:`_serialize_document_entry` — the same serializer the
+       full-render path uses) at the END of the block. Every other byte
+       is untouched.
+    4. Appends the plan's enrollment-log lines to the END of the body
+       (body prose remains a byte-identical prefix).
+
+    Raises ``ValueError`` when the existing text has no parseable
+    frontmatter or no block-form ``documents:`` key — the caller treats
+    that as "never modify a BRIEF we can't parse".
+    """
+    lines = existing_text.splitlines(keepends=True)
+
+    # Locate the frontmatter delimiters.
+    first_idx = 0
+    while first_idx < len(lines) and lines[first_idx].strip() == "":
+        first_idx += 1
+    if first_idx >= len(lines) or lines[first_idx].strip() != "---":
+        raise ValueError(
+            "existing BRIEF has no YAML frontmatter (missing opening "
+            "'---'); refusing to append."
+        )
+    close_idx = None
+    for i in range(first_idx + 1, len(lines)):
+        if lines[i].strip() == "---":
+            close_idx = i
+            break
+    if close_idx is None:
+        raise ValueError(
+            "existing BRIEF frontmatter is unterminated (no closing "
+            "'---'); refusing to append."
+        )
+
+    # Locate the top-level `documents:` block.
+    doc_idx = None
+    for i in range(first_idx + 1, close_idx):
+        if _DOCUMENTS_KEY_RE.match(lines[i]):
+            doc_idx = i
+            break
+    if doc_idx is None:
+        raise ValueError(
+            "existing BRIEF frontmatter has no block-form `documents:` "
+            "key; refusing to append. (An inline `documents: [...]` "
+            "list is not appendable — convert it to block form first.)"
+        )
+
+    # End of the documents block: the next top-level key, or the
+    # closing delimiter.
+    end_idx = close_idx
+    for i in range(doc_idx + 1, close_idx):
+        if _TOP_LEVEL_KEY_RE.match(lines[i]):
+            end_idx = i
+            break
+
+    # Serialize the new entries — same serializer as the render path.
+    entry_lines: List[str] = []
+    for doc in plan.documents:
+        if doc.brief_merge is None:
+            continue
+        entry_lines.extend(
+            line + "\n" for line in _serialize_document_entry(doc.brief_merge)
+        )
+
+    appended = "".join(lines[:end_idx]) + "".join(entry_lines) + "".join(
+        lines[end_idx:]
+    )
+    return _append_enrollment_log(appended, plan)
+
+
+def _append_enrollment_log(text: str, plan: Plan) -> str:
+    """Append the plan's enrollment-log lines to the end of ``text``.
+
+    Body prose survives any future BRIEF re-render verbatim (the
+    rewrite path splits it off raw), so the enrollment provenance
+    recorded here is durable even though the matching YAML comments
+    are not. Appending at the end keeps every pre-existing byte a
+    byte-identical prefix of the result.
+    """
+    log_lines: List[str] = []
+    for doc in plan.documents:
+        log_lines.extend(getattr(doc, "enrollment_log", []))
+    if not log_lines:
+        return text
+    out = text
+    if not out.endswith("\n"):
+        out += "\n"
+    if _ENROLLMENT_LOG_HEADER not in out:
+        out += f"\n{_ENROLLMENT_LOG_HEADER}\n\n"
+    out += "\n".join(f"- {line}" for line in log_lines) + "\n"
+    return out
+
+
+def render_enroll_brief(
+    plan: Plan, *, existing_text: Optional[str] = None
+) -> str:
+    """Render the BRIEF text for an enrollment plan (pure — no writes).
+
+    Dispatches on ``plan.brief_mode``:
+
+    - ``"append"`` — surgical textual append into ``existing_text``
+      (which MUST be provided): pre-existing frontmatter and body are
+      byte-identical prefixes of the result.
+    - ``"render"`` — no project BRIEF exists yet; a fresh one is
+      synthesized via :func:`render_project_brief` (the #408 code path,
+      including the TODO-marker discipline when
+      ``plan.synthesize_brief`` is set), with the enrollment log
+      appended to the body.
+
+    Shared by the dry-run report (full proposed-BRIEF preview) and the
+    apply step, so the preview is byte-identical to the eventual write.
+    """
+    if plan.brief_mode == "append":
+        if existing_text is None:
+            raise ValueError(
+                "brief_mode='append' requires the existing BRIEF text."
+            )
+        return _append_brief_documents(existing_text, plan)
+    rendered = render_project_brief(plan, existing_text=existing_text)
+    return _append_enrollment_log(rendered, plan)
+
+
+def _validate_brief_strict_post_write(
+    project_dir: Path,
+) -> Tuple[bool, Optional[str]]:
+    """Strict-parse the just-written BRIEF (issue #406 safety net).
+
+    Returns ``(ok, error_message)``. When ``anvil.lib`` is not
+    importable (a partial install layout), validation is skipped and
+    the write is trusted — the renderer emits only schema-valid shapes.
+    Listed-but-missing warnings from ``validate_dirs`` are suppressed
+    (a pre-existing unstarted entry is not an enrollment failure).
+    """
+    try:
+        from anvil.lib.project_brief import load_project_brief_strict
+    except ImportError:
+        return True, None
+    import warnings
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            load_project_brief_strict(project_dir, validate_dirs=True)
+    except (ValueError, FileNotFoundError) as exc:
+        return False, str(exc)
+    return True, None
+
+
+def _write_enroll_brief(plan: Plan, result: ApplyResult) -> None:
+    """Write the BRIEF for an enrollment plan (succeeded subset only).
+
+    Divergence from migrate mode, specified by issue #406: migrate
+    skips the BRIEF write entirely when ANY doc failed; enroll writes
+    BRIEF entries for the SUCCEEDED subset — otherwise succeeded files
+    are moved-but-unlisted and strict ``validate_dirs`` parsing of the
+    project fails. Per-doc apply failures were already rolled back by
+    the snapshot machinery, so the failed files remain loose and
+    re-enrollable.
+
+    Post-write, the BRIEF is strict-parsed (``validate_dirs=True``); on
+    failure the previous text is restored (or the new file removed) and
+    the error is surfaced — never leave behind a BRIEF we can't parse.
+    """
+    succeeded = set(result.applied_docs)
+    docs = [
+        doc
+        for doc in plan.documents
+        if doc.slug in succeeded and doc.brief_merge is not None
+    ]
+    if not docs:
+        return
+
+    sub_plan = _dc_replace(plan, documents=docs)
+
+    existing_text: Optional[str] = None
+    if plan.project_brief_path.is_file():
+        try:
+            existing_text = plan.project_brief_path.read_text(
+                encoding="utf-8"
+            )
+        except OSError as exc:
+            result.notes.append(f"BRIEF read failed: {exc}")
+            return
+
+    try:
+        final_text = render_enroll_brief(sub_plan, existing_text=existing_text)
+    except ValueError as exc:
+        result.notes.append(f"BRIEF append failed: {exc}")
+        return
+
+    tmp_path = plan.project_brief_path.with_suffix(".md.tmp")
+    try:
+        tmp_path.write_text(final_text, encoding="utf-8")
+        os.replace(str(tmp_path), str(plan.project_brief_path))
+    except OSError as exc:
+        result.notes.append(f"BRIEF write failed: {exc}")
+        return
+
+    ok, err = _validate_brief_strict_post_write(plan.project_dir)
+    if not ok:
+        # Restore the pre-write state — never leave an unparseable BRIEF.
+        try:
+            if existing_text is not None:
+                plan.project_brief_path.write_text(
+                    existing_text, encoding="utf-8"
+                )
+            else:
+                plan.project_brief_path.unlink()
+        except OSError:
+            pass
+        result.notes.append(
+            f"BRIEF write rolled back: post-write strict validation "
+            f"failed: {err}"
+        )
+        return
+
+    result.brief_written = True
+
+
+# ---------------------------------------------------------------------------
 # Top-level apply
 # ---------------------------------------------------------------------------
 
@@ -709,8 +976,18 @@ def apply_plan(plan: Plan, *, use_git: bool = True) -> ApplyResult:
             except OSError:
                 pass
 
-    # Write the project BRIEF — only if at least one doc applied
-    # successfully OR the plan has brief_merge entries to record.
+    # Write the project BRIEF.
+    #
+    # Enrollment plans (issue #406) diverge from migrate mode: the BRIEF
+    # is written for the SUCCEEDED subset even when other docs failed
+    # (failed docs were rolled back to loose files; succeeded files are
+    # moved and MUST be listed or strict validate_dirs parsing breaks).
+    if plan.shape == Shape.ENROLL:
+        _write_enroll_brief(plan, result)
+        return result
+
+    # Migrate mode — only if every doc applied successfully AND the
+    # plan has brief_merge entries to record.
     if not result.failed_docs and any(
         doc.brief_merge is not None for doc in plan.documents
     ):
@@ -738,5 +1015,6 @@ __all__ = [
     "GitInfo",
     "ROLLBACK_SUBDIR",
     "apply_plan",
+    "render_enroll_brief",
     "render_project_brief",
 ]

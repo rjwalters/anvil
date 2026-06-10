@@ -32,14 +32,14 @@ _LIB_DIR = _SKILL_ROOT / "lib"
 
 _PACKAGE_NAME = "project_migrate_lib"
 
-# project-migrate's lib modules have no intra-package imports today,
-# so order is not load-critical — but we keep dependency-safe order
-# (detect → plan → apply → verify → orchestrate) to match the
-# rubric-rebackport precedent and stay robust against future edits.
+# Dependency-safe load order (detect → plan → apply → enroll → verify
+# → orchestrate): enroll imports detect/plan/apply; orchestrate imports
+# everything.
 _MODULES = [
     "detect",
     "plan",
     "apply",
+    "enroll",
     "verify",
     "orchestrate",
 ]
@@ -86,6 +86,7 @@ _load_skill_lib_package()
 detect = sys.modules[f"{_PACKAGE_NAME}.detect"]
 plan = sys.modules[f"{_PACKAGE_NAME}.plan"]
 apply_mod = sys.modules[f"{_PACKAGE_NAME}.apply"]
+enroll = sys.modules[f"{_PACKAGE_NAME}.enroll"]
 verify = sys.modules[f"{_PACKAGE_NAME}.verify"]
 orchestrate = sys.modules[f"{_PACKAGE_NAME}.orchestrate"]
 
@@ -93,6 +94,7 @@ orchestrate = sys.modules[f"{_PACKAGE_NAME}.orchestrate"]
 __all__ = [
     "apply_mod",
     "detect",
+    "enroll",
     "orchestrate",
     "plan",
     "verify",
