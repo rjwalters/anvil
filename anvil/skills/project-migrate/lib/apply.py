@@ -376,6 +376,46 @@ def _format_rubric_overrides(ro: dict) -> List[str]:
     return out
 
 
+def _serialize_merge_fields(
+    merge: BriefMergeOp, *, skip: frozenset = frozenset()
+) -> List[str]:
+    """Serialize the FIELD lines of one ``documents:`` entry (no slug line).
+
+    Split out of :func:`_serialize_document_entry` (issue #415) so the
+    migrate-mode surgical merge (:func:`_merge_brief_documents`) can emit
+    only the fields MISSING from an existing entry — keys named in
+    ``skip`` are omitted. Lines use the canonical 4-space field indent
+    (callers re-indent when the existing entry uses a different one).
+    """
+    out: List[str] = []
+    if "artifact_type" not in skip:
+        artifact_type_line = f"    artifact_type: {merge.artifact_type}"
+        if merge.todo_comment:
+            artifact_type_line += f"  # {merge.todo_comment}"
+        out.append(artifact_type_line)
+    if merge.target_length is not None and "target_length" not in skip:
+        out.append(
+            f"    target_length: {_format_target_length(merge.target_length)}"
+        )
+    if merge.target_length_overrides and \
+            "target_length_overrides" not in skip:
+        out.extend(
+            _format_target_length_overrides(merge.target_length_overrides)
+        )
+    if (
+        merge.max_iterations is not None
+        and merge.iteration_cap_rationale
+        and "max_iterations" not in skip
+    ):
+        out.append(f"    max_iterations: {merge.max_iterations}")
+        out.extend(
+            _format_iteration_cap_rationale(merge.iteration_cap_rationale)
+        )
+    if merge.rubric_overrides and "rubric_overrides" not in skip:
+        out.extend(_format_rubric_overrides(merge.rubric_overrides))
+    return out
+
+
 def _serialize_document_entry(merge: BriefMergeOp) -> List[str]:
     """Serialize one ``documents:`` entry as YAML lines (no newlines).
 
@@ -391,25 +431,7 @@ def _serialize_document_entry(merge: BriefMergeOp) -> List[str]:
     if merge.slug_comment:
         slug_line += f"  # {merge.slug_comment}"
     out.append(slug_line)
-    artifact_type_line = f"    artifact_type: {merge.artifact_type}"
-    if merge.todo_comment:
-        artifact_type_line += f"  # {merge.todo_comment}"
-    out.append(artifact_type_line)
-    if merge.target_length is not None:
-        out.append(
-            f"    target_length: {_format_target_length(merge.target_length)}"
-        )
-    if merge.target_length_overrides:
-        out.extend(
-            _format_target_length_overrides(merge.target_length_overrides)
-        )
-    if merge.max_iterations is not None and merge.iteration_cap_rationale:
-        out.append(f"    max_iterations: {merge.max_iterations}")
-        out.extend(
-            _format_iteration_cap_rationale(merge.iteration_cap_rationale)
-        )
-    if merge.rubric_overrides:
-        out.extend(_format_rubric_overrides(merge.rubric_overrides))
+    out.extend(_serialize_merge_fields(merge))
     return out
 
 
@@ -611,17 +633,23 @@ def render_project_brief(
 
 def _write_project_brief(
     plan: Plan, project_brief_path: Path, *, existing_text: Optional[str]
-) -> None:
+) -> List[str]:
     """Write the project BRIEF atomically (temp file + rename).
 
-    Thin write wrapper around :func:`render_project_brief` — the text
+    Thin write wrapper around :func:`render_migrate_brief` — the text
     construction lives there so the dry-run report and the apply step
-    share one code path (issue #408).
+    share one code path (issues #408, #415). Returns the merge notes.
+    A byte-identical result skips the write entirely (idempotence).
     """
-    final_text = render_project_brief(plan, existing_text=existing_text)
+    final_text, notes = render_migrate_brief(
+        plan, existing_text=existing_text
+    )
+    if existing_text is not None and final_text == existing_text:
+        return notes
     tmp_path = project_brief_path.with_suffix(".md.tmp")
     tmp_path.write_text(final_text, encoding="utf-8")
     os.replace(str(tmp_path), str(project_brief_path))
+    return notes
 
 
 def _split_brief_for_rewrite(text: str) -> Tuple[Dict[str, object], str]:
@@ -678,6 +706,62 @@ _DOCUMENTS_KEY_RE = re.compile(r"^documents:\s*(#.*)?$")
 _ENROLLMENT_LOG_HEADER = "## Enrollment log"
 
 
+def _locate_documents_block(lines: List[str]) -> Tuple[int, int, int, int]:
+    """Locate the frontmatter and ``documents:`` block in raw BRIEF lines.
+
+    ``lines`` is ``text.splitlines(keepends=True)``. Returns
+    ``(first_idx, close_idx, doc_idx, end_idx)`` where ``first_idx`` /
+    ``close_idx`` are the opening/closing ``---`` delimiter lines,
+    ``doc_idx`` is the top-level ``documents:`` line, and ``end_idx`` is
+    the first line AFTER the documents block (the next top-level key or
+    the closing delimiter). Indented content — list entries, literal
+    block scalars — cannot false-trigger the block boundary.
+
+    Shared by the enroll-mode surgical append (issue #406) and the
+    migrate-mode surgical merge (issue #415). Raises ``ValueError``
+    when the text has no parseable frontmatter or no block-form
+    ``documents:`` key — callers treat that as "never surgically edit a
+    BRIEF we can't parse".
+    """
+    first_idx = 0
+    while first_idx < len(lines) and lines[first_idx].strip() == "":
+        first_idx += 1
+    if first_idx >= len(lines) or lines[first_idx].strip() != "---":
+        raise ValueError(
+            "existing BRIEF has no YAML frontmatter (missing opening "
+            "'---'); refusing to append."
+        )
+    close_idx = None
+    for i in range(first_idx + 1, len(lines)):
+        if lines[i].strip() == "---":
+            close_idx = i
+            break
+    if close_idx is None:
+        raise ValueError(
+            "existing BRIEF frontmatter is unterminated (no closing "
+            "'---'); refusing to append."
+        )
+
+    doc_idx = None
+    for i in range(first_idx + 1, close_idx):
+        if _DOCUMENTS_KEY_RE.match(lines[i]):
+            doc_idx = i
+            break
+    if doc_idx is None:
+        raise ValueError(
+            "existing BRIEF frontmatter has no block-form `documents:` "
+            "key; refusing to append. (An inline `documents: [...]` "
+            "list is not appendable — convert it to block form first.)"
+        )
+
+    end_idx = close_idx
+    for i in range(doc_idx + 1, close_idx):
+        if _TOP_LEVEL_KEY_RE.match(lines[i]):
+            end_idx = i
+            break
+    return first_idx, close_idx, doc_idx, end_idx
+
+
 def _append_brief_documents(existing_text: str, plan: Plan) -> str:
     """Surgically append ``documents:`` entries to an existing BRIEF text.
 
@@ -706,47 +790,9 @@ def _append_brief_documents(existing_text: str, plan: Plan) -> str:
     that as "never modify a BRIEF we can't parse".
     """
     lines = existing_text.splitlines(keepends=True)
-
-    # Locate the frontmatter delimiters.
-    first_idx = 0
-    while first_idx < len(lines) and lines[first_idx].strip() == "":
-        first_idx += 1
-    if first_idx >= len(lines) or lines[first_idx].strip() != "---":
-        raise ValueError(
-            "existing BRIEF has no YAML frontmatter (missing opening "
-            "'---'); refusing to append."
-        )
-    close_idx = None
-    for i in range(first_idx + 1, len(lines)):
-        if lines[i].strip() == "---":
-            close_idx = i
-            break
-    if close_idx is None:
-        raise ValueError(
-            "existing BRIEF frontmatter is unterminated (no closing "
-            "'---'); refusing to append."
-        )
-
-    # Locate the top-level `documents:` block.
-    doc_idx = None
-    for i in range(first_idx + 1, close_idx):
-        if _DOCUMENTS_KEY_RE.match(lines[i]):
-            doc_idx = i
-            break
-    if doc_idx is None:
-        raise ValueError(
-            "existing BRIEF frontmatter has no block-form `documents:` "
-            "key; refusing to append. (An inline `documents: [...]` "
-            "list is not appendable — convert it to block form first.)"
-        )
-
-    # End of the documents block: the next top-level key, or the
-    # closing delimiter.
-    end_idx = close_idx
-    for i in range(doc_idx + 1, close_idx):
-        if _TOP_LEVEL_KEY_RE.match(lines[i]):
-            end_idx = i
-            break
+    _first_idx, _close_idx, _doc_idx, end_idx = _locate_documents_block(
+        lines
+    )
 
     # Serialize the new entries — same serializer as the render path.
     entry_lines: List[str] = []
@@ -813,6 +859,279 @@ def render_enroll_brief(
         return _append_brief_documents(existing_text, plan)
     rendered = render_project_brief(plan, existing_text=existing_text)
     return _append_enrollment_log(rendered, plan)
+
+
+# ---------------------------------------------------------------------------
+# Migrate BRIEF write (issue #415) — surgical field-level merge
+# ---------------------------------------------------------------------------
+
+
+# A ``documents:`` list-entry start line (``  - slug: ...``). Captures
+# the indent so deeper-indented dashes (inside literal block scalars or
+# nested lists) are excluded by the indent match in
+# :func:`_parse_document_entries`.
+_ENTRY_START_RE = re.compile(r"^([ \t]*)-(\s+|$)")
+
+# A ``key:`` line inside an entry (optionally on the dash line itself).
+_ENTRY_KEY_RE = re.compile(
+    r"^([ \t]*)(?:-\s+)?([A-Za-z_][A-Za-z0-9_]*):(.*)$"
+)
+
+
+def _strip_inline_yaml_value(raw: str) -> str:
+    """Return the scalar value of a YAML ``key: value  # comment`` line.
+
+    Handles single/double quoting and trailing comments. Best-effort —
+    slugs and artifact types are simple identifiers in practice.
+    """
+    value = raw.strip()
+    if value.startswith('"') or value.startswith("'"):
+        quote = value[0]
+        end = value.find(quote, 1)
+        if end != -1:
+            return value[1:end]
+    return re.split(r"\s+#", value, maxsplit=1)[0].strip()
+
+
+def _parse_document_entries(
+    lines: List[str], doc_idx: int, end_idx: int
+) -> List[Tuple[str, int, int]]:
+    """Parse the raw entry spans of a ``documents:`` block.
+
+    Returns ``(slug, start_idx, stop_idx)`` tuples where ``start_idx``
+    is the ``- slug:`` line and ``stop_idx`` is the first line AFTER
+    the entry. Entry starts are dash lines at the indent of the FIRST
+    entry — deeper-indented dashes (block-scalar content, nested lists)
+    do not split entries. Entries without a recognizable ``slug:`` key
+    are skipped (the caller never edits what it can't identify).
+    """
+    entry_indent: Optional[int] = None
+    starts: List[int] = []
+    for i in range(doc_idx + 1, end_idx):
+        m = _ENTRY_START_RE.match(lines[i])
+        if m is None:
+            continue
+        indent = len(m.group(1))
+        if entry_indent is None:
+            entry_indent = indent
+        if indent == entry_indent:
+            starts.append(i)
+
+    entries: List[Tuple[str, int, int]] = []
+    for j, start in enumerate(starts):
+        stop = starts[j + 1] if j + 1 < len(starts) else end_idx
+        slug: Optional[str] = None
+        for i in range(start, stop):
+            km = _ENTRY_KEY_RE.match(lines[i])
+            if km is not None and km.group(2) == "slug":
+                slug = _strip_inline_yaml_value(km.group(3))
+                break
+        if slug:
+            entries.append((slug, start, stop))
+    return entries
+
+
+def _entry_field_info(
+    lines: List[str], start: int, stop: int
+) -> Tuple[Dict[str, str], Optional[int]]:
+    """Return ``(field_key -> raw_value, field_indent)`` for one entry.
+
+    Only keys at the entry's own field indent (the shallowest ``key:``
+    indent below the dash line) are returned — nested mapping keys and
+    literal-block content sit deeper and are excluded. ``field_indent``
+    is ``None`` when the entry carries no field lines beyond the dash
+    line.
+    """
+    candidates: List[Tuple[int, str, str]] = []
+    for i in range(start + 1, stop):
+        m = re.match(r"^( +)([A-Za-z_][A-Za-z0-9_]*):(.*)$", lines[i])
+        if m is not None:
+            candidates.append((len(m.group(1)), m.group(2), m.group(3)))
+    if not candidates:
+        return {}, None
+    field_indent = min(indent for indent, _key, _raw in candidates)
+    keys = {
+        key: raw
+        for indent, key, raw in candidates
+        if indent == field_indent
+    }
+    return keys, field_indent
+
+
+def _reindent_field_lines(field_lines: List[str], delta: int) -> List[str]:
+    """Shift the canonical 4-space-indent field lines by ``delta`` spaces."""
+    if delta == 0:
+        return field_lines
+    out: List[str] = []
+    for line in field_lines:
+        if delta > 0:
+            out.append(" " * delta + line)
+        else:
+            strip = min(-delta, len(line) - len(line.lstrip(" ")))
+            out.append(line[strip:])
+    return out
+
+
+def _merge_brief_documents(
+    existing_text: str, plan: Plan
+) -> Tuple[str, List[str]]:
+    """Surgically merge migrate-mode BRIEF deltas into an existing BRIEF.
+
+    The migrate re-render path (:func:`render_project_brief`) round-trips
+    the frontmatter through a parsed dict, which is LOSSY (issue #415,
+    empirically confirmed in #406's curation and PR #414): it drops
+    top-level ``theme:``, per-doc ``render_*`` / ``latex_header_includes``
+    keys, every YAML comment (including #408's ``TODO(operator)``
+    markers), quoting style, and entry order. This function expresses
+    migrate's BRIEF deltas as targeted text edits instead:
+
+    - **New entries** (plan slugs absent from the existing block) are
+      appended at the END of the ``documents:`` block via the same
+      serializer the render path uses (the #414 append primitive).
+    - **Existing entries** receive ONLY the fields they are missing and
+      the plan carries (append-field-to-entry): carried `.anvil.json`
+      config (``target_length`` / ``target_length_overrides`` /
+      ``rubric_overrides`` / the paired iteration cap) and a missing
+      ``artifact_type``. Fields already present in the entry are NEVER
+      overwritten — operator-set values win, and a conflict is surfaced
+      as a note instead of a silent clobber. Appended lines are
+      re-indented to the entry's own field indent.
+
+    Every byte not covered by an intended delta is preserved verbatim.
+    Returns ``(merged_text, notes)``. Raises ``ValueError`` when the
+    text has no parseable frontmatter or no block-form ``documents:``
+    key (the caller falls back to the legacy render path).
+    """
+    lines = existing_text.splitlines(keepends=True)
+    _first_idx, _close_idx, doc_idx, end_idx = _locate_documents_block(
+        lines
+    )
+    entries = _parse_document_entries(lines, doc_idx, end_idx)
+    by_slug: Dict[str, Tuple[int, int]] = {
+        slug: (start, stop) for slug, start, stop in entries
+    }
+
+    notes: List[str] = []
+    insertions: List[Tuple[int, List[str]]] = []
+    new_entry_lines: List[str] = []
+    seen_slugs: set = set()
+
+    for doc in plan.documents:
+        merge = doc.brief_merge
+        if merge is None or merge.slug in seen_slugs:
+            continue
+        seen_slugs.add(merge.slug)
+
+        if merge.slug not in by_slug:
+            new_entry_lines.extend(
+                line + "\n" for line in _serialize_document_entry(merge)
+            )
+            continue
+
+        start, stop = by_slug[merge.slug]
+        existing_keys, field_indent = _entry_field_info(lines, start, stop)
+
+        skip: set = set()
+        if "artifact_type" in existing_keys:
+            skip.add("artifact_type")
+            existing_value = _strip_inline_yaml_value(
+                existing_keys["artifact_type"]
+            )
+            # Only surface a conflict when the plan has something
+            # non-default to say (a #386/#408 inference or a carried
+            # value) — the planner's no-information default is not a
+            # disagreement with the operator.
+            if existing_value != merge.artifact_type and (
+                merge.inferred
+                or merge.artifact_type != _DEFAULT_ARTIFACT_TYPE
+            ):
+                notes.append(
+                    f"{merge.slug}: BRIEF entry already sets "
+                    f"artifact_type: {existing_value}; existing value "
+                    f"kept (plan value '{merge.artifact_type}' not "
+                    f"applied — edit the BRIEF entry if wrong)."
+                )
+        for key in (
+            "target_length",
+            "target_length_overrides",
+            "rubric_overrides",
+        ):
+            if key in existing_keys:
+                skip.add(key)
+                if getattr(merge, key):
+                    notes.append(
+                        f"{merge.slug}: BRIEF entry already sets {key}; "
+                        f"existing value kept (carried legacy value not "
+                        f"applied)."
+                    )
+        if (
+            "max_iterations" in existing_keys
+            or "iteration_cap_rationale" in existing_keys
+        ):
+            # Skip the pair together — appending half of it would break
+            # the strict parser's paired-override contract.
+            skip.add("max_iterations")
+            skip.add("iteration_cap_rationale")
+            if merge.max_iterations is not None:
+                notes.append(
+                    f"{merge.slug}: BRIEF entry already sets the "
+                    f"iteration-cap override; existing value kept "
+                    f"(carried legacy value not applied)."
+                )
+
+        field_lines = _serialize_merge_fields(merge, skip=frozenset(skip))
+        if not field_lines:
+            continue
+        delta = (field_indent if field_indent is not None else 4) - 4
+        field_lines = _reindent_field_lines(field_lines, delta)
+        insertions.append((stop, [line + "\n" for line in field_lines]))
+
+    if new_entry_lines:
+        insertions.append((end_idx, new_entry_lines))
+
+    # Apply insertions bottom-up so earlier indices stay valid.
+    for idx, ins in sorted(insertions, key=lambda t: t[0], reverse=True):
+        lines[idx:idx] = ins
+
+    return "".join(lines), notes
+
+
+def render_migrate_brief(
+    plan: Plan, *, existing_text: Optional[str] = None
+) -> Tuple[str, List[str]]:
+    """Render the migrate-mode BRIEF text (pure — no disk writes).
+
+    Returns ``(final_text, notes)``. Dispatches on what exists:
+
+    - **Existing BRIEF with a block-form ``documents:`` key** —
+      surgical field-level merge (:func:`_merge_brief_documents`):
+      operator content (``theme:``, ``render_*`` keys, YAML comments
+      including #408's TODO markers, quoting, entry order) is preserved
+      byte-identically; only the intended deltas are inserted.
+    - **Existing BRIEF without a parseable ``documents:`` block** (the
+      pre-#283 per-thread BRIEF being promoted to a project BRIEF) —
+      legacy full render via :func:`render_project_brief`, with a note
+      that unrecognized frontmatter keys/comments are not carried.
+    - **No BRIEF** — full render / synthesis (#408 path), which is not
+      lossy because there is nothing to lose.
+
+    Shared by the dry-run report (full proposed-BRIEF preview) and the
+    apply step, so the preview is byte-identical to the eventual write.
+    """
+    if existing_text is not None:
+        try:
+            return _merge_brief_documents(existing_text, plan)
+        except ValueError as exc:
+            return (
+                render_project_brief(plan, existing_text=existing_text),
+                [
+                    f"BRIEF surgical merge not possible ({exc}) — "
+                    f"falling back to full re-render; unrecognized "
+                    f"top-level frontmatter keys and YAML comments in "
+                    f"the existing BRIEF are not carried by this path."
+                ],
+            )
+    return render_project_brief(plan, existing_text=None), []
 
 
 def _validate_brief_strict_post_write(
@@ -1000,9 +1319,10 @@ def apply_plan(plan: Plan, *, use_git: bool = True) -> ApplyResult:
             except OSError:
                 existing_text = None
         try:
-            _write_project_brief(
+            merge_notes = _write_project_brief(
                 plan, plan.project_brief_path, existing_text=existing_text
             )
+            result.notes.extend(merge_notes)
             result.brief_written = True
         except OSError as exc:
             result.notes.append(f"BRIEF write failed: {exc}")
@@ -1016,5 +1336,6 @@ __all__ = [
     "ROLLBACK_SUBDIR",
     "apply_plan",
     "render_enroll_brief",
+    "render_migrate_brief",
     "render_project_brief",
 ]
