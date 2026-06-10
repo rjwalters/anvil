@@ -61,6 +61,12 @@ The current skill index:
   `research/` pool into one shareable, provenance-stamped `SHARE/` folder
   (optionally zipped). Marker-guarded blow-away rebuild; `--dry-run` flag.
   See `project-share/SKILL.md`.
+- `anvil:project-scout` — repo-wide, strictly read-only discovery of
+  anvil-adoptable document clusters: walks a tree, classifies every
+  version-dir family / loose document into an adoption taxonomy
+  (ALREADY_MIGRATED / LEGACY_MIGRATABLE / BARE_THREADS / LOOSE_DOCUMENTS
+  / FOREIGN_GRAMMAR / NOT_DOCUMENT), and reports the recommended next
+  command per cluster. See `project-scout/SKILL.md`.
 
 ## Subagent dispatch (`anvil-<skill>-<phase>`)
 
