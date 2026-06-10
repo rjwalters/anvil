@@ -27,15 +27,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
-from .apply import ApplyResult, apply_plan, render_project_brief
+from .apply import (
+    ApplyResult,
+    apply_plan,
+    render_enroll_brief,
+    render_project_brief,
+)
 from .detect import (
     ProjectInventory,
     Shape,
     inventory_project,
     _classify,
 )
+from .enroll import EnrollError, build_enroll_plan
 from .plan import (
     BriefMergeOp,
     ContentRewrite,
@@ -327,4 +333,197 @@ def run(
     return result
 
 
-__all__ = ["RunResult", "run"]
+# ---------------------------------------------------------------------------
+# Single-file enrollment (issue #406)
+# ---------------------------------------------------------------------------
+
+
+def _format_enroll_report(plan: Plan) -> str:
+    """Format an enrollment plan as a markdown report.
+
+    Includes the FULL proposed BRIEF text — rendered through the same
+    ``render_enroll_brief`` code path the apply step writes, so the
+    preview is byte-identical to the eventual write (the surgical
+    append for an existing BRIEF; the synthesized BRIEF otherwise).
+    Read-only: the formatter never touches disk beyond reading the
+    existing BRIEF.
+    """
+    project_dir = plan.project_dir
+    lines: List[str] = []
+    lines.append(f"# Single-file enrollment: {project_dir.name}")
+    lines.append("")
+    lines.append(f"**Project root**: `{project_dir}`")
+    if plan.brief_mode == "append":
+        lines.append(
+            "**BRIEF**: existing — extended by surgical append "
+            "(every pre-existing byte preserved)"
+        )
+    else:
+        lines.append(
+            "**BRIEF**: none found — a minimal project BRIEF will be "
+            "synthesized (TODO markers on every inferred value)"
+        )
+    lines.append(f"**Documents in plan**: {len(plan.documents)}")
+    lines.append("")
+    lines.append("## Plan")
+    lines.append("")
+
+    for doc in plan.documents:
+        lines.append(f"### `{doc.slug}`")
+        lines.append("")
+        for rename in doc.renames:
+            try:
+                src_rel = rename.source.relative_to(project_dir)
+            except ValueError:
+                src_rel = rename.source
+            try:
+                tgt_rel = rename.target.relative_to(project_dir)
+            except ValueError:
+                tgt_rel = rename.target
+            lines.append(f"- Move: `{src_rel}` → `{tgt_rel}`")
+        if doc.brief_merge is not None:
+            bm = doc.brief_merge
+            inferred_str = (
+                ", inferred — TODO marker emitted" if bm.inferred else ""
+            )
+            lines.append(
+                f"- BRIEF entry: add `documents:` entry "
+                f"(artifact_type={bm.artifact_type}{inferred_str})"
+            )
+        for note in doc.notes:
+            lines.append(f"- Note: {note}")
+        lines.append("")
+
+    existing_text: Optional[str] = None
+    if plan.project_brief_path.is_file():
+        try:
+            existing_text = plan.project_brief_path.read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            existing_text = None
+    rendered = render_enroll_brief(plan, existing_text=existing_text)
+    lines.append("## Proposed `BRIEF.md`")
+    lines.append("")
+    lines.append("````markdown")
+    lines.append(rendered.rstrip("\n"))
+    lines.append("````")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def _verify_enrollment(
+    plan: Plan, apply_result: ApplyResult
+) -> Tuple[str, bool]:
+    """Post-apply verification for an enrollment plan.
+
+    Enrollment's contract is narrower than migrate's whole-project
+    shape check: for every APPLIED doc, the target body must exist and
+    ``discover_thread_root`` must resolve it (guarded import); the
+    BRIEF must have been written and strict-parsed (the apply step
+    already rolled it back otherwise).
+    """
+    lines: List[str] = []
+    lines.append("## Enrollment verification")
+    lines.append("")
+    ok = bool(apply_result.brief_written) and not apply_result.failed_docs
+
+    applied = set(apply_result.applied_docs)
+    try:
+        from anvil.lib.project_discovery import discover_thread_root
+    except ImportError:
+        discover_thread_root = None  # type: ignore[assignment]
+
+    for doc in plan.documents:
+        if doc.slug not in applied:
+            continue
+        body = doc.renames[0].target if doc.renames else None
+        if body is None or not body.is_file():
+            lines.append(f"- `{doc.slug}`: body missing at `{body}` — FAIL")
+            ok = False
+            continue
+        if discover_thread_root is not None:
+            result = discover_thread_root(body)
+            if result is None or result.slug != doc.slug:
+                lines.append(
+                    f"- `{doc.slug}`: `discover_thread_root` did not "
+                    f"resolve `{body}` — FAIL"
+                )
+                ok = False
+                continue
+        lines.append(f"- `{doc.slug}`: enrolled — OK")
+
+    lines.append(
+        f"- BRIEF written: {'OK' if apply_result.brief_written else 'FAIL'}"
+    )
+    lines.append("")
+    lines.append(f"**Overall**: {'PASS' if ok else 'FAIL'}")
+    return "\n".join(lines) + "\n", ok
+
+
+def run_enroll(
+    files: Sequence[Path],
+    *,
+    project: Optional[Path] = None,
+    slug: Optional[str] = None,
+    artifact_type: Optional[str] = None,
+    apply: bool = False,
+) -> RunResult:
+    """Execute the single-file enrollment flow (issue #406).
+
+    Mirrors :func:`run`'s signature shape: ``apply=False`` (the
+    universal default in this skill) is a dry-run — detect + plan +
+    report, zero mutations.
+
+    Parameters
+    ----------
+    files
+        Loose ``.md`` / ``.tex`` files to enroll (one or a batch). A
+        batch enrolls into one project.
+    project
+        Optional explicit project root (``--project``).
+    slug
+        Optional explicit slug (``--slug``; single file only, must be
+        canonical).
+    artifact_type
+        Optional explicit artifact type (``--artifact-type``;
+        validated against the two-tier #394 registry).
+    apply
+        When True, execute the plan (per-doc atomicity; BRIEF written
+        for the succeeded subset).
+
+    Raises
+    ------
+    EnrollError
+        On any plan-time refusal (slug collision, non-md/tex input,
+        already-enrolled input, malformed existing BRIEF, …). Raised
+        BEFORE any mutation — the whole batch aborts.
+    """
+    plan = build_enroll_plan(
+        files, project=project, slug=slug, artifact_type=artifact_type
+    )
+
+    result = RunResult(
+        project_dir=plan.project_dir,
+        shape=plan.shape,
+        plan=plan,
+    )
+    report = _format_enroll_report(plan)
+
+    if not apply:
+        result.report = report
+        result.success = True
+        return result
+
+    apply_result = apply_plan(plan)
+    result.apply_result = apply_result
+    report += "\n" + _format_apply_report(apply_result)
+
+    verify_report, ok = _verify_enrollment(plan, apply_result)
+    report += "\n" + verify_report
+    result.success = ok
+    result.report = report
+    return result
+
+
+__all__ = ["EnrollError", "RunResult", "run", "run_enroll"]

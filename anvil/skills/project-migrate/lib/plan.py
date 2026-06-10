@@ -173,6 +173,14 @@ class BriefMergeOp:
         future NON-noop rewrite would drop them — which is why the
         synthesized BRIEF also mirrors the TODO list into the body
         prose (preserved verbatim on rewrite).
+    slug_comment
+        Provenance marker for enrolled documents (issue #406). When
+        set, the BRIEF serializer appends it as a YAML comment on the
+        ``- slug:`` line (e.g. ``- slug: topic-a  # enrolled-from:
+        2026-05-19-topic-a.md (date: 2026-05-19)``). Like
+        ``todo_comment``, it is invisible to YAML parsers; the
+        enrollment-log line in the BRIEF body mirrors the same
+        provenance so it survives any future non-noop rewrite.
     """
 
     slug: str
@@ -184,6 +192,7 @@ class BriefMergeOp:
     iteration_cap_rationale: Optional[str] = None
     inferred: bool = False
     todo_comment: Optional[str] = None
+    slug_comment: Optional[str] = None
 
 
 @dataclass
@@ -207,6 +216,11 @@ class DocumentPlan:
     # on BRIEF rewrite, so these survive even a future non-noop rewrite
     # that drops the YAML comments.
     operator_todos: List[str] = field(default_factory=list)
+    # Enrollment-log lines appended to the BRIEF body (issue #406).
+    # Body prose survives any future BRIEF re-render verbatim, so the
+    # provenance recorded here (original filename, stripped date) is
+    # durable even though the matching YAML comments are not.
+    enrollment_log: List[str] = field(default_factory=list)
 
     @property
     def is_noop(self) -> bool:
@@ -244,6 +258,21 @@ class Plan:
     # synthesis is the only sane behavior and dry-run-by-default is
     # the safety surface (no extra CLI flag).
     synthesize_brief: bool = False
+    # How the project BRIEF is written at apply time (issue #406).
+    #
+    # - ``"render"`` (default — preserves migrate behavior untouched):
+    #   the BRIEF is re-rendered from parsed state via
+    #   ``render_project_brief``.
+    # - ``"append"``: the existing BRIEF text is extended by SURGICAL
+    #   textual append — new ``documents:`` entries are inserted at the
+    #   end of the existing ``documents:`` block and enrollment-log
+    #   lines are appended to the body; every pre-existing byte
+    #   (comments, ``theme:``, ``render_*`` keys, quoting, entry order)
+    #   is preserved byte-identically. Used by the enroll planner when
+    #   a project BRIEF already exists, because the re-render path is
+    #   lossy (it drops top-level ``theme:``, per-doc ``render_*`` /
+    #   ``latex_header_includes``, and every YAML comment).
+    brief_mode: str = "render"
 
     def __post_init__(self) -> None:
         self.project_brief_path = self.project_dir / BRIEF_FILENAME

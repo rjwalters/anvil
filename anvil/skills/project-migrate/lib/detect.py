@@ -145,6 +145,13 @@ class Shape(Enum):
     PRE_283_CLASSIC
         No project-level `BRIEF.md`. `<thread>.N/` siblings directly under
         the project root. Skill-fixed body filenames (`memo.md`).
+    ENROLL
+        Plan-mode tag for single-file enrollment (issue #406) — NOT a
+        detected on-disk shape. ``detect_shape`` never returns it; the
+        enroll planner (:mod:`enroll`) stamps it on the :class:`Plan`
+        so apply / report dispatch can distinguish an enrollment plan
+        (succeeded-subset BRIEF write, surgical append) from a
+        whole-project migration plan.
     UNKNOWN
         Directory is not recognizable as any of the above. Caller should
         treat as an error.
@@ -153,6 +160,7 @@ class Shape(Enum):
     FULLY_MIGRATED = "fully_migrated"
     POST_283_ANVIL_JSON = "post_283_anvil_json"
     PRE_283_CLASSIC = "pre_283_classic"
+    ENROLL = "enroll"
     UNKNOWN = "unknown"
 
 

@@ -141,8 +141,47 @@ hand-rolled unstamped review content stays invisible-but-intact to
 | `/anvil:project-migrate <project-dir>`      | **Dry-run.** Detect current shape, emit a per-doc migration plan. **No mutations** to disk.   |
 | `/anvil:project-migrate <project-dir> --apply` | Execute the plan atomically per doc. Use `git mv` when the project is under git.           |
 | `/anvil:project-migrate <project-dir> --report` | Emit a markdown report only (no plan, no mutations). Useful for portfolio surveys.        |
+| `/anvil:project-migrate --enroll <file> [...]` | **Single-file enrollment** (issue #406): wrap loose `.md`/`.tex` files into project threads. Dry-run by default; `--apply` executes. Optional `--project <dir>`, `--slug <slug>`, `--artifact-type <type>`. |
 
 See `commands/project-migrate.md` for the operator-facing contract.
+
+## Single-file enrollment (`--enroll`, issue #406)
+
+Adoption-target monorepos hold hundreds of **loose single-file
+documents** (flat `.md`/`.tex` files in topical directories, often
+date-prefixed or date-suffixed). Enrollment is the path from a bare
+file to a thread:
+
+- The file moves to `<project>/<slug>/<slug>.1/<slug>.<ext>` (`git mv`
+  in-repo so history follows). `.tex` bodies slug-echo too — new
+  enrollments have no external-tooling carve-out; the enclosing move
+  already breaks any path-based consumer, so a plan note records the
+  rename instead.
+- The slug derives from the filename (lowercased, hyphens, ISO date
+  prefix/suffix stripped); the stripped date is preserved as a YAML
+  comment on the BRIEF entry (`# enrolled-from: <file> (date: ...)`)
+  and as a body `## Enrollment log` line (body prose survives future
+  BRIEF rewrites; YAML comments do not). `--slug` must already be
+  canonical — it is rejected, never silently re-sanitized.
+- **Existing BRIEFs are extended by surgical textual append**, never
+  re-rendered: the migrate-mode re-render path is lossy (it drops
+  top-level `theme:`, per-doc `render_*` / `latex_header_includes`
+  keys, every YAML comment, quoting style, and entry order), so the
+  enroll path inserts the new entry lines at the end of the
+  `documents:` block and leaves every other byte untouched. With no
+  enclosing BRIEF, a minimal one is synthesized through the same
+  `render_project_brief` path as bare-project migration (#408 TODO
+  discipline). Both paths are strict-validated post-write and rolled
+  back on failure.
+- Artifact types come from `--artifact-type` (two-tier validation per
+  #394) or are inferred with a `# TODO(operator)` marker (`.md` →
+  `investment-memo`; `.tex` → `proposal`/`pub` from `\documentclass`).
+- Batch form: N files enroll into ONE project as N independently
+  planned documents. Plan-time errors (slug collisions, non-md/tex,
+  already-enrolled inputs, malformed BRIEF) abort pre-mutation;
+  apply-time failures isolate per doc with the BRIEF written for the
+  succeeded subset. Re-enrolling an enrolled file is a refusal, not a
+  duplicate.
 
 ## Atomicity & rollback
 
@@ -215,6 +254,15 @@ constructed in tmp dirs rather than baked on disk):
   (issue #408): `.tex` bodies, version gaps {1,3,4,5,6,7}, mixed
   hand-rolled `.review`/`.audit` sidecars, root-level
   `paper.tex`/`paper.pdf` build artifacts, `figures/`.
+- `build_loose_file_in_existing_project` — migrated project with a
+  tripwire-laden operator BRIEF (`theme:`, `render_*` keys, YAML
+  comments, quoting, non-alpha entry order) + a dated loose file
+  (issue #406).
+- `build_loose_file_no_project` — bare topical dir with date-prefixed
+  and date-suffixed loose files (issue #406).
+- `build_loose_file_batch` — batch of loose files incl. a `.tex` with
+  `\documentclass`, an intra-batch slug-collision pair, and a
+  non-md/tex refusal target (issue #406).
 
 Test files:
 
@@ -241,3 +289,18 @@ Test files:
   TODO markers, dry-run BRIEF preview, apply + post-apply contracts
   (`discover_thread_root`, strict load, verify, `discover_critics`
   excludes unstamped sidecars), byte-identical idempotence.
+- `test_project_migrate_enroll_slug.py` — slug derivation + canonical
+  `--slug` validation (issue #406).
+- `test_project_migrate_enroll_append.py` — surgical-append byte
+  preservation against the tripwire BRIEF + strict re-parse + append
+  refusal cases (issue #406).
+- `test_project_migrate_enroll_apply.py` — enroll end-to-end: existing
+  project, no-project synthesis, batch, `.tex` inference, git-mv
+  history follow, per-doc failure isolation with succeeded-subset
+  BRIEF write (issue #406).
+- `test_project_migrate_enroll_errors.py` — plan-time hard errors
+  (collisions, refusals, idempotency-as-refusal, malformed BRIEFs,
+  flag validation) all pre-mutation (issue #406).
+- `test_project_migrate_enroll_dry_run.py` — dry-run default leaves
+  the tree digest unchanged; the previewed BRIEF is byte-identical to
+  the apply-time write (issue #406).

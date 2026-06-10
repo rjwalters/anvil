@@ -14,6 +14,9 @@ post-#295 / post-#296 model.
 /anvil:project-migrate <project-dir>             # dry-run (no mutations)
 /anvil:project-migrate <project-dir> --apply     # execute the plan
 /anvil:project-migrate <project-dir> --report    # markdown report only
+
+/anvil:project-migrate --enroll <file> [<file> ...]    # dry-run enrollment
+    [--project <dir>] [--slug <slug>] [--artifact-type <type>] [--apply]
 ```
 
 `<project-dir>` is the project root: the directory that holds (or will hold)
@@ -27,6 +30,12 @@ If neither `--apply` nor `--report` is passed, the command runs in **dry-run
 mode**: it detects, plans, and prints, but writes nothing to disk.
 
 `--apply` and `--report` are mutually exclusive. Passing both is rejected.
+
+`--enroll <file> [...]` selects **single-file enrollment mode** (issue
+#406): instead of migrating a whole project, it wraps one or more loose
+`.md` / `.tex` files into project threads. Enrollment runs through
+`orchestrate.run_enroll(...)` (dry-run by default, like every mode in
+this skill) — see §6 below.
 
 ### 1. Detect current shape
 
@@ -119,6 +128,69 @@ Call `verify.verify_migration(project_dir)`:
    `<slug>.N/` under their `<slug>/` parent).
 
 Report each verify result. If any fail, exit non-zero with the failures.
+
+### 6. Enrollment mode (`--enroll`, issue #406)
+
+Wraps loose single-file documents (flat `.md` / `.tex` files in topical
+directories) into project threads:
+
+```
+/anvil:project-migrate --enroll corporate/memos/2026-05-19-board-update.md
+/anvil:project-migrate --enroll ip/*.md --project ip --apply
+```
+
+Call `orchestrate.run_enroll(files, project=..., slug=...,
+artifact_type=..., apply=...)`. The flow:
+
+1. **Project resolution**: `--project` if given (must exist; BRIEF
+   optional — created if absent); else walk up from the file looking
+   for an existing project BRIEF (bounded by the git repo root); else
+   propose the file's parent as a new project root.
+2. **Slug derivation**: from `--slug` (must already be canonical —
+   `^[a-z0-9][a-z0-9-]*$`; rejected, never re-sanitized), else from the
+   filename: leading/trailing ISO date token stripped (and preserved as
+   a YAML comment on the BRIEF entry plus a body enrollment-log line),
+   lowercased, non-alphanumeric runs collapsed to `-`.
+3. **Mechanics**: move the file to `<project>/<slug>/<slug>.1/<slug>.<ext>`
+   (`git mv` in-repo so history follows; plain move otherwise). `.tex`
+   bodies slug-echo too — new enrollments have no external-tooling
+   carve-out (the enclosing move already breaks any path-based
+   consumer); a plan note records the rename and that references to the
+   old path are NOT rewritten.
+4. **BRIEF write**: with an existing BRIEF, the new `documents:`
+   entries are added by **surgical textual append** at the end of the
+   `documents:` block — every pre-existing byte (YAML comments, top-level
+   `theme:`, per-doc `render_*` keys, quoting, entry order) is preserved
+   byte-identically, and the body gains an `## Enrollment log` line.
+   With no BRIEF, a minimal one is synthesized via
+   `render_project_brief` with the #408 TODO-marker discipline. The
+   write is strict-validated (`load_project_brief_strict`,
+   `validate_dirs=True`) and rolled back on any parse failure.
+5. **Artifact type**: `--artifact-type` validated against the two-tier
+   registry (#394: registered + consumer-declared); else inferred WITH a
+   `# TODO(operator)` marker (`.md` → `investment-memo`;
+   `.tex` with `\documentclass{anvil-proposal}` → `proposal`; other
+   `\documentclass` → `pub`).
+6. **Batch semantics**: N files → N independently-planned
+   `DocumentPlan`s in ONE project. Plan-time errors (slug collisions —
+   existing or intra-batch, non-md/tex inputs, already-enrolled inputs,
+   malformed BRIEF) abort the whole batch BEFORE any mutation.
+   Apply-time failures isolate per document (snapshot rollback); the
+   BRIEF is written for the **succeeded subset**.
+
+Hard errors (plan-time, pre-mutation):
+
+- Slug collision with a BRIEF entry, an on-disk path, or another batch
+  member — the error names the conflict; suggest `--slug`.
+- Non-`.md`/`.tex` input; `BRIEF.md` / `README.md` inputs.
+- Already-enrolled input (inside a version dir, or
+  `discover_thread_root` resolves it) — re-enrolling is a refusal, not
+  a duplicate (idempotency).
+- Existing BRIEF that fails strict parsing — never modify a BRIEF we
+  can't parse.
+- A BRIEF-less project root containing other thread-shaped dirs — run
+  plain `project-migrate` on it first.
+- Empty derived slug (date-only or symbol-only stems) — pass `--slug`.
 
 ## Output
 
