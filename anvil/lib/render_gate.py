@@ -19,8 +19,8 @@ Memo mode (``kind="memo"``)
 ---------------------------
 
 When invoked with ``kind="memo"``, the gate routes through a separate
-five-dimension flow tailored to the ``anvil:memo`` markdown → PDF
-rendering pipeline shipped by Epic #158. The five memo checks are:
+six-dimension flow tailored to the ``anvil:memo`` markdown → PDF
+rendering pipeline shipped by Epic #158. The six memo checks are:
 
 1. ``memo_compile_success`` — pandoc exited 0, the PDF exists, and the
    page count is positive.
@@ -34,7 +34,34 @@ rendering pipeline shipped by Epic #158. The five memo checks are:
    ``anvil/skills/memo/lib/memo_image_refs.py::lint_memo_image_refs``
    (PR #160) and aggregates findings. Source-side lint already runs at
    review phase; render-gate adds the post-render catch.
-5. ``memo_placeholder_scan`` — adapts ``DEFAULT_PLACEHOLDER_PATTERNS``
+5. ``memo_image_dimensions`` — advisory image-dimension/aspect sanity
+   check (issue #395). For every image referenced from the body plus
+   every PNG/JPEG under ``<version_dir>/exhibits/``, three stdlib
+   header checks (pure ``struct`` PNG-IHDR / JPEG-SOFn parsing — no
+   PIL, no subprocess): (a) pixel ceiling — width or height >
+   ``image_max_px`` (default :data:`MEMO_IMAGE_MAX_PX` = 6000 px);
+   (b) extreme aspect — ratio > :data:`MEMO_IMAGE_MAX_ASPECT` (6:1)
+   either direction; (c) declared-vs-actual — when a sibling
+   ``src/<stem>.py`` declares a parseable ``figsize=(W, H)`` and a
+   ``dpi=N`` (or the PNG carries a ``pHYs`` density chunk), flag
+   actual dims diverging more than
+   :data:`MEMO_IMAGE_DECLARED_TOLERANCE` (1.5×) from declared —
+   silent skip when nothing declarative is parseable. A fourth check
+   (d) content-bbox vs canvas — content occupying <
+   :data:`MEMO_IMAGE_MIN_CONTENT_RATIO` (25%) of the canvas, the
+   exact signature of the matplotlib ``bbox_inches="tight"`` +
+   rogue-artist + transparent-canvas failure (the 16,622×5,652 px
+   canary) — needs PIL/numpy via the ``[image_lint]`` extra,
+   graceful-skips with a ``reasons`` breadcrumb when absent, and is
+   skipped per-image for canvases already over the pixel ceiling
+   (decoding a 90-megapixel image is the hazard, not the cure). ALL
+   findings are warning severity and the dimension never joins
+   ``failed_gates`` (the same advisory model as
+   ``memo_overfull_check``: recorded in ``findings``, ``passed``
+   unaffected, no ``CriticalFlag``). Suppression for body-referenced
+   images via ``<!-- anvil-lint-disable: memo_image_dimensions -->``
+   (suppressed hits surface as info findings).
+6. ``memo_placeholder_scan`` — adapts ``DEFAULT_PLACEHOLDER_PATTERNS``
    for markdown comment syntax (``<!-- TODO -->``, ``[TBD]``,
    ``_TKTKTK_``). Suppression via
    ``<!-- anvil-lint-disable: memo_placeholder_scan -->``.
@@ -128,6 +155,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import struct
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -186,6 +214,7 @@ DIM_MEMO_COMPILE = "memo_compile_success"
 DIM_MEMO_PAGE_FIT = "memo_page_fit"
 DIM_MEMO_OVERFULL = "memo_overfull_check"
 DIM_MEMO_IMAGE_REFS = "memo_image_refs_exist"
+DIM_MEMO_IMAGE_DIMENSIONS = "memo_image_dimensions"
 DIM_MEMO_PLACEHOLDERS = "memo_placeholder_scan"
 
 # Engine names for the memo render chain. Selection priority per architect
@@ -200,6 +229,32 @@ MEMO_ENGINE_XELATEX = "xelatex"
 # explicitly. Mirrors the constant documented in
 # ``anvil/skills/memo/SKILL.md`` §"Length targets" and used by the rubric.
 MEMO_WORDS_PER_PAGE = 400
+
+# ``memo_image_dimensions`` (issue #395) defaults. The pixel ceiling is
+# per-thread overridable via the ``image_max_px`` parameter on
+# ``gate(kind="memo")`` (the same coerce-or-silently-fallback pattern as
+# ``words_per_page``); the other three thresholds are framework-pinned in
+# v1. Calibration anchor: the framework style
+# (``anvil/lib/figures/anvil.mplstyle``: ``figure.figsize: 12, 7`` @
+# ``savefig.dpi: 200``) produces a canonical 2400×1400 px figure — well
+# under the 6000 px ceiling — while the canary failure (matplotlib
+# ``bbox_inches="tight"`` inflated by a rogue artist on a transparent
+# canvas) shipped at 16,622×5,652 px.
+MEMO_IMAGE_MAX_PX = 6000
+# Aspect-ratio ceiling (either orientation). Note the canary image
+# (≈2.94:1) does NOT trip this — the pixel ceiling is the load-bearing
+# check; aspect catches degenerate strip renders.
+MEMO_IMAGE_MAX_ASPECT = 6.0
+# Declared-vs-actual divergence tolerance: actual dims more than 1.5×
+# off (either direction, either dimension) from ``figsize × dpi`` flag.
+MEMO_IMAGE_DECLARED_TOLERANCE = 1.5
+# Content-bbox floor for the optional PIL check: content occupying less
+# than this fraction of the canvas area flags (tight-bbox rogue-artist
+# signature — drawing in a corner of a giant transparent canvas).
+MEMO_IMAGE_MIN_CONTENT_RATIO = 0.25
+# Raster extensions enumerated by the exhibits glob. SVGs are skipped
+# with a breadcrumb (viewBox semantics make "pixel dims" ill-defined).
+_MEMO_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 
 # Default placeholder patterns for the memo gate. Adapted from
 # ``DEFAULT_PLACEHOLDER_PATTERNS`` for markdown comment syntax and the
@@ -363,6 +418,11 @@ class GateResult:
             DIM_MEMO_PAGE_FIT,
             DIM_MEMO_OVERFULL,
             DIM_MEMO_IMAGE_REFS,
+            # memo_image_dimensions is advisory today (never joins
+            # failed_gates) — listed here so a future severity promotion
+            # emits flags in the documented check order without a code
+            # change (issue #395).
+            DIM_MEMO_IMAGE_DIMENSIONS,
             DIM_MEMO_PLACEHOLDERS,
         ]
         for dim in ordered_dims:
@@ -560,6 +620,7 @@ def gate(
     out_pdf: Optional[Path] = None,
     target_length: Optional[dict] = None,
     words_per_page: Optional[int] = None,
+    image_max_px: Optional[int] = None,
     render_engine: Optional[str] = None,
     latex_header_includes: Optional[str] = None,
     render_template: Optional[str] = None,
@@ -584,7 +645,8 @@ def gate(
       + ``page_cap`` + ``overfull_threshold_pt`` + ``placeholder_patterns``
       + ``pdfinfo_path`` + ``engine`` + ``compile_status`` +
       ``compile_exit_code``) is preserved verbatim.
-    - ``kind="memo"``: the five-dimension memo gate (Epic #158 / Phase 2).
+    - ``kind="memo"``: the six-dimension memo gate (Epic #158 / Phase 2;
+      sixth dimension ``memo_image_dimensions`` added by issue #395).
       Requires ``version_dir``; ``out_pdf`` defaults to
       ``<version_dir>/memo.pdf``. ``target_length`` is the resolved
       ``{"words": [min, max]}`` or ``{"pages": [min, max]}`` dict (per
@@ -593,6 +655,13 @@ def gate(
       module docstring §"page_cap calibration"); ``None`` uses
       :data:`MEMO_WORDS_PER_PAGE` (400). Malformed overrides
       (non-numeric or ``<= 0``) silently fall back to the default.
+      Optional ``image_max_px`` (issue #395) is the per-thread pixel
+      ceiling for the advisory ``memo_image_dimensions`` check;
+      ``None`` uses :data:`MEMO_IMAGE_MAX_PX` (6000). Malformed
+      overrides (non-numeric or ``<= 0``) silently fall back to the
+      default — the same coerce-or-fallback contract as
+      ``words_per_page``; the effective ceiling is recorded in the
+      finding message.
       Optional ``render_engine`` (issue #320) is the per-document
       override resolved from ``BriefDocument.render_engine`` (one of
       ``"weasyprint"``, ``"xelatex"``, ``"wkhtmltopdf"``); when set and
@@ -682,6 +751,7 @@ def gate(
             placeholder_patterns=placeholder_patterns,
             pdfinfo_path=pdfinfo_path,
             words_per_page=words_per_page,
+            image_max_px=image_max_px,
             render_engine=render_engine,
             latex_header_includes=latex_header_includes,
             render_template=render_template,
@@ -1588,6 +1658,548 @@ def _coerce_words_per_page(value: object) -> Optional[int]:
     return None
 
 
+def _coerce_image_max_px(value: object) -> Optional[int]:
+    """Validate a caller-supplied ``image_max_px`` override (issue #395).
+
+    Returns the effective ``int`` to use, or ``None`` when the value is
+    absent / malformed (in which case the caller falls back to
+    :data:`MEMO_IMAGE_MAX_PX`). Same accept/reject table as
+    :func:`_coerce_words_per_page`: ``int`` and ``float`` accepted;
+    booleans, strings, ``None``, and non-positive values rejected. A bad
+    override never raises; the gate continues with the documented
+    default and the effective ceiling is recorded in the finding
+    message.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        if value <= 0:
+            return None
+        coerced = int(value)
+        if coerced <= 0:
+            return None
+        return coerced
+    return None
+
+
+# -----------------------------------------------------------------------------
+# memo_image_dimensions helpers (issue #395)
+# -----------------------------------------------------------------------------
+#
+# Pure-stdlib image header parsing. The PNG path is the inverse of the
+# struct+zlib chunk builder proven in
+# ``anvil/skills/deck/tests/test_imagegen.py::_make_tiny_png``: a
+# signature-verified PNG carries big-endian u32 width/height at bytes
+# 16-24 (the IHDR payload). The JPEG path walks segment markers to the
+# first SOFn frame header. No PIL, no subprocess (``sips`` is
+# macOS-only; ``identify`` needs ImageMagick).
+#
+# Helper placement: module-private for v1. Promote to
+# ``anvil/lib/image_meta.py`` when the deck ``figures/`` pass (the named
+# second consumer) lands — "wait for the second consumer" discipline.
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+# JPEG SOFn markers carry frame dimensions. 0xC4 (DHT), 0xC8 (JPG
+# extension), and 0xCC (DAC) sit inside the 0xC0-0xCF range but are NOT
+# frame headers.
+_JPEG_SOF_MARKERS = frozenset(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
+
+# Cheap declarative-source regexes for the declared-vs-actual check.
+# Intentionally loose (this is a best-effort signal, not a Python
+# parser): ``figsize=(12, 7.5)`` / ``figsize=[12, 7.5]`` and ``dpi=150``
+# anywhere in the sibling source.
+_FIGSIZE_RE = re.compile(
+    r"figsize\s*=\s*[\(\[]\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*[\)\]]"
+)
+_DPI_RE = re.compile(r"\bdpi\s*=\s*(\d+(?:\.\d+)?)")
+
+
+def _read_png_dimensions(data: bytes) -> Optional[tuple[int, int]]:
+    """Return ``(width, height)`` from a PNG IHDR, or ``None``.
+
+    Bytes 16-24 of a signature-verified PNG are big-endian u32
+    width/height (the IHDR chunk is mandated first by the PNG spec).
+    Returns ``None`` for non-PNG bytes, truncated headers, or
+    degenerate (zero) dimensions.
+    """
+    if len(data) < 24 or not data.startswith(_PNG_SIGNATURE):
+        return None
+    if data[12:16] != b"IHDR":
+        return None
+    width, height = struct.unpack(">II", data[16:24])
+    if width <= 0 or height <= 0:
+        return None
+    return (int(width), int(height))
+
+
+def _read_png_phys_dpi(data: bytes) -> Optional[float]:
+    """Return the horizontal DPI from a PNG ``pHYs`` chunk, or ``None``.
+
+    Walks the chunk stream (length + tag + payload + CRC) up to the
+    first IDAT — ``pHYs`` must precede image data per the spec. Only
+    ``unit == 1`` (pixels per meter) is meaningful; ``unit == 0``
+    declares an aspect ratio without absolute density and returns
+    ``None``. ``ppu × 0.0254`` converts pixels-per-meter to DPI
+    (matplotlib writes this chunk on every ``savefig`` PNG).
+    """
+    if len(data) < 8 or not data.startswith(_PNG_SIGNATURE):
+        return None
+    offset = 8
+    while offset + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[offset : offset + 4])
+        tag = data[offset + 4 : offset + 8]
+        if tag == b"pHYs":
+            if length == 9 and offset + 17 <= len(data):
+                ppu_x, _ppu_y, unit = struct.unpack(
+                    ">IIB", data[offset + 8 : offset + 17]
+                )
+                if unit == 1 and ppu_x > 0:
+                    return ppu_x * 0.0254
+            return None
+        if tag in (b"IDAT", b"IEND"):
+            return None
+        offset += 12 + length  # 4 length + 4 tag + payload + 4 CRC
+    return None
+
+
+def _read_jpeg_dimensions(data: bytes) -> Optional[tuple[int, int]]:
+    """Return ``(width, height)`` from a JPEG SOFn frame header, or ``None``.
+
+    Marker walk: skip past each ``0xFF``-prefixed segment using its
+    declared length until the first SOFn marker; the frame header
+    payload is ``precision(1) height(2) width(2)`` big-endian after the
+    2-byte segment length. Standalone markers (RST/SOI/EOI/TEM) carry
+    no length and are stepped over. Returns ``None`` for non-JPEG
+    bytes, truncated streams, or degenerate dimensions.
+    """
+    if len(data) < 4 or data[0:2] != b"\xff\xd8":
+        return None
+    n = len(data)
+    offset = 2
+    while offset + 4 <= n:
+        if data[offset] != 0xFF:
+            # Out of marker sync (corrupt stream) — bail rather than
+            # scan-and-guess.
+            return None
+        marker = data[offset + 1]
+        if marker == 0xFF:
+            # Fill byte; markers may be padded with extra 0xFFs.
+            offset += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD9:
+            # Standalone marker (TEM, RSTn, SOI, EOI) — no length word.
+            offset += 2
+            continue
+        (seg_len,) = struct.unpack(">H", data[offset + 2 : offset + 4])
+        if seg_len < 2:
+            return None
+        if marker in _JPEG_SOF_MARKERS:
+            if offset + 9 > n:
+                return None
+            height, width = struct.unpack(
+                ">HH", data[offset + 5 : offset + 9]
+            )
+            if width <= 0 or height <= 0:
+                return None
+            return (int(width), int(height))
+        offset += 2 + seg_len
+    return None
+
+
+def _read_image_dimensions(path: Path) -> Optional[tuple[int, int]]:
+    """Return ``(width, height)`` for a PNG/JPEG on disk, or ``None``.
+
+    Dispatches on extension, falling back to signature sniffing for
+    unrecognized suffixes. Unreadable files, truncated headers, and
+    non-raster formats all return ``None`` — the caller skips silently
+    (this check must never false-positive on exotic inputs).
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    suffix = path.suffix.lower()
+    if suffix == ".png":
+        return _read_png_dimensions(data)
+    if suffix in (".jpg", ".jpeg"):
+        return _read_jpeg_dimensions(data)
+    return _read_png_dimensions(data) or _read_jpeg_dimensions(data)
+
+
+def _find_figure_source(image_path: Path) -> Optional[Path]:
+    """Locate the declarative ``src/<stem>.py`` sibling for an image.
+
+    Checked in order: ``<image_dir>/src/<stem>.py`` (the memo exhibits
+    convention — figure sources under ``exhibits/src/`` next to
+    ``exhibits/<stem>.png``), ``<image_dir>/<stem>.py`` (flat layout),
+    then ``<image_dir>/../src/<stem>.py`` (image one level below the
+    src dir, e.g. ``exhibits/figures/<stem>.png`` with
+    ``exhibits/src/<stem>.py``). First existing file wins; ``None``
+    when no candidate exists (the declared-vs-actual check then skips
+    silently).
+    """
+    stem = image_path.stem
+    candidates = (
+        image_path.parent / "src" / f"{stem}.py",
+        image_path.parent / f"{stem}.py",
+        image_path.parent.parent / "src" / f"{stem}.py",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _parse_declared_figure_params(
+    source_text: str,
+) -> tuple[Optional[tuple[float, float]], Optional[float]]:
+    """Best-effort ``(figsize, dpi)`` extraction from a figure source.
+
+    Cheap regex, not a Python parser — the first ``figsize=(W, H)`` and
+    the first ``dpi=N`` in the file win. Either slot is independently
+    ``None`` when unparseable. This check must never false-positive on
+    hand-made images, so the caller skips silently when ``figsize`` is
+    absent.
+    """
+    figsize: Optional[tuple[float, float]] = None
+    dpi: Optional[float] = None
+    m = _FIGSIZE_RE.search(source_text)
+    if m:
+        w, h = float(m.group(1)), float(m.group(2))
+        if w > 0 and h > 0:
+            figsize = (w, h)
+    m = _DPI_RE.search(source_text)
+    if m:
+        value = float(m.group(1))
+        if value > 0:
+            dpi = value
+    return (figsize, dpi)
+
+
+def _image_content_ratio(path: Path) -> Optional[float]:
+    """Content-bbox area as a fraction of canvas area, or ``None``.
+
+    A module-private adaptation of the corner-patch background-sampling
+    algorithm from
+    ``anvil/skills/deck/lib/auto_shrink_detector.py::_content_bbox``
+    (the #102 precedent), with two deltas for the memo image surface:
+
+    - operates in **RGBA** space (vs RGB) so a fully-transparent canvas
+      — the exact canary mode, ``savefig.transparent: True`` — reads as
+      background and the opaque drawing reads as content;
+    - returns the bbox **area ratio** rather than the bottom margin
+      (the discriminative signal here is "content occupies a corner of
+      a giant canvas", not slide auto-shrink).
+
+    Promotion to a shared location waits for the second consumer per
+    repo convention. Returns ``None`` when PIL/numpy are missing, the
+    image cannot be decoded (e.g. a truncated or header-only file), or
+    the canvas is too small to corner-sample; returns ``0.0`` for a
+    completely blank canvas.
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        with Image.open(path) as im:
+            arr = np.asarray(im.convert("RGBA"), dtype=np.int16)
+    except Exception:
+        # Undecodable (header-only fixture, corrupt file, exotic
+        # subformat) — skip silently; the stdlib checks already ran.
+        return None
+    h, w, _ = arr.shape
+    corner_margin_px = 4
+    corner_patch_px = 16
+    if h < 2 * corner_margin_px + corner_patch_px:
+        return None
+    if w < 2 * corner_margin_px + corner_patch_px:
+        return None
+    cm, cp = corner_margin_px, corner_patch_px
+    patches = [
+        arr[cm : cm + cp, cm : cm + cp],
+        arr[cm : cm + cp, w - cm - cp : w - cm],
+        arr[h - cm - cp : h - cm, cm : cm + cp],
+        arr[h - cm - cp : h - cm, w - cm - cp : w - cm],
+    ]
+    stacked = np.concatenate([p.reshape(-1, 4) for p in patches], axis=0)
+    bg = np.median(stacked, axis=0).astype(np.int16)
+    diff = np.abs(arr - bg)
+    # A pixel is "content" when ANY channel (including alpha) differs
+    # from the corner-sampled background by more than the tolerance.
+    content_mask = (diff > 8).any(axis=2)
+    if not content_mask.any():
+        return 0.0
+    rows = content_mask.any(axis=1)
+    cols = content_mask.any(axis=0)
+    top = int(np.argmax(rows))
+    bottom = int(h - 1 - np.argmax(rows[::-1]))
+    left = int(np.argmax(cols))
+    right = int(w - 1 - np.argmax(cols[::-1]))
+    bbox_area = (bottom - top + 1) * (right - left + 1)
+    return bbox_area / float(h * w)
+
+
+def _enumerate_memo_images(
+    version_dir: Path,
+) -> tuple[dict[Path, Optional[int]], list[str]]:
+    """Enumerate the images the ``memo_image_dimensions`` check inspects.
+
+    Union of two sources (per the issue's "and/or" ask):
+
+    1. Body-referenced images — every markdown ``![..](..)`` / HTML
+       ``<img>`` ref in ``<thread>.md``, via the
+       ``memo_image_refs._extract_refs`` extractor (URL and absolute
+       refs skipped per ``_is_skipped`` semantics). These carry their
+       1-based body line for suppression.
+    2. Present-but-unreferenced exhibits — a recursive glob over
+       ``<version_dir>/exhibits/`` for PNG/JPEG files. No body line
+       (and therefore no suppression surface in v1 — acceptable, since
+       findings are advisory).
+
+    Returns ``(images, breadcrumbs)`` where ``images`` maps each
+    resolved path to its body line (``None`` for glob-discovered) and
+    ``breadcrumbs`` carries skip notes (SVG refs; refs extractor not
+    importable). First body occurrence wins for the line number.
+    """
+    images: dict[Path, Optional[int]] = {}
+    breadcrumbs: list[str] = []
+
+    body_filename = _memo_body_filename(version_dir)
+    memo_md = version_dir / body_filename
+    if memo_md.is_file():
+        try:
+            from anvil.skills.memo.lib import memo_image_refs as _img_refs
+
+            source = memo_md.read_text(encoding="utf-8", errors="replace")
+            for ref in _img_refs._extract_refs(source):
+                if _img_refs._is_skipped(ref.path):
+                    continue
+                if ref.path.lower().endswith(".svg"):
+                    breadcrumbs.append(
+                        f"{DIM_MEMO_IMAGE_DIMENSIONS}: SVG ref "
+                        f"{ref.path!r} skipped (viewBox semantics make "
+                        "pixel dims ill-defined)."
+                    )
+                    continue
+                resolved = (version_dir / ref.path).resolve()
+                if not resolved.is_file():
+                    # Missing files are memo_image_refs_exist's job.
+                    continue
+                if resolved not in images:
+                    images[resolved] = ref.line
+        except ImportError:
+            breadcrumbs.append(
+                f"{DIM_MEMO_IMAGE_DIMENSIONS}: image-ref extractor not "
+                "importable; body-referenced images skipped (exhibits "
+                "glob still checked)."
+            )
+
+    exhibits_dir = version_dir / "exhibits"
+    if exhibits_dir.is_dir():
+        for candidate in sorted(exhibits_dir.rglob("*")):
+            if not candidate.is_file():
+                continue
+            if candidate.suffix.lower() not in _MEMO_IMAGE_EXTENSIONS:
+                continue
+            resolved = candidate.resolve()
+            if resolved not in images:
+                images[resolved] = None
+    return (images, breadcrumbs)
+
+
+def _check_memo_image_dimensions(
+    version_dir: Path,
+    *,
+    image_max_px: Optional[int] = None,
+) -> tuple[list[GateFinding], list[str]]:
+    """Run the advisory ``memo_image_dimensions`` checks (issue #395).
+
+    Returns ``(findings, reasons)`` for the caller (:func:`_gate_memo`)
+    to fold in. ALL findings are warning severity (info when
+    suppressed) and the dimension never joins ``failed_gates`` — the
+    same advisory model as ``memo_overfull_check``. Findings flow to
+    ``_progress.json.render_gate.findings`` through the existing
+    ``GateResult`` → memo-render wiring with no new plumbing.
+
+    Checks per image (see the module docstring memo-mode section for
+    the full prose): (1) pixel ceiling, (1b) extreme aspect, (2)
+    declared-vs-actual (silent skip when nothing declarative is
+    parseable), (3) content-bbox vs canvas (``[image_lint]`` extra;
+    breadcrumb-and-skip when PIL/numpy are absent).
+
+    Suppression: ``<!-- anvil-lint-disable: memo_image_dimensions -->``
+    (same line or line above the body ref) downgrades that image's
+    hits to info findings, mirroring the placeholder-scan pattern.
+    Exhibits-glob-discovered images with no body line have no
+    suppression surface in v1.
+    """
+    findings: list[GateFinding] = []
+    reasons: list[str] = []
+
+    effective_max = _coerce_image_max_px(image_max_px)
+    if effective_max is None:
+        effective_max = MEMO_IMAGE_MAX_PX
+
+    images, breadcrumbs = _enumerate_memo_images(version_dir)
+    if not images:
+        reasons.extend(breadcrumbs)
+        return (findings, reasons)
+    reasons.extend(breadcrumbs)
+
+    # Suppressed-line set from the body source (body-referenced images
+    # only; glob-discovered images carry line=None and never suppress).
+    disabled_lines: set[int] = set()
+    memo_md = version_dir / _memo_body_filename(version_dir)
+    if memo_md.is_file():
+        disabled_lines = _collect_memo_disabled_lines(
+            memo_md.read_text(encoding="utf-8", errors="replace"),
+            rule=DIM_MEMO_IMAGE_DIMENSIONS,
+        )
+
+    # Preflight the optional content-bbox deps ONCE per gate run; a
+    # single breadcrumb (not one per image) keeps reasons readable.
+    from anvil.lib.render import (
+        IMAGE_LINT_REMEDIATION,
+        check_image_lint_deps_available,
+    )
+
+    bbox_available = check_image_lint_deps_available()
+    if not bbox_available:
+        reasons.append(
+            f"{DIM_MEMO_IMAGE_DIMENSIONS}: content-bbox check skipped. "
+            f"{IMAGE_LINT_REMEDIATION}"
+        )
+
+    warning_count = 0
+    for image_path, body_line in sorted(images.items()):
+        try:
+            rel = str(image_path.relative_to(version_dir.resolve()))
+        except ValueError:
+            rel = str(image_path)
+        location = (
+            f"{memo_md}:L{body_line}" if body_line is not None else str(image_path)
+        )
+        suppressed = body_line is not None and body_line in disabled_lines
+
+        hits: list[str] = []
+        dims = _read_image_dimensions(image_path)
+        if dims is not None:
+            width, height = dims
+            # Check 1: pixel ceiling (effective ceiling recorded in the
+            # message so a reviewer can see which calibration applied).
+            if width > effective_max or height > effective_max:
+                hits.append(
+                    f"Image `{rel}` is {width}x{height} px — exceeds the "
+                    f"{effective_max} px ceiling. Likely a runaway canvas "
+                    "(matplotlib `bbox_inches=\"tight\"` inflated by a "
+                    "rogue artist); a style-conformant anvil.mplstyle "
+                    "figure is 2400x1400 px (12x7 in @ 200 dpi)."
+                )
+            # Check 1b: extreme aspect (either orientation).
+            aspect = max(width / height, height / width)
+            if aspect > MEMO_IMAGE_MAX_ASPECT:
+                hits.append(
+                    f"Image `{rel}` is {width}x{height} px — aspect ratio "
+                    f"{aspect:.1f}:1 exceeds {MEMO_IMAGE_MAX_ASPECT:.0f}:1 "
+                    "(degenerate strip render)."
+                )
+            # Check 2: declared-vs-actual (best-effort; silent skip when
+            # nothing declarative is parseable — never false-positives
+            # on hand-made images).
+            src_path = _find_figure_source(image_path)
+            figsize: Optional[tuple[float, float]] = None
+            declared_dpi: Optional[float] = None
+            if src_path is not None:
+                try:
+                    figsize, declared_dpi = _parse_declared_figure_params(
+                        src_path.read_text(encoding="utf-8", errors="replace")
+                    )
+                except OSError:
+                    figsize, declared_dpi = (None, None)
+            if declared_dpi is None and image_path.suffix.lower() == ".png":
+                try:
+                    declared_dpi = _read_png_phys_dpi(image_path.read_bytes())
+                except OSError:
+                    declared_dpi = None
+            if figsize is not None and declared_dpi is not None:
+                expected_w = figsize[0] * declared_dpi
+                expected_h = figsize[1] * declared_dpi
+                tol = MEMO_IMAGE_DECLARED_TOLERANCE
+                divergent = any(
+                    actual > expected * tol or actual < expected / tol
+                    for actual, expected in (
+                        (width, expected_w),
+                        (height, expected_h),
+                    )
+                )
+                if divergent:
+                    hits.append(
+                        f"Image `{rel}` is {width}x{height} px but its "
+                        f"source declares figsize=({figsize[0]:g}, "
+                        f"{figsize[1]:g}) @ {declared_dpi:g} dpi — "
+                        f"expected ~{expected_w:.0f}x{expected_h:.0f} px "
+                        f"(divergence > {tol:g}x). The tight-bbox "
+                        "rogue-artist failure inflates saved dims past "
+                        "the declared canvas."
+                    )
+        # Check 3: content-bbox vs canvas (optional extra). Runs even
+        # when the header parse failed — PIL may decode formats the
+        # stdlib parsers skip. Deliberately SKIPPED for images already
+        # over the pixel ceiling: the runaway-canvas diagnosis is on
+        # record from check 1, and decoding a 90-megapixel canvas
+        # inside the gate costs hundreds of MB (and trips PIL's
+        # decompression-bomb guard) — the exact hazard this dimension
+        # exists to flag.
+        over_ceiling = dims is not None and (
+            dims[0] > effective_max or dims[1] > effective_max
+        )
+        if bbox_available and not over_ceiling:
+            ratio = _image_content_ratio(image_path)
+            if ratio is not None and ratio < MEMO_IMAGE_MIN_CONTENT_RATIO:
+                hits.append(
+                    f"Image `{rel}` content bbox occupies "
+                    f"{ratio * 100:.1f}% of the canvas (< "
+                    f"{MEMO_IMAGE_MIN_CONTENT_RATIO * 100:.0f}%) — the "
+                    "tight-bbox rogue-artist signature (drawing in a "
+                    "corner of a mostly-blank canvas). Regenerate the "
+                    "figure without the stray artist or drop "
+                    "`bbox_inches=\"tight\"`."
+                )
+
+        for hit in hits:
+            if suppressed:
+                findings.append(
+                    GateFinding(
+                        gate=DIM_MEMO_IMAGE_DIMENSIONS,
+                        severity="info",
+                        message=f"{hit} (suppressed)",
+                        location=location,
+                    )
+                )
+            else:
+                warning_count += 1
+                findings.append(
+                    GateFinding(
+                        gate=DIM_MEMO_IMAGE_DIMENSIONS,
+                        severity="warning",
+                        message=hit,
+                        location=location,
+                    )
+                )
+
+    if warning_count:
+        reasons.append(
+            f"{DIM_MEMO_IMAGE_DIMENSIONS}: {warning_count} image-dimension "
+            f"warning(s) (advisory; ceiling={effective_max} px)."
+        )
+    return (findings, reasons)
+
+
 def _resolve_target_length(
     target_length: Optional[dict],
     *,
@@ -1680,13 +2292,14 @@ def _gate_memo(
     placeholder_patterns: Optional[tuple[str, ...]],
     pdfinfo_path: Optional[str],
     words_per_page: Optional[int] = None,
+    image_max_px: Optional[int] = None,
     render_engine: Optional[str] = None,
     latex_header_includes: Optional[str] = None,
     render_template: Optional[str] = None,
     render_lua_filters: Optional[list[str]] = None,
     render_metadata: Optional[dict] = None,
 ) -> GateResult:
-    """Five-dimension memo render-gate (kind="memo").
+    """Six-dimension memo render-gate (kind="memo").
 
     See the module docstring for the dimension list and severity model.
     The function is structured to mirror the LaTeX gate's "all checks run
@@ -1699,6 +2312,13 @@ def _gate_memo(
     :func:`_render_memo_source`; the actual honor-or-fallthrough
     decision lives in :func:`_select_memo_engine`. When ``None``, the
     auto-priority order applies (no regression on legacy callers).
+
+    The optional ``image_max_px`` parameter (issue #395) is the
+    per-thread pixel ceiling for the advisory ``memo_image_dimensions``
+    check (check 5). Coerced via :func:`_coerce_image_max_px` (the
+    ``words_per_page`` coerce-or-silently-fallback pattern); ``None``
+    or a malformed value uses :data:`MEMO_IMAGE_MAX_PX` (6000), and
+    the effective ceiling is recorded in the finding/reason message.
 
     The optional ``latex_header_includes`` parameter (issue #347)
     carries per-document free-form LaTeX preamble text forwarded from
@@ -2018,7 +2638,21 @@ def _gate_memo(
             "importable; check skipped."
         )
 
-    # --- Check 5: memo_placeholder_scan ------------------------------------
+    # --- Check 5: memo_image_dimensions (issue #395, advisory) -------------
+    # Image-dimension/aspect sanity check over body-referenced images +
+    # the exhibits glob. Warning severity throughout; the dimension is
+    # NOT added to ``failed`` — the same advisory model as
+    # memo_overfull_check (findings recorded, ``passed`` unaffected, no
+    # CriticalFlag). See _check_memo_image_dimensions for the per-image
+    # check list (pixel ceiling, aspect, declared-vs-actual, optional
+    # content-bbox).
+    img_dim_findings, img_dim_reasons = _check_memo_image_dimensions(
+        version_dir, image_max_px=image_max_px
+    )
+    findings.extend(img_dim_findings)
+    reasons.extend(img_dim_reasons)
+
+    # --- Check 6: memo_placeholder_scan ------------------------------------
     # Body filename echoes the thread slug per #295.
     body_filename = _memo_body_filename(version_dir)
     memo_md = version_dir / body_filename
@@ -2253,6 +2887,7 @@ __all__ = [
     "DIM_MEMO_PAGE_FIT",
     "DIM_MEMO_OVERFULL",
     "DIM_MEMO_IMAGE_REFS",
+    "DIM_MEMO_IMAGE_DIMENSIONS",
     "DIM_MEMO_PLACEHOLDERS",
     "COMPILE_OK",
     "COMPILE_FAILED",
@@ -2262,6 +2897,10 @@ __all__ = [
     "MEMO_ENGINE_WKHTMLTOPDF",
     "MEMO_ENGINE_XELATEX",
     "MEMO_WORDS_PER_PAGE",
+    "MEMO_IMAGE_MAX_PX",
+    "MEMO_IMAGE_MAX_ASPECT",
+    "MEMO_IMAGE_DECLARED_TOLERANCE",
+    "MEMO_IMAGE_MIN_CONTENT_RATIO",
     "GateFinding",
     "GateResult",
     "gate",
