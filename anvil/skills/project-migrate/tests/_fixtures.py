@@ -716,6 +716,63 @@ def build_loose_file_in_existing_project(
     return project_dir
 
 
+def build_post_283_with_operator_brief(
+    root: Path,
+    project_name: str = "corporate-memos",
+    *,
+    extra_unlisted_slug: Optional[str] = None,
+) -> Path:
+    """Build a tripwire-laden MIGRATE target (issue #415).
+
+    The operator-authored ``ENROLL_OPERATOR_BRIEF`` plus one thread
+    that still needs migrate work, so a migrate-mode ``--apply``
+    rewrites the BRIEF over the operator's config:
+
+    Shape:
+      <project>/
+        BRIEF.md                  ← ENROLL_OPERATOR_BRIEF (theme:,
+                                    render_* keys, YAML comments,
+                                    quoting, zeta-before-alpha order)
+        zeta-memo/
+          zeta-memo.1/memo.md     ← skill-fixed body → slug-echo rename
+          .anvil.json             ← target_length carrier to merge
+        alpha-memo/alpha-memo.1/alpha-memo.md   ← already migrated
+        [<extra>/<extra>.1/memo.md]             ← unlisted in BRIEF
+                                                  (entry gets appended)
+
+    Classifies POST_283_ANVIL_JSON. The intended migrate deltas are:
+    rename ``memo.md`` → ``zeta-memo.md``, merge the ``.anvil.json``
+    ``target_length`` into the zeta entry, delete the ``.anvil.json``,
+    and (when ``extra_unlisted_slug`` is set) append a new entry for
+    the unlisted thread. Every other BRIEF byte must survive.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    _write(project_dir / "BRIEF.md", ENROLL_OPERATOR_BRIEF)
+
+    zeta = project_dir / "zeta-memo"
+    _write(zeta / "zeta-memo.1" / "memo.md", "# zeta v1\n\nBody.\n")
+    _write(
+        zeta / ".anvil.json",
+        json.dumps(
+            {"target_length": {"words": [5000, 8000]}}, indent=2
+        ) + "\n",
+    )
+
+    _write(
+        project_dir / "alpha-memo" / "alpha-memo.1" / "alpha-memo.md",
+        "# alpha v1\n\nBody.\n",
+    )
+
+    if extra_unlisted_slug is not None:
+        _write(
+            project_dir / extra_unlisted_slug
+            / f"{extra_unlisted_slug}.1" / "memo.md",
+            f"# {extra_unlisted_slug} v1\n\nBody.\n",
+        )
+    return project_dir
+
+
 def build_loose_file_no_project(
     root: Path,
     dir_name: str = "memos",
@@ -801,5 +858,6 @@ __all__ = [
     "build_loose_file_no_project",
     "build_mixed_memo_deck_proposal",
     "build_post_283_anvil_json",
+    "build_post_283_with_operator_brief",
     "build_pre_283_classic",
 ]
