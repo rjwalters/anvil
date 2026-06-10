@@ -49,6 +49,16 @@ Anvil installs into a target repository (the consumer repo) where you do the aut
 
 After installation you invoke the skills from Claude Code in the consumer repo — e.g. `anvil:memo my-thesis` to draft a memo, then `memo-review my-thesis` to score it.
 
+### Installing into an existing monorepo
+
+The installer is designed to coexist with whatever already lives at the consumer root. Its full write footprint is:
+
+- `.anvil/` — the framework + skills, self-contained, with its own `pyproject.toml`. `uv sync --project .anvil` resolves against that file only, so the anvil venv stays independent of the monorepo's own uv project (root `pyproject.toml` / `uv.lock` are never read or written).
+- `.claude/skills/anvil-<skill>/` and `.claude/agents/anvil-*.md` — per-skill directories and per-file copies, namespaced so pre-existing skills and agents (e.g. `loom-*` entries from a sibling [Loom](https://github.com/rjwalters/loom) install) are untouched.
+- `CLAUDE.md` — the only root-level file the installer writes. It appends one marker-bounded block (`<!-- BEGIN ANVIL --> … <!-- END ANVIL -->`) after your existing content; re-installs replace that block in place rather than appending a duplicate. Everything outside the markers — including a Loom section — passes through verbatim. (One nuance: if your CLAUDE.md ends in multiple blank lines, the first install normalizes that trailing run to a single blank line before the block.)
+
+Root `pyproject.toml`, `uv.lock`, `package.json`, `Makefile`, `.loom/`, etc. are never modified. This contract is pinned by `tests/scripts/test_install_monorepo_coexistence.py`.
+
 ### Running anvil Python from a consumer (issue #230)
 
 Some skill commands (memo-render, render-gate consumers, etc.) call `from anvil.lib.render_gate import gate` directly. The installer ships an uv-runnable `<consumer>/.anvil/` layout so this works without cloning the anvil source repo on the consumer machine:
