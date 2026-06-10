@@ -570,6 +570,74 @@ class TestLoadOverlayErrors(unittest.TestCase):
             target.write_text(original, encoding="utf-8")
 
 
+class TestPathSeparatorGuard(unittest.TestCase):
+    """Issue #403: load_overlay rejects path-shaped artifact_type values
+    before any path construction (defense in depth post-#394, which
+    relaxed artifact_type to arbitrary str)."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.consumer_dir = self.tmp_path / "overlays"
+        self.consumer_dir.mkdir()
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_load_overlay_rejects_path_separator_artifact_type(self) -> None:
+        # Plant a file at the traversal target to prove the guard fires
+        # BEFORE path resolution — without the guard, "../evil" would
+        # resolve to this file and load successfully.
+        (self.tmp_path / "evil.json").write_text(
+            json.dumps(
+                {
+                    "artifact_type": "../evil",
+                    "description": "Traversal payload.",
+                    "weight_adjustments": {},
+                    "calibration_prose": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        for bad in ("../evil", "a/b", "a\\b", ".", ".."):
+            with self.subTest(artifact_type=bad):
+                with self.assertRaises(OverlayLoadError) as ctx:
+                    load_overlay(bad, consumer_overlays_dir=self.consumer_dir)
+                self.assertIn("not a valid overlay slug", str(ctx.exception))
+
+    def test_load_overlay_rejects_empty_artifact_type(self) -> None:
+        # Without the guard, "" would probe a hidden ".json" file.
+        with self.assertRaises(OverlayLoadError) as ctx:
+            load_overlay("", consumer_overlays_dir=self.consumer_dir)
+        self.assertIn("not a valid overlay slug", str(ctx.exception))
+
+    def test_load_overlay_accepts_normal_slug_after_hardening(self) -> None:
+        # Hyphenated shipped types must NOT be rejected (the guard never
+        # checks "-"), in both the shipped and consumer tiers.
+        for shipped in MEMO_ARTIFACT_TYPES:
+            with self.subTest(tier="shipped", artifact_type=shipped):
+                overlay = load_overlay(shipped)
+                self.assertEqual(
+                    str(overlay.artifact_type), shipped.value
+                )
+        consumer_slug = "design-note"
+        (self.consumer_dir / f"{consumer_slug}.json").write_text(
+            json.dumps(
+                {
+                    "artifact_type": consumer_slug,
+                    "description": "Consumer-tier sanity slug.",
+                    "weight_adjustments": {},
+                    "calibration_prose": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        overlay = load_overlay(
+            consumer_slug, consumer_overlays_dir=self.consumer_dir
+        )
+        self.assertEqual(overlay.artifact_type, consumer_slug)
+
+
 class TestDocCanonicalReferences(unittest.TestCase):
     """The rubric overlay surface is documented in SKILL.md, rubric.md, and memo-review.md."""
 
