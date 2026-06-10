@@ -38,7 +38,13 @@ Call `detect.detect_shape(project_dir)`. This returns a `Shape` enum:
   `documents:`, per-thread directories under `<project>/<slug>/`, but with
   separate `.anvil.json` files and possibly `memo.md` bodies.
 - `Shape.PRE_283_CLASSIC` — no project-level `BRIEF.md`; `memo.N/` siblings
-  directly under the project root; skill-fixed `memo.md` bodies.
+  directly under the project root; skill-fixed `memo.md` bodies. The
+  **bare sub-state** (issue #408 — version-dir families with no anvil
+  config anywhere, e.g. `paper.tex` bodies; `ProjectInventory.is_bare`)
+  also classifies here: the BRIEF is then SYNTHESIZED from observed
+  state with `# TODO(operator)` confirmation markers on every inferred
+  value, and the report header reads
+  `pre_283_classic (bare — BRIEF will be synthesized)`.
 - `Shape.UNKNOWN` — not recognizable; emit a diagnostic and exit non-zero.
 
 ### 2. Plan
@@ -67,6 +73,10 @@ Print the plan as a markdown report:
 - Header naming the project, detected shape, and plan summary.
 - One section per document with its planned renames, content rewrites, and
   BRIEF merge.
+- The **full proposed `BRIEF.md` text** (issue #408) whenever the plan
+  carries BRIEF merges — rendered through the same
+  `apply.render_project_brief` code path the apply step writes, so the
+  preview is byte-identical to the eventual write.
 - Footer with the verify-step preview ("after apply, the project would
   round-trip through `discover_thread_root` + `load_project_brief`").
 

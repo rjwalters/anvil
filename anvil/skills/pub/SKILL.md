@@ -202,6 +202,20 @@ The auditor (`pub-audit`) may re-run scripts in `figures/src/` to verify rendere
 - **Starter bibliography**: `templates/refs.bib.j2` — empty `.bib` with a comment header explaining that entries come from either author-supplied `<thread>/refs.bib` or the litsearch sibling's `candidates.bib`.
 - **Smoke test brief**: `assets/example-brief.md` — a one-page paper brief the drafter can turn into a compilable 2–4 page paper with one figure and a handful of citations. Used by the acceptance test.
 
+## Project BRIEF artifact type
+
+`pub` is registered as a **skill-identity** `artifact_type` value in the
+shared project-BRIEF registry
+(`anvil/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES` /
+`SKILL_IDENTITY_ARTIFACT_TYPES`; issue #408, following the #386
+pattern for `deck`/`slides`/`proposal`). In a shared project BRIEF, a
+`documents:` entry with `artifact_type: pub` declares that this skill
+owns the thread. It is NOT a memo subtype: it selects no memo rubric
+overlay, and memo commands fail loudly when pointed at a `pub`-declared
+thread. `anvil:project-migrate` writes this value when its BRIEF
+synthesis infers a pub-class thread from a `.tex` body with a
+non-`anvil-proposal` `\documentclass`.
+
 ## Defaults and overrides
 
 This skill ships opinionated defaults. Consumers are expected to override liberally via `.anvil/skills/pub/` in their own repo:

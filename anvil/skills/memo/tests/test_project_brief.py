@@ -396,7 +396,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
 
     def test_pitch_deck_rejected_listing_all_registered_values(self) -> None:
         """The studio's informal 'pitch-deck' stays unregistered — the
-        closed-ended error lists all ten registered values so the
+        closed-ended error lists all eleven registered values so the
         operator can self-correct."""
         fm = textwrap.dedent(
             """\
@@ -411,7 +411,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 10)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 11)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -436,11 +436,15 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.DECK,
             ArtifactType.SLIDES,
             ArtifactType.PROPOSAL,
+            ArtifactType.PUB,
         ):
             self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
 
     def test_skill_identity_set_is_explicit(self) -> None:
-        """Issue #394: the #386 guard is re-keyed onto an explicit set."""
+        """Issue #394: the #386 guard is re-keyed onto an explicit set.
+
+        Issue #408 grew the set with ``pub`` (research-paper threads —
+        the project-migrate BRIEF-synthesis registry gap)."""
         from project_brief import (  # noqa: PLC0415
             SKILL_IDENTITY_ARTIFACT_TYPES,
         )
@@ -452,6 +456,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.DECK,
                     ArtifactType.SLIDES,
                     ArtifactType.PROPOSAL,
+                    ArtifactType.PUB,
                 }
             ),
         )

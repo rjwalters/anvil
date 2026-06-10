@@ -375,10 +375,14 @@ def _format_rubric_overrides(ro: dict) -> List[str]:
     return out
 
 
-def _write_project_brief(
-    plan: Plan, project_brief_path: Path, *, existing_text: Optional[str]
-) -> None:
-    """Write the project BRIEF with the merged documents: list.
+def render_project_brief(
+    plan: Plan, *, existing_text: Optional[str] = None
+) -> str:
+    """Render the project BRIEF text for ``plan`` (pure — no disk writes).
+
+    Extracted from the apply-time write path (issue #408) so the SAME
+    code path serves both the dry-run report (which prints the full
+    proposed BRIEF body) and ``--apply`` (which writes it atomically).
 
     Preserves any existing top-level frontmatter keys (``project``,
     ``audience``, ``hard_rules``) and the body prose. Only the
@@ -391,7 +395,13 @@ def _write_project_brief(
 
     When no existing BRIEF is present, emits a fresh BRIEF with default
     ``project: <project-dir-name>``, empty ``audience`` and ``hard_rules``,
-    and the migration-author note in the body.
+    and the migration-author note in the body. When the plan is a BARE
+    synthesis (``plan.synthesize_brief`` — issue #408), every defaulted
+    or inferred frontmatter value additionally carries a
+    ``# TODO(operator)`` YAML comment, and the body carries an
+    operator-confirmation checklist (body prose survives BRIEF rewrites
+    verbatim; YAML comments survive the no-op idempotent path but would
+    be dropped by a future non-noop rewrite).
     """
     # Parse the existing BRIEF to extract preserved fields and body.
     preserved: Dict[str, object] = {}
@@ -399,7 +409,10 @@ def _write_project_brief(
     if existing_text is not None:
         preserved, body = _split_brief_for_rewrite(existing_text)
     project_name = preserved.get("project")
-    if not isinstance(project_name, str) or not project_name.strip():
+    project_name_preserved = (
+        isinstance(project_name, str) and bool(project_name.strip())
+    )
+    if not project_name_preserved:
         project_name = plan.project_dir.name
 
     audience = preserved.get("audience") or []
@@ -476,27 +489,45 @@ def _write_project_brief(
             )
             seen_slugs.add(slug)
 
-    # Now serialize.
+    # Now serialize. Under bare synthesis (issue #408), defaulted
+    # project-level fields get operator-confirmation TODO comments —
+    # YAML comments are invisible to yaml.safe_load and to the
+    # no-pyyaml hand parser, so parse behavior is unaffected.
+    synthesizing = bool(getattr(plan, "synthesize_brief", False))
     frontmatter_lines: List[str] = []
-    frontmatter_lines.append(f"project: {project_name}")
+    project_line = f"project: {project_name}"
+    if synthesizing and not project_name_preserved:
+        project_line += (
+            "  # TODO(operator): confirm — defaulted from directory name"
+        )
+    frontmatter_lines.append(project_line)
     if audience:
         frontmatter_lines.append("audience:")
         for item in audience:
             frontmatter_lines.append(f"  - {item}")
+    elif synthesizing:
+        frontmatter_lines.append(
+            "audience: []  # TODO(operator): fill in the audience"
+        )
     else:
         frontmatter_lines.append("audience: []")
     if hard_rules:
         frontmatter_lines.append("hard_rules:")
         for item in hard_rules:
             frontmatter_lines.append(f"  - {item}")
+    elif synthesizing:
+        frontmatter_lines.append(
+            "hard_rules: []  # TODO(operator): fill in hard rules (if any)"
+        )
     else:
         frontmatter_lines.append("hard_rules: []")
     frontmatter_lines.append("documents:")
     for merge in merges:
         frontmatter_lines.append(f"  - slug: {merge.slug}")
-        frontmatter_lines.append(
-            f"    artifact_type: {merge.artifact_type}"
-        )
+        artifact_type_line = f"    artifact_type: {merge.artifact_type}"
+        if merge.todo_comment:
+            artifact_type_line += f"  # {merge.todo_comment}"
+        frontmatter_lines.append(artifact_type_line)
         if merge.target_length is not None:
             frontmatter_lines.append(
                 f"    target_length: {_format_target_length(merge.target_length)}"
@@ -517,24 +548,62 @@ def _write_project_brief(
                 _format_rubric_overrides(merge.rubric_overrides)
             )
 
-    # Body: keep existing body verbatim if any; else emit a stub.
+    # Body: keep existing body verbatim if any; else emit a stub. Under
+    # bare synthesis the stub mirrors the TODO list into prose — body
+    # prose IS preserved verbatim on a future BRIEF rewrite, whereas
+    # the frontmatter YAML comments would be dropped by a non-noop
+    # rewrite (the rewrite round-trips frontmatter through a dict).
     if not body.strip():
-        body = (
-            "\n# Project BRIEF\n\n"
-            f"Project: {project_name}\n\n"
-            "*Migrated by `anvil:project-migrate`. Operator should review and "
-            "edit this BRIEF to add audience, hard_rules, and per-document "
-            "context.*\n"
-        )
+        if synthesizing:
+            checklist: List[str] = [
+                "- [ ] Confirm `project:` (defaulted from the directory "
+                "name).",
+                "- [ ] Fill in `audience:` (left empty by synthesis).",
+                "- [ ] Fill in `hard_rules:` (left empty by synthesis).",
+            ]
+            for doc in plan.documents:
+                for item in getattr(doc, "operator_todos", []):
+                    checklist.append(f"- [ ] {item}")
+            body = (
+                "\n# Project BRIEF\n\n"
+                f"Project: {project_name}\n\n"
+                "*Synthesized by `anvil:project-migrate` from observed "
+                "on-disk state (bare version-dir threads — no legacy anvil "
+                "config was found to merge from). Every inferred value in "
+                "the frontmatter carries a `# TODO(operator)` comment; the "
+                "checklist below mirrors them so the confirmations survive "
+                "future BRIEF rewrites.*\n\n"
+                "## Operator confirmation checklist\n\n"
+                + "\n".join(checklist)
+                + "\n"
+            )
+        else:
+            body = (
+                "\n# Project BRIEF\n\n"
+                f"Project: {project_name}\n\n"
+                "*Migrated by `anvil:project-migrate`. Operator should review and "
+                "edit this BRIEF to add audience, hard_rules, and per-document "
+                "context.*\n"
+            )
 
-    final_text = (
+    return (
         "---\n"
         + "\n".join(frontmatter_lines)
         + "\n---\n"
         + body
     )
 
-    # Atomic write: temp file + rename.
+
+def _write_project_brief(
+    plan: Plan, project_brief_path: Path, *, existing_text: Optional[str]
+) -> None:
+    """Write the project BRIEF atomically (temp file + rename).
+
+    Thin write wrapper around :func:`render_project_brief` — the text
+    construction lives there so the dry-run report and the apply step
+    share one code path (issue #408).
+    """
+    final_text = render_project_brief(plan, existing_text=existing_text)
     tmp_path = project_brief_path.with_suffix(".md.tmp")
     tmp_path.write_text(final_text, encoding="utf-8")
     os.replace(str(tmp_path), str(project_brief_path))
@@ -669,4 +738,5 @@ __all__ = [
     "GitInfo",
     "ROLLBACK_SUBDIR",
     "apply_plan",
+    "render_project_brief",
 ]
