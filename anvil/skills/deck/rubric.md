@@ -140,6 +140,32 @@ The dim 5 / dim 6 justification MUST cite the specific verdict and the refs-docu
 
 The deduction is applied entirely via reviewer judgment — there is no automated `refs/` parsing in v0. See `commands/deck-review.md` §Procedure step 6 (dim 5 / dim 6 refs back-check sub-step) for the reviewer-side procedure and `commands/deck-draft.md` §Procedure step 5 for the drafter-side ingestion contract.
 
+## Per-thread rubric overrides (calibrations + waivers)
+
+A deck thread MAY carry a `rubric_overrides:` block on its matching `documents:` entry in the **project-level** `BRIEF.md` (the parent of the thread root, post-#382 nested model), parsed by `anvil/lib/project_brief.py::load_rubric_overrides_for_slug(<project_dir>, <slug>)`. Two key families apply to decks (issue #393, mirroring the memo #233 / #265 / #296 contract):
+
+```yaml
+# project BRIEF.md, documents: entry for the deck slug
+- slug: series-a-deck
+  artifact_type: deck
+  rubric_overrides:
+    dim_5_calibration: "pre-revenue pilot-stage deck — score traction on pilot conversion evidence, not revenue"
+    dim_6_waiver: "Operator directive 2026-06-09: no team content in this deck; team story lives in team-thesis.latest."
+```
+
+**Calibration (`dim_N_calibration`)** — per-dimension scoring guidance. The value is prose the reviewer appends **verbatim** as a suffix to that dimension's `scoring.md` justification (`"calibration applied: <verbatim override text>"`, via `anvil/lib/rubric_overrides_suffix.py::apply_calibration_to_justification`). Calibrations tune HOW a dimension is judged; they do not change weights or the threshold.
+
+**Waiver (`dim_N_waiver`)** — operator-directed dimension exclusion, **rationale-as-value**: the YAML value IS the mandatory rationale. Semantics (paired-rationale discipline, same as the iteration-cap override precedent in `SKILL.md` §"Per-thread override contract"):
+
+- A waived dimension is removed from **both the numerator and the denominator** of the verdict. The advance threshold normalizes proportionally: `normalized_threshold = 39 × (44 − waived_weight) / 44`, compared as an **exact fraction** (no rounding). Example: dim 6 (weight 4) waived → remaining pool /40, threshold `39 × 40/44 = 390/11 ≈ 35.45` — a 36/40 deck advances; a 35/40 deck does not. Mechanical helpers: `normalized_advance_threshold` / `meets_normalized_threshold` in `anvil/lib/rubric_overrides_suffix.py`.
+- A waiver **REQUIRES a non-empty rationale**; an unjustified waiver (missing / empty / whitespace-only value) is rejected at parse time. A dimension that is both waived and calibrated is rejected at parse time as contradictory (the error names both keys).
+- The waiver is surfaced **verbatim** in the aggregated `verdict.md` (`## Waived dimensions` section + the normalized judgment stated explicitly in the header) and in the `_summary.md.rubric_overrides` audit block, so an investor-send reviewer sees what was excluded and why.
+- **Critical flags are NOT waivable.** A waiver removes scoring weight only. If waived-dimension content appears on a slide anyway, the flag machinery applies in full — a dim-6 waiver does not suppress `Fabricated team credentials`.
+- **`_meta.json` stamping stays nominal** (issue #346): reviews under a waiver still stamp `rubric_id: "anvil-deck-v2"`, `rubric_total: 44`, `advance_threshold: 39` — the stamp records the rubric version; waiver math happens at verdict time and is recorded in `_summary.md` / `verdict.md`.
+- **Decks without `rubric_overrides` behave byte-identically** to pre-#393: no suffixes, nominal `≥39/44` verdict.
+
+In v0 only the aggregator (`deck-review`) loads and applies overrides; specialist critics (`deck-narrative`, `deck-market`, `deck-design`, `deck-vision`) defer per the PR #363 split-init precedent. The aggregated `verdict.md` — the only verdict.md author — is the surfacing point. See `commands/deck-review.md` steps 5e, 8, 9, 12, and 13.
+
 ## Scoring guidance
 
 For each dimension, the critic assigns an integer between 0 and the dimension's weight. A short justification accompanies each score (1–3 sentences pointing to specific slides or evidence in the deck).
