@@ -386,8 +386,25 @@ def test_check2_phys_density_path(memo_version_dir):
     assert len(declared_hits) == 1
 
 
-def test_check2_silent_skip_without_declarative_source(memo_version_dir):
-    """No src/*.py, no pHYs: check 2 never fires (hand-made images)."""
+@pytest.mark.parametrize("bbox_deps_available", [True, False])
+def test_check2_silent_skip_without_declarative_source(
+    memo_version_dir, monkeypatch, bbox_deps_available
+):
+    """No src/*.py, no pHYs: check 2 never fires (hand-made images).
+
+    Pinned to both `[image_lint]` deps states (#412): when the deps are
+    absent, the once-per-run check-3 breadcrumb quotes
+    ``IMAGE_LINT_REMEDIATION`` whose text contains "declared"-vs-actual
+    wording — that unrelated breadcrumb must not trip the check-2
+    silent-skip assertion, so the `declar` scan excludes it.
+    """
+    from anvil.lib import render as _render
+
+    monkeypatch.setattr(
+        _render,
+        "check_image_lint_deps_available",
+        lambda: bbox_deps_available,
+    )
     _write_body(memo_version_dir, "![photo](exhibits/photo.jpg)\n")
     (memo_version_dir / "exhibits" / "photo.jpg").write_bytes(
         make_jpeg(3000, 2000)
@@ -395,7 +412,12 @@ def test_check2_silent_skip_without_declarative_source(memo_version_dir):
     findings, reasons = _check_memo_image_dimensions(memo_version_dir)
     assert _warnings(findings) == []
     # Silent skip: no reason line about the missing declaration either.
-    assert not any("declar" in r.lower() for r in reasons)
+    # The check-3 deps breadcrumb ("content-bbox check skipped. ...") is
+    # not a check-2 reason — filter it out before the scan.
+    check2_reasons = [
+        r for r in reasons if "content-bbox check skipped" not in r
+    ]
+    assert not any("declar" in r.lower() for r in check2_reasons)
 
 
 def test_find_figure_source_candidate_order(tmp_path):
