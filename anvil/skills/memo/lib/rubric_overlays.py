@@ -213,6 +213,16 @@ def load_overlay(
         weight_adjustments / calibration_prose.
     """
     type_value = _artifact_type_value(artifact_type)
+    if (
+        not type_value
+        or "/" in type_value
+        or "\\" in type_value
+        or type_value in {".", ".."}
+    ):
+        raise OverlayLoadError(
+            f"artifact_type {type_value!r} is not a valid overlay slug "
+            "(must be a bare filename stem with no path separators)."
+        )
     candidates = []
     if consumer_overlays_dir is not None:
         candidates.append(Path(consumer_overlays_dir) / f"{type_value}.json")
