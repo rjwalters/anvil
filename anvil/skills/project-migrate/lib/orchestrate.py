@@ -33,7 +33,7 @@ from .apply import (
     ApplyResult,
     apply_plan,
     render_enroll_brief,
-    render_project_brief,
+    render_migrate_brief,
 )
 from .detect import (
     ProjectInventory,
@@ -195,10 +195,12 @@ def _format_plan_report(
         lines.append("")
 
     # Full proposed BRIEF text (issue #408): rendered through the SAME
-    # code path the apply step writes (`render_project_brief`), so the
-    # dry-run preview is byte-identical to what `--apply` would write.
-    # Read-only — the formatter never touches disk beyond reading the
-    # existing BRIEF (the dry-run no-mutation contract holds).
+    # code path the apply step writes (`render_migrate_brief` — the
+    # surgical field-level merge of issue #415 when an existing BRIEF
+    # carries a documents block), so the dry-run preview is
+    # byte-identical to what `--apply` would write. Read-only — the
+    # formatter never touches disk beyond reading the existing BRIEF
+    # (the dry-run no-mutation contract holds).
     if not plan.is_noop and any(
         doc.brief_merge is not None for doc in plan.documents
     ):
@@ -210,13 +212,19 @@ def _format_plan_report(
                 )
             except OSError:
                 existing_text = None
-        rendered = render_project_brief(plan, existing_text=existing_text)
+        rendered, merge_notes = render_migrate_brief(
+            plan, existing_text=existing_text
+        )
         lines.append("## Proposed `BRIEF.md`")
         lines.append("")
         lines.append("````markdown")
         lines.append(rendered.rstrip("\n"))
         lines.append("````")
         lines.append("")
+        for note in merge_notes:
+            lines.append(f"- Note: {note}")
+        if merge_notes:
+            lines.append("")
 
     lines.append("## Verification preview")
     lines.append("")
