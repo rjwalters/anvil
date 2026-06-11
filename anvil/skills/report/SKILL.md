@@ -212,6 +212,21 @@ Per anvil principle 8 ("Opinionated defaults, override liberally"), this skill s
 
 Resolution rule: consumer overrides win when present, else fall back to skill defaults. (Concrete resolution helper deferred to `anvil/lib/` per #10; for v0 each command embeds the inline fallback check.)
 
+## Project BRIEF artifact type
+
+`report` is registered as a **skill-identity** `artifact_type` value in
+the shared project-BRIEF registry
+(`anvil/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES` /
+`SKILL_IDENTITY_ARTIFACT_TYPES`; issue #432, following the #386/#408
+pattern for `deck`/`slides`/`proposal`/`pub`). In a shared project
+BRIEF, a `documents:` entry with `artifact_type: report` declares that
+this skill owns the thread. It is NOT a memo subtype: it selects no
+memo rubric overlay, and memo commands fail loudly when pointed at a
+`report`-declared thread. `anvil:project-migrate` writes this value
+(with a `# TODO(operator)` confirmation marker) when its vN report-dir
+adoption mode (`--adopt-vn`) infers the artifact type instead of
+receiving an explicit `--artifact-type`.
+
 ## Relationship to `anvil:memo`
 
 The patterns that recurred vs `anvil:memo` (#3) — input for #10's framework extraction:

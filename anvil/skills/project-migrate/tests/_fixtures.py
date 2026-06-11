@@ -847,6 +847,78 @@ def build_loose_file_batch(
     return topical_dir
 
 
+def build_vn_report_dirs(
+    root: Path,
+    project_name: str = "sphere-project",
+    *,
+    dir_name: str = "reports",
+    versions: tuple = (1, 2, 3, 5),
+    review_versions: tuple = (3, 5),
+    with_minor: bool = False,
+    with_project_brief: bool = False,
+) -> Path:
+    """Build a foreign vN report-dir family (issue #432).
+
+    Anonymized reproduction of the sphere-survey report grammar:
+    ``projects/<proj>/reports/v{N}/`` version dirs with ``v{N}.review/``
+    siblings, hand-rolled ``report.md`` bodies, a stray non-versioned
+    dir mixed in, and (optionally) a ``v14.1``-style minor-versioned
+    oddball.
+
+    Shape (default ``versions=(1, 2, 3, 5)`` — gap at v4 deliberate):
+
+      <root>/<project_name>/<dir_name>/
+        v1/report.md
+        v2/report.md
+        v3/report.md
+        v3.review/review.md            ← hand-rolled, unstamped
+        v5/report.md
+        v5.review/review.md
+        notes-archive/scratch.md       ← stray non-versioned dir
+        [v14.1/report.md]              ← with_minor=True
+
+    When ``with_project_brief`` is True the enclosing project gets the
+    tripwire-laden ``ENROLL_OPERATOR_BRIEF`` plus its two listed
+    threads on disk — exercising the surgical-append path. Otherwise
+    no BRIEF exists anywhere (starter-synthesis path).
+
+    Returns the vN family dir (``<project>/<dir_name>/``); the project
+    root is its parent.
+    """
+    project_dir = root / project_name
+    reports_dir = project_dir / dir_name
+    reports_dir.mkdir(parents=True, exist_ok=True)
+
+    for n in versions:
+        _write(
+            reports_dir / f"v{n}" / "report.md",
+            f"# Report v{n}\n\nHand-rolled report draft v{n}.\n",
+        )
+    for n in review_versions:
+        _write(
+            reports_dir / f"v{n}.review" / "review.md",
+            f"# Review of v{n}\n\nHand-rolled reviewer notes.\n",
+        )
+    _write(
+        reports_dir / "notes-archive" / "scratch.md",
+        "# Scratch\n\nStray non-versioned dir content.\n",
+    )
+    if with_minor:
+        _write(
+            reports_dir / "v14.1" / "report.md",
+            "# Report v14.1\n\nMinor-versioned oddball.\n",
+        )
+
+    if with_project_brief:
+        _write(project_dir / "BRIEF.md", ENROLL_OPERATOR_BRIEF)
+        for slug in ("zeta-memo", "alpha-memo"):
+            _write(
+                project_dir / slug / f"{slug}.1" / f"{slug}.md",
+                f"# {slug} v1\n\nBody.\n",
+            )
+    return reports_dir
+
+
 __all__ = [
     "ENROLL_OPERATOR_BRIEF",
     "build_aldus_shaped_deck",
@@ -860,4 +932,5 @@ __all__ = [
     "build_post_283_anvil_json",
     "build_post_283_with_operator_brief",
     "build_pre_283_classic",
+    "build_vn_report_dirs",
 ]

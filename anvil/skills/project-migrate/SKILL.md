@@ -142,6 +142,7 @@ hand-rolled unstamped review content stays invisible-but-intact to
 | `/anvil:project-migrate <project-dir> --apply` | Execute the plan atomically per doc. Use `git mv` when the project is under git.           |
 | `/anvil:project-migrate <project-dir> --report` | Emit a markdown report only (no plan, no mutations). Useful for portfolio surveys.        |
 | `/anvil:project-migrate --enroll <file> [...]` | **Single-file enrollment** (issue #406): wrap loose `.md`/`.tex` files into project threads. Dry-run by default; `--apply` executes. Optional `--project <dir>`, `--slug <slug>`, `--artifact-type <type>`. |
+| `/anvil:project-migrate --adopt-vn <dir>` | **vN report-dir adoption** (issue #432 Phase 1): adopt a foreign `v{N}/` family (+ `v{N}.review/` siblings) into `<project>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Optional `--slug <slug>`, `--artifact-type <type>`. |
 
 See `commands/project-migrate.md` for the operator-facing contract.
 
@@ -182,6 +183,39 @@ file to a thread:
   apply-time failures isolate per doc with the BRIEF written for the
   succeeded subset. Re-enrolling an enrolled file is a refusal, not a
   duplicate.
+
+## vN report-dir adoption (`--adopt-vn`, issue #432 Phase 1)
+
+Adoption-target repos also hold **foreign vN report-dir families**
+(`projects/<proj>/reports/v{N}/` + `v{N}.review/` siblings — ~213
+entries across the sphere survey). `project-scout`'s foreign-grammar
+guard correctly refuses to recommend a migrate on them; `--adopt-vn`
+is the conversion path:
+
+- One family per invocation: `v{N}/` → `<project>/<slug>/<slug>.{N}/`
+  and `v{N}.<tag>/` → `<slug>.{N}.<tag>/` (`git mv` in-repo). The slug
+  defaults to the sanitized enclosing-dir name (`reports`); `--slug`
+  must already be canonical (rejected, never re-sanitized).
+- Version gaps tolerated. Stray non-versioned dirs (and orphan
+  sidecars) are left untouched and reported. Bodies inside version
+  dirs are recorded but **never renamed** (the #408 carve-out).
+- Minor-versioned oddballs (`v14.1`) are a plan-time, pre-mutation
+  refusal naming each offending dir with a suggested manual target
+  (the next free integer) — Phase 1 is strictly mechanical and
+  operator-confirmable.
+- BRIEF handling mirrors enrollment: surgical append into an existing
+  project BRIEF (#406/#416), starter synthesis with `# TODO(operator)`
+  markers otherwise (#408). Strict-validated post-write with rollback;
+  the dry-run preview is byte-identical to the apply-time write.
+- Artifact type: `--artifact-type` (two-tier #394 validation) or
+  inferred `report` with a TODO marker (`report` is a registered
+  skill-identity artifact type as of #432, the #408 `pub` precedent).
+- Post-adopt names pass project-scout's foreign-grammar guard clean;
+  re-running on an adopted tree is a no-op.
+
+Letter-family grammars (`{Project}.{Letter}.{N}`), the declarative
+`--tag-map` sidecar-vocabulary contract, and single-file `review.md`
+conversion are **Phase 2** (tracked as the issue #432 follow-up).
 
 ## Atomicity & rollback
 
@@ -263,6 +297,10 @@ constructed in tmp dirs rather than baked on disk):
 - `build_loose_file_batch` — batch of loose files incl. a `.tex` with
   `\documentclass`, an intra-batch slug-collision pair, and a
   non-md/tex refusal target (issue #406).
+- `build_vn_report_dirs` — the foreign vN report-dir family (issue
+  #432): `v{N}/report.md` dirs with a gap, `v{N}.review/` siblings, a
+  stray non-versioned dir, optional `v14.1` minor oddball and optional
+  enclosing operator BRIEF.
 
 Test files:
 
@@ -304,3 +342,18 @@ Test files:
 - `test_project_migrate_enroll_dry_run.py` — dry-run default leaves
   the tree digest unchanged; the previewed BRIEF is byte-identical to
   the apply-time write (issue #406).
+- `test_project_migrate_adopt_vn_detect.py` — vN family grouping (gap
+  tolerated), minor-oddball + versioned-tag refusals, stray/orphan
+  reporting, `Shape.ADOPT_VN` plan-mode-only regression (issue #432).
+- `test_project_migrate_adopt_vn_plan.py` — renames incl. sidecars,
+  slug default/override/refusal, artifact-type inference + two-tier
+  validation, collision refusals, BRIEF preview (issue #432).
+- `test_project_migrate_adopt_vn_apply.py` — end-to-end synth + append
+  paths, strict round-trip + `discover_thread_root`, git-mv history,
+  injected-failure rollback (issue #432).
+- `test_project_migrate_adopt_vn_dry_run.py` — dry-run default leaves
+  the tree digest unchanged; preview == apply-time BRIEF write (issue
+  #432).
+- `test_project_migrate_adopt_vn_idempotent.py` — re-run after adopt
+  is a no-op; post-adopt names pass project-scout's
+  `find_foreign_families` clean (issue #432).
