@@ -190,17 +190,6 @@ def check_mmdc_available() -> bool:
     return shutil.which("mmdc") is not None
 
 
-def require_mmdc() -> None:
-    """Raise :class:`RenderError` with full remediation if ``mmdc`` is absent.
-
-    Convenience wrapper over :func:`check_mmdc_available` for callers that
-    prefer the raise-on-missing shape used by :func:`render_marp_to_pdf`'s
-    ``marp`` guard.
-    """
-    if not check_mmdc_available():
-        raise RenderError(MMDC_REMEDIATION)
-
-
 # ---------------------------------------------------------------------------
 # pdfjam preflight (OPTIONAL — only needed for slides-handout N-up layouts)
 # ---------------------------------------------------------------------------
@@ -768,7 +757,6 @@ __all__ = [
     "check_weasyprint_available",
     "check_wkhtmltopdf_available",
     "check_xelatex_available",
-    "require_mmdc",
     "require_pdfjam",
     "render_marp_to_pdf",
     "render_pdf_to_pngs",
