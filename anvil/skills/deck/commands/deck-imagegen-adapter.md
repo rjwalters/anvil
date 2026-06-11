@@ -5,7 +5,7 @@ description: Adapter contract for `deck-imagegen`. Defines the minimal `ImageBac
 
 # deck-imagegen-adapter — Adapter contract
 
-This document is the **contract** between `deck-imagegen` (anvil's generative-imagery dispatcher) and a consumer-supplied image backend. Anvil ships zero backends. Consumers register their own adapter via `.anvil/config.toml`; `deck-imagegen` imports it dynamically and calls it.
+This document is the **contract** between `deck-imagegen` (anvil's generative-imagery dispatcher) and a consumer-supplied image backend. Anvil ships zero *production* backends — only this contract plus one deterministic placeholder reference backend (`anvil/skills/deck/lib/placeholder_backend.py`, see § "Reference adapters" below) that exists to prove the wiring. Consumers register their own adapter via `.anvil/config.toml`; `deck-imagegen` imports it dynamically and calls it. For a worked walkthrough (smoke test, importability layouts, auth bootstrap, porting checklist), see `commands/deck-imagegen-onboarding.md`.
 
 The contract is intentionally thin. Anvil's responsibility ends at "dispatch the call, surface the error, write the journal." Everything else — retry, rate limits, deterministic seeds, auth, secrets, model selection, cost accounting, prompt augmentation — is the consumer's responsibility. This is the same opinion-vs-mechanism split that produces `pyproject.toml`'s subprocess-only-by-default contract (see CLAUDE.md § "Working on this repo") and `anvil/lib/render.py`'s `check_*_available()` family.
 
@@ -93,7 +93,9 @@ The full resolution algorithm and edge cases (TOML parse errors, missing module,
 
 ### Why `.anvil/config.toml`
 
-This is a new file in the consumer-side `.anvil/` overlay (parallel to `.anvil/skills/`, `.anvil/lib/`, etc.). It is the first instance of a TOML-shaped config in anvil; per-skill JSON overrides like `<thread>/.anvil.json` (the `target_length` / `max_iterations` precedent) remain unchanged. The TOML choice mirrors `pyproject.toml`'s shape and is intentional: `[deck.imagegen]` is the first of what is likely to be several skill-level config sections, and TOML's section syntax handles that cleanly. The exact schema for `.anvil/config.toml` is finalized by Phase 2 (Epic #130 / issue E); v0 only specifies the `[deck.imagegen] backend` key.
+This is a file in the consumer-side `.anvil/` overlay (parallel to `.anvil/skills/`, `.anvil/lib/`, etc.). It was the first instance of a TOML-shaped config in anvil; per-skill JSON overrides like `<thread>/.anvil.json` (the `target_length` / `max_iterations` precedent) remain unchanged.
+
+**Consolidation pending**: newer skill-level configuration has since standardized on the versioned `.anvil/config.json` (the #426 hooks precedent; reaffirmed by the #427 figure-adapter registry decision). The `[deck.imagegen] backend` key is explicitly **grandfathered** in `.anvil/config.toml` — it remains the correct, supported registration location until a separate maintenance issue ships the TOML→JSON consolidation with a migration note. Do not add new skill config sections to the TOML file.
 
 ## Non-goals (consumer responsibility)
 
@@ -140,9 +142,29 @@ For clarity, the symmetric list — anvil's responsibilities in this contract:
 
 That is the entire surface. Six responsibilities; one method on the adapter.
 
-## Reference adapter (illustrative — NOT shipped)
+## Reference adapters
 
-A reference adapter is intentionally NOT shipped in anvil. Studio's in-progress `imagine.spheresemi.xyz` adapter (per Epic #130's Risks & Considerations) is the closest existing reference but is NOT part of this contract — anvil-side work MUST NOT assume that adapter exists. Consumers writing a first adapter can model the shape from this minimal example:
+### Shipped: deterministic placeholder backend
+
+Anvil ships one reference adapter (issue #430): `anvil/skills/deck/lib/placeholder_backend.py`, exposing `PlaceholderBackend` in the recommended class form (zero-arg constructor). It is the executable spec of this contract:
+
+- `generate(prompt, style, steps)` returns a valid 1280x720 solid-color PNG whose color derives from `sha256(prompt + style + str(steps))` — fully deterministic and byte-identical across runs, which makes the prompt-journal idempotence story observable end-to-end.
+- Stdlib only (`hashlib`/`zlib`/`struct`); no Pillow, no new deps.
+- A prompt containing the sentinel token `ANVIL-FORCE-FAIL` raises `BackendError`, giving a one-line way to exercise the `*-FAILED.md` stub + `partial` verdict path against a real registered adapter.
+- It defines its own local `BackendError` (not imported from anvil internals), modeling the MRO-name decoupling rule above.
+
+Register it for the five-minute smoke test (`commands/deck-imagegen-onboarding.md` § "Five-minute smoke test"):
+
+```toml
+[deck.imagegen]
+backend = "anvil.skills.deck.lib.placeholder_backend:PlaceholderBackend"
+```
+
+It is NOT a production backend — it generates placeholder rectangles, not imagery. Its job is to de-risk a consumer's first adapter and to let anvil's tests cover the full `load_config → importlib → dispatch → journal` path.
+
+### Illustrative: cloud HTTP backend sketch (NOT shipped)
+
+No production/cloud backend is shipped in anvil. Studio's in-progress `imagine.spheresemi.xyz` adapter (per Epic #130's Risks & Considerations) is the closest existing reference but is NOT part of this contract — anvil-side work MUST NOT assume that adapter exists. Consumers writing a first cloud adapter can model the shape from this minimal example (for the short-lived-token auth-bootstrap variant, see `commands/deck-imagegen-onboarding.md` § "Auth bootstrap for cloud backends"):
 
 ```python
 # myrepo/imagery_adapter.py
@@ -185,6 +207,7 @@ That is the entire adapter. ~20 lines of Python; one HTTP call; one exception ty
 
 ## Cross-references
 
+- `commands/deck-imagegen-onboarding.md` — the consumer **walkthrough** (smoke test with the shipped placeholder backend, importability layouts, auth bootstrap, porting checklist). This doc is the contract; that doc is the on-ramp.
 - `commands/deck-imagegen.md` — the command that loads and dispatches adapters per this contract.
 - `SKILL.md` § "Asset generation" — the opt-in framing (`imagery_policy: generative-eligible`).
 - Epic #130 — the multi-phase plan. Phase 2 (issue E) ships the canonical `BackendError` and `_prompts.json` primitive; Phase 3 (issues F + G) wires the fabrication-attribution drafter prompts and the `deck-audit` extension.
