@@ -6,7 +6,7 @@ as diagrams in the canonical ``marp --pdf`` output (verified, issue #65) — so
 ``mmdc`` is REQUIRED for any slide deck with a diagram, not a fallback.
 
 The preflight lives in ``anvil/lib/render.py`` as
-``check_mmdc_available`` / ``require_mmdc`` so the figurer and the smoke test
+``check_mmdc_available`` so the figurer and the smoke test
 share one implementation. These tests exercise it with a stubbed/monkeypatched
 ``shutil.which`` so they require **no real ``mmdc`` and no Chromium** at test
 time (the whole point: this is unit-testable in CI without the ~300MB+
@@ -37,9 +37,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from anvil.lib.render import (  # noqa: E402
     MMDC_REMEDIATION,
-    RenderError,
     check_mmdc_available,
-    require_mmdc,
 )
 
 
@@ -80,24 +78,8 @@ class TestCheckMmdcAvailable(unittest.TestCase):
                 self.assertTrue(check_mmdc_available())
 
 
-class TestRequireMmdc(unittest.TestCase):
-    """``require_mmdc`` raises with full remediation when ``mmdc`` is absent."""
-
-    def test_no_raise_when_present(self) -> None:
-        with mock.patch(
-            "anvil.lib.render.shutil.which",
-            return_value="/usr/local/bin/mmdc",
-        ):
-            # Should not raise.
-            require_mmdc()
-
-    def test_raises_render_error_when_absent(self) -> None:
-        with mock.patch(
-            "anvil.lib.render.shutil.which", return_value=None
-        ):
-            with self.assertRaises(RenderError) as ctx:
-                require_mmdc()
-            self.assertEqual(str(ctx.exception), MMDC_REMEDIATION)
+class TestMmdcRemediation(unittest.TestCase):
+    """``MMDC_REMEDIATION`` carries the full install story for the blocker."""
 
     def test_remediation_message_is_actionable(self) -> None:
         """The blocker message must carry the full install story (issue #65)."""
