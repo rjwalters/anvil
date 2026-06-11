@@ -2,7 +2,7 @@
 
 This module implements the ``audit_unreachable_external_citation``
 critical flag documented in
-``anvil/skills/report/commands/report-audit.md`` step 9 and
+``anvil/skills/report/commands/report-audit.md`` step 10 and
 ``anvil/skills/report/rubric.md`` audit-side flags section.
 
 **Rule**: a row in the auditor's ``findings.md`` table triggers the
