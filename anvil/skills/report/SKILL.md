@@ -116,6 +116,10 @@ engagement_id: "ACME-2026-Q2"
 delivery_format: "pdf"             # pdf | latex | markdown
 confidentiality_class: "internal"  # public | internal | confidential | restricted
 customer: "acme"                   # OPTIONAL — cross-project customer-context slug (see below)
+# audience_class: "commercial"     # OPTIONAL — audience-class house-style switch
+                                   # (commercial | defense | internal; issue #450).
+                                   # Overrides the customer's context.yaml default;
+                                   # see "Cross-project customer context" below.
 prior_reports:
   - thread: findings
     final_version: 3
@@ -164,7 +168,9 @@ The default location is `<repo_root>/customers/` (customer context is *content*,
 
 **Consultation matrix**: `report-draft` loads the context advisorily (NDA scope + topics-to-avoid inform drafting; recent ledger entries extend prior-reports awareness across ALL the customer's projects); `report-review` and `report-audit` ENFORCE topics-to-avoid — a violating passage is a **critical flag** (audit-side identifier: `audit_disclosure_topic_violation`, one aggregated entry per the `audit_flags.py` convention; review-side twin defined in `rubric.md`); `report-audit` additionally cross-checks the draft against the ledger for cross-project disclosure consistency; `report-promote` appends the delivery record at promotion time. Deterministic helpers (customers-dir resolution, context load/validation, ledger IO, flag aggregation) live in `lib/customer_context.py`; topic matching itself is critic judgment, like the scope-creep flag.
 
-**Framework extraction note (per #10)**: skill-local until a second skill (likely `datasheet`, the other customer-facing class) needs the same store. The audience-class house-style knob (#450) will live in `context.yaml` (`audience_class:`) with a `_project.md` override — this tier creates the file it lives in.
+**Audience-class house-style switch (issue #450)**: `context.yaml` carries an optional top-level `audience_class:` default (closed v1 vocabulary: `commercial | defense | internal`), overridable per project via the same-named `_project.md` frontmatter key — the project key is also the sole locus for internal reports with NO customer (resolution works with this tier off). Deterministic helpers (resolution order, 3-layer `assets/audience/<class>.md` boilerplate lookup, structured errors) live in `lib/audience_class.py`. `report-figures` passes `-M audience_class=<class>` on both render paths, injects the consumer-supplied boilerplate via `--include-before-body`, adds a DRAFT watermark for `defense`, and records provenance in `_progress.json` (`phases.figures.audience_class_resolved` / `audience_boilerplate`); `report-review` treats a defense-class report missing its distribution-statement boilerplate as a **critical flag** (see `rubric.md`; audit-side twin deferred). Anvil ships NO jurisdiction-specific legal text — `assets/audience/` holds only a README. An out-of-vocabulary value is a structured `bad-value` error surfaced as a `major` finding (render proceeds class-less); absent everywhere → byte-identical pre-#450 behavior. Orthogonal to `confidentiality_class` and `export_control` — never merged or derived.
+
+**Framework extraction note (per #10)**: skill-local until a second skill (likely `datasheet`, the other customer-facing class) needs the same store.
 
 ## Command dispatch
 
