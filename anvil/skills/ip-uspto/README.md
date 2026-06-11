@@ -82,7 +82,7 @@ Concretely in shell:
 ls -d <thread>.<N>.*/ 2>/dev/null
 ```
 
-The `<tag>` is a single short token (no nesting, no dots within the tag). All v0 critic tags: `review`, `s101`, `s112`, `claims`, `priorart`, `preflight`, `audit`.
+The `<tag>` is a single short token (no nesting, no dots within the tag). All v0 critic tags: `review`, `s101`, `s112`, `claims`, `priorart`, `preflight`, `audit`. The optional opt-in `adversary` tag (issue #434) is a findings-only adversarial critic that attacks rather than verifies — see `commands/ip-uspto-adversary.md`.
 
 ## Critic output schema (uniform across all critics)
 

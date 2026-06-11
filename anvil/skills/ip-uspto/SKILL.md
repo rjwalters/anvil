@@ -97,6 +97,7 @@ Iteration cap: default `max_iterations: 5`. Configurable per-thread by writing `
 | `ip-uspto-112 <thread>` | §112 critic | latest `<thread>.{N}/` | `<thread>.{N}.s112/` |
 | `ip-uspto-claims <thread>` | claims critic | latest `<thread>.{N}/claims.tex` + `<thread>.{N}/spec.tex` | `<thread>.{N}.claims/` |
 | `ip-uspto-prior-art <thread>` | prior-art critic | latest `<thread>.{N}/` + `<thread>/prior-art/**` | `<thread>.{N}.priorart/` |
+| `ip-uspto-adversary <thread>` | adversarial critic (optional, opt-in via `.anvil.json`) | latest `<thread>.{N}/` + `<thread>/prior-art/**` (optional) | `<thread>.{N}.adversary/` (findings-only — all nine dims `null`) |
 | `ip-uspto-vision <thread>` | drawing vision critic (optional) | rendered drawings under latest `<thread>.{N}/drawings/` (SVG/PNG; **drawings only — never the spec PDF**) | `<thread>.{N}.vision/` with `_review.json` (kind=vision) |
 | `ip-uspto-revise <thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.<tag>/` critic siblings | `<thread>.{N+1}/` with `_revision-log.md` |
 | `ip-uspto-audit <thread>` | auditor | READY `<thread>.{N}/` | `<thread>.{N}.audit/` |
@@ -116,6 +117,7 @@ Given an artifact at `<thread>.{N}/`, critic outputs land in sibling directories
 <thread>.{N}.s112/              ← §112 critic
 <thread>.{N}.claims/            ← claims critic
 <thread>.{N}.priorart/          ← prior-art critic
+<thread>.{N}.adversary/         ← adversarial critic (optional, opt-in; findings-only — all nine dims null, critical-flag eligible)
 <thread>.{N}.vision/            ← drawing vision critic (optional; kind=vision, scores rendered drawings only)
 <thread>.{N}.preflight/         ← pre-flight (mechanical compliance) — produced after revise, pre-review
 <thread>.{N}.audit/             ← final fact-check (audit phase, post-convergence only)
@@ -154,6 +156,8 @@ DRAFTED → (run all critics) → REVIEWED → (revise consumes ALL siblings) �
 ```
 
 The default critic set is `review + s101 + s112 + claims + priorart`. Operator can subset by writing `{ "critics": ["review", "s101", "s112", "claims"] }` to `<thread>/.anvil.json` (e.g., skip `priorart` if no prior art was supplied; the reviser refuses to advance without all configured critics present).
+
+**Optional adversarial critic** (issue #434): the `adversary` critic (`commands/ip-uspto-adversary.md`) is **opt-in, not default** — operators enable it by adding `"adversary"` to the `critics` array in `<thread>/.anvil.json`. It attacks the application (§103 obviousness combinations over supplied prior art + AAPA, design-arounds, §112(a) enablement-hole challenges) rather than verifying it, and is **findings-only**: all nine rubric dimensions stay `null`, so the aggregator's mean-of-non-null rule is unaffected; its critical flags short-circuit the verdict like any other critic's. Once configured, the reviser's all-configured-critics-present rule applies to it as-is.
 
 **Critic concurrency in v0**: critics may be run serially or in parallel. The orchestrator (`ip-uspto.md`) reports "all configured critics done at version N" as a boolean — it does not enforce concurrency. Parallel spawn is a future enhancement that will land in `anvil/lib/critics.py` (issue #10); v0 implementations should default to serial for debuggability.
 
