@@ -36,10 +36,10 @@ AGENTS_DIR = REPO_ROOT / "anvil" / "agents"
 LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures"]
 
 # The artifact-class skills shipped in anvil/skills/ (8 at v0 + datasheet
-# under issue #418). Bridge tools (project-migrate, rubric-rebackport) and
-# the utility skills (project-share packaging, project-scout discovery) are
-# intentionally excluded — they are human-invocable utilities, not fan-out
-# targets.
+# under issue #418 + ip-uspto-provisional under issue #433). Bridge tools
+# (project-migrate, rubric-rebackport) and the utility skills
+# (project-share packaging, project-scout discovery) are intentionally
+# excluded — they are human-invocable utilities, not fan-out targets.
 ARTIFACT_SKILLS = [
     "memo",
     "deck",
@@ -49,6 +49,7 @@ ARTIFACT_SKILLS = [
     "pub",
     "slides",
     "ip-uspto",
+    "ip-uspto-provisional",
     "datasheet",
 ]
 
