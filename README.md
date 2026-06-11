@@ -4,7 +4,7 @@
 
 Anvil orchestrates iterative drafting, review, and revision of long-form artifacts — investment memos, patent applications, research papers, pitch decks, technical reports, art installations, customer proposals. Each artifact lives in an immutable versioned directory; review passes write to read-only sibling directories; revisions consume both and produce the next version. The version history *is* the audit trail.
 
-**Status:** v0.4.0. Installable. Thirteen skills shipped. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
+**Status:** v0.5.0. Installable. Fourteen skills shipped. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
 
 **Sibling project:** [Loom](https://github.com/rjwalters/loom) does this for code (issues, PRs, forge coordination). Anvil does this for prose-and-graphics artifacts (filesystem coordination, no forge required). Both can be installed in the same repository.
 
@@ -18,6 +18,7 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 | `anvil:deck` | Investor pitch decks | Marp Markdown → PDF |
 | `anvil:slides` | Talk / conference slides | Marp Markdown → PDF + speaker notes |
 | `anvil:ip-uspto` | USPTO non-provisional utility patent applications | LaTeX → PDF |
+| `anvil:ip-uspto-provisional` | USPTO provisional patent applications (claims-optional, enablement-depth-first; conversion seed for `anvil:ip-uspto`) | LaTeX → PDF |
 | `anvil:installation` | Experiential / installation artwork (concept proposals) | LaTeX → PDF |
 | `anvil:proposal` | Buildable-system proposals (pre-contract pitch to a customer or budget sponsor; pre-contract bookend to `anvil:report`) | LaTeX → PDF |
 | `anvil:datasheet` | Customer-facing IC / component datasheets (mandatory spec source-of-truth audit, pin-map/bus-width integrity pre-flight, revision-history gate, shared-die SKU coherence) | LaTeX → PDF |
@@ -86,7 +87,7 @@ The skills shell out to language-appropriate renderers. None are required by the
 | `mmdc` (Mermaid CLI) | `deck`, `slides` (for diagrams) | `npm install -g @mermaid-js/mermaid-cli` |
 | `pdfjam` (TeX Live) | `slides --4-up` / `--2-up` handouts only | `apt install texlive-extra-utils` (Linux) / `brew install --cask mactex-no-gui` (macOS) |
 | `pdftoppm` (poppler) | Rendered-artifact critics | `apt install poppler-utils` / `brew install poppler` |
-| `xelatex` / `pdflatex` | `pub`, `ip-uspto`, `installation`, `proposal` | TeX Live / MacTeX |
+| `xelatex` / `pdflatex` | `pub`, `ip-uspto`, `ip-uspto-provisional`, `installation`, `proposal` | TeX Live / MacTeX |
 | `pandoc` | `report` | `apt install pandoc` / `brew install pandoc` |
 
 Run `./scripts/install-anvil.sh --check-deps` to see which are present on your system with remediation hints.
@@ -117,7 +118,8 @@ When an extra isn't installed, the corresponding check gracefully skips and the 
 ```
 anvil/
   skills/        Per-artifact-type skills (memo, pub, report, deck, slides,
-                 ip-uspto, installation, proposal). Each has SKILL.md +
+                 ip-uspto, ip-uspto-provisional, installation, proposal,
+                 datasheet). Each has SKILL.md +
                  commands/ + rubric.md + (optional) templates/, assets/,
                  examples/, tests/, lib/.
   lib/           Shared framework primitives.

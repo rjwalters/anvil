@@ -34,9 +34,10 @@ SKILLS_DIR = REPO_ROOT / "anvil" / "skills"
 
 
 # Curator-chosen v0 scope (issue #377), grown per-skill as artifact classes
-# ship (datasheet under issue #418). Each artifact-class skill gets
-# lifecycle agents for every phase whose command exists; deck additionally
-# gets 3 specialist agents (narrative, market, design).
+# ship (datasheet under issue #418, ip-uspto-provisional under issue #433).
+# Each artifact-class skill gets lifecycle agents for every phase whose
+# command exists; deck additionally gets 3 specialist agents (narrative,
+# market, design).
 ARTIFACT_SKILLS = [
     "memo",
     "deck",
@@ -46,6 +47,7 @@ ARTIFACT_SKILLS = [
     "pub",
     "slides",
     "ip-uspto",
+    "ip-uspto-provisional",
     "datasheet",
 ]
 LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures"]

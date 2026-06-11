@@ -10,7 +10,7 @@ user-invocable: false
 
 The `ip-uspto` skill produces non-provisional utility patent applications targeting filing at the United States Patent and Trademark Office. It extends the canonical anvil lifecycle (`draft → review → revise → figures → audit`) with four USPTO-specific phases (`intake`, `inventorship`, `pre-flight`, `finalize`) and is the proving ground for the **N parallel critics, one reviser** framework primitive.
 
-This skill targets **AIA non-provisional utility** applications (first-inventor-to-file framing, post–16 March 2013). Provisional applications and design patents are out of scope for v0.
+This skill targets **AIA non-provisional utility** applications (first-inventor-to-file framing, post–16 March 2013). Provisional applications are handled by the sibling skill **`anvil:ip-uspto-provisional`** (claims-optional, enablement-depth-first — issue #433); design patents are out of scope for v0.
 
 ## Artifact contract
 
@@ -343,4 +343,4 @@ This skill ships with opinionated defaults. Consumers extend liberally via `.anv
 - **This skill does NOT file a patent application.** It produces a submission-ready package. Filing requires human review, attorney sign-off, and submission via USPTO Patent Center.
 - **This skill does NOT replace a licensed patent attorney.** It is a drafting and review aid. Inventorship attestation (37 CFR 1.63), assignment, and prosecution strategy require a qualified human attorney.
 - **The prior-art critic does NOT do its own patent search.** Operator must supply prior art in `<thread>/prior-art/`. Patent search is a separate role potentially shipped as a future skill.
-- **Provisional applications and design patents are out of scope for v0.** Track as separate issues.
+- **Provisional applications are handled by the sibling skill `anvil:ip-uspto-provisional`** (issue #433): claims-optional posture, enablement-depth-dominant `anvil-ip-provisional-v1` rubric (/45, ≥39; dim 9 *Conversion readiness* replaces this skill's *Claim-spec correspondence*), shared `anvil-uspto.cls` + intake substrate. The natural flow is provisional thread → (≤12 months) → a non-provisional conversion thread in THIS skill referencing it; the mechanical conversion linkage is a tracked follow-up. **Design patents remain out of scope** — track as separate issues.

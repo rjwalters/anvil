@@ -252,11 +252,21 @@ info "Stage 4: enumerate source skills"
 ALL_SKILLS=()
 if [[ -d "$ANVIL_ROOT/anvil/skills" ]]; then
   # Each subdir of anvil/skills/ that contains a SKILL.md is a skill.
-  while IFS= read -r -d '' skill_md; do
-    skill_dir="$(dirname "$skill_md")"
-    skill_name="$(basename "$skill_dir")"
+  # Sort the extracted skill NAMES (bytewise, C locale), not the SKILL.md
+  # paths: path-wise sorting compares a name's `-` (0x2D) against the `/`
+  # (0x2F) before `SKILL.md`, which mis-orders a skill whose name is a
+  # hyphenated extension of a sibling's (`ip-uspto-provisional` would sort
+  # before `ip-uspto`). Name-wise C-locale sort matches Python's
+  # `sorted()` and keeps the Stage-11.5 drift note deterministic.
+  while IFS= read -r -d '' skill_name; do
     ALL_SKILLS+=("$skill_name")
-  done < <(find "$ANVIL_ROOT/anvil/skills" -mindepth 2 -maxdepth 2 -name 'SKILL.md' -print0 | sort -z)
+  done < <(
+    find "$ANVIL_ROOT/anvil/skills" -mindepth 2 -maxdepth 2 -name 'SKILL.md' -print0 \
+      | while IFS= read -r -d '' skill_md; do
+          printf '%s\0' "$(basename "$(dirname "$skill_md")")"
+        done \
+      | LC_ALL=C sort -z
+  )
 fi
 [[ ${#ALL_SKILLS[@]} -gt 0 ]] || error "no skills found under $ANVIL_ROOT/anvil/skills/*/SKILL.md"
 note "available skills: ${ALL_SKILLS[*]}"

@@ -45,7 +45,11 @@ The current skill index:
 - `anvil:report` — customer-facing report.
 - `anvil:deck` — slide deck (Marp).
 - `anvil:slides` — narrated slide outline.
-- `anvil:ip-uspto` — USPTO patent application.
+- `anvil:ip-uspto` — USPTO non-provisional utility patent application.
+- `anvil:ip-uspto-provisional` — USPTO provisional patent application
+  (claims-optional, enablement-depth-first; `anvil-ip-provisional-v1`
+  /45 rubric with dim 9 *Conversion readiness*; the conversion seed for
+  `anvil:ip-uspto`). See `ip-uspto-provisional/SKILL.md`.
 - `anvil:installation` — installation-art concept proposal.
 - `anvil:proposal` — multi-document proposal package.
 - `anvil:datasheet` — customer-facing IC / component datasheet (mandatory
