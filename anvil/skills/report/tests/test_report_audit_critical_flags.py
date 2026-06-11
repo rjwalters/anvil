@@ -2,7 +2,7 @@
 
 The detector lives at ``anvil/skills/report/lib/audit_flags.py`` and
 implements the rule documented in
-``anvil/skills/report/commands/report-audit.md`` step 9 and
+``anvil/skills/report/commands/report-audit.md`` step 10 and
 ``anvil/skills/report/rubric.md`` audit-side flags section.
 
 **Rule**: a row in ``findings.md`` triggers the flag iff

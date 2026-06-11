@@ -21,6 +21,7 @@ This command is one of the two REQUIRED critic siblings for the report skill (th
 - **Project context**: `<project>/_project.md` — REQUIRED. The auditor uses `prior_reports[]` to cross-check the current draft for contradictions with previously-delivered material.
 - **Latest version directory**: highest `N` with `<thread>.{N}/report.md` existing.
 - **Source references**: `<project>/<thread>/refs/**` — the auditor reads these to verify cited claims.
+- **Data-contract manifest** (optional): `<project>/<thread>/refs/data/manifest.json` — when present, activates the data-contract back-check (step 6). The manifest is **authoritative**: the BRIEF may *mention* the data bundle, but no BRIEF key is parsed (mirrors the datasheet "spec bundle in refs/ outranks the brief" precedence, #418/#421). When absent, the audit behaves exactly as it did before the contract tier existed.
 - **Prior delivered reports**: for each entry in `_project.md`'s `prior_reports[]`, the auditor opens the referenced `<thread>.{final_version}/report.md` and uses it as a cross-check corpus.
 - **Rubric** (audit-side critical flags): `anvil/skills/report/rubric.md`.
 
@@ -28,7 +29,7 @@ This command is one of the two REQUIRED critic siblings for the report skill (th
 
 ```
 <project>/<thread>.{N}.audit/
-  verdict.md       Pass/fail + critical flags + prior-report cross-check summary + top revision priorities
+  verdict.md       Pass/fail + critical flags + prior-report cross-check summary + data-contract coverage (when active) + top revision priorities
   findings.md      Per-claim audit log (every quantitative claim + citation + audit result)
   evidence.md      Citation traceability map (every cited source → which claims depend on it)
   _meta.json       { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version }
@@ -54,24 +55,55 @@ This command is one of the two REQUIRED critic siblings for the report skill (th
    ```
 
    Every row gets a `Verified?` value of `yes`, `no`, `partial`, or `n/a` (for non-quantitative narrative claims that the auditor cannot mechanically verify).
-6. **Build the evidence map**: in `evidence.md`, invert the above — list every cited source (from `refs/` or external references), and for each one list which findings/recommendations depend on it. This surfaces single-source claims (everything depending on one document) and uncovers orphan sources (cited material not actually load-bearing).
-7. **Check internal consistency**: compare numbers in the executive summary against numbers in the body against numbers in exhibits. Any mismatch is a critical flag (internal contradiction).
-8. **Cross-check against prior reports** (`_project.md`'s `prior_reports[]`): for each prior report loaded, identify any claim in the current draft that disagrees with a claim in the prior report. Examples: a count that was N then and is N+5 now without explanation; a recommendation that contradicts a recommendation made earlier; an entity characterized differently. Each disagreement is either a critical flag (audit-side: "Contradicts prior report in engagement") OR is reconciled inline in the current draft with an explicit note ("In our Q1 report we stated X; based on additional evidence Y, we now state Z"). If reconciliation is present, the auditor flags it as a `reconciliation_present` note rather than a critical flag.
-9. **Identify audit-side critical flags** (see `rubric.md`):
-   - Unsupported quantitative claim (any row in `findings.md` with cited source = none AND claim is quantitative)
-   - Cited source does not support claim (any row with `Verified? = no` or `partial` where the discrepancy is material)
-   - Internal contradiction (from step 7)
-   - Contradicts prior report in engagement, without reconciliation (from step 8)
-   - Unreachable external citation (`audit_unreachable_external_citation`) — any row in `findings.md` with `Verified? = n/a` where the `Cited source` column matches an external URL (scheme `http://` or `https://`, case-insensitive). An external URL the auditor could not fetch is indistinguishable from a fabricated source and MUST NOT pass the audit. Narrative-claim `n/a` (rows whose cited source is `(none — uncited)`, `(internal)`, or another parenthesized literal) does NOT trigger this flag — uncited quantitative claims are already covered by the separate "Unsupported quantitative claim" flag above, and narrative `n/a` is allowed because you cannot verify what isn't quantitative. An `n/a` against an in-tree `refs/<path>` reference is an auditor-mistake case (the auditor CAN read in-tree refs) and is out of scope here — flag as a follow-up if observed. Each flag entry carries `kind: tool_evidence` per `anvil/lib/snippets/audit.md` and records the failed URL fetch in `tool_calls[]` (e.g., `{tool: "WebFetch", args: {url: "..."}}`); the `fix` / `location` field points at the originating `findings.md` row (e.g., `findings.md row #N`). Multiple offending rows aggregate into a single flag entry that references all originating rows. The flag surfaces via the standard `critical_flags[]` top-level field (no schema change).
-10. **Compute pass/fail**: `pass = (no critical flags) AND (all quantitative claims verified or partial-with-acceptable-rationale)`.
-11. **Write `verdict.md`** in the format specified in `rubric.md`:
+6. **Data-contract back-check** (conditional — active iff `<thread>/refs/data/manifest.json` exists; issue #428). Deterministic pre-flight before judgment, per the framework principle:
+   - **Pre-flight (deterministic — `anvil/skills/report/lib/data_contract.py`)**: call `load_manifest(<thread dir>)` to parse + validate the manifest (malformed JSON, missing `name`/`file`, duplicate names, missing entry files → structured `ManifestError`s; each becomes a findings row). An *existing but invalid* manifest still activates the contract — a broken declaration is a defect to surface, not an opt-out. Then call `check_freshness(<thread dir>, manifest)` for the per-entry result: `FRESH` / `STALE` / `SOURCE-MISSING` / `HASH-MISMATCH` / `NO-SOURCE-DECLARED`. A `STALE` entry (declared `source` newer than the exported file) or `HASH-MISMATCH` (current content differs from the declared `sha256`) is a **`major` finding — NOT a critical flag** (calibration matches `pdf_freshness.py`'s missing/stale-PDF treatment: rubric-visible, not short-circuit; a stale source may still be correct, fabrication cannot be).
+   - **Claim tracing (audit judgment — you)**: for every **numeric claim** in the step-5 inventory, trace it to a named manifest entry (the draft may cite entries as `% data: <name>`; absent an explicit cite, match by subject). Read the entry's content under `refs/data/` and resolve a four-valued verdict — **identical vocabulary to the datasheet skill's refs back-check** (`anvil/skills/datasheet/rubric.md` §"Refs back-check"):
+     - **`VERIFIED`** — claim matches the named entry. Against a `STALE` entry, record `VERIFIED (STALE source)` — STALE is an entry-level attribute, never a claim verdict.
+     - **`UNVERIFIED`** — an on-topic entry exists but does not contain the supporting value.
+     - **`CONTRADICTED`** — the entry directly contradicts the claim → critical flag `audit_contradicted_data_claim` (step 10).
+     - **`NOT-IN-REFS`** — no named entry covers the claim. **Under the active contract this is escalated**: a numeric claim tracing to no named entry is fabrication → critical flag `audit_fabricated_numeric_claim` (step 10). Spell the row verdict `NOT-IN-REFS (FABRICATED)` so the datasheet vocabulary stays canonical and the sphere term stays greppable.
+   - Record each traced claim in a dedicated `findings.md` section with columns `| # | Location | Claim | Data entry | Verdict | Notes |`, e.g.:
+
+   ```
+   | # | Location | Claim | Data entry | Verdict | Notes |
+   |---|----------|-------|------------|---------|-------|
+   | 1 | §2.3 ¶2  | "link margin 4.2 dB"  | link_budget  | VERIFIED | matches margin_db |
+   | 2 | §3.1 tbl | "total power 312 mW"  | power_budget | CONTRADICTED | entry says 287 mW — critical flag |
+   | 3 | Exec §1  | "99.97% uptime"       | (none)       | NOT-IN-REFS (FABRICATED) | no named entry covers uptime — critical flag |
+   ```
+
+   - **Vocabulary mapping (sphere ↔ anvil)** — recorded here for the future `anvil/lib/` promotion once datasheet and report consume the same manifest shape:
+
+   | Sphere ladder | Anvil claim verdict | Notes |
+   |---|---|---|
+   | TRACED | `VERIFIED` | claim matches the named entry |
+   | (no sphere analog) | `UNVERIFIED` | on-topic entry lacks the supporting value |
+   | (sphere lumps into FABRICATED) | `CONTRADICTED` | strictly stronger signal; critical flag |
+   | FABRICATED | `NOT-IN-REFS` escalated | row spelling `NOT-IN-REFS (FABRICATED)`; critical flag under active contract |
+   | STALE | entry-level attribute, not a claim verdict | `VERIFIED (STALE source)`; `major` finding |
+
+   - **No manifest → skip this step entirely.** The audit is byte-identical to the pre-contract behavior; `NOT-IN-REFS` keeps its informational (coverage-only) datasheet semantics anywhere it appears.
+7. **Build the evidence map**: in `evidence.md`, invert the above — list every cited source (from `refs/` or external references), and for each one list which findings/recommendations depend on it. This surfaces single-source claims (everything depending on one document) and uncovers orphan sources (cited material not actually load-bearing).
+8. **Check internal consistency**: compare numbers in the executive summary against numbers in the body against numbers in exhibits. Any mismatch is a critical flag (internal contradiction).
+9. **Cross-check against prior reports** (`_project.md`'s `prior_reports[]`): for each prior report loaded, identify any claim in the current draft that disagrees with a claim in the prior report. Examples: a count that was N then and is N+5 now without explanation; a recommendation that contradicts a recommendation made earlier; an entity characterized differently. Each disagreement is either a critical flag (audit-side: "Contradicts prior report in engagement") OR is reconciled inline in the current draft with an explicit note ("In our Q1 report we stated X; based on additional evidence Y, we now state Z"). If reconciliation is present, the auditor flags it as a `reconciliation_present` note rather than a critical flag.
+10. **Identify audit-side critical flags** (see `rubric.md`):
+    - Unsupported quantitative claim (any row in `findings.md` with cited source = none AND claim is quantitative)
+    - Cited source does not support claim (any row with `Verified? = no` or `partial` where the discrepancy is material)
+    - Internal contradiction (from step 8)
+    - Contradicts prior report in engagement, without reconciliation (from step 9)
+    - Unreachable external citation (`audit_unreachable_external_citation`) — any row in `findings.md` with `Verified? = n/a` where the `Cited source` column matches an external URL (scheme `http://` or `https://`, case-insensitive). An external URL the auditor could not fetch is indistinguishable from a fabricated source and MUST NOT pass the audit. Narrative-claim `n/a` (rows whose cited source is `(none — uncited)`, `(internal)`, or another parenthesized literal) does NOT trigger this flag — uncited quantitative claims are already covered by the separate "Unsupported quantitative claim" flag above, and narrative `n/a` is allowed because you cannot verify what isn't quantitative. An `n/a` against an in-tree `refs/<path>` reference is an auditor-mistake case (the auditor CAN read in-tree refs) and is out of scope here — flag as a follow-up if observed. Each flag entry carries `kind: tool_evidence` per `anvil/lib/snippets/audit.md` and records the failed URL fetch in `tool_calls[]` (e.g., `{tool: "WebFetch", args: {url: "..."}}`); the `fix` / `location` field points at the originating `findings.md` row (e.g., `findings.md row #N`). Multiple offending rows aggregate into a single flag entry that references all originating rows. The flag surfaces via the standard `critical_flags[]` top-level field (no schema change).
+    - Fabricated numeric claim (`audit_fabricated_numeric_claim`) — **contract-gated**: fires iff the data contract is active (step 6) AND at least one data-claim row carries verdict `NOT-IN-REFS`. Detector: `anvil/skills/report/lib/data_contract.py::detect_fabricated_numeric_claims(rows, contract_active=...)`. One aggregated flag entry referencing all originating rows (same rule as the unreachable-citation flag). Report's `advance_threshold` is already 39 (customer-facing), so this flags unconditionally whenever the contract is active. Surfaces via the standard `critical_flags[]` field — no schema change.
+    - Contradicted data claim (`audit_contradicted_data_claim`) — any data-claim row with verdict `CONTRADICTED` (the report-side analog of datasheet critical flag 1). Detector: `data_contract.py::detect_contradicted_data_claims(rows)`. Same single-aggregated-flag rule; standard `critical_flags[]`; no schema change.
+11. **Compute pass/fail**: `pass = (no critical flags) AND (all quantitative claims verified or partial-with-acceptable-rationale)`.
+12. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Pass: `pass: true` or `pass: false`
     - Findings count: total + breakdown by severity
     - Critical flags (if any) with justification pointing to specific location and evidence
     - Prior-report cross-check: per-prior-report result (one bullet per entry in `prior_reports[]`)
+    - **Data-contract coverage** (only when the contract is active; mirrors datasheet step 13's coverage format): numeric claims traced + the `VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS` split, plus a per-entry freshness table (entry name → `FRESH` / `STALE` / `SOURCE-MISSING` / `HASH-MISMATCH` / `NO-SOURCE-DECLARED`). When the contract is inactive, this section is omitted entirely.
     - Top revision priorities (if `pass: false`)
-12. **Update `_progress.json`** inside the staging dir: `phases.audit.state = done`, `phases.audit.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.audit.tmp/` → `<thread>.{N}.audit/`. The final-named dir only ever exists in **complete** form.
-13. **Report**: print the path to the (now-renamed) audit dir and a one-line status (e.g., `Audited acme-q2/findings.1 → acme-q2/findings.1.audit/ (pass: false, 2 critical flags, 14 claims audited, 3 prior reports cross-checked)`).
+13. **Update `_progress.json`** inside the staging dir: `phases.audit.state = done`, `phases.audit.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.audit.tmp/` → `<thread>.{N}.audit/`. The final-named dir only ever exists in **complete** form.
+14. **Report**: print the path to the (now-renamed) audit dir and a one-line status (e.g., `Audited acme-q2/findings.1 → acme-q2/findings.1.audit/ (pass: false, 2 critical flags, 14 claims audited, 3 prior reports cross-checked)`).
 
 ## Idempotence and resumability
 
@@ -86,7 +118,8 @@ This command makes NO attempt to coordinate with `report-review`. Both commands 
 
 - **You are not a reviewer.** Stylistic concerns are out of scope; defer them to the review sibling. Your job is to verify that what the report says is **factually true and properly cited**, and that it does not contradict itself or prior delivered material.
 - **Walk every cited source.** A citation that exists but does not support the claim is worse than an uncited claim — it is misleading. Both are flagged; the latter is more serious.
-- **Quantify your coverage.** Report in `verdict.md` exactly how many quantitative claims you audited (e.g., "audited 18/18 quantitative claims; 14 verified, 2 partial, 2 unsupported"). If the report contains a quantitative claim you could not verify (because the source is not in `refs/` and you cannot access it), flag it explicitly in `findings.md` with `Verified? = n/a — source not accessible to auditor` and recommend the reviser either provide the source or remove the claim. **An `n/a` against an external URL (`http://` / `https://`) is no longer graceful degradation — raise `audit_unreachable_external_citation` (see step 9) and require the reviser to either supply the cited source under `refs/` or remove the claim. Narrative-claim `n/a` remains allowed.**
+- **Quantify your coverage.** Report in `verdict.md` exactly how many quantitative claims you audited (e.g., "audited 18/18 quantitative claims; 14 verified, 2 partial, 2 unsupported"). If the report contains a quantitative claim you could not verify (because the source is not in `refs/` and you cannot access it), flag it explicitly in `findings.md` with `Verified? = n/a — source not accessible to auditor` and recommend the reviser either provide the source or remove the claim. **An `n/a` against an external URL (`http://` / `https://`) is no longer graceful degradation — raise `audit_unreachable_external_citation` (see step 10) and require the reviser to either supply the cited source under `refs/` or remove the claim. Narrative-claim `n/a` remains allowed.**
+- **The manifest is the contract, not the BRIEF.** When `refs/data/manifest.json` exists, every numeric claim must trace to a named entry — run the deterministic pre-flight (`data_contract.py` validation + freshness) BEFORE tracing, and resolve verdicts by reading entry content yourself (judgment over tool-read data, exactly like the datasheet refs back-check). `NOT-IN-REFS` under an active contract is fabrication, not coverage. When no manifest exists, do not improvise a contract from `BRIEF.md` prose — the tier is off.
 - **Prior-report cross-check is load-bearing.** This is the value-add of running the audit at all for ongoing engagements. A report that quietly contradicts a prior delivered report damages the engagement's credibility — and the recipient, who paid for both reports, will notice.
 - **Do not invent reconciliations.** If you find a contradiction with a prior report and the current draft does NOT explicitly acknowledge it, that is a critical flag. Your job is not to construct the reconciliation; it is to surface the gap so the reviser can address it explicitly.
 
