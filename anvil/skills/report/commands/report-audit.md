@@ -147,3 +147,7 @@ This command makes NO attempt to coordinate with `report-review`. Both commands 
 ```
 
 Merge rule (shallow): preserve fields not touched by this command.
+
+## Git sync (opt-in, off by default)
+
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the staged-sidecar atomic rename (issue #350) lands the final-named `<thread>.{N}.audit/`, stage ONLY this command's own `<thread>.{N}.audit/` sidecar (never sibling critics' dirs — the narrow scope keeps the hook safe under parallel critic fan-out), commit as `anvil(report/audit): <thread>.{N} [<state>]` (the bracket carries the thread's derived state per SKILL.md §State machine — `AUDITED-PARTIAL` while the review sibling is absent, `REVIEWED+AUDITED` once both critics exist, `AUDITED` when both clear), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the audit still reports its own verdict unchanged; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).

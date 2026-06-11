@@ -99,6 +99,29 @@ anvil(memo/citations): pricing-memo.2 [DRAFTED]
   derived state — the bracket records "state at commit time", not
   "state delta".
 
+### Non-thread commit shapes
+
+Bridge/utility tools and thread-level commands do not operate on a
+`<thread>.{N}` version, so the version token adapts while the
+`anvil(<skill>/<phase>):` prefix stays fixed:
+
+- **Thread-level writers** (e.g., `deck-brief`, `ip-uspto-intake`,
+  `ip-uspto-inventorship`) use the bare thread slug (or the `.0`
+  intake record when one is written):
+  `anvil(ip-uspto/intake): <thread> [INTAKE_DONE]`,
+  `anvil(deck/brief): <thread>.0 [BRIEF_DONE]`.
+- **Terminal package dirs** use their literal dir name:
+  `anvil(ip-uspto/finalize): <thread>.final [FINALIZED]`.
+- **Project-scoped tools** use the project slug:
+  `anvil(project-migrate/apply): <project> [MIGRATED]`,
+  `anvil(project-share/share): <project> [SHARED]`.
+- **Per-review tools** use the review path:
+  `anvil(rubric-rebackport/stamp): <thread>.{N}.review [STAMPED]`
+  (or `anvil(rubric-rebackport/rescore): <thread>.{N}.review
+  [RESCORED]` in `--rescore` mode). A batch run that touched many
+  reviews makes ONE commit naming the project tree and the review
+  count.
+
 ## Staging scope
 
 Stage **only** the paths the phase wrote — never `git add -A`, never
@@ -159,10 +182,19 @@ A command file adopts the contract with one short final step:
 
 ## Rollout state
 
-Pilot-on-memo first (issue #426), mirroring the #350 sidecar rollout:
-the 12 write-bearing memo commands adopt in the pilot; the remaining
-artifact skills + bridge/utility tools follow in a tracked follow-up
-issue.
+Complete. Pilot-on-memo first (issue #426, mirroring the #350 sidecar
+rollout): the 12 write-bearing memo commands adopted in the pilot.
+Issue #436 rolled the hook out to every remaining write-bearing
+command — 76 across the nine other artifact skills (`pub` 7, `report`
+9, `deck` 12, `slides` 9, `ip-uspto` 15, `ip-uspto-provisional` 5,
+`installation` 4, `proposal` 7, `datasheet` 5) and the three
+write-bearing bridge/utility tools (`project-migrate`,
+`rubric-rebackport`, `project-share`). Read-only commands remain
+exempt by definition: the per-skill portfolio orchestrator views,
+`project-scout` (strictly read-only by design), and the
+non-executable contract/walkthrough documents
+(`report-figure-adapter`, `deck-imagegen-adapter`,
+`deck-imagegen-onboarding`).
 
 ## See also
 

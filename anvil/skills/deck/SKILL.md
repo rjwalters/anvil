@@ -362,3 +362,7 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 ## Per CLAUDE.md
 
 Inline helpers are acceptable. **Do not create `anvil/lib/` modules in this skill** — that extraction is issue #10 and is blocked until ≥2 skill implementations land (memo is #1; this is #2 → unblocks #10 after this merges).
+
+## Git sync hook (opt-in, off by default)
+
+Consumers running anvil under an external orchestrator (a sphere channel-agent, a Loom-style daemon) can opt in to a per-phase git commit hook so every lifecycle phase leaves the working tree clean: a repo-level `.anvil/config.json` with `git.commit_per_phase: true` (and optionally `git.push: true`) has each write-bearing deck command end its phase by staging only the dirs it wrote and committing as `anvil(deck/<phase>): <thread>.{N} [<state>]`. The full contract — knob shape, defaults-off rule, commit-message format, staging scope, warn-and-continue failure semantics, and ordering after the `_progress.json` `done` write and the #350 sidecar atomic rename — lives in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo). All 12 write-bearing deck commands adopt it; the read-only `deck` portfolio orchestrator and the `deck-imagegen-adapter` / `deck-imagegen-onboarding` contract and walkthrough documents are exempt by definition. When `.anvil/config.json` is absent or the knob is false, behavior is byte-identical to a pre-#426 install — the hook is **default off**.
