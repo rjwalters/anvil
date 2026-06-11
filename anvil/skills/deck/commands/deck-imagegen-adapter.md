@@ -95,7 +95,7 @@ The full resolution algorithm and edge cases (TOML parse errors, missing module,
 
 This is a file in the consumer-side `.anvil/` overlay (parallel to `.anvil/skills/`, `.anvil/lib/`, etc.). It was the first instance of a TOML-shaped config in anvil; per-skill JSON overrides like `<thread>/.anvil.json` (the `target_length` / `max_iterations` precedent) remain unchanged.
 
-**Consolidation pending**: newer skill-level configuration has since standardized on the versioned `.anvil/config.json` (the #426 hooks precedent; reaffirmed by the #427 figure-adapter registry decision). The `[deck.imagegen] backend` key is explicitly **grandfathered** in `.anvil/config.toml` — it remains the correct, supported registration location until a separate maintenance issue ships the TOML→JSON consolidation with a migration note. Do not add new skill config sections to the TOML file.
+**Consolidation pending**: newer skill-level configuration has since standardized on the versioned `.anvil/config.json` (the #426 hooks precedent; reaffirmed by the #427 figure-adapter registry decision). The `[deck.imagegen] backend` key is explicitly **grandfathered** in `.anvil/config.toml` — it remains the correct, supported registration location until the TOML→JSON consolidation ships with a migration note (tracked as #442). Do not add new skill config sections to the TOML file.
 
 ## Non-goals (consumer responsibility)
 

@@ -7,7 +7,7 @@ description: Consumer onboarding walkthrough for `deck-imagegen` adapters. Five-
 
 `commands/deck-imagegen-adapter.md` is the **contract**; this document is the **walkthrough**. Read this when you are wiring your first adapter and want to go from zero to generated PNGs without reverse-engineering `anvil/skills/deck/lib/imagegen.py`.
 
-> **Config consolidation pending.** The adapter registration documented here lives in `.anvil/config.toml`. Newer anvil skill configuration uses the versioned `.anvil/config.json` (the #426 hooks precedent), and the `[deck.imagegen] backend` key is explicitly grandfathered in TOML for now — the TOML→JSON consolidation is tracked as a separate maintenance issue (coordinated with the #427 figure-adapter registry decision) and will ship with a migration note. Until that lands, `.anvil/config.toml` is correct and supported; just don't add *new* skill config sections to it.
+> **Config consolidation pending.** The adapter registration documented here lives in `.anvil/config.toml`. Newer anvil skill configuration uses the versioned `.anvil/config.json` (the #426 hooks precedent), and the `[deck.imagegen] backend` key is explicitly grandfathered in TOML for now — the TOML→JSON consolidation is tracked as #442 (coordinated with the #427 figure-adapter registry decision) and will ship with a migration note. Until that lands, `.anvil/config.toml` is correct and supported; just don't add *new* skill config sections to it.
 
 ## Five-minute smoke test (shipped placeholder backend)
 
