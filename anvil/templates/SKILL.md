@@ -209,6 +209,21 @@ Critic siblings additionally carry `for_version: <N>` naming the version
 they review. `_progress.json` is **distinct from** `_review.json`: the
 former tracks phase state for resume; the latter is the critique payload.
 
+## Git sync hook (opt-in, off by default)
+
+Every **write-bearing** command in a new skill (version-dir-writing
+phases AND critic-sidecar-writing commands; read-only orchestrator /
+status views are exempt) SHOULD end with the conditional per-phase git
+commit step documented in `anvil/lib/snippets/git_sync.md`
+(`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): when
+the consumer repo carries `.anvil/config.json` with
+`git.commit_per_phase: true`, stage only the dirs the phase wrote and
+commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, pushing when
+`git.push` is also `true`. The hook fires after the phase's
+`_progress.json` is marked `done` (and after any staged-sidecar atomic
+rename); git failures warn and continue. Default off — absent config
+means zero git activity.
+
 ## Idempotence
 
 Every command MUST be idempotent on re-invocation:
