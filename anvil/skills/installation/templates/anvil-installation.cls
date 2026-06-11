@@ -161,6 +161,14 @@
 \RequirePackage{microtype}
 
 %% ─── Title-block metadata + renderer ─────────────────────────────────────────
+%% etoolbox supplies \ifdefempty for the empty-subtitle/hero guards below.
+%% Already loaded transitively by tcolorbox; the explicit load is idempotent
+%% and self-documenting. The expansion-based \ifdefempty replaces the legacy
+%% \ifx-against-\empty idiom, which silently depends on prefix equality:
+%% \ifx is false whenever the operands differ in \long/\protected status, so
+%% it breaks if the initialization ever becomes \long (e.g. older kernels'
+%% \newcommand, or a future \NewDocumentCommand refactor). See issue #422.
+\RequirePackage{etoolbox}
 \newcommand{\anvil@title}{Installation Title}
 \newcommand{\anvil@subtitle}{}
 \newcommand{\anvil@date}{\today}
@@ -177,9 +185,9 @@
   \begin{flushleft}%
     {\color{muted}\footnotesize\textsf{\MakeUppercase{\anvil@studio}}}\\[0.8em]%
     {\fontsize{26}{30}\selectfont\bfseries\color{ink}\anvil@title}\\[0.3em]%
-    \ifx\anvil@subtitle\empty\else
+    \ifdefempty{\anvil@subtitle}{}{%
       {\large\color{muted}\itshape\anvil@subtitle}\\[0.7em]%
-    \fi
+    }%
     {\color{rule}\rule{\textwidth}{2pt}}\\[0.2em]%
     {\footnotesize\color{muted}\anvil@date \hfill \anvil@stage}%
   \end{flushleft}%
@@ -190,12 +198,12 @@
 %% (so a brief without a hero render still compiles).
 \newcommand{\herofigure}[1]{%
   \def\anvil@hero{#1}%
-  \ifx\anvil@hero\empty\else
+  \ifdefempty{\anvil@hero}{}{%
     \begin{figure}[h]\centering
       \includegraphics[width=0.92\textwidth]{#1}%
     \end{figure}%
     \vspace{-0.6em}%
-  \fi
+  }%
 }
 
 %% \coda{text} — closing accent rule + italic muted coda line.

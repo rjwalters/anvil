@@ -152,6 +152,15 @@
 \RequirePackage{lastpage}
 
 %% Metadata setters (also feed the footer).
+%% etoolbox supplies \ifdefempty for the empty-subtitle guard in the title
+%% block. Already loaded transitively by tcolorbox; the explicit load is
+%% idempotent and self-documenting. The expansion-based \ifdefempty replaces
+%% the legacy \ifx-against-\empty idiom, which silently depends on
+%% prefix equality: \ifx is false whenever the operands differ in
+%% \long/\protected status, so it breaks if the initialization ever becomes
+%% \long (e.g. older kernels' \newcommand, or a future \NewDocumentCommand
+%% refactor). See issue #422.
+\RequirePackage{etoolbox}
 \newcommand{\anvil@part}{PART-0000}
 \newcommand{\anvil@title}{Datasheet Title}
 \newcommand{\anvil@subtitle}{}
@@ -192,9 +201,9 @@
     {\color{muted}\footnotesize\textsf{\MakeUppercase{\anvil@company}}}\\[0.8em]%
     {\fontsize{24}{28}\selectfont\bfseries\color{ink}\anvil@part}\\[0.25em]%
     {\large\bfseries\color{accent}\anvil@title}\\[0.2em]%
-    \ifx\anvil@subtitle\empty\else
+    \ifdefempty{\anvil@subtitle}{}{%
       {\normalsize\color{muted}\itshape\anvil@subtitle}\\[0.5em]%
-    \fi
+    }%
     {\color{rule}\rule{\textwidth}{2pt}}\\[0.2em]%
     {\footnotesize\color{muted}\anvil@date\ \textbar\ Rev \anvil@rev \hfill \anvil@status}%
   \end{flushleft}%
