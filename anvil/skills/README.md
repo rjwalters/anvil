@@ -48,6 +48,9 @@ The current skill index:
 - `anvil:ip-uspto` — USPTO patent application.
 - `anvil:installation` — installation-art concept proposal.
 - `anvil:proposal` — multi-document proposal package.
+- `anvil:datasheet` — customer-facing IC / component datasheet (mandatory
+  spec source-of-truth audit, pin-map/bus-width pre-flight, revision-history
+  READY-gate, shared-die SKU coherence). See `datasheet/SKILL.md`.
 - `anvil:project-migrate` — bridge tool migrating existing projects to the
   post-#295 / post-#296 model (project root + `BRIEF.md` absorbing all
   config + `<slug>.md` body filename). Opinionated, idempotent, dry-run
@@ -84,7 +87,8 @@ The full registry:
 - `anvil-<skill>-reviewer` — calls `commands/<skill>-review.md`.
 - `anvil-<skill>-reviser` — calls `commands/<skill>-revise.md`.
 - `anvil-<skill>-auditor` — calls `commands/<skill>-audit.md` (skills
-  with an audit command: deck, report, proposal, pub, slides, ip-uspto).
+  with an audit command: deck, report, proposal, pub, slides, ip-uspto,
+  datasheet).
 - `anvil-<skill>-figurer` — calls `commands/<skill>-figures.md`.
 - `anvil-deck-narrative` / `anvil-deck-market` / `anvil-deck-design` —
   deck-skill specialists owning specific rubric-dim groups (1+7, 3+4, 8).
