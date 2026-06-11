@@ -98,7 +98,7 @@ The reviewer and auditor should each raise a flag for any other issue that, in t
 2. **Findings count**: total findings logged + breakdown by severity (`blocker` / `major` / `minor`).
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification pointing to specific location in the report and the specific evidence (or absence thereof).
 4. **Prior-report cross-check**: explicit confirmation that the auditor compared this report against each entry in `_project.md`'s `prior_reports[]`, with the result for each.
-5. **Data-contract coverage** (only when `refs/data/manifest.json` exists): numeric claims traced + the `VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS` split, plus a per-entry freshness table (`FRESH` / `STALE` / `SOURCE-MISSING` / `HASH-MISMATCH` / `NO-SOURCE-DECLARED`). Omitted entirely when the contract is inactive.
+5. **Data-contract coverage** (only when `refs/data/manifest.json` exists): numeric claims traced + the `VERIFIED` / `UNVERIFIED` / `CONTRADICTED` / `NOT-IN-REFS` split, plus a per-entry freshness table (`FRESH` / `STALE` / `SOURCE-MISSING` / `HASH-MISMATCH` / `NO-SOURCE-DECLARED` / `ENTRY-FILE-MISSING`). Omitted entirely when the contract is inactive.
 6. **Top revision priorities** (if `pass: false`): the specific factual fixes required.
 
 The auditor's `findings.md` contains the per-claim audit log (claim, location, cited source, audit result). The auditor's `evidence.md` contains the citation traceability map (every cited source → which claims depend on it). Both are required outputs.

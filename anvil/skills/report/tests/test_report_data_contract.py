@@ -232,6 +232,61 @@ class TestManifestParse:
         assert manifest is not None
         assert [e.kind for e in manifest.errors] == ["bad-shape"]
 
+    def test_non_string_sha256_is_structured_error_not_crash(
+        self, tmp_path: Path
+    ):
+        """Regression (PR #449 review): a non-string ``sha256`` must
+        surface a structured bad-shape error at load time and be
+        treated as absent — previously it passed validation with zero
+        errors, then ``check_freshness`` crashed with
+        ``AttributeError: 'int' object has no attribute 'strip'``."""
+        _write_entry_file(tmp_path, "x.json", "{}")
+        _write_manifest(
+            tmp_path,
+            {
+                "version": 1,
+                "entries": [{"name": "x", "file": "x.json", "sha256": 123}],
+            },
+        )
+        manifest = load_manifest(tmp_path)
+        assert manifest is not None
+        assert not manifest.ok
+        assert [e.kind for e in manifest.errors] == ["bad-shape"]
+        assert "sha256" in manifest.errors[0].message
+        # The field is treated as absent on the constructed entry.
+        assert [e.name for e in manifest.entries] == ["x"]
+        assert manifest.entries[0].sha256 is None
+        # Freshness must not raise; with no hash and no source the
+        # entry falls through to NO-SOURCE-DECLARED.
+        results = check_freshness(tmp_path, manifest)
+        assert [r.status for r in results] == [FRESHNESS_NO_SOURCE_DECLARED]
+
+    def test_non_string_source_is_structured_error_not_crash(
+        self, tmp_path: Path
+    ):
+        """Regression (PR #449 review): a non-string ``source`` must
+        surface a structured bad-shape error at load time and be
+        treated as absent — previously it passed validation with zero
+        errors, then ``check_freshness`` crashed with ``TypeError``
+        at ``Path(entry.source)``."""
+        _write_entry_file(tmp_path, "x.json", "{}")
+        _write_manifest(
+            tmp_path,
+            {
+                "version": 1,
+                "entries": [{"name": "x", "file": "x.json", "source": 42}],
+            },
+        )
+        manifest = load_manifest(tmp_path)
+        assert manifest is not None
+        assert not manifest.ok
+        assert [e.kind for e in manifest.errors] == ["bad-shape"]
+        assert "source" in manifest.errors[0].message
+        assert [e.name for e in manifest.entries] == ["x"]
+        assert manifest.entries[0].source is None
+        results = check_freshness(tmp_path, manifest)
+        assert [r.status for r in results] == [FRESHNESS_NO_SOURCE_DECLARED]
+
     def test_unsupported_version(self, tmp_path: Path):
         _write_entry_file(tmp_path, "a.json", "{}")
         _write_manifest(

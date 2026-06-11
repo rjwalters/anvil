@@ -212,7 +212,9 @@ def load_manifest(thread_dir: Path) -> Optional[Manifest]:
 
     - ``malformed-json`` — the file is not parseable JSON.
     - ``bad-shape`` — top level is not an object, ``entries`` is not
-      a list, or an entry is not an object.
+      a list, an entry is not an object, or an optional ``source`` /
+      ``sha256`` field is present but not a string (the field is then
+      treated as absent on the constructed entry).
     - ``bad-version`` — ``version`` present but not
       :data:`MANIFEST_VERSION`.
     - ``missing-field`` — an entry lacks ``name`` or ``file``.
@@ -348,12 +350,47 @@ def load_manifest(thread_dir: Path) -> Optional[Manifest]:
             # claims against the *declaration*; freshness for it
             # returns ENTRY-FILE-MISSING.
 
+        # Optional fields must be strings when present. A non-string
+        # value is a structured finding — the field is then treated as
+        # absent so the freshness checker never crashes on it (the
+        # "broken declaration = structured findings, never a crash"
+        # posture).
+        source = raw_entry.get("source")
+        if source is not None and not isinstance(source, str):
+            errors.append(
+                ManifestError(
+                    kind="bad-shape",
+                    message=(
+                        f"entries[{i}] ({name!r}) optional field "
+                        f"'source' must be a string, got "
+                        f"{type(source).__name__} — treating it as "
+                        "absent"
+                    ),
+                )
+            )
+            source = None
+
+        sha256 = raw_entry.get("sha256")
+        if sha256 is not None and not isinstance(sha256, str):
+            errors.append(
+                ManifestError(
+                    kind="bad-shape",
+                    message=(
+                        f"entries[{i}] ({name!r}) optional field "
+                        f"'sha256' must be a string, got "
+                        f"{type(sha256).__name__} — treating it as "
+                        "absent"
+                    ),
+                )
+            )
+            sha256 = None
+
         entries.append(
             ManifestEntry(
                 name=name,
                 file=file_,
-                source=raw_entry.get("source") or None,
-                sha256=raw_entry.get("sha256") or None,
+                source=source or None,
+                sha256=sha256 or None,
             )
         )
 
