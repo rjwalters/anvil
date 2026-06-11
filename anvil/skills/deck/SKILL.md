@@ -356,7 +356,7 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 
 - `voice.md` (optional) — Founder/firm voice/tone guidance the drafter reads in addition to its base prompt.
 - `rubric.overrides.md` (optional) — Add stage-specific weight notes (e.g., "weight team higher for pre-seed") or domain-specific critical-flag examples.
-- `templates/<their-theme>.css` (optional) — Marp theme override.
+- `templates/<their-theme>.css` (optional) — Marp theme override. Consumers porting an existing brand identity (e.g., a LaTeX beamer `.sty`) start from the starter template at `anvil/lib/marp/brand-theme-starter.css` and the porting recipe at `anvil/lib/snippets/brand-theme-porting.md` (beamer-concept mapping table, registration, render-gate + vision validation).
 - `commands/deck-imagegen.md` — Generative-imagery command (opt-in via `imagery_policy: generative-eligible` in `BRIEF.md` frontmatter). See `commands/deck-imagegen.md` and `commands/deck-imagegen-adapter.md`. Anvil ships zero production backends; consumers register their own adapter via `.anvil/config.toml`. New consumers start with `commands/deck-imagegen-onboarding.md` — a five-minute smoke test against the shipped placeholder reference backend, the adapter-owned auth-bootstrap pattern for cloud backends, and a porting checklist for existing in-house image workers.
 
 ## Per CLAUDE.md
