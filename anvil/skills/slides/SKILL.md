@@ -211,6 +211,10 @@ The Marp renderer supports both inline notes (HTML comments) and sidecar notes (
 
 The skill prompt instructs the figurer to **never invent data** — only render what the brief or user-supplied scripts provide. Auditor flags figures whose source is unclear. (TikZ is not used; it requires the LaTeX toolchain, which Marp does not invoke.)
 
+### Generative imagery
+
+`anvil:slides` has **no generative-imagery path, by design** — `anvil:deck` is the imagegen-capable presentation class. Technical talks draw their figures from data (mermaid / matplotlib via `slides-figures`, never-invent-data discipline above); generative imagery is a persuasion-deck concern, and the entire substrate — the `imagery_policy` opt-in gate, style presets, prompt journal, `deck-audit` attribution contract, and the `deck-imagegen` dispatcher — lives in `anvil:deck`. Consumers who need generated imagery in a presentation should author it with `anvil:deck`; start at `anvil/skills/deck/commands/deck-imagegen-onboarding.md` (adapter onboarding walkthrough) and `anvil/skills/deck/commands/deck-imagegen-adapter.md` (adapter contract). If canary demand for slides-side imagegen materializes, that second consumer is what justifies promoting `anvil/skills/deck/lib/imagegen.py` to `anvil/lib/` per the lib-promotion convention — file an issue then, not preemptively.
+
 **`slides-handout`** — *terminal-state export variant.* Runs only on a READY+AUDITED+REHEARSED version. Emits a separate PDF: 2-up or 4-up layout, OR slides-with-notes-below format. Default is **4-up**; `--notes-below` and `--2-up` flags select alternates. Pitch decks have an analogous "leave-behind PDF" need — flagged for `anvil/lib/` extraction (see §lib-sharing-candidates below). Requires Marp CLI installed; falls back to a stub `.md` placeholder with the intended layout described if Marp is unavailable.
 
 ### Pre-flight overflow lint
