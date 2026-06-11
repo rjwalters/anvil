@@ -33,6 +33,7 @@ from anvil.lib.render_gate import (
 # ---------------------------------------------------------------------------
 
 _TEMPLATE_PATH = Path(__file__).parent.parent.parent / "anvil" / "lib" / "latex" / "anvil-doc.tex.j2"
+_CLS_PATH = Path(__file__).parent.parent.parent / "anvil" / "lib" / "latex" / "anvil-doc.cls"
 
 
 def _render_template(brief: dict, body_latex: str) -> str:
@@ -120,6 +121,29 @@ def test_template_substitution_empty_hero():
     rendered = _render_template(brief, body_latex="")
 
     assert r"\herofigure{}" in rendered
+
+
+# ---------------------------------------------------------------------------
+# anvil-doc.cls — text-level guard assertions (issue #422)
+# ---------------------------------------------------------------------------
+
+
+def test_cls_empty_guards_use_ifdefempty():
+    """The empty-subtitle/hero guards use etoolbox's expansion-based
+    \\ifdefempty, not \\ifx ... \\empty.
+
+    \\ifx is prefix-sensitive: it is false whenever the operands differ in
+    \\long/\\protected status, so the legacy idiom silently breaks if the
+    macro initialization ever becomes \\long (e.g. older kernels'
+    \\newcommand, or a future \\NewDocumentCommand refactor). Issue #422.
+    """
+    text = _CLS_PATH.read_text(encoding="utf-8")
+
+    assert r"\ifx\anvil@subtitle\empty" not in text
+    assert r"\ifx\anvil@hero\empty" not in text
+    assert r"\RequirePackage{etoolbox}" in text
+    assert r"\ifdefempty{\anvil@subtitle}" in text
+    assert r"\ifdefempty{\anvil@hero}" in text
 
 
 # ---------------------------------------------------------------------------

@@ -240,6 +240,18 @@ class TestClass(unittest.TestCase):
         self.assertIn(r"\ifanvil@landscape", self.text)
         self.assertIn(r"\anvil@landscapefalse", self.text)
 
+    def test_empty_guards_use_ifdefempty(self):
+        # Issue #422: the empty-subtitle/hero guards use etoolbox's
+        # expansion-based \ifdefempty rather than \ifx ... \empty, which is
+        # prefix-sensitive (false whenever the operands differ in
+        # \long/\protected status) and so silently breaks if the macro
+        # initialization ever becomes \long.
+        self.assertNotIn(r"\ifx\anvil@subtitle\empty", self.text)
+        self.assertNotIn(r"\ifx\anvil@hero\empty", self.text)
+        self.assertIn(r"\RequirePackage{etoolbox}", self.text)
+        self.assertIn(r"\ifdefempty{\anvil@subtitle}", self.text)
+        self.assertIn(r"\ifdefempty{\anvil@hero}", self.text)
+
 
 class TestTemplate(unittest.TestCase):
     """proposal.tex.j2 carries all 10 sections, the Premise callout, the three

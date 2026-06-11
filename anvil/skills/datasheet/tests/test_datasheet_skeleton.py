@@ -278,6 +278,16 @@ class TestClass(unittest.TestCase):
         self.assertIn(r"\IfFontExistsTF", self.text)
         self.assertIn("xelatex", self.text.lower())
 
+    def test_empty_subtitle_guard_uses_ifdefempty(self):
+        # Issue #422: the empty-subtitle guard uses etoolbox's
+        # expansion-based \ifdefempty rather than \ifx ... \empty, which is
+        # prefix-sensitive (false whenever the operands differ in
+        # \long/\protected status) and so silently breaks if the macro
+        # initialization ever becomes \long. (No hero guard in this class.)
+        self.assertNotIn(r"\ifx\anvil@subtitle\empty", self.text)
+        self.assertIn(r"\RequirePackage{etoolbox}", self.text)
+        self.assertIn(r"\ifdefempty{\anvil@subtitle}", self.text)
+
     def test_title_block_macros(self):
         for macro in (
             r"\datasheetpart",
