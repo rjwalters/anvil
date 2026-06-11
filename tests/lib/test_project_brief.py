@@ -109,6 +109,106 @@ def test_unpaired_max_iterations_rejected(tmp_path: Path) -> None:
         load_project_brief(project)
 
 
+# ---------------------------------------------------------------------------
+# web_search opt-in knob (issue #424)
+# ---------------------------------------------------------------------------
+
+
+def test_web_search_true_parses(tmp_path: Path) -> None:
+    """`web_search: true` on a pub document entry parses as a strict bool."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: q3-method
+            artifact_type: pub
+            web_search: true
+        """,
+    )
+    brief = load_project_brief(project)
+    assert brief is not None
+    assert brief.documents[0].web_search is True
+
+
+def test_web_search_false_parses(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: q3-method
+            artifact_type: pub
+            web_search: false
+        """,
+    )
+    brief = load_project_brief(project)
+    assert brief is not None
+    assert brief.documents[0].web_search is False
+
+
+def test_web_search_absent_defaults_to_none(tmp_path: Path) -> None:
+    """Knob absent → None (≡ disabled); the off-by-default contract."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: q3-method
+            artifact_type: pub
+        """,
+    )
+    brief = load_project_brief(project)
+    assert brief is not None
+    assert brief.documents[0].web_search is None
+
+
+@pytest.mark.parametrize("raw", ['"true"', '"yes"', "1", "0", "[true]"])
+def test_web_search_non_bool_rejected(tmp_path: Path, raw: str) -> None:
+    """Strict bool: strings / ints / lists raise with a field-path message.
+
+    A silently-coerced truthy string must not flip the anti-hallucination
+    posture (issue #424).
+    """
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        documents:
+          - slug: q3-method
+            artifact_type: pub
+            web_search: {raw}
+        """,
+    )
+    with pytest.raises(ValueError, match=r"web_search"):
+        load_project_brief(project)
+
+
+def test_web_search_error_message_is_helpful(tmp_path: Path) -> None:
+    """The rejection names the field path and suggests the YAML-bool fix."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: q3-method
+            artifact_type: pub
+            web_search: "true"
+        """,
+    )
+    with pytest.raises(ValueError) as excinfo:
+        load_project_brief(project)
+    msg = str(excinfo.value)
+    assert "documents[0].web_search" in msg
+    assert "boolean" in msg
+    assert "web_search: true" in msg
+
+
 @pytest.mark.parametrize("value", ["deck", "slides", "proposal"])
 def test_skill_identity_artifact_types_accepted(
     tmp_path: Path, value: str
