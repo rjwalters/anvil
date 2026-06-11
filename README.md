@@ -174,6 +174,10 @@ A typical authoring loop for any skill looks like:
 
 Every phase is idempotent and resumable; a crashed run picks up where it left off by re-reading `_progress.json` and inspecting the filesystem.
 
+### Running under an external orchestrator
+
+Anvil commands never touch git by default. If you run anvil under an external orchestrator that requires a clean working tree after every phase (e.g., a sync daemon that commits and pushes between agent turns), opt in to the per-phase git commit hook: commit a repo-level `.anvil/config.json` with `{"version": 1, "git": {"commit_per_phase": true, "push": true}}`. Each write-bearing phase then ends by staging only the dirs it wrote and committing as `anvil(<skill>/<phase>): <thread>.{N} [<state>]` (pushing when `git.push` is true); git failures warn and continue — the artifact on disk is always the source of truth. The full contract lives in `.anvil/lib/snippets/git_sync.md` after install (`anvil/lib/snippets/git_sync.md` in this repo). Default off: with no `.anvil/config.json`, behavior is unchanged. Note this is distinct from `.anvil/install-metadata.json`, which remains provenance-only. (The memo skill adopts the hook today; remaining skills follow in a tracked rollout.)
+
 ## Project status
 
 Anvil is past the bootstrap phase. The eight v0 skills are merged and used in production by the [studio canary consumer](https://2amlogic.com). Active work is on follow-up polish surfaced by real authoring use — see [open issues](https://github.com/rjwalters/anvil/issues) for the live punch list. Issues labeled `tier:goal-supporting` are higher-value canary friction; `tier:maintenance` is technical debt and editorial cleanup.

@@ -57,6 +57,12 @@ anvil/lib/
     scorecard_kind.md          human-verdict | machine-summary discriminator.
     audit.md                   .review/ (judgment) vs .audit/ (tool-evidence)
                                 distinction; load-bearing tool_calls contract.
+    git_sync.md                Opt-in, default-off per-phase git commit/sync
+                                hook for consumers running anvil under an
+                                external orchestrator (.anvil/config.json
+                                `git.commit_per_phase` / `git.push` knobs,
+                                commit-message shape, staging scope,
+                                warn-and-continue failure semantics). (#426)
   marp/                        Marp renderer pin shared by deck + slides (#32).
     config.yml                 Canonical Marp config consumed via
                                 `marp --config-file <path>` by both skills.
