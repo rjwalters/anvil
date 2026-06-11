@@ -557,6 +557,7 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "latex_header_includes",
     "max_iterations",
     "iteration_cap_rationale",
+    "web_search",
 }
 
 # Default iteration cap. The override floor mirrors the deck skill's
@@ -1055,6 +1056,32 @@ class BriefDocument(BaseModel):
                   slide 4 preamble drop), reviewer identified memo-revise
                   can close it; founder follow-ups for source-side lift
                   (Dims 3/5/6) are tracked separately at issue X.
+    web_search
+        Optional consumer-opt-in autonomous web literature search for
+        the ``pub`` skill's ``pub-litsearch`` / ``pub-review`` commands
+        (issue #424). Strict bool: ``true`` enables web search; absent /
+        ``false`` / ``None`` are all equivalent and leave the commands
+        byte-identical to their default no-web behavior. Non-bool
+        values (including YAML strings like ``"true"`` and the integers
+        ``0``/``1``) are rejected at parse time with a field-path
+        message — a silently-coerced truthy string must not flip an
+        anti-hallucination posture.
+
+        The per-thread ``<thread>/BRIEF.md`` frontmatter is the primary
+        carrier of this knob (search appetite is per-paper); this
+        document-entry key is the post-#295 project-model equivalent so
+        a project BRIEF declaring the knob does not trip the STRICT
+        unknown-key rejection. Every web-discovered citation must still
+        pass the resolver-verified-or-dropped contract via
+        ``anvil/lib/cite.py::resolve()`` — see
+        ``anvil/skills/pub/commands/pub-litsearch.md``.
+
+        Example::
+
+            documents:
+              - slug: q3-method
+                artifact_type: pub
+                web_search: true
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1079,6 +1106,7 @@ class BriefDocument(BaseModel):
     latex_header_includes: Optional[str] = Field(default=None)
     max_iterations: Optional[int] = Field(default=None)
     iteration_cap_rationale: Optional[str] = Field(default=None)
+    web_search: Optional[bool] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -1885,6 +1913,32 @@ def _validate_max_iterations(raw: Any, field_path: str) -> Optional[int]:
     return raw
 
 
+def _validate_web_search(raw: Any, field_path: str) -> Optional[bool]:
+    """Validate a raw ``web_search`` value (issue #424).
+
+    Strict bool, following the :func:`_validate_max_iterations` strict-
+    type precedent: ``None`` short-circuits (the field is optional and
+    absent ≡ ``false``); a real YAML boolean passes through; anything
+    else — including the strings ``"true"`` / ``"yes"`` and the
+    integers ``0`` / ``1`` — raises ``ValueError`` with a field-path
+    message. The knob opts a thread into autonomous web literature
+    search for ``pub-litsearch`` / ``pub-review``, relaxing an anti-
+    hallucination posture, so a silently-coerced truthy value is worse
+    than a loud parse failure.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, bool):
+        raise ValueError(
+            f"BRIEF.{field_path} must be a boolean; got "
+            f"{type(raw).__name__}: {raw!r} — suggested fix: write "
+            f"`web_search: true` (YAML boolean, unquoted) to enable "
+            f"opt-in web literature search, or remove the key to keep "
+            f"the default no-web behavior."
+        )
+    return raw
+
+
 def _validate_paired_iteration_cap_override(
     max_iterations: Optional[int],
     iteration_cap_rationale: Optional[str],
@@ -2074,6 +2128,11 @@ def _normalize_documents(
             field_path=f"documents[{i}].iteration_cap_rationale",
         )
 
+        web_search = _validate_web_search(
+            entry.get("web_search"),
+            field_path=f"documents[{i}].web_search",
+        )
+
         # Paired-override validation runs after the per-field validators
         # so the cross-field error names both keys with already-normalized
         # values (e.g., whitespace-only rationale → None → "missing").
@@ -2097,6 +2156,7 @@ def _normalize_documents(
                 latex_header_includes=latex_header_includes,
                 max_iterations=max_iterations,
                 iteration_cap_rationale=iteration_cap_rationale,
+                web_search=web_search,
             )
         except ValidationError as exc:
             raise ValueError(
