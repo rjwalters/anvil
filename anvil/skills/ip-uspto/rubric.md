@@ -60,6 +60,14 @@ The vision rubric (`anvil-ip-uspto-vision-v1`, /25, dv1–dv5) is a **disjoint c
 
 The vision pass is optional: a thread whose figurer produced only illustrator **stubs** (no rendered `fig-*.svg` / `fig-*.png`) has nothing for the vision critic to look at, and the critic skips without writing a scorecard. Threads with rendered drawings (TikZ mode, or illustrator output dropped into `drawings/`) SHOULD have a vision pass before finalize.
 
+## Adversarial critic — findings-only (optional sibling)
+
+The optional, opt-in `ip-uspto-adversary` critic (`commands/ip-uspto-adversary.md`, issue #434) is the skill's second non-standard critic shape: a **zero-dimension, findings-only** scorecard. Where the vision critic owns a disjoint co-rubric (dv1–dv5), the adversary owns **no dimension at all** — it attacks the application (§103 obviousness combinations over supplied prior art + AAPA, design-arounds, §112(a) enablement-hole challenges) rather than verifying it, so it has nothing to score. Its `_summary.md` carries all nine main-rubric dimension rows with score `null` and its substance lives entirely in `findings.md` and the critical-flag block.
+
+Aggregation needs no special case: the reviser's mean-of-non-null rule (`anvil/lib/critics.py::aggregate`) means an all-null scorecard contributes to no per-dimension mean, while its findings join the deduped union and its critical flags are OR'd with every other critic's. An adversary critical flag (complete design-around with no dependent fallback; enablement hole gutting an independent claim's full asserted scope; §103 combination with overwhelming KSR motivation) **short-circuits the verdict to block** exactly like a §101/§112 flag.
+
+Despite scoring nothing, the adversary sibling's `_meta.json` still stamps `scorecard_kind: "machine-summary"` plus the issue #346 rubric-version fields (`rubric_id: "anvil-ip-uspto-v2"`, `rubric_total: 45`, `advance_threshold: 39`) — the stamp records which rubric's flag semantics and threshold regime the sibling participates in. The critic is **not in the default critic set**; operators enable it per-thread via `<thread>/.anvil.json`'s `critics` array.
+
 ## Scoring guidance
 
 For each dimension owned, the critic assigns an integer between 0 and 5. A short justification accompanies each score (1–3 sentences pointing to specific evidence: spec section, claim number, figure number).
