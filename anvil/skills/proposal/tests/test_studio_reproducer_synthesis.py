@@ -32,7 +32,7 @@ shape the synthesizer must produce on that canary:
    actual severity per ``proposal-synthesize.md`` §"Compose each Gap"
    step 8 — three contributing findings, max-across-contributors rule.
 5. **``rubric_dimensions`` includes 6.** The 12LP+ canary case touches
-   the proposal /40 rubric's substrate dimension.
+   the proposal /44 rubric's substrate dimension.
 6. **``gaps.json`` validates against the schema.** Final ``GapList``
    round-trips through ``model_validate(model_dump(...))``.
 

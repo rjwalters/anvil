@@ -136,7 +136,7 @@ ip-uspto-prior-art adaptive-rf-filter
 # → adaptive-rf-filter.1.{review,s101,s112,claims,priorart}/
 
 ip-uspto-revise adaptive-rf-filter
-# → adaptive-rf-filter.2/ (assuming first draft scores <35)
+# → adaptive-rf-filter.2/ (assuming first draft scores <39)
 
 ip-uspto-pre-flight adaptive-rf-filter
 # → adaptive-rf-filter.2.preflight/

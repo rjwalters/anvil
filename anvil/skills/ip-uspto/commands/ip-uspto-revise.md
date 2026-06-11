@@ -22,18 +22,18 @@ This is the canonical "N parallel critics, one reviser" pattern from anvil's des
 
 ### Path A: convergence (ADVANCE)
 
-If aggregate ≥35/40 AND no unresolved critical flag, write a marker file to the current version directory and exit without producing a new version:
+If aggregate ≥39/45 AND no unresolved critical flag, write a marker file to the current version directory and exit without producing a new version:
 
 ```
 <thread>.{N}/
-  _revise-result.md      "READY_FOR_AUDIT — aggregate <total>/40, no critical flags, see <thread>.<N>.<critics>/ for detail"
+  _revise-result.md      "READY_FOR_AUDIT — aggregate <total>/45, no critical flags, see <thread>.<N>.<critics>/ for detail"
 ```
 
 Update `<thread>.{N}/_progress.json` with `phases.revise.state = done`, `phases.revise.result = "advance"`, `phases.revise.completed = <ISO>`. Do **not** increment the version.
 
 ### Path B: revision required
 
-If aggregate <35 OR any unresolved critical flag, write the next version:
+If aggregate <39 OR any unresolved critical flag, write the next version:
 
 ```
 <thread>.{N+1}/
@@ -61,23 +61,23 @@ If aggregate <35 OR any unresolved critical flag, write the next version:
    - Compare the discovered tag set to the configured critic set (from `<thread>/.anvil.json` or default). If any configured critic is missing, abort with an error: "configured critic <tag> has no sibling at version <N>; run it before revising."
    - Optional siblings beyond the configured set (e.g., consumer-added critics) are included if present and `done`.
 5. **Aggregate scorecards**:
-   - For each rubric dimension (1..8), gather the non-null scores from each critic's `_summary.md` per-dimension scorecard.
+   - For each rubric dimension (1..9), gather the non-null scores from each critic's `_summary.md` per-dimension scorecard.
    - Per-dimension aggregate score = arithmetic mean of non-null contributions, rounded to one decimal place for reporting (but kept full-precision for the threshold check).
    - Total = sum of per-dimension means.
    - Critical flag aggregate = OR of every critic's `flagged` boolean.
 6. **Decide path**:
-   - If `total >= 35.0` AND `critical_flag_aggregate == false` → Path A (ADVANCE).
+   - If `total >= 39.0` AND `critical_flag_aggregate == false` → Path A (ADVANCE).
    - Otherwise → Path B (REVISE).
 
 ### Path A: write the advance marker
 
 7a. Write `<thread>.{N}/_revise-result.md` containing:
    - Header: `READY_FOR_AUDIT`.
-   - Aggregate score: `<total>/40`.
+   - Aggregate score: `<total>/45`.
    - Per-dimension breakdown.
    - Per-critic links to `_summary.md`.
 8a. Update `<thread>.{N}/_progress.json`: `phases.revise.state = done`, `phases.revise.result = "advance"`, `phases.revise.completed = <ISO>`.
-9a. Report: `Revise: acme-widget.2 → READY_FOR_AUDIT (aggregate 36.4/40, no critical flags). Next: ip-uspto-audit acme-widget.`
+9a. Report: `Revise: acme-widget.2 → READY_FOR_AUDIT (aggregate 40.4/45, no critical flags). Next: ip-uspto-audit acme-widget.`
 
 ### Path B: produce the next version
 

@@ -6,7 +6,7 @@ USPTO non-provisional utility patent application drafting skill. The most comple
 
 - **Artifact**: USPTO non-provisional utility patent application — specification, claims, abstract, drawings, formal sections per 37 CFR.
 - **Pattern**: `intake → inventorship → draft → (review + s101 + s112 + claims + priorart) → revise → pre-flight → loop → audit → finalize`.
-- **Rubric**: 8 dimensions × 5 = /40, threshold ≥35, §101 and §112 critical-flag short-circuit.
+- **Rubric**: 9 dimensions × 5 = /45, threshold ≥39, §101 and §112 critical-flag short-circuit.
 - **Renderer**: LaTeX via the shipped `anvil-uspto.cls` class. PDFs produced by `pdflatex`.
 - **Drawings**: stub descriptions for a human illustrator by default (v0); TikZ scaffolding behind a future flag.
 
@@ -36,7 +36,7 @@ USPTO non-provisional utility patent application drafting skill. The most comple
               └────────────┬──────────────────┘
                            ▼
               ┌────── ip-uspto-revise ─────┐
-              │  aggregate ≥35 + no flag?  │
+              │  aggregate ≥39 + no flag?  │
               │  → READY_FOR_AUDIT          │
               │  otherwise → thread.{N+1}/  │
               └────────────┬────────────────┘
@@ -123,7 +123,7 @@ A typical patent application converges in 2–4 revisions. The default `max_iter
 ## Where to start reading
 
 1. `SKILL.md` — frontmatter, state machine, command dispatch.
-2. `rubric.md` — 8-dimension rubric and critic ownership.
+2. `rubric.md` — 9-dimension rubric and critic ownership.
 3. `commands/ip-uspto.md` — portfolio orchestrator (the entry point an operator runs).
 4. `commands/ip-uspto-draft.md` — the heart of the skill (what the drafter does).
 5. `commands/ip-uspto-revise.md` — the convergence loop and critic aggregation.

@@ -1,6 +1,6 @@
 ---
 name: deck-narrative
-description: Narrative-arc critic for the deck skill. Reads the deck end-to-end as a single argument and scores rubric dims 1 (narrative arc) and 7 (ask specificity).
+description: Narrative-arc critic for the deck skill. Reads the deck end-to-end as a single argument and scores rubric dims 1 (narrative arc), 7 (ask specificity), and 9 (rhetorical economy).
 ---
 
 # deck-narrative — Narrative-arc critic
@@ -15,8 +15,9 @@ This critic evaluates the deck as a **single story** rather than slide-by-slide.
 
 - **1 — Narrative arc** (weight 6) — the deck flows from problem → solution → why-now → why-us → ask as a single argument.
 - **7 — Ask specificity** (weight 5) — round size, use of funds, runway-to-milestone are concrete and follow from the setup.
+- **9 — Rhetorical economy** (weight 4) — could a busy investor extract the ask in 90 seconds; are slides 18+ load-bearing; could the same arc reach the ask in fewer slides.
 
-Total ownership: 11/40 (the highest-leverage 11 points in the rubric).
+Total ownership: 15/44 (the highest-leverage 15 points in the rubric).
 
 Other rubric dimensions are scored by other critics and remain `null` in this critic's `_summary.md`.
 
@@ -33,7 +34,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 
 ```
 <thread>.{N}.narrative/
-  _summary.md       8-dim partial scorecard (dims 1 + 7 scored; others null) + critical-flag bool
+  _summary.md       9-dim partial scorecard (dims 1 + 7 + 9 scored; others null) + critical-flag bool
   findings.md       Itemized findings (severity, slide ref or sequence ref, rationale, suggested fix)
   comments.md       Sequence-level commentary (transitions, missing bridges, slide-order issues)
   _meta.json        { "critic": "narrative", "role": "deck-narrative.md", ... }
@@ -62,13 +63,17 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    - Runway-to-milestone framing? ("$3M gets us to $5M ARR over 18 months", not just "$3M for 18 months runway").
    - Does the ask in deck.md match the ask in BRIEF.md? If not, flag — drafter or brief is out of sync.
    - **Critical flag — `Absent ask`**: trigger if any of round size / use of funds / runway-to-milestone is missing entirely, OR if the ask is so vague it gives the investor permission to say "interesting, keep me posted."
-7. **Identify additional findings**:
+7. **Evaluate rhetorical economy** (Dim 9, weight 4):
+   - Could a busy investor extract the ask in 90 seconds?
+   - Are slides 18+ load-bearing? Could the same arc reach the ask in fewer slides?
+   - Decks lose to bloat hardest of any skill — a 30-slide deck is fatal regardless of per-slide quality. Score against `rubric.md` dim 9.
+8. **Identify additional findings**:
    - Missing logical bridges between slides (specific examples).
    - Slides that don't earn their place (could be cut without weakening the argument).
    - Slides that should be added (e.g., missing competitive-positioning slide makes the differentiation claim float).
    - Speaker-notes that contradict slide content (a sign the drafter is hedging).
    - Stubs and TODOs left over from the draft (e.g., `[TODO: traction number from brief]`).
-8. **Write `_summary.md`**:
+9. **Write `_summary.md`**:
    ```markdown
    # Narrative critic summary
 
@@ -84,14 +89,15 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
        "5_traction_proof":           null,
        "6_team_credibility":         null,
        "7_ask_specificity":          { "score": 4, "weight": 5 },
-       "8_design_polish":            null
+       "8_design_polish":            null,
+       "9_rhetorical_economy":       { "score": 3, "weight": 4 }
      },
      "critical_flag": false,
      "critical_flag_notes": []
    }
    ```
    ```
-9. **Write `findings.md`**:
+10. **Write `findings.md`**:
    ```
    ## Findings (narrative)
 
@@ -99,7 +105,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    2. **[minor]** Slide 10 (Team) sits between Business model (Slide 9) and Financials (Slide 11); the team intro lands cold after a pricing table. Suggested fix: add a transitional speaker-notes line ("having shown how revenue works, here is the team that will execute it") rather than reordering — Team's canonical slot is Slide 10.
    3. **[major]** Slide 12 (Ask): "Raising $3M" but no breakdown. Suggested fix: add use-of-funds bullet (40% eng / 30% GTM / 20% hires / 10% runway) and runway-to-milestone framing.
    ```
-10. **Write `comments.md`** (sequence-level, not slide-level):
+11. **Write `comments.md`** (sequence-level, not slide-level):
     ```
     ## Slide order
 
@@ -117,8 +123,8 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 
     12 slides (within target range 10–15). Slide 13 appendix optional and not included; recommend adding 1-2 appendix slides with detailed unit economics for follow-up Q&A.
     ```
-11. **Update `_progress.json`** and `_meta.json` inside the staging dir (finished: <ISO>). The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.narrative.tmp/` → `<thread>.{N}.narrative/`. The final-named dir only ever exists in **complete** form.
-12. **Report**: one-line status (e.g., `Narrative critic on acme-seed.1 → acme-seed.1.narrative/ (dims 1+7: 9/11; 3 findings)`).
+12. **Update `_progress.json`** and `_meta.json` inside the staging dir (finished: <ISO>). The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.narrative.tmp/` → `<thread>.{N}.narrative/`. The final-named dir only ever exists in **complete** form.
+13. **Report**: one-line status (e.g., `Narrative critic on acme-seed.1 → acme-seed.1.narrative/ (dims 1+7+9: 12/15; 3 findings)`).
 
 ## Idempotence and resumability
 

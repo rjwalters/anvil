@@ -24,7 +24,7 @@ A single command that an operator (or orchestrating agent) runs to see the state
 2. Group by slug. For each slug, identify:
    - The latest `N` for which `<slug>.{N}/` exists.
    - Which sibling critic dirs exist at that `N`.
-   - The verdict (advance/block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present.
+   - The verdict (advance/block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present.
    - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or from `<slug>/.anvil.json` if the per-thread override is set).
 3. Compute the state-machine position per thread using the table in `SKILL.md`.
 4. Recommend the next command per thread:
@@ -51,8 +51,8 @@ Print a markdown table to stdout:
 ```
 | Thread        | Latest | State    | Score | Iter | Next                          |
 |---------------|--------|----------|-------|------|-------------------------------|
-| quiet-place   | .2     | REVIEWED | 30/40 | 2/4  | installation-revise quiet-place |
-| cloud-chamber | .3     | READY    | 35/40 | 3/4  | (terminal)                    |
+| quiet-place   | .2     | REVIEWED | 32/44 | 2/4  | installation-revise quiet-place |
+| cloud-chamber | .3     | READY    | 38/44 | 3/4  | (terminal)                    |
 | new-piece     | -      | EMPTY    | -     | 0/4  | installation-draft new-piece  |
 ```
 

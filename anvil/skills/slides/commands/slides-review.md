@@ -171,7 +171,7 @@ When a new `<thread>.{N+1}/` is produced by `slides-revise`, the orchestrator ru
 ## Notes for the reviewer agent
 
 - **Be honest, not encouraging.** The skill is not "polish the deck." It is "would this talk hold up in front of the declared audience for the declared time slot?" Score accordingly.
-- **Trust the auditor and rehearser.** Pull their flags in verbatim; do not re-score the dimensions they own. The reviewer scores all 8 dimensions, but the audit/density/time flags themselves are upstream — propagate them.
+- **Trust the auditor and rehearser.** Pull their flags in verbatim; do not re-score the dimensions they own. The reviewer scores all 9 dimensions, but the audit/density/time flags themselves are upstream — propagate them.
 - **Pedagogy beats polish.** A clear plain slide beats a beautiful confusing one. Score Dimension 2 before Dimension 5.
 - **Notes matter for talks.** Every slide needs a notes file with substantive content; perfunctory or empty notes are a Dimension 7 failure.
 - **Comments should be actionable.** "Tighten this slide" is not useful. "Slide 7 has 8 bullets — split into two slides at the architecture / data-flow boundary" is useful.

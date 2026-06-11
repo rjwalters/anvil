@@ -38,7 +38,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 6. **Read inputs**:
    - Prior version's `main.tex`, `refs.bib`, `figures/`.
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
-   - `<thread>.{N}.review/_review.json` (canonical generic /40 scorecard) via `anvil.lib.critics.load_review`.
+   - `<thread>.{N}.review/_review.json` (canonical generic /44 scorecard) via `anvil.lib.critics.load_review`.
    - `<thread>.{N}.review/_review.venue.json` IF present — the venue advisory overlay scorecard. Load via the same `load_review` (both files use the existing `Review` schema in `anvil/lib/review_schema.py`; no new shape). The venue file's findings and critical_flags ARE actionable for the reviser, but a venue critical flag does NOT independently force another revise iteration (the convergence gate is computed from the generic file's verdict only).
    - `<thread>.{N}.audit/` if present: `citation-audit.md`, `numerical-audit.md`, `flags.md`.
    - `<thread>.{N}.vision/` if present: `_review.json` (`kind=vision`) via `anvil.lib.critics.load_review`. Vision findings target rendered-only figure/table/equation defects and are resolved at the figure source or LaTeX structure, not the prose (see the D6 note under "Notes for the reviser agent").
@@ -62,7 +62,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - Verify every `\cite{key}` in the new `main.tex` resolves before marking the phase done.
 10. **Write `changelog.md`**: a markdown table mapping each critic note to the change made.
 
-    Label each entry's `Source` column with both the sibling dir and the **source rubric**: `generic` for entries originating in the generic /40 `_review.json`, `venue:<slug>` for entries from `_review.venue.json`, and `audit` / `litsearch` for the corresponding sibling dirs. This lets a reader see at a glance which rubric flagged which issue — important because the venue overlay is advisory only and a reader may wish to weight venue-origin entries differently.
+    Label each entry's `Source` column with both the sibling dir and the **source rubric**: `generic` for entries originating in the generic /44 `_review.json`, `venue:<slug>` for entries from `_review.venue.json`, and `audit` / `litsearch` for the corresponding sibling dirs. This lets a reader see at a glance which rubric flagged which issue — important because the venue overlay is advisory only and a reader may wish to weight venue-origin entries differently.
 
     ```
     | Source                                       | Note                                    | Resolution                                  |

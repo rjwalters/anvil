@@ -27,7 +27,7 @@ A single command that an operator (or orchestrating agent) runs to see the state
 4. Group by slug. For each slug, identify:
    - The latest `N` for which `<slug>.{N}/` exists.
    - Which sibling critic dirs exist at that `N` (`.review/`, `.audit/`, `.promote/`).
-   - The verdict (advance/block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present.
+   - The verdict (advance/block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present.
    - The audit result (pass/fail, critical flags) from `<slug>.{N}.audit/verdict.md` if present.
    - Whether `<slug>.{N}.promote/receipt.md` exists (CUSTOMER-READY).
    - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or from `<slug>/.anvil.json` override).
@@ -62,8 +62,8 @@ Print a markdown table to stdout, grouped by project:
 
 | Thread          | Latest | State            | Review | Audit  | Iter | Next                                    |
 |-----------------|--------|------------------|--------|--------|------|-----------------------------------------|
-| findings        | .3     | CUSTOMER-READY   | 37/40  | pass   | 3/4  | (terminal — delivered 2026-04-12)       |
-| recommendations | .2     | REVIEWED+AUDITED | 33/40  | pass   | 2/4  | report-revise acme-q2/recommendations   |
+| findings        | .3     | CUSTOMER-READY   | 41/44  | pass   | 3/4  | (terminal — delivered 2026-04-12)       |
+| recommendations | .2     | REVIEWED+AUDITED | 36/44  | pass   | 2/4  | report-revise acme-q2/recommendations   |
 | follow-up       | .1     | DRAFTED          | -      | -      | 1/4  | report-review + report-audit (parallel) |
 
 ## Project: beta-audit (Beta Inc., Security Audit)
@@ -80,7 +80,7 @@ If any thread is in `AUDITED` state awaiting promotion, surface that explicitly:
 ```
 ## Awaiting promotion (human acknowledgment required)
 
-- acme-q2/recommendations.3 — 36/40 review, audit pass, ready for report-promote
+- acme-q2/recommendations.3 — 40/44 review, audit pass, ready for report-promote
 ```
 
 ## Notes

@@ -1,9 +1,10 @@
 # Rubric scoring shape and convergence logic
 
 Every anvil skill ships a `rubric.md` with weighted dimensions whose
-sum is the rubric's declared `total`. The shipped v0 skills use either
-**/40 (8 dimensions)** or **/44 (9 dimensions, dim 9 *Rhetorical
-economy*)** — both shapes are valid and the lib is total-agnostic. This
+sum is the rubric's declared `total`. The shipped skills use
+**/44 (9 dimensions, dim 9 *Rhetorical economy*)** or **/45 (9
+dimensions, the two ip skills)**; legacy /40 (8-dimension) reviews
+remain valid on disk and the lib is total-agnostic. This
 snippet documents the SHAPE only — every skill picks its own dimension
 names, weights, threshold, and total. The lib does not impose a
 canonical dimension list (every observed skill has a different one)
@@ -40,8 +41,8 @@ A skill rubric MAY:
 For skills picking a new threshold, the observed v0 pattern anchors
 near `threshold ≈ round(total × 0.82)` — that yields `≥33/40` and
 `≥36/44` as natural anchors and matches the canary's "high quality"
-advance bar. The actual shipped thresholds (`≥32/40`, `≥35/40`,
-`≥35/44`) sit close to this anchor; the skill's declared `threshold`
+advance bar. The actual shipped thresholds (`≥35/44`, `≥39/44`,
+`≥39/45`) sit close to this anchor; the skill's declared `threshold`
 is the source of truth at runtime — the anchor is guidance only.
 
 ## Observed thresholds across v0 skills
@@ -386,7 +387,7 @@ inverse.
 This is **opt-in**, not mandatory. Skills that don't produce sourced
 artifacts (`anvil:deck`, `anvil:slides`) leave them out entirely.
 Skills that do (`anvil:pub`, `anvil:report`, `anvil:memo`,
-`anvil:ip-uspto`) may name two of their eight dimensions accordingly.
+`anvil:ip-uspto`) may name two of their nine dimensions accordingly.
 The lib does not enforce or detect this naming — it documents the
 convention so the eventual citation auditor critic can populate
 identifiable per-dimension scores per the existing partial-scorecard

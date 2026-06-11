@@ -25,7 +25,7 @@ A single command that an operator (or orchestrating agent) runs to see the state
    - Whether `<slug>.0.outline/outline.md` exists within the thread root.
    - The latest `N > 0` for which `<slug>.{N}/` exists within the thread root.
    - Which sibling critic / phase dirs exist at that `N` (`review`, `audit`, `rehearse`, `handout`).
-   - The verdict (advance/block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present.
+   - The verdict (advance/block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present.
    - The audit flag from `<slug>.{N}.audit/verdict.md` if present.
    - The density and time flags from `<slug>.{N}.rehearse/timing.md` and `density.md` if present.
    - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or from `<slug>/.anvil.json` if the per-thread override is set).
@@ -59,8 +59,8 @@ Print a markdown table to stdout:
 ```
 | Thread                | Latest | State              | Score | Flags          | Iter | Next                                |
 |-----------------------|--------|--------------------|-------|----------------|------|-------------------------------------|
-| kdd-2026-keynote      | .2     | REVIEWED           | 28/40 | density        | 2/4  | slides-revise kdd-2026-keynote      |
-| intro-to-anvil        | .3     | READY+AUDITED      | 34/40 | -              | 3/4  | slides-rehearse intro-to-anvil      |
+| kdd-2026-keynote      | .2     | REVIEWED           | 30/44 | density        | 2/4  | slides-revise kdd-2026-keynote      |
+| intro-to-anvil        | .3     | READY+AUDITED      | 38/44 | -              | 3/4  | slides-rehearse intro-to-anvil      |
 | q3-arch-review        | .0.outline | OUTLINED       | -     | -              | 0/4  | slides-draft q3-arch-review         |
 | internals-deep-dive   | -      | EMPTY              | -     | -              | 0/4  | slides-outline internals-deep-dive  |
 ```

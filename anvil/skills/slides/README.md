@@ -52,7 +52,7 @@ Run `slides` (with no arguments, from a portfolio directory) for status of all t
 
 - `slides-outline <thread>` — pre-draft narrative shaping (optional)
 - `slides-draft <thread>` — produces the next version directory
-- `slides-review <thread>` — scores against the 8-dim /40 rubric
+- `slides-review <thread>` — scores against the 9-dim /44 rubric
 - `slides-audit <thread>` — **mandatory** technical fact-check
 - `slides-rehearse <thread>` — deterministic density + time-budget check
 - `slides-revise <thread>` — consumes all critic siblings, produces next version
@@ -64,7 +64,7 @@ Run `slides` (with no arguments, from a portfolio directory) for status of all t
 ```
 anvil/skills/slides/
   SKILL.md           Skill frontmatter, state machine, directory layout, lib-sharing candidates
-  rubric.md          8-dim /40 scoring schema, three critical-flag rules
+  rubric.md          9-dim /44 scoring schema, three critical-flag rules
   README.md          This file
   commands/          One file per lifecycle command (see list above)
   templates/
