@@ -248,7 +248,7 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 
 - `voice.md` (optional) — Speaker voice and style guidance the drafter reads in addition to its base prompt (e.g., academic-formal vs. industry-casual).
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or tune dimension weights for a specific venue.
-- `templates/anvil-slides-theme.css` (optional override) — Replace the default Marp theme. The default ships in this skill at `templates/anvil-slides-theme.css`.
+- `templates/anvil-slides-theme.css` (optional override) — Replace the default Marp theme. The default ships in this skill at `templates/anvil-slides-theme.css`. Consumers porting an existing brand identity (e.g., a LaTeX beamer `.sty`) start from the starter template at `anvil/lib/marp/brand-theme-starter.css` and the porting recipe at `anvil/lib/snippets/brand-theme-porting.md` (beamer-concept mapping table, registration, render-gate + vision validation).
 - `templates/anvil-slides.cls` (Beamer escape hatch) — Drops in a Beamer class for LaTeX-required venues; the consumer's `voice.md` must also instruct the drafter to emit `.tex` instead of `.md`.
 - `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted.
 

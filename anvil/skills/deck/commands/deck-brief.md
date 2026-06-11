@@ -44,6 +44,7 @@ target_close: "2026-Q3"
 target_investors: ["industrial automation seed funds", "deep-tech generalists"]
 imagery_policy: deterministic-only  # one of: generative-eligible | consumer-provided | deterministic-only
 imagery_style: editorial-photography  # OPTIONAL preset key (style preset library lands in Phase 1C / #133)
+theme: acme-brand  # OPTIONAL consumer Marp theme name; default anvil-deck when absent
 ---
 ```
 
@@ -60,6 +61,10 @@ When the field is omitted entirely from the frontmatter, the brief is treated as
 #### `imagery_style` (optional)
 
 Preset key naming the visual register the generative pipeline should target (e.g., `editorial-photography`, `technical-illustration`). Defined in Phase 1C of Epic #130 (issue #133 — style preset library). Only meaningful when `imagery_policy == generative-eligible`; ignored otherwise. Absent in v0 of this field — operators who set it before #133 ships should treat the value as advisory documentation only.
+
+#### `theme` (optional, default `anvil-deck`)
+
+Marp theme name (the `@theme` marker of a registered theme CSS) the drafter copies into the generated `deck.md` frontmatter `theme:` line (see `deck-draft.md` step 7). When absent, the drafter uses the shipped default (`theme: anvil-deck`) — existing briefs behave exactly as before. Setting the key only names the theme; the consumer must still register the CSS at `.anvil/skills/deck/templates/<their-theme>.css` and pass it via `--theme-set` on the render line. The porting recipe for brand themes (e.g., from a LaTeX beamer `.sty`) lives at `anvil/lib/snippets/brand-theme-porting.md`.
 
 Required sections:
 
