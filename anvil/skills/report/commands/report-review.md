@@ -71,7 +71,7 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
    - **Else if `<thread>.{N}/report.pdf` mtime is OLDER than `<thread>.{N}/report.md` mtime**: append a Dimension 7 finding with severity `major`, rationale `"Rendered deliverable is stale — report.md was modified after report.pdf was built. The PDF the recipient would see does not reflect the current source."`, evidence_span `"<thread>.{N}/report.pdf (mtime: <ISO>) older than <thread>.{N}/report.md (mtime: <ISO>)"`, suggested_fix `"Re-run report-figures to refresh the deliverable"`. Cap Dimension 7's score at 2/4.
    - **Else (PDF exists and is fresher than source)**: no finding. Dimension 7 scoring proceeds normally from the markdown source.
    - This check does NOT read PDF content — that is `report-vision`'s territory.
-   - The check does NOT set a `critical_flag` — `major` severity at the rubric-cap level is the right calibration. A missing/stale PDF affects ADVANCE via the rubric total (capped Dim 7 ≤ 2/4 contributes ≤ 2 to the /40 total), not via critical-flag short-circuit. The reviewer can still substantively evaluate the markdown.
+   - The check does NOT set a `critical_flag` — `major` severity at the rubric-cap level is the right calibration. A missing/stale PDF affects ADVANCE via the rubric total (capped Dim 7 ≤ 2/4 contributes ≤ 2 to the /44 total), not via critical-flag short-circuit. The reviewer can still substantively evaluate the markdown.
 
 5. **Score each dimension** (1–9 per rubric, /44 total, customer-facing weights):
    - Assign an integer between 0 and the dimension's weight.

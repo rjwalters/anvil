@@ -75,11 +75,11 @@ EMPTY → INTAKE_DONE → INVENTORSHIP_DONE → DRAFTED → REVIEWED → REVISED
 | `REVIEWED` | All configured critic siblings (`<thread>.{N}.<tag>/`) at the latest `N` are `done` |
 | `PRE_FLIGHT_PASSED` | `<thread>.{N}.preflight/_summary.md` records `passed: true` (or all blockers were waived) |
 | `REVISED` | A `<thread>.{N+1}/` exists after prior critic siblings + pre-flight at `<thread>.{N}` |
-| `READY` | Aggregate score from critic siblings ≥35/40 AND no critical flag at latest `N` |
+| `READY` | Aggregate score from critic siblings ≥39/45 AND no critical flag at latest `N` |
 | `AUDITED` | `<thread>.{N}.audit/_summary.md` records `passed: true` alongside a `READY` version |
 | `FINALIZED` | `<thread>.final/_manifest.json` exists with all required submission artifacts referenced |
 
-Thresholds: **≥35/40 advances** (legal/customer-facing artifact per anvil's threshold table). Any §101 critical flag OR §112 critical flag short-circuits regardless of total score — block until addressed. Other critic critical flags follow the same short-circuit rule.
+Thresholds: **≥39/45 advances** (legal/customer-facing artifact per anvil's threshold table). Any §101 critical flag OR §112 critical flag short-circuits regardless of total score — block until addressed. Other critic critical flags follow the same short-circuit rule.
 
 Iteration cap: default `max_iterations: 5`. Configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json`. Exceeding the cap marks the thread `BLOCKED` and requires human review.
 
@@ -132,7 +132,7 @@ Every critic directory contains:
 
 ```
 <thread>.{N}.<tag>/
-  _summary.md         Scorecard (8-dim /40 partial — critic only fills dimensions it owns) + critical flag boolean
+  _summary.md         Scorecard (9-dim /45 partial — critic only fills dimensions it owns) + critical flag boolean
   findings.md         Itemized findings, each with: severity, location (file:section), rationale, suggested fix
   _meta.json          { critic: <tag>, role: <which role md>, started: <iso>, finished: <iso>, model: <hint>, schema_version: 1, scorecard_kind: "machine-summary" }
 ```
@@ -320,7 +320,7 @@ The schema is documented inline here for v0. There is no separate `schemas/` dir
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 USPTO scoring schema, the ≥35 advance threshold, and the §101/§112 critical-flag short-circuit policy. The optional `ip-uspto-vision` critic owns a **separate drawing-vision rubric subset** (dv1–dv5, /25) documented in the same file — it critiques the rendered drawings only (legibility, line weight/contrast, label placement, figure-number visibility, cross-reference accuracy) and ships its scorecard directly as `_review.json` (canonical `kind=vision` schema) rather than the `_summary.md`/`findings.md` machine-summary shape the source-side critics use; both are discovered and aggregated uniformly by `anvil/lib/critics.py`.
+See `rubric.md` for the 9-dimension /45 USPTO scoring schema, the ≥39 advance threshold, and the §101/§112 critical-flag short-circuit policy. The optional `ip-uspto-vision` critic owns a **separate drawing-vision rubric subset** (dv1–dv5, /25) documented in the same file — it critiques the rendered drawings only (legibility, line weight/contrast, label placement, figure-number visibility, cross-reference accuracy) and ships its scorecard directly as `_review.json` (canonical `kind=vision` schema) rather than the `_summary.md`/`findings.md` machine-summary shape the source-side critics use; both are discovered and aggregated uniformly by `anvil/lib/critics.py`.
 
 ## USPTO-specific phases
 

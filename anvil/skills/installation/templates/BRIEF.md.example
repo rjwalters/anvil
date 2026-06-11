@@ -16,7 +16,7 @@ participatory: true           # false → Ritual Act / Consent / Safety sections
 
 A short statement of what this brief is and what the drafter should produce: a
 concept proposal (`installation.tex`) compiling under XeLaTeX, following the
-11-section template, scoring against the 8-dimension rubric.
+11-section template, scoring against the 9-dimension rubric.
 
 ## Premise (section 1)
 

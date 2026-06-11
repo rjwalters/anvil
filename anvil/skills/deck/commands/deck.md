@@ -27,7 +27,7 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    - Whether `<slug>/BRIEF.md` exists.
    - The latest `N` for which `<slug>.{N}/deck.md` exists within the thread root.
    - Which sibling critic dirs exist at that `N` (glob `<slug>.{N}.*/` within the thread root).
-   - The aggregated verdict (advance / block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present, augmented by other critic `_summary.md` files at the same `N`.
+   - The aggregated verdict (advance / block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present, augmented by other critic `_summary.md` files at the same `N`.
    - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or `<slug>/.anvil.json` if the per-thread override is set). Also read `metadata.iteration_cap_rationale` from the version dir — non-null indicates a valid paired override is in effect (per `SKILL.md` §"State machine" → "Per-thread override contract"). The orchestrator surfaces the rationale (truncated to ~80 chars with a trailing `…` when longer) in the portfolio table's `Iter` column so the operator sees *why* this thread is exceptional in the portfolio view — e.g. `4/6 (override: Well-conditioned thread: trajectory v1→v4 monotonically improving…)`.
    - Whether `<slug>.{N}/deck.pdf` exists (required for `deck-design` to evaluate; flagged as a gap if absent).
 3. Compute the state-machine position per thread using the table in `SKILL.md`.
@@ -60,11 +60,11 @@ Print a markdown table to stdout:
 ```
 | Thread          | Latest | State        | Score   | Iter                                              | Critics Present     | Next                              |
 |-----------------|--------|--------------|---------|---------------------------------------------------|---------------------|-----------------------------------|
-| acme-seed       | .2     | REVIEWED     | 32/40   | 2/4                                               | review,nar,mkt,des  | deck-revise acme-seed             |
-| beta-bridge     | .3     | READY        | 36/40   | 3/4                                               | all                 | (terminal) — optionally audit     |
+| acme-seed       | .2     | REVIEWED     | 35/44   | 2/4                                               | review,nar,mkt,des  | deck-revise acme-seed             |
+| beta-bridge     | .3     | READY        | 40/44   | 3/4                                               | all                 | (terminal) — optionally audit     |
 | gamma-series-a  | -      | BRIEF_DONE   | -       | 0/4                                               | -                   | deck-draft gamma-series-a         |
 | delta-board     | .1     | DRAFTED      | -       | 1/4                                               | -                   | deck-figures → 4 critics parallel |
-| aldus           | .5     | REVIEWED     | 35/40   | 5/6 (override: Well-conditioned thread: traje…)   | review,nar,mkt,des  | deck-revise aldus                 |
+| aldus           | .5     | REVIEWED     | 38/44   | 5/6 (override: Well-conditioned thread: traje…)   | review,nar,mkt,des  | deck-revise aldus                 |
 ```
 
 Follow the table with:

@@ -16,7 +16,7 @@ This critic verifies the market case the deck makes. It computes TAM/SAM/SOM ari
 - **3 — Market size credibility** (weight 5)
 - **4 — Solution differentiation** (weight 5)
 
-Total ownership: 10/40. Other dimensions are scored by other critics and remain `null` in this critic's `_summary.md`.
+Total ownership: 10/44. Other dimensions are scored by other critics and remain `null` in this critic's `_summary.md`.
 
 ## Inputs
 
@@ -33,7 +33,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 
 ```
 <thread>.{N}.market/
-  _summary.md       8-dim partial scorecard (dims 3 + 4 scored; others null) + critical-flag bool
+  _summary.md       9-dim partial scorecard (dims 3 + 4 scored; others null) + critical-flag bool
   findings.md       Itemized findings (severity, slide ref, rationale, suggested fix)
   comments.md       Slide-level commentary (market slide, competition slide)
   tam-recompute.md  (Optional) Independent recomputation of TAM/SAM/SOM showing the critic's working
@@ -164,7 +164,8 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
        "5_traction_proof":           null,
        "6_team_credibility":         null,
        "7_ask_specificity":          null,
-       "8_design_polish":            null
+       "8_design_polish":            null,
+       "9_rhetorical_economy":       null
      },
      "critical_flag": false,
      "critical_flag_notes": []

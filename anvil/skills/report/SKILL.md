@@ -39,7 +39,7 @@ reports/
       _progress.json               Phase state for this version
       changelog.md                 (revisions only) Maps prior critic notes to changes
     <thread>.1.review/             Reviewer output for version 1 (read-only)
-      verdict.md                   Decision (advance / block) + total /40
+      verdict.md                   Decision (advance / block) + total /44
       scoring.md                   Per-dimension scores
       comments.md                  Line-level comments
     <thread>.1.audit/              Auditor output for version 1 (read-only, REQUIRED by default)
@@ -72,13 +72,13 @@ EMPTY → DRAFTED → REVIEWED+AUDITED → REVISED → … → READY → AUDITED
 | `AUDITED-PARTIAL` | `<thread>.{N}.audit/verdict.md` exists for the latest `N` (without `.review/`) — transient; not advance-eligible |
 | `REVIEWED+AUDITED` | BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` exist for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `REVIEWED+AUDITED` state at `N` |
-| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` (score ≥35) AND latest `<thread>.{N}.audit/verdict.md` records `pass: true` AND no unresolved critical flag in either sibling |
+| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` (score ≥39) AND latest `<thread>.{N}.audit/verdict.md` records `pass: true` AND no unresolved critical flag in either sibling |
 | `AUDITED` | Same as `READY` for this skill — the term `AUDITED` is the standard anvil terminal state; report reaches it once both critic siblings clear |
 | `CUSTOMER-READY` | `<thread>.{N}.promote/receipt.md` exists for an `AUDITED` version |
 
 **Why "REVIEWED+AUDITED" rather than running them serially?** Both siblings consume the same `<thread>.{N}/` and write to disjoint paths — they are pure parallel critics in the "N parallel critics, one reviser" sense. Sequential execution would let the auditor read reviewer notes (a sometimes-useful signal: "reviewer praised a finding that is factually wrong"), but it sacrifices parallelism without a clear win. v0 runs them in parallel; revisit after first real use (see Open questions in #8).
 
-**Threshold**: ≥35/40 (the customer-facing tier; higher than the ≥32/40 used by `anvil:memo`). Any critical flag in EITHER `.review/` or `.audit/` short-circuits regardless of total — block until addressed.
+**Threshold**: ≥39/44 (the customer-facing tier; higher than the ≥35/44 used by `anvil:memo`). Any critical flag in EITHER `.review/` or `.audit/` short-circuits regardless of total — block until addressed.
 
 **Iteration cap**: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root.
 
@@ -185,7 +185,7 @@ The canonical `_progress.json` schema, read-merge-write recipe, and crash recove
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 scoring schema, the ≥35 advance threshold, the critical-flag short-circuit policy, and the auditor-specific findings format.
+See `rubric.md` for the 9-dimension /44 scoring schema, the ≥39 advance threshold, the critical-flag short-circuit policy, and the auditor-specific findings format.
 
 ## Output format
 
@@ -237,7 +237,7 @@ The patterns that recurred vs `anvil:memo` (#3) — input for #10's framework ex
 |---|---|---|
 | Versioned dirs `<thread>.{N}/` | ✓ | — |
 | Sibling critic dirs `.review/`, `.audit/` | ✓ (structure) | Both REQUIRED by default (memo: review only, audit optional) |
-| 8-dimension /40 rubric | ✓ (shape) | Different weights + ≥35 threshold (memo: ≥32) |
+| 9-dimension /44 rubric | ✓ (shape) | Different weights + ≥39 threshold (memo: ≥35) |
 | `_progress.json` per dir, validate-by-file | ✓ | + `phases.audit`, `phases.promote` |
 | Iteration cap (default 4) | ✓ | — |
 | Resume-by-deleting-partial-output | ✓ | — |

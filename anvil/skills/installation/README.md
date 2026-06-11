@@ -7,10 +7,10 @@ Experiential / installation artwork — one-of-a-kind placed art whose value is 
 | File | What it is |
 |---|---|
 | `SKILL.md` | Frontmatter + artifact contract + state machine. Read this first. |
-| `rubric.md` | 8-dimension /40 scorecard. ≥32 advances. Three critical-flag conditions. |
+| `rubric.md` | 9-dimension /44 scorecard. ≥35 advances. Three critical-flag conditions. |
 | `commands/installation.md` | Portfolio orchestrator. Run from a portfolio dir to see thread state. |
 | `commands/installation-draft.md` | Drafter. Brief → `installation.tex` (XeLaTeX) by filling the template. |
-| `commands/installation-review.md` | Reviewer. Scores the 8 dims → `.review/` sibling (verdict/scoring/comments). |
+| `commands/installation-review.md` | Reviewer. Scores the 9 dims → `.review/` sibling (verdict/scoring/comments). |
 | `commands/installation-revise.md` | Reviser. Aggregates ALL critic siblings → next version + `changelog.md`. |
 | `commands/installation-figures.md` | Figurer. Catalogs/renders figures into `figures/`; stub-by-default for author-supplied artwork. |
 | `templates/anvil-installation.cls` | LaTeX class (XeLaTeX): Helvetica Neue + fallback, amber accent, `callout` + `metricbox`. |
@@ -25,7 +25,7 @@ Experiential / installation artwork — one-of-a-kind placed art whose value is 
 
 This skill is built by composing two existing skills:
 
-- **`anvil:memo`** — the lifecycle, state machine, and `rubric.md` format reference. Memo is markdown-only (no LaTeX), so it supplies the *process* shape: `draft → review → revise → figures`, `EMPTY → DRAFTED → REVIEWED → REVISED → … → READY`, ≥32 advance, critical-flag short-circuit, `max_iterations: 4`, the `verdict.md` / `scoring.md` / `comments.md` critic triple, and "no separate audit phase in v0."
+- **`anvil:memo`** — the lifecycle, state machine, and `rubric.md` format reference. Memo is markdown-only (no LaTeX), so it supplies the *process* shape: `draft → review → revise → figures`, `EMPTY → DRAFTED → REVIEWED → REVISED → … → READY`, ≥35 advance, critical-flag short-circuit, `max_iterations: 4`, the `verdict.md` / `scoring.md` / `comments.md` critic triple, and "no separate audit phase in v0."
 - **`anvil:pub` / `anvil:ip-uspto`** — the LaTeX template + figures + examples + tests machinery. These supply the `.cls` + `.tex.j2` template pattern, the structural-not-golden examples stance, and the figurer's "never invent data / stub-by-default" policy.
 
 ## Canonical worked instance
@@ -60,4 +60,4 @@ A concept proposal typically converges in 2–4 revisions. The default `max_iter
 
 - **`installation-audit`** — no separate audit phase in v0 (following `anvil:memo`); feasibility/fact-checking is rolled into the reviewer's buildability and ethics dimensions. An auditor sibling can be added later without changing the contract.
 - **`installation-vision`** — rendered-artifact review (renders, site plans, light studies) is valuable but depends on `anvil/lib/render.py` / `vision.py`, which are not yet on disk. Tracked as a follow-up to #30; the `kind: "vision"` discriminator and `rendered_artifact` field already exist in `anvil/lib/review_schema.py`, so the follow-up is unblocked schema-wise.
-- **No `anvil/lib/` changes.** The 8-dimension rubric uses the existing scorecard machinery; critic siblings keep `scorecard_kind: "human-verdict"`.
+- **No `anvil/lib/` changes.** The 9-dimension rubric uses the existing scorecard machinery; critic siblings keep `scorecard_kind: "human-verdict"`.
