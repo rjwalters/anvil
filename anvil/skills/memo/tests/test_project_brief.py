@@ -411,7 +411,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 11)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 12)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -437,6 +437,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.SLIDES,
             ArtifactType.PROPOSAL,
             ArtifactType.PUB,
+            ArtifactType.REPORT,
         ):
             self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
 
@@ -444,7 +445,9 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
         """Issue #394: the #386 guard is re-keyed onto an explicit set.
 
         Issue #408 grew the set with ``pub`` (research-paper threads —
-        the project-migrate BRIEF-synthesis registry gap)."""
+        the project-migrate BRIEF-synthesis registry gap); issue #432
+        grew it with ``report`` (the vN report-dir adoption mode's
+        inferred type — the same registry-gap shape)."""
         from project_brief import (  # noqa: PLC0415
             SKILL_IDENTITY_ARTIFACT_TYPES,
         )
@@ -457,6 +460,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.SLIDES,
                     ArtifactType.PROPOSAL,
                     ArtifactType.PUB,
+                    ArtifactType.REPORT,
                 }
             ),
         )
