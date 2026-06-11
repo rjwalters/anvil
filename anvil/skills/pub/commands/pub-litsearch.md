@@ -27,13 +27,37 @@ Pure-LLM literature search hallucinates citations. This role MUST NOT invent Bib
 1. Entries from `<thread>/refs.bib` (re-formatted for consistency if the author's `.bib` had issues).
 2. Entries from `<thread>/refs/` source material the author explicitly supplied (e.g., a Semantic Scholar export, a `.bib` file dumped from Zotero, a list of titles + authors + venues + years in `BRIEF.md`).
 3. Entries the brief explicitly mentions (e.g., the brief says "compare against Smith et al. 2024, arXiv:2405.12345 — full BibTeX in refs/"). The role copies/formats — it does not autocomplete.
+4. **(only when `web_search: true` is set — issue #424)** Web-discovered entries that have passed the resolver-verified-or-dropped contract: the role extracted a DOI or arXiv ID from a live web-search hit AND `anvil/lib/cite.py::resolve()` returned a `BibRecord` for it. See "Opt-in web search" below. When the knob is absent or `false`, this source does not exist and the list above is exactly items 1–3 — behavior is byte-identical to the no-web contract.
 
 If the brief or the reviewer's comments say "there should be related work on X" and no source material exists on disk, the role surfaces the gap in `notes.md` for the author to fill manually (e.g., by running their own search tool and adding to `<thread>/refs/`). The role does NOT invent a plausible-sounding Smith et al. 2024.
+
+## Opt-in web search (`web_search: true`) — issue #424
+
+**Off by default.** When the `web_search` key is absent from the thread's BRIEF frontmatter, or set to `false`, NOTHING in this section fires and the command's behavior is byte-identical to the no-web contract above (mirroring the `--rescore-mode` byte-identical-when-unset precedent in `pub-review.md`). The "Critical constraint: do not invent citations" section stays in force in both modes — web search changes where candidates may COME FROM, never the bar for what may ENTER `candidates.bib`.
+
+**Knob locus.** `web_search: true` (a YAML boolean, not a string) in the per-thread `<thread>/BRIEF.md` frontmatter. In a post-#295 project layout, the equivalent carrier is the `web_search: true` key on the thread's `documents:` entry in the project `BRIEF.md` (recognized by `anvil/lib/project_brief.py` — document entries are STRICT, so the key is schema-validated as a strict bool). If both carriers are present, the per-thread frontmatter wins (more specific).
+
+**What the knob enables.** The role MAY run live academic web searches (driven by the brief's `claim_area` / `closest_prior_work`, the identified gaps, and — on a re-run — the reviewer's `related-work`-tagged comments) to discover candidate prior work the author did not supply.
+
+**Resolver-verified-or-dropped invariant.** Every web-discovered candidate is routed through the verification chokepoint at `anvil/lib/cite.py`:
+
+1. Extract an identifier from the search hit and parse it via `parse_identifier()` (DOI forms: `10.xxxx/yyyy`, `doi:...`, `https://doi.org/...`; arXiv forms: `2305.14325`, `arxiv:...`, `https://arxiv.org/abs/...`).
+2. Call `resolve()` on the identifier. The candidate may enter `candidates.bib` ONLY after `resolve()` returns a `BibRecord` (Crossref for DOIs, arXiv API for arXiv IDs; cache-first via `~/.cache/anvil/cite/`). Keys via `bib_key()`; formatting consistent with the lib's BibTeX emitter.
+3. Any failure to verify demotes the hit to a **lead** (see below), never a citation:
+   - `parse_identifier()` yields a `pmid` or `url` kind → `resolve()` raises `UnsupportedIdentifierError` in v0 → lead.
+   - `resolve()` raises `CiteResolutionError` after retry exhaustion → lead.
+   - No identifier extractable from the hit at all (title-only search result, dead link, paywall stub) → lead.
+
+No resolver hit, no BibTeX entry. The role MUST NOT hand-write a BibTeX entry from the search hit's rendered metadata — that path is exactly the hallucination vector the no-web contract exists to close.
+
+**Leads vs citations.** Unverified hits land in the `## Web leads (unverified)` section of `notes.md` (shape below). Leads carry no BibTeX key and MUST NOT be cited by the drafter or the reviser. The author promotes a lead to a citation by supplying a resolvable DOI / arXiv ID (in `BRIEF.md`, `refs/`, or `refs.bib`) and re-running litsearch.
+
+**Provenance.** Every verified web-discovered entry is recorded in the `notes.md` provenance table (shape below) so author-supplied vs web-verified entries stay auditable.
 
 ## Inputs
 
 - **Thread slug** (positional argument).
-- **Brief** (`<thread>/BRIEF.md`): freeform prose with optional YAML frontmatter. Recognized frontmatter keys include `claim_area`, `closest_prior_work`, `venue`. Unrecognized keys are passed through as context.
+- **Brief** (`<thread>/BRIEF.md`): freeform prose with optional YAML frontmatter. Recognized frontmatter keys include `claim_area`, `closest_prior_work`, `venue`, and `web_search` (boolean, default `false` — see "Opt-in web search" above; issue #424). Unrecognized keys are passed through as context.
 - **Reference material** (`<thread>/refs/**`): any supporting material the author has supplied. Treated as read-only context.
 - **Existing bibliography** (`<thread>/refs.bib`): if the author has started a bibliography, re-use it as the basis for `candidates.bib`.
 - **Re-run context** (re-run path only): the latest `<thread>.{N}/main.tex` (to understand current positioning) and `<thread>.{N}.review/comments.md` entries tagged `related-work` or `blocker:related-work`.
@@ -53,6 +77,8 @@ If the brief or the reviewer's comments say "there should be related work on X" 
 - **Confirmed coverage**: bullet list of related-work areas the supplied references cover adequately.
 - **Identified gaps**: bullet list of areas where the brief or the drafter would clearly benefit from additional citations but none were supplied. Each gap names the area precisely enough that the author can search for it ("recent results on noise robustness in transformer architectures, ~2023–2025"). **The role does not invent placeholder entries to fill these gaps** — it names the gap and stops.
 - **Re-run delta** (re-run path only): a short paragraph naming what changed since the previous litsearch (which review comments drove the re-run, which gaps were closed by author-supplied additions, which remain open).
+- **Web provenance** (`web_search: true` runs with at least one verified web discovery only): a markdown table mapping each web-verified `candidates.bib` entry to its verification trail — columns `bib key | identifier | resolver` (e.g., `vaswani2017attention | arXiv:1706.03762 | arxiv`). Entries originating from author-supplied material do NOT appear here; the table's absence-or-presence per key is what keeps author-supplied vs web-verified entries auditable.
+- **`## Web leads (unverified)`** (`web_search: true` runs with at least one unverified hit only): one entry per web-search hit that failed the resolver-verified-or-dropped contract, as a markdown table with columns `title | authors | year | URL as found | reason unresolved` (reason examples: `url-kind unsupported in v0 (UnsupportedIdentifierError)`, `pmid-kind unsupported in v0 (UnsupportedIdentifierError)`, `resolution failed after retries (CiteResolutionError)`, `no identifier extractable`). Leads have NO BibTeX key and MUST NOT be cited by the drafter or reviser. The author promotes a lead by supplying a resolvable DOI / arXiv ID. When the knob is absent or `false`, neither this section nor the provenance table is ever emitted — `notes.md` is byte-identical to the no-web contract.
 
 ### `candidates.bib`
 
@@ -76,7 +102,8 @@ The drafter is free to merge entries from `candidates.bib` into the version dir'
 3. **Initialize `_progress.json`**: `phases.litsearch.state = in_progress`, `phases.litsearch.started = <ISO>`.
 4. **Read inputs**: load `BRIEF.md`, enumerate `<thread>/refs/`, load `<thread>/refs.bib` if present. On re-run, also load `<thread>.{N}/main.tex` and `<thread>.{N}.review/comments.md`.
 5. **Build `candidates.bib`**: re-format author-supplied entries; do not invent. If the brief lists papers by title only, leave a `% TODO: needs BibTeX fields` comment per missing entry and surface in `notes.md` gaps.
-6. **Write `notes.md`**: positioning narrative + confirmed coverage + identified gaps + (re-run only) delta paragraph.
+5b. **Web search (conditional — `web_search: true` only; issue #424)**: when the knob resolves to `true` (per-thread BRIEF frontmatter, or the project-BRIEF document entry), run targeted live searches against the brief's claim area, the identified gaps, and (re-run path) the reviewer's `related-work`-tagged comments. For each hit, apply the resolver-verified-or-dropped invariant from the "Opt-in web search" section: extract identifier → `cite.resolve()` → on success append the `BibRecord` to `candidates.bib` (key via `bib_key()`) and record a provenance row; on `UnsupportedIdentifierError` / `CiteResolutionError` / no extractable identifier, record a `## Web leads (unverified)` row instead. When the knob is absent or `false`, this step DOES NOT fire — proceed directly from step 5 to step 6.
+6. **Write `notes.md`**: positioning narrative + confirmed coverage + identified gaps + (re-run only) delta paragraph + (web-search runs only) the web provenance table and the `## Web leads (unverified)` section per the structure above.
 7. **Update `_progress.json`**: `phases.litsearch.state = done`, `phases.litsearch.completed = <ISO>`.
 8. **Report**: print the path to the litsearch sibling and a one-line status (e.g., `Litsearch q3-method.0.litsearch/ (12 candidates, 3 gaps surfaced)`).
 

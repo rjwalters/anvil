@@ -177,6 +177,17 @@ See `rubric.md` for the 8-dimension /40 scoring schema (paper-tuned weights, rig
 - `notes.md` — discussion of how the paper positions against the related work the author already supplied, plus a list of **gaps** (named missing topics or specific known papers the brief mentioned but did not supply BibTeX for).
 - `candidates.bib` — entries that come from author-supplied refs (re-formatted for consistency) or that the role is **explicitly told** about in the brief. Entries from "I think there's a 2023 paper about X by someone named Smith" are forbidden — the role surfaces such gaps in `notes.md` for the author to fill manually (e.g., by pasting a Semantic Scholar export into `<thread>/refs/`).
 
+### Opt-in web search (`web_search: true`) — issue #424
+
+By default this skill runs **no autonomous web search** — the anti-hallucination posture above. A consumer can opt a thread in by setting `web_search: true` (a YAML boolean, default `false`) in the per-thread `<thread>/BRIEF.md` frontmatter; in a post-#295 project layout the equivalent carrier is the `web_search` key on the thread's `documents:` entry in the project `BRIEF.md` (schema-validated as a strict bool by `anvil/lib/project_brief.py`). When the knob is absent or `false`, `pub-litsearch` and `pub-review` are byte-identical to their default no-web behavior.
+
+When enabled:
+
+- **`pub-litsearch`** may run live academic web searches, under the **resolver-verified-or-dropped contract**: a web-discovered candidate enters `candidates.bib` ONLY after `anvil/lib/cite.py::resolve()` returns a `BibRecord` (Crossref for DOIs, arXiv API for arXiv IDs). No resolver hit, no BibTeX entry. Unresolvable hits (`pmid`/`url` identifier kinds — unsupported in v0, `CiteResolutionError` after retries, or no extractable identifier) become **leads** in the `## Web leads (unverified)` section of `notes.md` — never citations. Verified web discoveries get a provenance table row in `notes.md` (bib key → identifier → resolver) so author-supplied vs web-verified entries stay auditable. The drafter and reviser MUST NOT cite leads; the author promotes a lead by supplying a resolvable DOI / arXiv ID.
+- **`pub-review`** may run 3–5 targeted searches while scoring D4 (related-work positioning). The reviewer stays read-only with respect to citations: discovered identifiers land in `comments.md` as `related-work`-tagged leads recommending a `pub-litsearch` re-run, which centralizes the resolver verification in one command.
+
+See `commands/pub-litsearch.md` § "Opt-in web search" and `commands/pub-review.md` Inputs for the full contracts.
+
 **`pub-audit` (mandatory at READY).** Sharper than the generic auditor:
 1. Verify every `\cite{}` in `main.tex` resolves to a real entry in `refs.bib`.
 2. Spot-check that cited papers actually support the surrounding claim (the auditor reads `<thread>/refs/` for any author-supplied source PDFs / notes; for citations whose source is not on disk, the auditor flags them as "claim-support unverified — source not on disk" rather than fabricating a verification).
