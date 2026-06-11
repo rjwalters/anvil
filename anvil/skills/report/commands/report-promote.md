@@ -15,7 +15,7 @@ description: Promoter command — transitions an AUDITED report to CUSTOMER-READ
 
 The standard anvil state machine ends at `AUDITED`. For internal artifacts (like `anvil:memo`) that is sufficient — "the rubric cleared" and "the artifact is usable" are the same event. For customer-facing artifacts they are not:
 
-- **`AUDITED`** is a machine-checkable state: rubric ≥35, audit pass, no critical flags. The skill can determine this from on-disk evidence with no human input.
+- **`AUDITED`** is a machine-checkable state: rubric ≥39, audit pass, no critical flags. The skill can determine this from on-disk evidence with no human input.
 - **`CUSTOMER-READY`** is an act of judgment: a human (or explicitly-authorized approver) accepts liability for releasing this specific PDF, with this specific content, to this specific recipient. The skill cannot determine this without an external acknowledgment.
 
 Conflating them removes a useful kill-switch. A report can pass the rubric and still be inappropriate to deliver (recipient relationship changed, embargo period, follow-up question from the recipient that should be addressed before delivery, schedule slipped past delivery window). `report-promote` is where that judgment lands.
@@ -63,7 +63,7 @@ And updates `<project>/<thread>.{N}/_progress.json` with `phases.promote.state =
 
 ## Rubric clearance
 
-- Review verdict: <total>/40, advance: true, 0 critical flags
+- Review verdict: <total>/44, advance: true, 0 critical flags
 - Audit verdict: pass: true, 0 critical flags, <findings_count> claims audited
 - Prior-report cross-check: <pass | with-reconciliation | n/a — no prior reports>
 

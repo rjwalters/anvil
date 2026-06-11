@@ -94,7 +94,7 @@ The v0 skills split as follows:
 |---|---|---|---|
 | memo | no | n/a | Audit is documented in `critics.md` as an optional consumer-added sibling; the framework ships no `memo-audit` command. |
 | pub | yes (`pub-audit`) | mandatory | Citation resolution, claim-support spot-check, numerical audit, LaTeX compile verification. `READY` is not terminal — `AUDITED` is. |
-| report | yes (`report-audit`) | mandatory | Customer-facing; ≥35/40 threshold + audit. Subsequently promoted to `CUSTOMER-READY` via `report-promote`. |
+| report | yes (`report-audit`) | mandatory | Customer-facing; ≥39/44 threshold + audit. Subsequently promoted to `CUSTOMER-READY` via `report-promote`. |
 | deck | yes (`deck-audit`) | optional | Audit is recommended for fundraising decks (fabricated traction / market-math claims) but not required to reach `READY`. |
 | slides | yes (`slides-audit`) | mandatory | Density / timing / asset checks; combined with the rehearse + handout terminal phases. |
 | ip-uspto | yes (`ip-uspto-audit`) | mandatory (post-convergence) | Inventor name consistency, reference-numeral coherence, prior-art-admission checks. Runs only when a version is `READY_FOR_AUDIT`. |

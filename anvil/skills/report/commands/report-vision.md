@@ -15,7 +15,7 @@ The report PDF is paginated prose, not 16:9 slides, so the failure modes differ 
 
 ## Owned vision dimensions (four, scored /5 each, /20 total)
 
-This critic owns a separate **report vision rubric subset** alongside the report's main 8-dimension /40 rubric (`rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+This critic owns a separate **report vision rubric subset** alongside the report's main 9-dimension /44 rubric (`rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
 
 The rubric is composed from the framework `VisionDimension` / `VisionRubric` primitives in `anvil/lib/vision.py` — it does NOT use `default_vision_rubric()` (those six dims are deck-shaped: slide overflow, mathtext, slide density). The report rubric is built inline:
 

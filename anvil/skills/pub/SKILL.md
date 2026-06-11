@@ -38,7 +38,7 @@ A **paper thread** is a single research paper authored across one or more revisi
     _progress.json                Phase state for this version
     changelog.md                  (revisions only) Maps prior critic notes to changes
   <thread>.1.review/              Reviewer output for version 1 (read-only)
-    verdict.md                    Top-level decision (advance / block) + total /40
+    verdict.md                    Top-level decision (advance / block) + total /44
     scoring.md                    Per-dimension scores against the paper rubric
     comments.md                   Line-level comments keyed to main.tex sections
   <thread>.1.audit/               Fact / citation auditor critic sibling (read-only)
@@ -74,7 +74,7 @@ EMPTY → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag (in either `.review/` or `.audit/`) |
 | `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version AND `audit/_progress.json.audit == done` AND `flags.md` records no unresolved critical flag |
 
-Thresholds: **≥32/40** advances. **<32/40** requires revision. Any critical flag (from `.review/` OR `.audit/`) short-circuits regardless of total — block until addressed.
+Thresholds: **≥35/44** advances. **<35/44** requires revision. Any critical flag (from `.review/` OR `.audit/`) short-circuits regardless of total — block until addressed.
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). The cap is configurable per-thread by writing `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
@@ -92,11 +92,11 @@ The per-thread config supports the following optional fields:
 | Field | Type | Default | Effect |
 |---|---|---|---|
 | `max_iterations` | int | 4 | Iteration cap (see above). |
-| `venue` | string | none | Target venue slug. When set, `pub-review` also scores the paper against the matching venue YAML and writes `_review.venue.json` alongside `_review.json`. Advisory only; does not change the /40 gate. See "Venue overlays" below. |
+| `venue` | string | none | Target venue slug. When set, `pub-review` also scores the paper against the matching venue YAML and writes `_review.venue.json` alongside `_review.json`. Advisory only; does not change the /44 gate. See "Venue overlays" below. |
 
 ### Venue overlays (advisory)
 
-`anvil:pub` supports **venue-pinned advisory rubrics** in addition to the generic /40. When `<thread>/.anvil.json` declares a `venue`, the reviewer scores the paper against the matching venue YAML and writes the results as a second `_review.json`-shaped file (`_review.venue.json`) in the same `.review/` sibling dir. The venue overlay is **advisory only** — the generic /40 rubric remains the sole driver of the `advance` decision, preserving the framework-wide "/40 means the same thing across skills" invariant. See `rubric.md` for the convergence-gate semantics and `anvil/lib/snippets/rubric.md` for the framework-wide rule.
+`anvil:pub` supports **venue-pinned advisory rubrics** in addition to the generic /44. When `<thread>/.anvil.json` declares a `venue`, the reviewer scores the paper against the matching venue YAML and writes the results as a second `_review.json`-shaped file (`_review.venue.json`) in the same `.review/` sibling dir. The venue overlay is **advisory only** — the generic /44 rubric remains the sole driver of the `advance` decision, preserving the framework-wide "the skill's generic rubric is the sole advance gate" invariant. See `rubric.md` for the convergence-gate semantics and `anvil/lib/snippets/rubric.md` for the framework-wide rule.
 
 The Python-side schema and loader live in `anvil/lib/rubric.py` (`Rubric`, `load_rubric`, `discover_venue_rubric`).
 
@@ -120,7 +120,7 @@ Each YAML cites its public source in a header comment so the overlay can be upda
 
 Search precedence: per-thread > consumer-installed > skill-shipped. Both override tiers are consumer-controlled; the per-thread file is more specific and wins. Skill-shipped is the fallback.
 
-When `venue` is set but no matching YAML is found in any tier, the reviewer emits a stdout warning and proceeds with the generic rubric only. The review is not blocked by the missing venue overlay — the generic /40 gate continues to apply unchanged.
+When `venue` is set but no matching YAML is found in any tier, the reviewer emits a stdout warning and proceeds with the generic rubric only. The review is not blocked by the missing venue overlay — the generic /44 gate continues to apply unchanged.
 
 #### Adding a consumer venue
 
@@ -172,7 +172,7 @@ The canonical `_progress.json` schema, read-merge-write recipe, and crash recove
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 scoring schema (paper-tuned weights, rigor + evidence + citation hygiene = 17/40 ≈ 43%), the ≥32 advance threshold, and the critical-flag short-circuit policy. `rubric.md` also documents the **vision-owned dimensions** (`label_cropping`, `axis_legibility`, `palette_adherence`, `mathtext_artifacts`) scored by the optional `pub-vision` critic against the *rendered* PDF — these are an additive overlay (like the venue overlay), not part of the /40 gate.
+See `rubric.md` for the 9-dimension /44 scoring schema (paper-tuned weights, rigor + evidence + citation hygiene = 17/44 ≈ 38.6%), the ≥35 advance threshold, and the critical-flag short-circuit policy. `rubric.md` also documents the **vision-owned dimensions** (`label_cropping`, `axis_legibility`, `palette_adherence`, `mathtext_artifacts`) scored by the optional `pub-vision` critic against the *rendered* PDF — these are an additive overlay (like the venue overlay), not part of the /44 gate.
 
 ## Skill-specific phases
 

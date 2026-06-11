@@ -13,7 +13,7 @@ This critic exists because Anvil's markdown-source critics never *look at* the r
 
 ## Owned vision dimensions (six, scored /5 each, /30 total)
 
-This critic owns a separate **vision rubric subset** alongside the deck's main 8-dimension /40 rubric. The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+This critic owns a separate **vision rubric subset** alongside the deck's main 9-dimension /44 rubric. The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
 
 | Dim | Name | What it catches |
 |---|---|---|

@@ -213,7 +213,7 @@ The reviser (consuming all critic siblings at `<thread>.{N}/`) writes an aggrega
   verdict.md       (deck-review only — full reviewer verdict; specialist critics emit _summary.md instead)
   scoring.md       Per-dimension score + justification for owned dimensions
   comments.md      Slide-level comments keyed to deck.md slides (by slide number and heading)
-  _summary.md      8-dim partial scorecard (owned dims scored, others null) + critical flag bool
+  _summary.md      9-dim partial scorecard (owned dims scored, others null) + critical flag bool
   findings.md      Itemized findings: severity, slide ref, rationale, suggested fix
   _meta.json       { critic, role, started, finished, model }
   _progress.json   Phase state for this critic

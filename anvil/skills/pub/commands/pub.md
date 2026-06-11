@@ -25,7 +25,7 @@ A single command that an operator (or orchestrating agent) runs to see the state
    - The latest `N` for which `<slug>.{N}/` exists.
    - Whether `<slug>.0.litsearch/` exists (pre-draft).
    - Which sibling critic dirs exist at the latest `N` (`.review/`, `.audit/`, `.litsearch/`, ...).
-   - The verdict (advance/block, total /40, critical flags) from `<slug>.{N}.review/verdict.md` if present.
+   - The verdict (advance/block, total /44, critical flags) from `<slug>.{N}.review/verdict.md` if present.
    - The audit flags from `<slug>.{N}.audit/flags.md` if present.
    - The iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or from `<slug>/.anvil.json` if the per-thread override is set).
 3. Compute the state-machine position per thread using the table in `SKILL.md`.
@@ -56,8 +56,8 @@ Print a markdown table to stdout:
 ```
 | Thread          | Latest | State    | Score | Iter | Flags | Next                     |
 |-----------------|--------|----------|-------|------|-------|--------------------------|
-| q3-method       | .2     | REVIEWED | 28/40 | 2/4  | 0     | pub-revise q3-method     |
-| acme-bench-2026 | .3     | AUDITED  | 35/40 | 3/4  | 0     | (terminal)               |
+| q3-method       | .2     | REVIEWED | 30/44 | 2/4  | 0     | pub-revise q3-method     |
+| acme-bench-2026 | .3     | AUDITED  | 38/44 | 3/4  | 0     | (terminal)               |
 | arxiv-survey    | -      | EMPTY    | -     | 0/4  | -     | pub-litsearch arxiv-survey |
 ```
 

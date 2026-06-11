@@ -8,9 +8,9 @@ Per-artifact-type skills. Each subdirectory is one skill, registered as `anvil:<
 anvil/skills/<type>/
   SKILL.md           Frontmatter + skill prompt
   rubric.md          Review rubric with domain-specific weighted dimensions
-                     (most skills ship 8-dim /40; `anvil:memo` and `anvil:proposal`
-                     ship 9-dim /44 after issue #244's dim 9 *Rhetorical economy*
-                     addition — see each skill's `rubric.md` for the exact shape)
+                     (artifact-class skills ship 9-dim /44; the two ip skills
+                     ship 9-dim /45 — see each skill's `rubric.md` for the
+                     exact shape)
   commands/          Subcommands (draft, review, revise, audit, figures, ...)
     <type>-draft.md
     <type>-review.md

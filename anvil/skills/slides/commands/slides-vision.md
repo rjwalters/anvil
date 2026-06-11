@@ -13,7 +13,7 @@ This critic exists because the slides markdown-source critics (`slides-review`, 
 
 ## Owned vision dimensions (six, scored /5 each, /30 total)
 
-This critic owns a separate **vision rubric subset** alongside the slides skill's main 8-dimension /40 rubric (see `rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+This critic owns a separate **vision rubric subset** alongside the slides skill's main 9-dimension /44 rubric (see `rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
 
 | Dim | Name | What it catches | Most relevant slides rubric dim |
 |---|---|---|---|

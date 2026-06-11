@@ -38,13 +38,13 @@ A **deck thread** is a single pitch artifact (typically: one round, one ask) aut
       deck.pdf                 Rendered PDF (produced by deck-figures or at READY)
       _progress.json
     <thread>.1.review/         General reviewer output (read-only)
-      verdict.md               Top-level decision + total /40 + critical flags
+      verdict.md               Top-level decision + total /44 + critical flags
       scoring.md               Per-dimension scores (this critic fills owned dimensions only)
       comments.md              Slide-level comments keyed to deck.md
-      _summary.md              8-dim partial scorecard (other critics' dims = null) + critical flag
+      _summary.md              9-dim partial scorecard (other critics' dims = null) + critical flag
       findings.md              Itemized findings: severity, slide ref, rationale, suggested fix
       _meta.json               { critic, role, started, finished, model }
-    <thread>.1.narrative/      Narrative-arc critic (owns dims 1, 7)
+    <thread>.1.narrative/      Narrative-arc critic (owns dims 1, 7, 9)
     <thread>.1.market/         Market/TAM credibility critic (owns dims 3, 4)
     <thread>.1.design/         Visual/design critic (owns dim 8)
       slides/                  Per-slide PNGs rendered from deck.pdf (this critic only)
@@ -116,7 +116,7 @@ Every critic sibling under `<thread>.{N}.<tag>/` therefore declares its primary 
 
 ```
 <thread>.{N}.<tag>/                                    # for deck-narrative, deck-market, deck-design
-  _summary.md         8-dim partial scorecard (critic fills only owned dimensions; others = null) + critical flag
+  _summary.md         9-dim partial scorecard (critic fills only owned dimensions; others = null) + critical flag
   findings.md         Itemized findings: severity (blocker/major/minor/nit), slide ref, rationale, suggested fix
   _meta.json          { "critic": "<tag>", "role": "deck-<tag>.md", "started": <ISO>, "finished": <ISO>, "model": "<id>", "scorecard_kind": "machine-summary" }
 ```
@@ -125,10 +125,10 @@ The aggregator schema (both layers present):
 
 ```
 <thread>.{N}.review/                                   # the deck-review aggregator
-  verdict.md          Aggregated decision + total /40 + critical flags (primary deliverable)
+  verdict.md          Aggregated decision + total /44 + critical flags (primary deliverable)
   scoring.md          Per-dimension scorecard with justifications
   comments.md         Slide-level comments
-  _summary.md         8-dim partial scorecard (review owns dims 2, 5, 6; specialists fill others when aggregated)
+  _summary.md         9-dim partial scorecard (review owns dims 2, 5, 6; specialists fill others when aggregated)
   findings.md         Itemized findings owned by the general reviewer
   _meta.json          { ..., "scorecard_kind": "human-verdict" }   # primary intent
 ```
@@ -163,8 +163,8 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 
 **Thresholds** (deck is a customer-facing artifact per `lib/README.md`'s legal/customer-facing rule — a pitch deck is the founder's pitch to external capital):
 
-- **≥35/40** advances to `READY`.
-- **<35/40** requires revision.
+- **≥39/44** advances to `READY`.
+- **<39/44** requires revision.
 - **Any critical flag short-circuits** regardless of total. The four deck-specific critical flags are:
   1. **Fabricated traction** — a traction number (revenue, users, LOIs, pilots, design partners) not attested in the brief or refs.
   2. **Fabricated team credentials** — a bio claim (prior role, prior exit, degree, named hire) not attested in the brief or refs.
@@ -200,7 +200,7 @@ No upper bound is enforced — if an operator sets `max_iterations: 99` with a r
 | `deck-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/deck.md` and `.review/` / `.market/` market-substrate findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating |
 | `deck-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs/**`, `<thread>/assets/**`, AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also latest `<thread>.{N}/` + all `<thread>.{N}.*/` siblings (revise path is preferred via `deck-revise`) | `<thread>.{N+1}/deck.md` + `speaker-notes.md` + `figures/` + `_progress.json` |
 | `deck-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (uniform critic schema; also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
-| `deck-narrative <thread>` | narrative critic | latest `<thread>.{N}/deck.md` (full read, in order) | `<thread>.{N}.narrative/` (owns dims 1, 7) |
+| `deck-narrative <thread>` | narrative critic | latest `<thread>.{N}/deck.md` (full read, in order) | `<thread>.{N}.narrative/` (owns dims 1, 7, 9) |
 | `deck-market <thread>` | market critic | latest `<thread>.{N}/deck.md` + market exhibits + any `figures/src/*.csv` | `<thread>.{N}.market/` (owns dims 3, 4) |
 | `deck-design <thread>` | design critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.design/` (owns dim 8, source-side density) |
 | `deck-vision <thread>` | vision critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.vision/` (owns dim 8 rendered-side density + vision rubric v1–v6); produces canonical `_review.json` per #26 with `kind=vision`. See `commands/deck-vision.md` and `anvil/lib/vision.py`. |
@@ -348,7 +348,7 @@ The canonical `_progress.json` schema, read-merge-write recipe, and crash recove
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 scoring schema, the ≥35 advance threshold, and the four critical-flag conditions.
+See `rubric.md` for the 9-dimension /44 scoring schema, the ≥39 advance threshold, and the four critical-flag conditions.
 
 ## Defaults and overrides
 

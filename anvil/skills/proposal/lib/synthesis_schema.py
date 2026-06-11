@@ -181,8 +181,8 @@ class Gap(BaseModel):
     rubric_dimensions: List[int] = Field(
         default_factory=list,
         description=(
-            "Optional list of rubric dimension numbers (1-8 for the "
-            "proposal /40 rubric) the gap touches. Empty for "
+            "Optional list of rubric dimension numbers (1-9 for the "
+            "proposal /44 rubric) the gap touches. Empty for "
             "cross-cutting gaps. Lets downstream tooling (rhetorical-"
             "economy gates, rubric pressure mechanisms, scope-control "
             "filters) cross-reference gaps against rubric pressure."

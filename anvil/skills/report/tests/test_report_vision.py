@@ -270,7 +270,7 @@ def test_vision_review_shape_and_kind():
 
 # ---------------------------------------------------------------------------
 # Aggregation: the vision sibling discovers + aggregates cleanly alongside a
-# main-rubric critic that owns the report's 8 dims (vision puts those null).
+# main-rubric critic that owns the report's 9 dims (vision puts those null).
 # ---------------------------------------------------------------------------
 
 

@@ -22,7 +22,7 @@ If `<thread>.{N}/drawings/` contains only stubs (`drawing-descriptions.md` with 
 
 ## Owned vision dimensions (five, scored /5 each, /25 total)
 
-This critic owns a separate **ip-uspto drawing vision rubric subset** alongside the patent's main 8-dimension /40 rubric (`rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+This critic owns a separate **ip-uspto drawing vision rubric subset** alongside the patent's main 9-dimension /45 rubric (`rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
 
 The rubric is composed from the framework `VisionDimension` / `VisionRubric` primitives in `anvil/lib/vision.py` — it does **NOT** use `default_vision_rubric()` (those six dims are deck-shaped: slide overflow, mathtext, slide density). The ip-uspto drawing rubric is built inline:
 

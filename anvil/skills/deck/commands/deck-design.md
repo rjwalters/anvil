@@ -15,7 +15,7 @@ A markdown-source-only design critic is structurally weak — it can count bulle
 
 - **8 — Design polish** (weight 5)
 
-Total ownership: 5/40. Other dimensions remain `null` in this critic's `_summary.md`.
+Total ownership: 5/44. Other dimensions remain `null` in this critic's `_summary.md`.
 
 ## Inputs
 
@@ -32,7 +32,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 <thread>.{N}.design/
   slides/
     slide-01.png, slide-02.png, ...    Per-slide PNGs at presentation resolution (1920×1080 default)
-  _summary.md       8-dim partial scorecard (dim 8 scored; others null) + critical-flag bool
+  _summary.md       9-dim partial scorecard (dim 8 scored; others null) + critical-flag bool
   findings.md       Itemized findings (severity, slide ref, rationale, suggested fix)
   comments.md       Slide-level visual commentary
   _meta.json
@@ -105,7 +105,8 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
        "5_traction_proof":           null,
        "6_team_credibility":         null,
        "7_ask_specificity":          null,
-       "8_design_polish":            { "score": 4, "weight": 5 }
+       "8_design_polish":            { "score": 4, "weight": 5 },
+       "9_rhetorical_economy":       null
      },
      "critical_flag": false,
      "critical_flag_notes": []

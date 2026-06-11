@@ -182,12 +182,12 @@ advance.
 acme-seed.1/
 acme-seed.1.review/           # AGGREGATOR — emits both kinds; primary kind: human-verdict
   verdict.md                  # synthesized narrative
-  scoring.md                  # complete 8-dim table (mean of specialists + own observations)
+  scoring.md                  # complete 9-dim table (mean of specialists + own observations)
   comments.md
   _summary.md                 # machine-summary shape (for machine consumers)
   findings.md
   _meta.json   { "scorecard_kind": "human-verdict" }   # primary intent
-acme-seed.1.narrative/        # SPECIALIST — machine-summary (owns dims 1, 7)
+acme-seed.1.narrative/        # SPECIALIST — machine-summary (owns dims 1, 7, 9)
 acme-seed.1.market/           # SPECIALIST — machine-summary (owns dims 3, 4)
 acme-seed.1.design/           # SPECIALIST — machine-summary (owns dim 8)
 ```

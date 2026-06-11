@@ -40,9 +40,9 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    | `INTAKE_DONE` (brief but no inventorship) | `ip-uspto-inventorship <thread>` |
    | `INVENTORSHIP_DONE` (no draft yet) | `ip-uspto-draft <thread>` |
    | `DRAFTED` (no critics yet) | `ip-uspto-review <thread>` then `ip-uspto-101 <thread>` then `ip-uspto-112 <thread>` then `ip-uspto-claims <thread>` then `ip-uspto-prior-art <thread>` (or run in parallel) |
-   | `REVIEWED` (aggregate <35 OR critical flag, under iteration cap) | `ip-uspto-revise <thread>` |
-   | `REVIEWED` (aggregate <35 OR critical flag, AT iteration cap) | `BLOCKED — human review required` |
-   | `REVIEWED` (aggregate ≥35, no critical flag) | `ip-uspto-audit <thread>` (then `READY` → `AUDITED`) |
+   | `REVIEWED` (aggregate <39 OR critical flag, under iteration cap) | `ip-uspto-revise <thread>` |
+   | `REVIEWED` (aggregate <39 OR critical flag, AT iteration cap) | `BLOCKED — human review required` |
+   | `REVIEWED` (aggregate ≥39, no critical flag) | `ip-uspto-audit <thread>` (then `READY` → `AUDITED`) |
    | `REVISED` (pre-flight not yet run on the new version) | `ip-uspto-pre-flight <thread>` |
    | `PRE_FLIGHT_PASSED` | `ip-uspto-review <thread>` (and other critics) |
    | `READY` (audit not yet run) | `ip-uspto-audit <thread>` |
@@ -56,7 +56,7 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    - A critic sibling dir (`<slug>.{N}.<tag>/`) without a matching `<slug>.{N}/` — orphan; report.
    - A gap in version numbers (e.g., `<slug>.1/` and `<slug>.3/` with no `<slug>.2/`) — report.
    - A revised version `<slug>.{N+1}/` exists but `<slug>.{N}/` is missing one or more configured critic siblings — the revision was produced from an incomplete review pass; report as warning.
-   - `<slug>.{N}.audit/` exists but the underlying `<slug>.{N}/` is not `READY` (aggregate <35 or flagged) — audit was run prematurely; report.
+   - `<slug>.{N}.audit/` exists but the underlying `<slug>.{N}/` is not `READY` (aggregate <39 or flagged) — audit was run prematurely; report.
 
 ## Output format
 
@@ -65,10 +65,10 @@ Print a markdown table to stdout:
 ```
 | Thread        | Latest | State              | Score   | Critics done    | Iter | Next                              |
 |---------------|--------|--------------------|---------|-----------------|------|-----------------------------------|
-| acme-widget   | .2     | REVIEWED           | 32/40   | 5/5             | 2/5  | ip-uspto-revise acme-widget       |
-| beta-method   | .3     | READY              | 36/40   | 5/5             | 3/5  | ip-uspto-audit beta-method        |
+| acme-widget   | .2     | REVIEWED           | 35/45   | 5/5             | 2/5  | ip-uspto-revise acme-widget       |
+| beta-method   | .3     | READY              | 40/45   | 5/5             | 3/5  | ip-uspto-audit beta-method        |
 | gamma-device  | -      | INTAKE_DONE        | -       | -               | 0/5  | ip-uspto-inventorship gamma-device |
-| delta-system  | .5     | AUDITED            | 37/40   | 5/5             | 5/5  | ip-uspto-finalize delta-system    |
+| delta-system  | .5     | AUDITED            | 41/45   | 5/5             | 5/5  | ip-uspto-finalize delta-system    |
 ```
 
 Follow the table with an `## Anomalies` section if any were detected, and an `## Operator notes` section with any threads requiring human review (iteration cap reached, critical flag unresolved across multiple revisions, etc.).

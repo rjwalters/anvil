@@ -70,12 +70,12 @@ sizing or asynchronous SGD on heterogeneous clusters) and surface them in
 ## Acceptance test target
 
 Running the full lifecycle (`pub-draft` → `pub-figures` → `pub-review` →
-[optional `pub-revise` if rubric < 32/40] → `pub-audit`) on this brief should:
+[optional `pub-revise` if rubric < 35/44] → `pub-audit`) on this brief should:
 
 1. Produce a compilable `main.tex` + `refs.bib` in `<thread>.1/` (or `.2/`
    after one revision).
 2. Render at least one figure into `<thread>.{N}/figures/`.
 3. Pass the `pdflatex` + `bibtex` cycle with no unresolved `??` citations
    (audit phase verifies).
-4. Reach $\geq 32/40$ on the rubric in `<thread>.{N}.review/`.
+4. Reach $\geq 35/44$ on the rubric in `<thread>.{N}.review/`.
 5. Reach `AUDITED` state with zero critical flags in `<thread>.{N}.audit/`.

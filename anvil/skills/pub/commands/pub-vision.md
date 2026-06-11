@@ -15,7 +15,7 @@ This critic is a sibling of `pub-review` and `pub-audit` in the "N parallel crit
 
 ## Owned vision dimensions (subset of the shipped six, /20 total)
 
-This critic owns a **vision rubric subset** alongside the paper's main 8-dimension /40 rubric (`rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+This critic owns a **vision rubric subset** alongside the paper's main 9-dimension /44 rubric (`rubric.md`). The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
 
 The pub vision rubric is a **four-dimension subset** of the framework's shipped `DEFAULT_VISION_DIMENSIONS` (the six in `anvil/lib/vision.py`), composed by passing the relevant dims to `VisionRubric(dimensions=[...])`. The dropped two (`vertical_overflow`, `slide_density`) are slide-centric and do not apply to a paginated, reflowing paper. The four pub-owned dims, scored 0–5 each (/20 total):
 
@@ -170,7 +170,7 @@ This critic's `_review.json` is discovered by `anvil.lib.critics.discover_critic
 - Per-dim `critical=True` ORs across critics; non-empty `critical_flags` forces `Verdict.BLOCK`.
 - The `pub-revise` command (with no code changes) consumes the vision findings via the same discover-glob → aggregate pattern documented in `pub-revise.md`.
 
-The vision overlay is **additive evidence**, not a change to the /40 convergence gate: like the venue overlay, it contributes findings the reviser acts on. The generic 8-dimension `_review.json` from `pub-review` remains the sole driver of the `advance` decision; vision critical flags participate in the same critical-flag short-circuit the rubric already defines.
+The vision overlay is **additive evidence**, not a change to the /44 convergence gate: like the venue overlay, it contributes findings the reviser acts on. The generic 9-dimension `_review.json` from `pub-review` remains the sole driver of the `advance` decision; vision critical flags participate in the same critical-flag short-circuit the rubric already defines.
 
 See `anvil/lib/README.md` § "Rendered-artifact review (`kind: vision`)" for the worked example.
 

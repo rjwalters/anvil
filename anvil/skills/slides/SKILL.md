@@ -52,7 +52,7 @@ A **slides thread** is a single talk delivered to a specific audience in a speci
       _progress.json                 Phase state for this version
       changelog.md                   (revisions only) Maps prior critic notes to changes
     <thread>.1.review/               Reviewer output for version 1 (read-only)
-      verdict.md                     Top-level decision (advance / block) + total /40
+      verdict.md                     Top-level decision (advance / block) + total /44
       scoring.md                     Per-dimension scores against the slides rubric
       comments.md                    Slide-level comments keyed to slide numbers
       _progress.json
@@ -100,7 +100,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 | `REHEARSED` | `<thread>.{N}.rehearse/timing.md` exists for the latest AUDITED version |
 | `HANDOUT_GENERATED` | `<thread>.{N}.handout/handout.pdf` exists for the latest AUDITED+REHEARSED version |
 
-**Thresholds**: ≥32/40 advances. <32/40 requires revision. Any critical flag short-circuits regardless of total — block until addressed.
+**Thresholds**: ≥35/44 advances. <35/44 requires revision. Any critical flag short-circuits regardless of total — block until addressed.
 
 **Three critical-flag rules** (any one short-circuits):
 - **Audit flag** — auditor recorded any `wrong` verdict on a technical claim. Blocks regardless of score.
@@ -240,7 +240,7 @@ The skill prompt instructs the figurer to **never invent data** — only render 
 
 ## Rubric
 
-See `rubric.md` for the 8-dimension /40 scoring schema (talk-tuned weights), the ≥32 advance threshold, and the three critical-flag rules (audit / density / time).
+See `rubric.md` for the 9-dimension /44 scoring schema (talk-tuned weights), the ≥35 advance threshold, and the three critical-flag rules (audit / density / time).
 
 ## Defaults and overrides
 

@@ -124,7 +124,7 @@ pub-audit, slides-audit, report-audit.
 
 The reviser consumes these by reading the markdown narratives; no
 programmatic aggregation is required because each critic produces a
-complete (all-8-dimensions) scorecard.
+complete (all-9-dimensions) scorecard.
 
 ### `machine-summary`
 
@@ -134,7 +134,7 @@ appear as `null`. Files emitted:
 
 ```
 <thread>.{N}.<tag>/
-  _summary.md      Partial 8-dim scorecard (owned dims scored; others null) + critical-flag bool
+  _summary.md      Partial 9-dim scorecard (owned dims scored; others null) + critical-flag bool
   findings.md      Itemized findings (severity, location, rationale, suggested fix)
   _meta.json       { ..., "scorecard_kind": "machine-summary" }
   _progress.json
