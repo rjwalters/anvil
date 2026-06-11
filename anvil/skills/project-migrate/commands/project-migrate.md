@@ -17,6 +17,9 @@ post-#295 / post-#296 model.
 
 /anvil:project-migrate --enroll <file> [<file> ...]    # dry-run enrollment
     [--project <dir>] [--slug <slug>] [--artifact-type <type>] [--apply]
+
+/anvil:project-migrate --adopt-vn <dir>                # dry-run vN adoption
+    [--slug <slug>] [--artifact-type <type>] [--apply]
 ```
 
 `<project-dir>` is the project root: the directory that holds (or will hold)
@@ -36,6 +39,12 @@ mode**: it detects, plans, and prints, but writes nothing to disk.
 `.md` / `.tex` files into project threads. Enrollment runs through
 `orchestrate.run_enroll(...)` (dry-run by default, like every mode in
 this skill) — see §6 below.
+
+`--adopt-vn <dir>` selects **vN report-dir adoption mode** (issue #432
+Phase 1): it adopts a foreign `v{N}/` version-dir family (with
+`v{N}.review/`-style critic siblings) into the canonical
+`<project>/<slug>/<slug>.{N}/` shape. Adoption runs through
+`orchestrate.run_adopt_vn(...)` (dry-run by default) — see §7 below.
 
 ### 1. Detect current shape
 
@@ -191,6 +200,69 @@ Hard errors (plan-time, pre-mutation):
 - A BRIEF-less project root containing other thread-shaped dirs — run
   plain `project-migrate` on it first.
 - Empty derived slug (date-only or symbol-only stems) — pass `--slug`.
+
+### 7. vN report-dir adoption mode (`--adopt-vn`, issue #432 Phase 1)
+
+Adopts a foreign `v{N}` version-dir family — the sphere-survey report
+grammar (`projects/<proj>/reports/v3/` + `v3.review/` siblings) — into
+the canonical anvil shape:
+
+```
+/anvil:project-migrate --adopt-vn projects/acme/reports
+/anvil:project-migrate --adopt-vn projects/acme/reports --slug quarterly --apply
+```
+
+Call `orchestrate.run_adopt_vn(directory, slug=..., artifact_type=...,
+apply=...)`. The flow (one family per invocation):
+
+1. **Family scan**: `^v(\d+)$` dirs under `<dir>` are the family;
+   `v{N}.<tag>` sibling dirs (observed: `v{N}.review/`) rename
+   alongside their version dir. Version gaps are tolerated (per #408).
+   Stray non-versioned dirs — and orphan `v{N}.<tag>` sidecars whose
+   `v{N}` is absent — are left untouched and reported.
+2. **Project resolution**: walk up from `<dir>`'s parent looking for an
+   enclosing project BRIEF (bounded by the git repo root); else propose
+   `<dir>`'s parent as a new project root (starter BRIEF synthesized).
+3. **Slug**: `--slug` (must already be canonical — rejected, never
+   re-sanitized; #406 precedent) or the sanitized enclosing-dir name
+   (`reports` is grammar-valid as-is).
+4. **Renames**: `v{N}/` → `<project>/<slug>/<slug>.{N}/` and
+   `v{N}.<tag>/` → `<slug>.{N}.<tag>/` (`git mv` in-repo so history
+   follows). When `<slug>` equals the family dir's name (the default),
+   the renames are in-place. Bodies inside the version dirs are
+   recorded but **never renamed** (the #408 carve-out).
+5. **BRIEF write**: surgical textual append when an enclosing project
+   BRIEF exists (#406/#416 — never re-render an operator BRIEF);
+   starter synthesis with `# TODO(operator)` markers otherwise (#408).
+   Strict-validated post-write; rolled back on any parse failure. The
+   dry-run report previews the full proposed BRIEF through the same
+   render path as apply (byte-identical).
+6. **Artifact type**: `--artifact-type` validated against the two-tier
+   #394 registry; else inferred `report` WITH a `# TODO(operator)`
+   marker (the mode targets report dirs; nothing is guessed silently).
+7. **Idempotence**: re-running on an adopted tree finds no `v{N}`
+   family and is a successful no-op (even under `--apply`).
+
+Hard errors (plan-time, pre-mutation — the whole family aborts):
+
+- Minor-versioned oddballs (`v14.1`): refusal naming each offending dir
+  with a suggested manual target (the next free integer). A
+  `--renumber` escape hatch is deferred until canary friction demands
+  it.
+- Versioned critic-sidecar tags (`v3.review-v2`): refusal — renaming
+  would re-create a foreign name; tag vocabulary mapping (`--tag-map`)
+  is Phase 2.
+- Slug collision with a BRIEF entry or an on-disk path; target
+  `<slug>.{N}` already exists — suggest `--slug`.
+- Existing BRIEF that fails strict parsing — never modify a BRIEF we
+  can't parse.
+- A BRIEF-less project root containing other thread-shaped dirs — run
+  plain `project-migrate` on it first.
+
+Out of scope for Phase 1 (deferred to the issue #432 Phase 2
+follow-up): letter-family grammars (`{Project}.{Letter}.{N}`), the
+declarative `--tag-map` sidecar-vocabulary contract, and single-file
+`review.md` → three-file critic-sibling conversion.
 
 ## Output
 

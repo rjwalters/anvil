@@ -1312,7 +1312,10 @@ def apply_plan(plan: Plan, *, use_git: bool = True) -> ApplyResult:
     # is written for the SUCCEEDED subset even when other docs failed
     # (failed docs were rolled back to loose files; succeeded files are
     # moved and MUST be listed or strict validate_dirs parsing breaks).
-    if plan.shape == Shape.ENROLL:
+    # vN-adoption plans (issue #432) ride the same path: one document
+    # per family, brief_mode-dispatched append/synthesize write,
+    # strict post-write validation with rollback.
+    if plan.shape in (Shape.ENROLL, Shape.ADOPT_VN):
         _write_enroll_brief(plan, result)
         return result
 

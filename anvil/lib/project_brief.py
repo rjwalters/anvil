@@ -338,6 +338,7 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "slides",
     "proposal",
     "pub",
+    "report",
 )
 
 
@@ -392,6 +393,14 @@ class ArtifactType(str, Enum):
         rubric overlay. Registered so project-migrate's BRIEF
         synthesis can name pub-class ``.tex``-bodied threads instead
         of silently defaulting them to ``investment-memo``.
+    REPORT
+        Skill-identity value (#432): an ``anvil:report`` technical /
+        customer-facing report thread. Not a memo subtype — selects no
+        memo rubric overlay. Registered so project-migrate's vN
+        report-dir adoption (``--adopt-vn``) can name the adopted
+        thread's owning skill instead of silently defaulting to
+        ``investment-memo`` (the same registry-gap shape #408 closed
+        for ``pub``).
     """
 
     INVESTMENT_MEMO = "investment-memo"
@@ -405,6 +414,7 @@ class ArtifactType(str, Enum):
     SLIDES = "slides"
     PROPOSAL = "proposal"
     PUB = "pub"
+    REPORT = "report"
 
 
 # The memo-scoped subset of the registry: values that select a memo
@@ -428,7 +438,8 @@ MEMO_ARTIFACT_TYPES: frozenset = frozenset(
 
 
 # The skill-identity subset of the registry (issue #386, made explicit
-# under #394; ``pub`` added under #408): values that name which
+# under #394; ``pub`` added under #408; ``report`` added under #432):
+# values that name which
 # NON-memo skill owns a thread in a
 # shared project BRIEF. Memo's overlay dispatch
 # (`anvil/skills/memo/lib/rubric_overlays.py::select_overlay_for_thread`)
@@ -443,6 +454,7 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.SLIDES,
         ArtifactType.PROPOSAL,
         ArtifactType.PUB,
+        ArtifactType.REPORT,
     }
 )
 

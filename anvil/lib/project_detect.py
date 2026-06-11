@@ -163,6 +163,14 @@ class Shape(Enum):
         so apply / report dispatch can distinguish an enrollment plan
         (succeeded-subset BRIEF write, surgical append) from a
         whole-project migration plan.
+    ADOPT_VN
+        Plan-mode tag for vN report-dir adoption (issue #432) — NOT a
+        detected on-disk shape, following the ENROLL precedent.
+        ``detect_shape`` never returns it and ``_classify`` is
+        untouched; the adopt-vn planner
+        (project-migrate's ``lib/adopt_vn.py``) stamps it on the plan
+        so apply / report dispatch can route the BRIEF write through
+        the enroll-style append/synthesize path.
     UNKNOWN
         Directory is not recognizable as any of the above. Caller should
         treat as an error.
@@ -172,6 +180,7 @@ class Shape(Enum):
     POST_283_ANVIL_JSON = "post_283_anvil_json"
     PRE_283_CLASSIC = "pre_283_classic"
     ENROLL = "enroll"
+    ADOPT_VN = "adopt_vn"
     UNKNOWN = "unknown"
 
 
