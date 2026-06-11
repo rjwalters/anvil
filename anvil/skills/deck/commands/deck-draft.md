@@ -58,7 +58,7 @@ For a new thread, `N+1 == 1` → output is `<thread>/<thread>.1/`.
    - **Slide 13** (optional): Appendix — additional traction detail, technical architecture, FAQ slides.
 
    Subset / reorder as the brief indicates (e.g., partnership pitches skip traction/financials in favor of integration mock-ups). Document slide-order rationale in `speaker-notes.md`.
-7. **Write `deck.md`** at `<thread>.{N+1}/deck.md` using the Marp source format. Use `templates/deck.md.j2` as a scaffold. Marp slide separator is `---` on its own line; per-slide CSS via inline directives. Example:
+7. **Write `deck.md`** at `<thread>.{N+1}/deck.md` using the Marp source format. Use `templates/deck.md.j2` as a scaffold. Marp slide separator is `---` on its own line; per-slide CSS via inline directives. **Theme selection**: if the `BRIEF.md` frontmatter sets the optional `theme:` key (see `deck-brief.md` §`theme`), write that value as the frontmatter `theme:` line instead of the default `anvil-deck`; the consumer registers the named theme CSS per `anvil/lib/snippets/brand-theme-porting.md`. When the key is absent, use `theme: anvil-deck` exactly as before. Example:
    ```markdown
    ---
    marp: true

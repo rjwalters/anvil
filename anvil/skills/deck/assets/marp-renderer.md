@@ -235,6 +235,11 @@ For the worked two-column / figure-left + text-right idiom, see
 
 - `anvil/lib/marp/config.yml` — canonical Marp config (single source of
   truth for the renderer pin).
+- `anvil/lib/snippets/brand-theme-porting.md` — porting an existing
+  consumer brand (LaTeX beamer `.sty`) onto a Marp CSS theme: starter
+  template (`anvil/lib/marp/brand-theme-starter.css`), beamer-concept
+  mapping table, `--theme-set` registration, and validation via the
+  render gate + vision critic.
 - `anvil/lib/README.md` — "Marp renderer pin" section explains what is
   pinned and why each option is load-bearing.
 - `anvil/skills/deck/templates/deck.md.j2` — per-document frontmatter that
