@@ -19,7 +19,10 @@ A **paper thread** is a single research paper authored across one or more revisi
 ```
 <portfolio>/
   <thread>/                       Optional thread root with brief and reference material
-    BRIEF.md                      Optional structured or freeform brief (frontmatter + prose)
+    BRIEF.md                      Structured or freeform brief (frontmatter + prose); when absent,
+                                  pub-draft bootstraps one via an interactive interview
+                                  (non-interactive / --no-interview runs keep the fail-fast;
+                                  see commands/pub-draft.md § BRIEF bootstrap interview)
     refs/                         Optional reference material (datasets, prior drafts, transcripts)
     refs.bib                      Optional starter bibliography supplied by the author
   <thread>.0.litsearch/           Optional pre-draft literature-search sibling (read-only)
@@ -135,7 +138,7 @@ The "Area Chair ensemble" pattern published in AI-Scientist (Sakana, 2024) — m
 |---|---|---|---|
 | `pub` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
 | `pub-litsearch <thread>` | literature-search critic | `<thread>/BRIEF.md` (+ `<thread>/refs/`); for re-run, the latest `<thread>.{N}/main.tex` and any `.review/` notes about missing prior work | `<thread>.0.litsearch/` (initial) or `<thread>.{N}.litsearch/` (re-run) |
-| `pub-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs.bib` (if present), `<thread>/refs/`, AND any `<thread>.0.litsearch/` sibling | `<thread>.1/` with `main.tex` + `refs.bib` + `figures/` |
+| `pub-draft <thread>` | drafter | `<thread>/BRIEF.md` (bootstrapped via interview when absent + interactive; `--no-interview` keeps the fail-fast), `<thread>/refs.bib` (if present), `<thread>/refs/`, AND any `<thread>.0.litsearch/` sibling | `<thread>.1/` with `main.tex` + `refs.bib` + `figures/` (+ `<thread>/BRIEF.md` on the bootstrap path) |
 | `pub-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `pub-vision <thread>` | vision critic (rendered-artifact) | latest `<thread>.{N}/main.tex` rendered to `paper.pdf` + per-page PNGs | `<thread>.{N}.vision/` with `_review.json` (`kind=vision`) |
 | `pub-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
