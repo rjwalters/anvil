@@ -3,6 +3,12 @@ recipient: "Acme Corporation, Q2 Engagement"
 engagement_id: "ACME-2026-Q2"
 delivery_format: "pdf"             # pdf | latex | markdown
 confidentiality_class: "internal"  # public | internal | confidential | restricted
+customer: "acme"                   # OPTIONAL — cross-project customer-context slug.
+                                   # Resolves <customers_dir>/<slug>/context.yaml
+                                   # (default <repo_root>/customers/; override via
+                                   # .anvil/config.json key report.customers_dir).
+                                   # Omit the key entirely to leave the customer-
+                                   # context tier off (byte-identical behavior).
 prior_reports:
   - thread: findings
     final_version: 3

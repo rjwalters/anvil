@@ -115,6 +115,7 @@ recipient: "Acme Corporation, Q2 Engagement"
 engagement_id: "ACME-2026-Q2"
 delivery_format: "pdf"             # pdf | latex | markdown
 confidentiality_class: "internal"  # public | internal | confidential | restricted
+customer: "acme"                   # OPTIONAL — cross-project customer-context slug (see below)
 prior_reports:
   - thread: findings
     final_version: 3
@@ -139,6 +140,31 @@ auditor should keep in mind.)
 **Auditor use of `prior_reports`**: the auditor uses this list to cross-check the current draft for **contradictions with previously-delivered material**. Inconsistency across an engagement's report series is a critical-flag offense (see `rubric.md`, critical flag: "internal contradictions across the engagement").
 
 **Framework extraction note (per #10)**: per-project scoping is implemented inline by this skill. Other future skills (`pub` with multi-paper grant projects, `ip-uspto` with patent families) likely benefit from a parallel pattern. Candidate for `anvil/lib/project_scope.py` once a second consumer exists.
+
+## Cross-project customer context (opt-in, defaults off — issue #429)
+
+A customer relationship usually outlives any single project. The customer-context tier adds a locus **above** project level:
+
+```
+<repo_root>/customers/<slug>/
+  context.yaml        Human-owned: version-stamped (version: 1) NDA scope,
+                      export-control class, topics-to-avoid. Agents READ it;
+                      they never rewrite it. Template:
+                      templates/customer-context.template.yaml.
+  disclosures.jsonl   Machine-owned append-only delivery ledger — one JSON
+                      line per promoted report version. report-promote is
+                      the ONLY writer (promotion is the delivery event);
+                      report-draft and report-audit read it. Appends are
+                      idempotent on project/thread/version.
+```
+
+The default location is `<repo_root>/customers/` (customer context is *content*, not framework config); consumers may relocate it via the single optional `.anvil/config.json` key `report.customers_dir`. A project opts in with ONE optional `_project.md` frontmatter key: `customer: "<slug>"`.
+
+**Activation contract** (the #428/#449 pattern, exactly): no `customer:` key → every command behaves **byte-identically** to a pre-#429 install. A declared customer with a missing or malformed `context.yaml` keeps the tier ACTIVE — the breakage surfaces as a `major` finding directing the operator to create or fix the file (a broken declaration is a defect to surface, not an opt-out).
+
+**Consultation matrix**: `report-draft` loads the context advisorily (NDA scope + topics-to-avoid inform drafting; recent ledger entries extend prior-reports awareness across ALL the customer's projects); `report-review` and `report-audit` ENFORCE topics-to-avoid — a violating passage is a **critical flag** (audit-side identifier: `audit_disclosure_topic_violation`, one aggregated entry per the `audit_flags.py` convention; review-side twin defined in `rubric.md`); `report-audit` additionally cross-checks the draft against the ledger for cross-project disclosure consistency; `report-promote` appends the delivery record at promotion time. Deterministic helpers (customers-dir resolution, context load/validation, ledger IO, flag aggregation) live in `lib/customer_context.py`; topic matching itself is critic judgment, like the scope-creep flag.
+
+**Framework extraction note (per #10)**: skill-local until a second skill (likely `datasheet`, the other customer-facing class) needs the same store. The audience-class house-style knob (#450) will live in `context.yaml` (`audience_class:`) with a `_project.md` override — this tier creates the file it lives in.
 
 ## Command dispatch
 
