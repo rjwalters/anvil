@@ -16,7 +16,8 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
 ## Inputs
 
 - **Project + thread path** (positional argument): `<project>/<thread>`.
-- **Project context**: `<project>/_project.md` — recipient, engagement_id, voice_notes, confidentiality_class. The reviewer uses these to score tone & audience calibration (dimension 8) and to gauge appropriateness against the engagement scope.
+- **Project context**: `<project>/_project.md` — recipient, engagement_id, voice_notes, confidentiality_class, and the optional `customer` slug. The reviewer uses these to score tone & audience calibration (dimension 8) and to gauge appropriateness against the engagement scope.
+- **Customer context** (conditional — active iff `_project.md` declares `customer: "<slug>"`; issue #429): `<customers_dir>/<slug>/context.yaml`, loaded via `anvil/skills/report/lib/customer_context.py::load_context` (`<customers_dir>` defaults to `<repo_root>/customers/`; override via the `.anvil/config.json` key `report.customers_dir`). The reviewer ENFORCES the `topics_to_avoid` list (step 6). No `customer:` key → the tier is off and the review is byte-identical to pre-#429.
 - **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/report.md` existing.
 - **Rubric**: `anvil/skills/report/rubric.md` (9 dimensions, /44, ≥39 threshold, critical flags).
 - **Optional consumer override**: `.anvil/skills/report/rubric.overrides.md` (additional critical-flag examples; never reduces the base rubric).
@@ -52,6 +53,8 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
    - **All other behavior is unchanged** — same scoring, same verdict, same `verdict.md` transition subsection (step 9b — now carrying the legacy review's rubric as `prior_rubric_id`). The customer-facing ≥39/44 advance threshold is preserved verbatim; a rescore pass landing below threshold surfaces the gap the same way a default-mode review would, just inside the rescore sidecar. The legacy `<thread>.{N}.review/` dir is NEVER mutated — the rescore is a side-car write only.
    - **When `--rescore-mode` is unset**, the steps above DO NOT fire and the review path is byte-identical to the default behavior documented in the rest of this step.
 4. **Read inputs**: load `<thread>.{N}/report.md`, enumerate `exhibits/`, load `_project.md` for recipient calibration context, load `rubric.md` and any consumer override. Also stat `<thread>.{N}/report.pdf` for the existence + freshness check in step 4c — the PDF is stat-only, its content is not read by this critic; see `report-vision` for rendered-content review.
+
+   **Load customer context (conditional — issue #429)**: when `_project.md` declares `customer: "<slug>"`, load `<customers_dir>/<slug>/context.yaml` via `customer_context.py::load_context`. The `topics_to_avoid` list feeds the new critical flag in step 6; the NDA scope and `export_control` class inform the scope-creep judgment. A declared customer with a missing or malformed `context.yaml` keeps the tier ACTIVE: record each structured `ContextError` as a `major` finding in `comments.md` directing the operator to create or fix the file (from `templates/customer-context.template.yaml`) — not a silent skip, not a crash. No `customer:` key → skip this paragraph entirely.
 4b. **Run render-gate (pre-flight)** — mirrors `deck-review.md` step 5b:
    - Invoke `anvil/lib/render_gate.py`'s `gate(...)` against `<thread>.{N}/report.pdf` (produced by `report-figures`; see `commands/report-figures.md`).
    - **Inputs:**
@@ -84,6 +87,7 @@ This command is one of the two REQUIRED critic siblings for the report skill. Th
    - Named third party mischaracterized
    - Legal/compliance statement without disclaimer
    - Scope creep beyond engagement (compare report content against the scope declared in `_project.md` and any `BRIEF.md` scope field)
+   - Discusses a topic on the customer's topics-to-avoid list (conditional — only when the customer-context tier is active; issue #429). Compare report content against the `topics_to_avoid` entries in the customer's `context.yaml`. Topic matching is reviewer JUDGMENT with a documented rule — the same shape as the scope-creep flag above, not a regex sweep. An NDA/export-control breach in a delivered report is not recoverable by a higher score elsewhere, so this is a critical flag, not a rubric deduction. The auditor sibling raises the same concern as `audit_disclosure_topic_violation`; the two flags are independent (parallel critics) and may both fire.
 
    AND the open-ended "any other issue that would cause a sophisticated recipient to lose confidence" instruction. For each flag set, write a one-paragraph justification in `verdict.md`.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 39) AND (no critical flags)`.
