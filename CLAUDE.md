@@ -1,6 +1,6 @@
 # Anvil - Repository Guide
 
-**Anvil Version**: 0.4.0
+**Anvil Version**: 0.5.0
 **Status**: canary-hardened; **13 skills shipped** (9 artifact-class skills + 2 bridge tools: `anvil:project-migrate`, `anvil:rubric-rebackport` + 1 packaging utility: `anvil:project-share` + 1 discovery utility: `anvil:project-scout`); all 9 artifact-class rubrics on /44 with dim 9 *Rhetorical economy* (ip-uspto on /45 with dim 9 *Claim-spec correspondence*); per-review version stamping (`rubric_id` / `rubric_total` / `advance_threshold`) shipped in v0.4.0; sidecar atomicity primitive (`anvil/lib/sidecar.py`) consumed by 40 critic-writing commands across all 9 skills. See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
