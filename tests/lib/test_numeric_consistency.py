@@ -25,18 +25,23 @@ Covers the acceptance criteria from the issue:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from anvil.lib.critics import aggregate, compute_verdict, discover_critics
 from anvil.lib.numeric_consistency import (
+    _FRACTION_RES,
+    _PAIR_RES,
     GAP_MISMATCH,
     MULTIPLIER_MISMATCH,
     PERCENT_MISMATCH,
     SEVERITY_INFO,
     SEVERITY_WARNING,
     UNBRIDGED_POPULATION,
+    _extract_shapes,
+    _paragraph_index,
     check_numeric_consistency,
     check_text,
     main,
@@ -208,6 +213,33 @@ class TestRatioClaims:
         assert f.code == MULTIPLIER_MISMATCH
         assert "120" in f.message and "15" in f.message
         assert "8.0x" in f.message
+        # #469: displayed division must equal the displayed result.
+        self._assert_displayed_arithmetic_consistent(f)
+
+    @staticmethod
+    def _assert_displayed_arithmetic_consistent(finding) -> None:
+        """Parse 'num / den = result x' from the message; assert num/den ≈ result."""
+        m = re.search(
+            r"computes (?P<num>[\d.,]+) / (?P<den>[\d.,]+) = (?P<res>[\d.]+)x",
+            finding.message,
+        )
+        assert m is not None, finding.message
+        num = float(m.group("num").replace(",", ""))
+        den = float(m.group("den").replace(",", ""))
+        res = float(m.group("res"))
+        assert round(num / den, 1) == pytest.approx(res)
+        assert finding.computed == pytest.approx(num / den)
+
+    def test_multiplier_mismatch_min_max_direction_arithmetic(self) -> None:
+        # #469 defect 1 repro: best ratio is min/max (0.125), so the
+        # message must show 15 / 120 = 0.1x — not 120 / 15 = 0.1x.
+        body = "It went from 15 ms to 120 ms and was 2x slower.\n"
+        findings, _, _ = check_text(body)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.code == MULTIPLIER_MISMATCH
+        assert "15 / 120 = 0.1x" in f.message
+        self._assert_displayed_arithmetic_consistent(f)
 
     def test_multiplier_without_pair_shape_is_silent(self) -> None:
         # No explicit "from A to B" / "A vs B" evidence in the window —
@@ -228,6 +260,80 @@ class TestRatioClaims:
         assert len(findings) == 1
         assert findings[0].code == PERCENT_MISMATCH
         assert "50.0%" in findings[0].message
+
+    def test_percent_relative_mismatch_names_single_base(self) -> None:
+        # #469 defect 1: best_pct is one base convention's value, so the
+        # message must name that base instead of claiming "either".
+        body = "Throughput rose from 100 to 150 this quarter, a 75% increase.\n"
+        findings, _, _ = check_text(body)
+        assert len(findings) == 1
+        msg = findings[0].message
+        assert "either base convention" not in msg
+        assert "(base 100)" in msg
+
+
+# ---------------------------------------------------------------------------
+# #469 defect 2: K/M/B scale suffixes on currency-prefixed shape operands
+# ---------------------------------------------------------------------------
+
+
+class TestScaleSuffixShapes:
+    def test_mixed_scale_currency_pair_true_negative(self) -> None:
+        # Repro from #469: a CORRECT document must emit zero findings
+        # ($1.2B vs $600M is a 50% reduction once scales are applied).
+        body = "Revenue grew from $1.2B to $600M after the spinoff, a 50% reduction.\n"
+        findings, _, _ = check_text(body)
+        assert findings == []
+
+    def test_mixed_scale_currency_pair_true_positive(self) -> None:
+        # An INCORRECT mixed-scale claim still fires, with scaled values.
+        body = "Revenue grew from $1.2B to $600M after the spinoff, a 75% reduction.\n"
+        findings, _, _ = check_text(body)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.code == PERCENT_MISMATCH
+        assert "1200000000" in f.message and "600000000" in f.message
+        assert "50.0%" in f.message
+        assert f.computed == pytest.approx(50.0)
+
+    def test_bare_unit_suffix_not_scaled(self) -> None:
+        # Ambiguity guard: scale is currency-gated, so a bare "m"
+        # (meters/minutes) is never misread as millions.
+        body = "The cable run grew from 12 m to 15 m this year.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(12.0, 15.0)]
+
+    def test_attached_unit_suffix_not_scaled(self) -> None:
+        # "12ms" must not be misread as 12 million + "s".
+        body = "Latency went from 12ms to 15ms overnight.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(12.0, 15.0)]
+
+    def test_currency_pair_with_spaced_suffix_scaled(self) -> None:
+        # Currency-prefixed operands honor the suffix even with a space,
+        # mirroring the _CURRENCY_RE tokenizer ("$12 M" = 12 million).
+        body = "Spend grew from $12 M to $15 M this year.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(12e6, 15e6)]
+
+    def test_currency_vs_pair_scaled(self) -> None:
+        body = "It was $300K vs $1.2M for the rival bid.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(300e3, 1.2e6)]
+
+    def test_currency_fraction_of_scaled(self) -> None:
+        # Fraction "of" shape with mixed-scale currency operands.
+        body = "We committed $1.2B of the $2.4B budget, fully 50% of it.\n"
+        findings, _, _ = check_text(body)
+        assert findings == []
+        shapes = _extract_shapes(body, _paragraph_index(body), _FRACTION_RES)
+        assert [(s.a, s.b) for s in shapes] == [(1.2e9, 2.4e9)]
+
+    def test_plain_fraction_shapes_unchanged(self) -> None:
+        # Bare-number fractions keep their pre-#469 behavior.
+        body = "Exactly 47 of 94 reviewers approved, i.e. 47/94.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _FRACTION_RES)
+        assert [(s.a, s.b) for s in shapes] == [(47.0, 94.0), (47.0, 94.0)]
 
 
 # ---------------------------------------------------------------------------
