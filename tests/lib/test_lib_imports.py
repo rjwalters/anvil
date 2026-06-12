@@ -89,3 +89,18 @@ def test_anvil_lib_rubric_yaml_is_real_module() -> None:
         "anvil.lib.rubric.yaml does not expose callable safe_load — "
         "the bound `yaml` is not the real PyYAML module."
     )
+
+
+def test_numeric_consistency_imports_cleanly() -> None:
+    """``anvil.lib.numeric_consistency`` must import with base deps only.
+
+    The numeric-consistency gate (issue #462) is pure stdlib plus the
+    ``review_schema`` / ``sidecar`` lib siblings (pydantic is the lone
+    base dep it touches transitively). If a third-party import ever
+    sneaks into the module, this fails immediately.
+    """
+    import anvil.lib.numeric_consistency as nc
+
+    assert callable(nc.check_numeric_consistency)
+    assert callable(nc.check_text)
+    assert callable(nc.write_review_dir)
