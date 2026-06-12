@@ -36,7 +36,7 @@ This is the second non-standard critic shape in the skill (the first is the draw
 ## Scope and important non-scope
 
 - **Never invents prior-art references.** Attack class 1 (§103 combinations) draws ONLY from (a) references the operator supplied in `<thread>/prior-art/` and (b) Applicant-Admitted Prior Art (AAPA) — what the spec's own Background section characterizes as known. This is the same non-scope rule as the priorart critic: patent searching is a distinct discipline; a hallucinated reference would poison the whole adversarial pass. If the critic believes a category of art likely exists but was not supplied, it says so in findings as a *recommendation to search*, never as a combination input.
-- **No freedom-to-operate analysis.** FTO triage (does practicing the invention infringe third-party claims?) is a different question from patentability attack, with its own legal-advice-framing concerns — tracked separately as issue #446.
+- **No freedom-to-operate analysis.** FTO triage (does practicing the invention infringe third-party claims?) is a different question from patentability attack, with its own legal-advice-framing concerns — shipped separately as the report-only `ip-uspto-fto` critic (issue #446).
 - **No inventorship attack.** Evidence-mined inventorship is tracked separately as issue #445.
 - **Non-provisional skill only.** A provisional-side variant is plausible — §112(a) enablement-hole attacks transfer directly to `anvil:ip-uspto-provisional` — but design-around and obviousness-combination attacks presuppose claims, which are optional there. The provisional variant is a tracked follow-up; revisit on canary demand (issue #434 curation).
 
