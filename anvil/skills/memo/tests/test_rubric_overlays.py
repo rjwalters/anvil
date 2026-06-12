@@ -443,12 +443,22 @@ class TestConsumerOverlayTier(unittest.TestCase):
         self.assertIn("position-paper", msg)  # shipped set enumerated
 
     def test_skill_identity_guard_unaffected_by_consumer_tier(self) -> None:
-        """The #386 guard still fires for deck/slides/proposal/pub even
-        when a consumer overlay registry exists — the guard is keyed on
-        the explicit SKILL_IDENTITY_ARTIFACT_TYPES set (`pub` joined
-        the set under #408)."""
+        """The #386 guard still fires for every skill-identity value
+        even when a consumer overlay registry exists — the guard is
+        keyed on the explicit SKILL_IDENTITY_ARTIFACT_TYPES set (`pub`
+        joined under #408, `report` under #432, `ip-uspto` /
+        `ip-uspto-provisional` under #440 — memo overlay dispatch must
+        fail loudly on all of them)."""
         self._write_consumer_overlay("field-note")
-        for value in ("deck", "slides", "proposal", "pub"):
+        for value in (
+            "deck",
+            "slides",
+            "proposal",
+            "pub",
+            "report",
+            "ip-uspto",
+            "ip-uspto-provisional",
+        ):
             with self.subTest(artifact_type=value):
                 slug = f"{value}-thread"
                 project_root = self._write_project(slug, value)

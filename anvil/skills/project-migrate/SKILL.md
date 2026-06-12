@@ -143,6 +143,7 @@ hand-rolled unstamped review content stays invisible-but-intact to
 | `/anvil:project-migrate <project-dir> --report` | Emit a markdown report only (no plan, no mutations). Useful for portfolio surveys.        |
 | `/anvil:project-migrate --enroll <file> [...]` | **Single-file enrollment** (issue #406): wrap loose `.md`/`.tex` files into project threads. Dry-run by default; `--apply` executes. Optional `--project <dir>`, `--slug <slug>`, `--artifact-type <type>`. |
 | `/anvil:project-migrate --adopt-vn <dir>` | **vN report-dir adoption** (issue #432 Phase 1): adopt a foreign `v{N}/` family (+ `v{N}.review/` siblings) into `<project>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Optional `--slug <slug>`, `--artifact-type <type>`. |
+| `/anvil:project-migrate --adopt-family <dir> --tag-map <file> --artifact-type <type>` | **Letter-family adoption** (issue #440 — Phase 2 of #432): adopt foreign `{Project}.{Letter}.{N}` families (+ foreign-tagged critic siblings, mapped declaratively) into `<dir>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Slugs are derived (no `--slug`); `--artifact-type` is REQUIRED. |
 
 See `commands/project-migrate.md` for the operator-facing contract.
 
@@ -213,9 +214,46 @@ is the conversion path:
 - Post-adopt names pass project-scout's foreign-grammar guard clean;
   re-running on an adopted tree is a no-op.
 
-Letter-family grammars (`{Project}.{Letter}.{N}`), the declarative
-`--tag-map` sidecar-vocabulary contract, and single-file `review.md`
-conversion are **Phase 2** (tracked as the issue #432 follow-up).
+## Letter-family adoption (`--adopt-family`, issue #440 — Phase 2 of #432)
+
+Adoption-target repos also hold **foreign letter-family ip threads**
+(`{Project}.{Letter}.{N}` — `Brasidas.C.7/` +
+`Brasidas.C.7.enablement/` siblings, ~163 version dirs across the
+sphere survey). `--adopt-family` is their conversion path:
+
+- One invocation = one directory = N letter families (batch): each
+  `{Project}.{Letter}` stem becomes one document —
+  `{stem}.{N}/` → `<dir>/<slug>/<slug>.{N}/` with the slug **derived**
+  from the stem (`Brasidas.C` → `brasidas-c`; deliberately no `--slug`
+  in this mode). Plan-time errors abort the whole batch pre-mutation;
+  apply-time failures isolate per family with the BRIEF written for
+  the succeeded subset.
+- **Declarative sidecar tag mapping (`--tag-map <file>`)** — the
+  binding spec is the issue #432 curation comment: JSON
+  `{"tag_map": {"<foreign>": "<canonical>", ...}}`, REQUIRED whenever
+  any renameable critic sidecar is observed; every observed tag MUST
+  have an entry (unmapped tag = refusal LISTING the tags; identity
+  mappings expected — `"s101": "s101"`); values must be a single
+  dot-free word with no `-vN` suffix; two foreign tags → one canonical
+  tag on the SAME version dir is a refusal (the same pair on different
+  dirs is legal); the dry-run report prints the full per-directory
+  resolution. NO heuristics, ever. The versioned tags `--adopt-vn`
+  refuses (`review-v2`) become mappable here.
+- **`--artifact-type` is REQUIRED, invocation-wide**: there is no safe
+  inference between `ip-uspto` and `ip-uspto-provisional` (both
+  registered skill-identity artifact types as of #440). Every BRIEF
+  entry carries a `# TODO(operator): confirm — applied
+  invocation-wide by --adopt-family` marker; per-family divergence is
+  a cheap post-adopt BRIEF edit.
+- BRIEF handling, strays/orphans reporting, the never-rename-bodies
+  carve-out, `git mv`, strict post-write validation with rollback, the
+  byte-identical dry-run BRIEF preview, idempotent re-runs, and the
+  clean post-adopt foreign-guard pass all mirror `--adopt-vn` above.
+- Renamed sidecars holding only a single-file `review.md` payload stay
+  **invisible-but-intact** to `discover_critics` (the #346 additive
+  contract); content conversion to a recognizable review payload is
+  **Phase 3** (issue #454 — `anvil:rubric-rebackport` does not apply:
+  it targets anvil-shaped legacy reviews only).
 
 ## Atomicity & rollback
 
@@ -357,6 +395,32 @@ Test files:
 - `test_project_migrate_adopt_vn_idempotent.py` — re-run after adopt
   is a no-op; post-adopt names pass project-scout's
   `find_foreign_families` clean (issue #432).
+- `test_project_migrate_adopt_family_detect.py` — letter-family
+  grouping by `{Project}.{Letter}` stem (gap tolerated), strays /
+  orphan sidecars / numeric-tag oddballs reported-untouched,
+  `Shape.ADOPT_FAMILY` plan-mode-only regression (issue #440).
+- `test_project_migrate_adopt_family_tag_map.py` — the declarative
+  tag-map contract: all four refusal classes (missing map, unmapped
+  tags listed, non-canonical values, same-dir collision), cross-dir
+  acceptance, identity + `review-v2` remaps, file-shape refusals
+  (issue #440).
+- `test_project_migrate_adopt_family_plan.py` — multi-family
+  DocumentPlans with derived slugs (no `--slug`), REQUIRED
+  invocation-wide `--artifact-type` (refusal names the ip
+  candidates; both ip types registered), collision refusals, BRIEF
+  preview + resolution table in the report (issue #440).
+- `test_project_migrate_adopt_family_apply.py` — end-to-end synth +
+  append paths incl. sidecar renames per the map, strict round-trip +
+  `discover_thread_root`, git-mv history, per-family
+  injected-failure rollback with succeeded-subset BRIEF write
+  (issue #440).
+- `test_project_migrate_adopt_family_dry_run.py` — dry-run default
+  leaves the tree digest unchanged; full tag resolution printed;
+  preview == apply-time BRIEF write (issue #440).
+- `test_project_migrate_adopt_family_idempotent.py` — re-run after
+  adopt is a no-op; post-adopt names pass `find_foreign_families`
+  clean on all three predicates; `review.md`-only sidecars stay
+  undiscovered by `discover_critics` (#346 regression) (issue #440).
 
 ## Git sync hook (opt-in, off by default)
 

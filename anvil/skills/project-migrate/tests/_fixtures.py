@@ -919,12 +919,128 @@ def build_vn_report_dirs(
     return reports_dir
 
 
+# The full default tag map for `build_letter_family_threads` (issue
+# #440): identity mappings for the canonical-shaped vocabulary plus the
+# `review-v2` → `review` remap (legal because no plain `.review` sits on
+# the same version dir in the default fixture).
+DEFAULT_TAG_MAP = {
+    "review": "review",
+    "review-v2": "review",
+    "enablement": "enablement",
+    "pre_flight": "pre_flight",
+    "s101": "s101",
+    "audit": "audit",
+    "audit2": "audit2",
+}
+
+
+def write_tag_map(path: Path, mapping: dict) -> Path:
+    """Write a ``--tag-map`` JSON file with the canonical shape."""
+    _write(path, json.dumps({"tag_map": dict(mapping)}, indent=2) + "\n")
+    return path
+
+
+def build_letter_family_threads(
+    root: Path,
+    project_name: str = "agent-workspace",
+    *,
+    with_sidecars: bool = True,
+    with_project_brief: bool = False,
+) -> Path:
+    """Build foreign letter-family threads (issue #440 — Phase 2 of #432).
+
+    Anonymized reproduction of the sphere-survey ip-thread grammar:
+    flat ``{Project}.{Letter}.{N}/`` version dirs with foreign-tagged
+    critic siblings, hand-rolled single-file ``review.md`` payloads, a
+    stray non-versioned dir, and an orphan sidecar.
+
+    Shape (two letter families, gap at ``Brasidas.C.6`` deliberate)::
+
+      <root>/<project_name>/
+        Brasidas.A.1/spec.md
+        Brasidas.A.2/spec.md
+        Brasidas.A.2.review/review.md          ← single-file payload
+        Brasidas.C.5/spec.md
+        Brasidas.C.5.review-v2/review.md       ← versioned foreign tag
+        Brasidas.C.5.pre_flight/review.md
+        Brasidas.C.7/spec.md
+        Brasidas.C.7.enablement/review.md
+        Brasidas.C.7.s101/review.md
+        Brasidas.C.7.audit/review.md           ← same-dir .audit/.audit2
+        Brasidas.C.7.audit2/review.md             pair (distinct tags)
+        Brasidas.C.9.fto/review.md             ← orphan sidecar (no C.9)
+        notes-archive/scratch.md               ← stray non-versioned dir
+        Brasidas.C.7.1/oddball.md              ← stray (matches neither
+                                                  grammar: numeric tag)
+
+    ``with_sidecars=False`` builds only the version dirs + strays (the
+    sidecar-free variant where ``--tag-map`` is optional).
+
+    When ``with_project_brief`` is True the project gets the
+    tripwire-laden ``ENROLL_OPERATOR_BRIEF`` plus its two listed
+    threads on disk — exercising the surgical-append path. Otherwise
+    no BRIEF exists anywhere (starter-synthesis path).
+
+    Returns the family dir (== the project root in this mode).
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    version_dirs = {
+        "Brasidas.A": (1, 2),
+        "Brasidas.C": (5, 7),
+    }
+    for stem, versions in version_dirs.items():
+        for n in versions:
+            _write(
+                project_dir / f"{stem}.{n}" / "spec.md",
+                f"# {stem} v{n}\n\nHand-rolled ip draft v{n}.\n",
+            )
+
+    if with_sidecars:
+        sidecar_names = (
+            "Brasidas.A.2.review",
+            "Brasidas.C.5.review-v2",
+            "Brasidas.C.5.pre_flight",
+            "Brasidas.C.7.enablement",
+            "Brasidas.C.7.s101",
+            "Brasidas.C.7.audit",
+            "Brasidas.C.7.audit2",
+            "Brasidas.C.9.fto",  # orphan: Brasidas.C.9 absent
+        )
+        for name in sidecar_names:
+            _write(
+                project_dir / name / "review.md",
+                f"# {name}\n\nHand-rolled single-file reviewer notes.\n",
+            )
+
+    _write(
+        project_dir / "notes-archive" / "scratch.md",
+        "# Scratch\n\nStray non-versioned dir content.\n",
+    )
+    _write(
+        project_dir / "Brasidas.C.7.1" / "oddball.md",
+        "# Oddball\n\nMinor-versioned-looking stray.\n",
+    )
+
+    if with_project_brief:
+        _write(project_dir / "BRIEF.md", ENROLL_OPERATOR_BRIEF)
+        for slug in ("zeta-memo", "alpha-memo"):
+            _write(
+                project_dir / slug / f"{slug}.1" / f"{slug}.md",
+                f"# {slug} v1\n\nBody.\n",
+            )
+    return project_dir
+
+
 __all__ = [
+    "DEFAULT_TAG_MAP",
     "ENROLL_OPERATOR_BRIEF",
     "build_aldus_shaped_deck",
     "build_bare_version_dir_threads",
     "build_bessemer_shaped",
     "build_fully_migrated",
+    "build_letter_family_threads",
     "build_loose_file_batch",
     "build_loose_file_in_existing_project",
     "build_loose_file_no_project",
@@ -933,4 +1049,5 @@ __all__ = [
     "build_post_283_with_operator_brief",
     "build_pre_283_classic",
     "build_vn_report_dirs",
+    "write_tag_map",
 ]

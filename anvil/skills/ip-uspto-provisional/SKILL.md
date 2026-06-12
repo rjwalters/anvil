@@ -143,6 +143,24 @@ Each `<thread>.{N}/` carries `_progress.json` per the canonical schema, read-mer
 
 See `rubric.md` for the 9-dimension **/45** schema (`anvil-ip-provisional-v1`), the **≥39** advance threshold, the **enablement-depth-dominant** weighting (dim 1 at weight 8 — the inverse of ip-uspto's flat design), and the critical-flag policy. Dim 9 is ***Conversion readiness*** — replacing ip-uspto's *Claim-spec correspondence*, which cannot apply when claims are optional.
 
+## Project BRIEF artifact type
+
+`ip-uspto-provisional` is registered as a **skill-identity**
+`artifact_type` value in the shared project-BRIEF registry
+(`anvil/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES` /
+`SKILL_IDENTITY_ARTIFACT_TYPES`; issue #440, following the
+#386/#408/#432 pattern for `deck`/`slides`/`proposal`/`pub`/`report`).
+In a shared project BRIEF, a `documents:` entry with
+`artifact_type: ip-uspto-provisional` declares that this skill owns
+the thread. It is NOT a memo subtype: it selects no memo rubric
+overlay, and memo commands fail loudly when pointed at a thread
+declaring it. `anvil:project-migrate`'s letter-family adoption mode
+(`--adopt-family`) writes this value (with a `# TODO(operator)`
+confirmation marker) when the operator passes the REQUIRED
+`--artifact-type ip-uspto-provisional` — there is no inference between
+a provisional and a full application (`ip-uspto`), so the choice is
+always explicit.
+
 ## Install coupling
 
 This skill **reuses `anvil:ip-uspto`'s assets**: the `anvil-uspto.cls` LaTeX class and the `template-spec.tex.j2` spec scaffold at `anvil/skills/ip-uspto/assets/` (consumer repo: `.anvil/skills/ip-uspto/assets/`). The drafter copies `anvil-uspto.cls` into each version dir so versions compile standalone. Install the two skills together:

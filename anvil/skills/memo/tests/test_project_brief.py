@@ -396,7 +396,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
 
     def test_pitch_deck_rejected_listing_all_registered_values(self) -> None:
         """The studio's informal 'pitch-deck' stays unregistered — the
-        closed-ended error lists all eleven registered values so the
+        closed-ended error lists all fourteen registered values so the
         operator can self-correct."""
         fm = textwrap.dedent(
             """\
@@ -411,7 +411,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 12)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 14)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -438,6 +438,8 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.PROPOSAL,
             ArtifactType.PUB,
             ArtifactType.REPORT,
+            ArtifactType.IP_USPTO,
+            ArtifactType.IP_USPTO_PROVISIONAL,
         ):
             self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
 
@@ -447,7 +449,10 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
         Issue #408 grew the set with ``pub`` (research-paper threads —
         the project-migrate BRIEF-synthesis registry gap); issue #432
         grew it with ``report`` (the vN report-dir adoption mode's
-        inferred type — the same registry-gap shape)."""
+        inferred type — the same registry-gap shape); issue #440 grew
+        it with ``ip-uspto`` / ``ip-uspto-provisional`` (the
+        letter-family adoption mode's REQUIRED --artifact-type values
+        — same registry-gap shape, legal-artifact stakes)."""
         from project_brief import (  # noqa: PLC0415
             SKILL_IDENTITY_ARTIFACT_TYPES,
         )
@@ -461,6 +466,8 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.PROPOSAL,
                     ArtifactType.PUB,
                     ArtifactType.REPORT,
+                    ArtifactType.IP_USPTO,
+                    ArtifactType.IP_USPTO_PROVISIONAL,
                 }
             ),
         )
