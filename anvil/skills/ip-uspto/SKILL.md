@@ -322,6 +322,24 @@ The schema is documented inline here for v0. There is no separate `schemas/` dir
 
 See `rubric.md` for the 9-dimension /45 USPTO scoring schema, the ≥39 advance threshold, and the §101/§112 critical-flag short-circuit policy. The optional `ip-uspto-vision` critic owns a **separate drawing-vision rubric subset** (dv1–dv5, /25) documented in the same file — it critiques the rendered drawings only (legibility, line weight/contrast, label placement, figure-number visibility, cross-reference accuracy) and ships its scorecard directly as `_review.json` (canonical `kind=vision` schema) rather than the `_summary.md`/`findings.md` machine-summary shape the source-side critics use; both are discovered and aggregated uniformly by `anvil/lib/critics.py`.
 
+## Project BRIEF artifact type
+
+`ip-uspto` is registered as a **skill-identity** `artifact_type` value in
+the shared project-BRIEF registry
+(`anvil/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES` /
+`SKILL_IDENTITY_ARTIFACT_TYPES`; issue #440, following the
+#386/#408/#432 pattern for `deck`/`slides`/`proposal`/`pub`/`report`).
+In a shared project BRIEF, a `documents:` entry with
+`artifact_type: ip-uspto` declares that this skill owns the thread. It
+is NOT a memo subtype: it selects no memo rubric overlay, and memo
+commands fail loudly when pointed at an `ip-uspto`-declared thread.
+`anvil:project-migrate`'s letter-family adoption mode
+(`--adopt-family`) writes this value (with a `# TODO(operator)`
+confirmation marker) when the operator passes the REQUIRED
+`--artifact-type ip-uspto` — there is no inference between a full
+application and a provisional (`ip-uspto-provisional`), so the choice
+is always explicit.
+
 ## USPTO-specific phases
 
 Beyond the standard `draft → review → revise → figures → audit` lifecycle, this skill adds four USPTO phases:

@@ -20,6 +20,9 @@ post-#295 / post-#296 model.
 
 /anvil:project-migrate --adopt-vn <dir>                # dry-run vN adoption
     [--slug <slug>] [--artifact-type <type>] [--apply]
+
+/anvil:project-migrate --adopt-family <dir>            # dry-run letter-family adoption
+    --tag-map <file> --artifact-type <type> [--apply]
 ```
 
 `<project-dir>` is the project root: the directory that holds (or will hold)
@@ -45,6 +48,14 @@ Phase 1): it adopts a foreign `v{N}/` version-dir family (with
 `v{N}.review/`-style critic siblings) into the canonical
 `<project>/<slug>/<slug>.{N}/` shape. Adoption runs through
 `orchestrate.run_adopt_vn(...)` (dry-run by default) — see §7 below.
+
+`--adopt-family <dir>` selects **letter-family adoption mode** (issue
+#440 — Phase 2 of #432): it adopts foreign `{Project}.{Letter}.{N}`
+version-dir families (with foreign-tagged critic siblings mapped
+through a declarative `--tag-map`) into the canonical
+`<dir>/<slug>/<slug>.{N}/` shape. Adoption runs through
+`orchestrate.run_adopt_family(...)` (dry-run by default) — see §8
+below.
 
 ### 1. Detect current shape
 
@@ -250,8 +261,9 @@ Hard errors (plan-time, pre-mutation — the whole family aborts):
   `--renumber` escape hatch is deferred until canary friction demands
   it.
 - Versioned critic-sidecar tags (`v3.review-v2`): refusal — renaming
-  would re-create a foreign name; tag vocabulary mapping (`--tag-map`)
-  is Phase 2.
+  would re-create a foreign name; tag vocabulary mapping is
+  `--adopt-family`'s `--tag-map` (a versioned tag becomes mappable
+  there, e.g. `"review-v2": "review"`).
 - Slug collision with a BRIEF entry or an on-disk path; target
   `<slug>.{N}` already exists — suggest `--slug`.
 - Existing BRIEF that fails strict parsing — never modify a BRIEF we
@@ -259,10 +271,104 @@ Hard errors (plan-time, pre-mutation — the whole family aborts):
 - A BRIEF-less project root containing other thread-shaped dirs — run
   plain `project-migrate` on it first.
 
-Out of scope for Phase 1 (deferred to the issue #432 Phase 2
-follow-up): letter-family grammars (`{Project}.{Letter}.{N}`), the
-declarative `--tag-map` sidecar-vocabulary contract, and single-file
-`review.md` → three-file critic-sibling conversion.
+### 8. Letter-family adoption mode (`--adopt-family`, issue #440 — Phase 2 of #432)
+
+Adopts foreign `{Project}.{Letter}.{N}` version-dir families — the
+sphere-survey ip-thread grammar (`Brasidas.C.7/` +
+`Brasidas.C.7.enablement/` siblings, flat under one directory) — into
+the canonical anvil shape:
+
+```
+/anvil:project-migrate --adopt-family agents/Brasidas \
+    --tag-map tag-map.json --artifact-type ip-uspto-provisional
+/anvil:project-migrate --adopt-family agents/Brasidas \
+    --tag-map tag-map.json --artifact-type ip-uspto-provisional --apply
+```
+
+Call `orchestrate.run_adopt_family(directory, tag_map=...,
+artifact_type=..., apply=...)`. The flow (one invocation = one
+directory = N letter families, batch):
+
+1. **Family scan**: `{Project}.{Letter}.{N}` dirs group by their
+   `{Project}.{Letter}` stem (the letter is the single-letter final
+   dot-segment); `{stem}.{N}.<tag>` sibling dirs rename alongside
+   their version dir. Version gaps tolerated (per #408). Strays
+   (non-matching dirs, numeric-tag oddballs like `Brasidas.C.7.1`) and
+   orphan sidecars (version dir absent) are left untouched and
+   reported.
+2. **Project root**: `<dir>` itself — the families sit flat under it
+   and the adopted threads land at `<dir>/<slug>/<slug>.{N}` with the
+   BRIEF at `<dir>/BRIEF.md`.
+3. **Slugs are derived, not flagged**: the `{Project}.{Letter}` stem
+   folds via the standard sanitization (`Brasidas.C` → `brasidas-c`).
+   There is NO `--slug` in this mode (multi-family invocations make a
+   single override meaningless; derived slugs are deterministic).
+4. **Declarative tag mapping (`--tag-map <file>`)** — the binding spec
+   is the issue #432 curation comment ("Declarative tag-mapping
+   contract"). JSON, stdlib-only:
+   `{"tag_map": {"<foreign>": "<canonical>", ...}}`. REQUIRED whenever
+   any renameable critic sidecar is observed; every observed foreign
+   tag MUST have an entry (identity mappings allowed and expected —
+   `"s101": "s101"`). NO heuristics, ever. Values must be a single
+   dot-free word with no `-vN` suffix. The dry-run report prints the
+   full per-directory resolution (every sidecar's old name → new
+   name) for operator confirmation. Versioned tags refused by
+   `--adopt-vn` become mappable here (`"review-v2": "review"`).
+5. **Renames**: `{stem}.{N}/` → `<dir>/<slug>/<slug>.{N}/` and
+   `{stem}.{N}.<foreign>/` → `<slug>.{N}.<canonical>/` per the tag map
+   (`git mv` in-repo so history follows). Bodies inside the version
+   dirs are recorded but **never renamed** (the #408 carve-out).
+   Sidecars holding only a single-file `review.md` payload stay
+   invisible-but-intact to `discover_critics` after the rename (the
+   #346 additive contract) — content conversion is Phase 3 (issue
+   #454; `anvil:rubric-rebackport` targets anvil-shaped legacy
+   reviews only and does not apply).
+6. **Artifact type**: `--artifact-type` is REQUIRED — there is no safe
+   inference between `ip-uspto` and `ip-uspto-provisional` (both
+   registered skill-identity values as of #440), and nothing is
+   guessed silently with legal-artifact stakes. The value applies
+   invocation-wide; every BRIEF entry carries a
+   `# TODO(operator): confirm — applied invocation-wide by
+   --adopt-family` marker, and per-family divergence is a cheap
+   post-adopt BRIEF edit (artifact_type is per-slug).
+7. **BRIEF write**: surgical textual append when `<dir>/BRIEF.md`
+   exists (#406/#416); starter synthesis with `# TODO(operator)`
+   markers otherwise (#408). Strict-validated post-write; rolled back
+   on any parse failure. The dry-run report previews the full
+   proposed BRIEF through the same render path as apply
+   (byte-identical).
+8. **Batch semantics**: N families → N independently-applied
+   `DocumentPlan`s. Plan-time errors abort the WHOLE batch
+   pre-mutation; apply-time failures isolate per family (snapshot
+   rollback) with the BRIEF written for the **succeeded subset** (the
+   enroll contract, routed through `Shape.ADOPT_FAMILY`).
+9. **Idempotence**: re-running on an adopted tree finds no letter
+   family and is a successful no-op (even under `--apply`); post-adopt
+   names pass project-scout's `find_foreign_families` clean on all
+   three predicates.
+
+Hard errors (plan-time, pre-mutation — the whole batch aborts):
+
+- Critic sidecars observed but no `--tag-map` passed — refusal listing
+  the observed foreign tags.
+- Unmapped observed tag — refusal listing the missing tags (the
+  operator's next edit is mechanical).
+- Tag-map value violating the canonical tag grammar (dotted word,
+  `-vN` suffix, non-word characters).
+- Two foreign tags resolving to one canonical tag on the SAME version
+  dir (e.g. `.audit` + `.audit2` → `audit` on `Brasidas.C.7`); the
+  same pair on different version dirs is legal.
+- Missing `--artifact-type` — refusal naming the two likely ip
+  candidates.
+- Slug collision with a BRIEF entry or an on-disk path; cross-family
+  collision after sanitization (`Brasidas.C` vs `brasidas.c`).
+- Existing BRIEF that fails strict parsing — never modify a BRIEF we
+  can't parse.
+- A BRIEF-less project root containing other thread-shaped dirs — run
+  plain `project-migrate` on it first.
+
+Out of scope (deferred to issue #454, Phase 3): single-file
+`review.md` → recognizable-review-payload conversion.
 
 ## Output
 

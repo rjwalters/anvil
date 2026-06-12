@@ -41,6 +41,7 @@ from .detect import (
     inventory_project,
     _classify,
 )
+from .adopt_family import AdoptFamilyError, build_adopt_family_plan
 from .adopt_vn import AdoptVnError, build_adopt_vn_plan
 from .enroll import EnrollError, build_enroll_plan
 from .plan import (
@@ -761,11 +762,271 @@ def run_adopt_vn(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Letter-family adoption (issue #440 — Phase 2 of #432)
+# ---------------------------------------------------------------------------
+
+
+def _format_adopt_family_report(plan: Plan, source_dir: Path) -> str:
+    """Format a letter-family adoption plan as a markdown report.
+
+    Includes the FULL per-directory sidecar tag resolution (every
+    sidecar's old name → new name — the operator confirms the table
+    against reality before ``--apply``) and the FULL proposed BRIEF
+    text, rendered through the same ``render_enroll_brief`` code path
+    the apply step writes (brief_mode-dispatched: surgical append for
+    an existing BRIEF, #408-style synthesis otherwise), so the preview
+    is byte-identical to the eventual write. Read-only: the formatter
+    never touches disk beyond reading the existing BRIEF.
+    """
+    project_dir = plan.project_dir
+    lines: List[str] = []
+    lines.append(f"# Letter-family adoption: {project_dir.name}")
+    lines.append("")
+    lines.append(f"**Project root**: `{project_dir}`")
+    lines.append(f"**Family dir**: `{source_dir}`")
+    if plan.brief_mode == "append":
+        lines.append(
+            "**BRIEF**: existing — extended by surgical append "
+            "(every pre-existing byte preserved)"
+        )
+    else:
+        lines.append(
+            "**BRIEF**: none found — a starter project BRIEF will be "
+            "synthesized (TODO markers on every inferred value)"
+        )
+    lines.append(f"**Documents in plan**: {len(plan.documents)}")
+    lines.append("")
+    lines.append("## Plan")
+    lines.append("")
+
+    if not plan.documents:
+        lines.append(
+            f"No `{{Project}}.{{Letter}}.{{N}}` family found under "
+            f"`{source_dir}` — nothing to adopt. Re-running "
+            f"--adopt-family on an adopted tree is a no-op."
+        )
+        lines.append("")
+        return "\n".join(lines) + "\n"
+
+    for doc in plan.documents:
+        lines.append(f"### `{doc.slug}`")
+        lines.append("")
+        for rename in doc.renames:
+            try:
+                src_rel = rename.source.relative_to(project_dir)
+            except ValueError:
+                src_rel = rename.source
+            try:
+                tgt_rel = rename.target.relative_to(project_dir)
+            except ValueError:
+                tgt_rel = rename.target
+            lines.append(f"- Rename: `{src_rel}` → `{tgt_rel}`")
+        if doc.brief_merge is not None:
+            bm = doc.brief_merge
+            lines.append(
+                f"- BRIEF entry: add `documents:` entry "
+                f"(artifact_type={bm.artifact_type}, invocation-wide — "
+                f"TODO marker emitted)"
+            )
+        for note in doc.notes:
+            lines.append(f"- Note: {note}")
+        lines.append("")
+
+    # Full per-directory sidecar tag resolution (the #432 curation
+    # contract: the dry-run prints every old name → new name so the
+    # operator confirms the table before --apply).
+    resolution = list(getattr(plan, "tag_resolution", []))
+    lines.append("## Sidecar tag resolution")
+    lines.append("")
+    if resolution:
+        for slug, old_name, new_name in resolution:
+            lines.append(f"- `{old_name}/` → `{new_name}/` (`{slug}`)")
+    else:
+        lines.append(
+            "- No critic sidecars observed (sidecar-free families — "
+            "--tag-map not required)."
+        )
+    lines.append("")
+
+    strays = list(getattr(plan, "family_strays", []))
+    if strays:
+        lines.append("## Strays (left untouched)")
+        lines.append("")
+        for name in strays:
+            lines.append(
+                f"- `{name}/` (not part of the "
+                f"`{{Project}}.{{Letter}}.{{N}}` family grammar)"
+            )
+        lines.append("")
+
+    existing_text: Optional[str] = None
+    if plan.project_brief_path.is_file():
+        try:
+            existing_text = plan.project_brief_path.read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            existing_text = None
+    rendered = render_enroll_brief(plan, existing_text=existing_text)
+    lines.append("## Proposed `BRIEF.md`")
+    lines.append("")
+    lines.append("````markdown")
+    lines.append(rendered.rstrip("\n"))
+    lines.append("````")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def _verify_adopt_family(
+    plan: Plan, apply_result: ApplyResult
+) -> Tuple[str, bool]:
+    """Post-apply verification for a letter-family adoption plan.
+
+    For every applied family: each renamed version dir must exist at
+    its target and ``discover_thread_root`` must resolve it to the
+    family's slug (the #408 non-renamed-body path — discovery accepts
+    a version-dir path directly; guarded import). The BRIEF must have
+    been written and strict-parsed (the apply step already rolled it
+    back otherwise). The scout-interplay criterion (post-adopt names
+    pass ``find_foreign_families`` clean) is regression-locked in the
+    test suite — the adopted names are dot-free slugs with single-word
+    tags by construction.
+    """
+    lines: List[str] = []
+    lines.append("## Adoption verification")
+    lines.append("")
+    ok = bool(apply_result.brief_written) and not apply_result.failed_docs
+
+    applied = set(apply_result.applied_docs)
+    try:
+        from anvil.lib.project_discovery import discover_thread_root
+    except ImportError:
+        discover_thread_root = None  # type: ignore[assignment]
+
+    for doc in plan.documents:
+        if doc.slug not in applied:
+            continue
+        version_targets = [
+            r.target
+            for r in doc.renames
+            if r.target.name.startswith(f"{doc.slug}.")
+            and r.target.name[len(doc.slug) + 1:].isdigit()
+        ]
+        doc_ok = True
+        for target in version_targets:
+            if not target.is_dir():
+                lines.append(
+                    f"- `{doc.slug}`: version dir missing at "
+                    f"`{target}` — FAIL"
+                )
+                doc_ok = False
+                continue
+            if discover_thread_root is not None:
+                resolved = discover_thread_root(target)
+                if resolved is None or resolved.slug != doc.slug:
+                    lines.append(
+                        f"- `{doc.slug}`: `discover_thread_root` did "
+                        f"not resolve `{target}` — FAIL"
+                    )
+                    doc_ok = False
+        if doc_ok:
+            lines.append(
+                f"- `{doc.slug}`: {len(version_targets)} version dirs "
+                f"adopted — OK"
+            )
+        else:
+            ok = False
+
+    lines.append(
+        f"- BRIEF written: {'OK' if apply_result.brief_written else 'FAIL'}"
+    )
+    lines.append("")
+    lines.append(f"**Overall**: {'PASS' if ok else 'FAIL'}")
+    return "\n".join(lines) + "\n", ok
+
+
+def run_adopt_family(
+    directory: Path,
+    *,
+    tag_map: Optional[Path] = None,
+    artifact_type: Optional[str] = None,
+    apply: bool = False,
+) -> RunResult:
+    """Execute the letter-family adoption flow (issue #440).
+
+    Mirrors :func:`run_adopt_vn`'s signature shape: ``apply=False``
+    (the universal default in this skill) is a dry-run — scan + plan +
+    report, zero mutations. A directory with no letter family is a
+    successful no-op even under ``--apply`` (idempotence).
+
+    Parameters
+    ----------
+    directory
+        The directory holding the flat ``{Project}.{Letter}.{N}``
+        dirs (one invocation = one directory = N families, batch).
+    tag_map
+        Path to the ``--tag-map`` JSON file (declarative foreign→
+        canonical sidecar tag mapping — REQUIRED whenever any critic
+        sidecar is observed; see :func:`adopt_family.load_tag_map`).
+    artifact_type
+        REQUIRED ``--artifact-type`` value — validated against the
+        two-tier #394 registry and applied invocation-wide with
+        per-family TODO markers. There is no inferred default.
+    apply
+        When True, execute the plan (per-doc snapshot atomicity;
+        enroll-style BRIEF write for the succeeded subset with strict
+        post-write validation).
+
+    Raises
+    ------
+    AdoptFamilyError
+        On any plan-time refusal (missing/incomplete tag map, tag
+        collisions, missing artifact type, slug/target collisions,
+        malformed existing BRIEF, …). Raised BEFORE any mutation —
+        the whole batch aborts.
+    """
+    source_dir = Path(directory).resolve()
+    plan = build_adopt_family_plan(
+        source_dir, tag_map_path=tag_map, artifact_type=artifact_type
+    )
+
+    result = RunResult(
+        project_dir=plan.project_dir,
+        shape=plan.shape,
+        plan=plan,
+    )
+    report = _format_adopt_family_report(plan, source_dir)
+
+    if not plan.documents:
+        # No letter family — successful no-op, even under --apply.
+        result.report = report
+        result.success = True
+        return result
+
+    if not apply:
+        result.report = report
+        result.success = True
+        return result
+
+    apply_result = apply_plan(plan)
+    result.apply_result = apply_result
+    report += "\n" + _format_apply_report(apply_result)
+
+    verify_report, ok = _verify_adopt_family(plan, apply_result)
+    report += "\n" + verify_report
+    result.success = ok
+    result.report = report
+    return result
+
+
 __all__ = [
+    "AdoptFamilyError",
     "AdoptVnError",
     "EnrollError",
     "RunResult",
     "run",
+    "run_adopt_family",
     "run_adopt_vn",
     "run_enroll",
 ]
