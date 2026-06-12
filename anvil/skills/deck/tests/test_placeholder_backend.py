@@ -8,7 +8,7 @@ Covers the acceptance criteria from the #430 curation:
 - The ``ANVIL-FORCE-FAIL`` prompt sentinel raises a ``BackendError``
   whose MRO satisfies ``imagegen._looks_like_backend_error`` (the
   locally-defined-class decoupling pattern from the adapter contract).
-- End-to-end registration test: a fixture ``.anvil/config.toml``
+- End-to-end registration test: a fixture ``.anvil/config.json``
   registers the placeholder backend by dotted path and ``run_imagegen``
   is invoked WITHOUT the test-only ``adapter=`` injection escape hatch
   — exercising the full ``load_config`` → ``load_adapter``
@@ -135,7 +135,7 @@ def _build_thread_fixture(
     register_backend: bool = True,
 ) -> Path:
     """Create a minimal portfolio with a two-slot deck and, by default,
-    a ``.anvil/config.toml`` registering the placeholder backend.
+    a ``.anvil/config.json`` registering the placeholder backend.
 
     Returns the version directory path.
     """
@@ -177,10 +177,16 @@ def _build_thread_fixture(
     )
 
     if register_backend:
-        cfg = portfolio / ".anvil" / "config.toml"
+        cfg = portfolio / ".anvil" / "config.json"
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(
-            f'[deck.imagegen]\nbackend = "{_BACKEND_SPEC}"\n',
+            json.dumps(
+                {
+                    "version": 1,
+                    "deck": {"imagegen": {"backend": _BACKEND_SPEC}},
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
 
@@ -293,7 +299,7 @@ class TestLoadAdapterClassForm(unittest.TestCase):
 
 
 class TestRegistrationPathEndToEnd(unittest.TestCase):
-    """config.toml → load_config → load_adapter → dispatch → journal."""
+    """config.json → load_config → load_adapter → dispatch → journal."""
 
     def test_full_path_produces_pngs_journal_and_done_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -402,7 +408,7 @@ class TestRegistrationPathEndToEnd(unittest.TestCase):
             )
 
     def test_unregistered_graceful_degrade_unchanged(self) -> None:
-        """No config.toml → the existing ImagegenError path, byte-identical
+        """No config.json → the existing ImagegenError path, byte-identical
         message shape (points at the adapter doc). Guards the AC that the
         graceful-degrade behavior did not change."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -411,7 +417,7 @@ class TestRegistrationPathEndToEnd(unittest.TestCase):
             with self.assertRaises(ImagegenError) as ctx:
                 run_imagegen("acme", portfolio=portfolio)
             msg = str(ctx.exception)
-            self.assertIn(".anvil/config.toml", msg)
+            self.assertIn(".anvil/config.json", msg)
             self.assertIn("deck-imagegen-adapter.md", msg)
 
 
@@ -446,10 +452,18 @@ class TestOnboardingDocCoverage(unittest.TestCase):
         # anvil-never-retries recap.
         self.assertIn("retry", body.lower())
 
-    def test_onboarding_carries_config_consolidation_note(self) -> None:
+    def test_onboarding_registers_via_config_json(self) -> None:
+        """Post-#442: registration prose/snippets reference config.json.
+
+        The only remaining config.toml mentions in the onboarding doc are
+        the migration-guard row in the error table (stale pre-#442
+        installs) — never a live registration instruction.
+        """
         body = self.ONBOARDING.read_text(encoding="utf-8")
-        self.assertIn("config.toml", body)
-        self.assertIn("consolidation", body.lower())
+        self.assertIn(".anvil/config.json", body)
+        self.assertIn("MIGRATION REQUIRED", body)
+        # The old "consolidation pending" note is gone (#442 decision 3).
+        self.assertNotIn("consolidation pending", body.lower())
 
     def test_adapter_doc_marks_placeholder_as_shipped(self) -> None:
         body = self.ADAPTER.read_text(encoding="utf-8")

@@ -194,17 +194,22 @@ def test_deck_imagegen_adapter_documents_minimal_signature():
 
 def test_deck_imagegen_adapter_documents_consumer_registration():
     body = _read(ADAPTER_MD)
-    # Per issue #131 AC: consumer registration via .anvil/config.toml.
-    assert ".anvil/config.toml" in body, (
-        "deck-imagegen-adapter.md MUST document the .anvil/config.toml "
-        "registration mechanism (issue #131 AC)"
+    # Per issue #131 AC (registration mechanism documented), as migrated
+    # to .anvil/config.json by #442.
+    assert ".anvil/config.json" in body, (
+        "deck-imagegen-adapter.md MUST document the .anvil/config.json "
+        "registration mechanism (issue #131 AC as amended by #442)"
     )
-    assert "[deck.imagegen]" in body, (
-        "deck-imagegen-adapter.md MUST document the [deck.imagegen] "
-        "config-toml section"
+    assert '"imagegen"' in body, (
+        "deck-imagegen-adapter.md MUST show the deck.imagegen config.json "
+        "section in a registration snippet (#442)"
     )
-    assert "backend" in body, (
-        "deck-imagegen-adapter.md MUST document the backend = ... key"
+    assert '"backend"' in body, (
+        "deck-imagegen-adapter.md MUST document the backend key (#442)"
+    )
+    assert '"version": 1' in body, (
+        "deck-imagegen-adapter.md registration snippets MUST use the "
+        "versioned config.json envelope (#442)"
     )
 
 

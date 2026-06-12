@@ -7,18 +7,21 @@ description: Consumer onboarding walkthrough for `deck-imagegen` adapters. Five-
 
 `commands/deck-imagegen-adapter.md` is the **contract**; this document is the **walkthrough**. Read this when you are wiring your first adapter and want to go from zero to generated PNGs without reverse-engineering `anvil/skills/deck/lib/imagegen.py`.
 
-> **Config consolidation pending.** The adapter registration documented here lives in `.anvil/config.toml`. Newer anvil skill configuration uses the versioned `.anvil/config.json` (the #426 hooks precedent), and the `[deck.imagegen] backend` key is explicitly grandfathered in TOML for now — the TOML→JSON consolidation is tracked as #442 (coordinated with the #427 figure-adapter registry decision) and will ship with a migration note. Until that lands, `.anvil/config.toml` is correct and supported; just don't add *new* skill config sections to it.
-
 ## Five-minute smoke test (shipped placeholder backend)
 
 Anvil ships exactly one backend: a deterministic placeholder-PNG generator whose only job is to prove the wiring. It produces 1280x720 solid-color PNGs (color derived from `sha256(prompt + style + steps)`) using only the Python stdlib. Use it to verify the full `config → importlib → dispatch → journal` path before writing a line of your own adapter.
 
-1. **Register the placeholder backend.** In your repo root:
+1. **Register the placeholder backend.** In your repo root, in `.anvil/config.json` (the shared versioned consumer config surface — merge into the existing file if you already carry the #426 git knob or #427 figure adapters):
 
-   ```toml
-   # .anvil/config.toml
-   [deck.imagegen]
-   backend = "anvil.skills.deck.lib.placeholder_backend:PlaceholderBackend"
+   ```json
+   {
+     "version": 1,
+     "deck": {
+       "imagegen": {
+         "backend": "anvil.skills.deck.lib.placeholder_backend:PlaceholderBackend"
+       }
+     }
+   }
    ```
 
    This dotted path resolves when the directory containing `anvil/` (your repo root, in a standard install) is on `sys.path` — which it is whenever commands run from the repo root. If your install relocates the skill (e.g., an `.anvil/lib/` overlay copy), see "Importability" below for the path variants.
@@ -67,11 +70,12 @@ Misconfiguration produces a specific `ImagegenError`, surfaced verbatim by the c
 | `module '<module>' has no attribute '<attr>'` | Typo in the attribute name, or the symbol isn't exported | Match the class/function name exactly |
 | `resolved to class '<attr>' but constructing it with zero arguments raised: …` | Your class constructor requires arguments | Class-form adapters need a zero-arg constructor; move config to env vars or module level |
 | `resolved attribute is neither callable nor has a ``generate`` method` | The attribute is a plain object without the contract surface | Expose `generate(prompt, style, steps) -> bytes` or register a callable |
-| `no ``[deck.imagegen] backend`` registered in …` | Config file exists but the key is missing | Add the `[deck.imagegen]` section with `backend = "…"` |
+| `no ``deck.imagegen.backend`` registered in …` | Config file exists but the key is missing | Add the `deck.imagegen.backend` key to `.anvil/config.json` |
+| `MIGRATION REQUIRED (#442): … config.toml still contains a [deck.imagegen] registration …` | Pre-#442 install with a stale `.anvil/config.toml` registration | Paste the JSON snippet from the error into `.anvil/config.json`, then delete the `[deck.imagegen]` section from `config.toml` |
 
 ## Auth bootstrap for cloud backends
 
-This is the part first-time consumers most often get wrong, so the pattern is spelled out: **the adapter owns token acquisition and refresh; anvil never sees auth.** `deck-imagegen` reads `.anvil/config.toml` for the dotted path and nothing else — no env-var conventions, no `.env` sourcing, no OAuth.
+This is the part first-time consumers most often get wrong, so the pattern is spelled out: **the adapter owns token acquisition and refresh; anvil never sees auth.** `deck-imagegen` reads `.anvil/config.json` for the dotted path and nothing else — no env-var conventions, no `.env` sourcing, no OAuth.
 
 For backends fronted by short-lived cloud tokens (GCP-style identity tokens, STS credentials, etc.), the recommended shape: the **constructor acquires the first token**, and **`generate` checks expiry (with clock skew) and refreshes before each call**. Auth failure *after* a refresh attempt raises `BackendError` — that is a real failure of this slot's generation, not something anvil can fix by retrying.
 
@@ -162,7 +166,7 @@ For consumers with a working image pipeline (e.g., a slides skill calling an in-
 - [ ] **Fold step counts onto `steps`.** `steps=None` means "your default" — map it to whatever your worker's default inference-step count is. Per-slide overrides arrive via `<!-- anvil-imagegen: <slot> steps=N -->` markers.
 - [ ] **Move auth into the adapter** per "Auth bootstrap" above (constructor bootstraps, `generate` refreshes).
 - [ ] **Move retry into the adapter**; raise `BackendError` only on exhaustion.
-- [ ] **Register the dotted path** under `[deck.imagegen] backend` in `.anvil/config.toml` and re-run the five-minute smoke test against YOUR adapter (including one `ANVIL-FORCE-FAIL`-style induced failure of your own, e.g., an unreachable worker URL, to confirm the stub path).
+- [ ] **Register the dotted path** under `deck.imagegen.backend` in `.anvil/config.json` and re-run the five-minute smoke test against YOUR adapter (including one `ANVIL-FORCE-FAIL`-style induced failure of your own, e.g., an unreachable worker URL, to confirm the stub path).
 - [ ] **Note for slides-skill migrants**: `anvil:deck` is the imagegen-capable presentation class. `anvil:slides` (technical talks) deliberately has no imagegen path — its figures are data-derived (`slides-figures`: mermaid/matplotlib). Decks that need generative imagery are authored with `anvil:deck`; see `anvil/skills/slides/SKILL.md` § "Generative imagery".
 
 ## Cross-references

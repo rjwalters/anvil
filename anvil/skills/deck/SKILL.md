@@ -207,7 +207,7 @@ No upper bound is enforced — if an operator sets `max_iterations: 99` with a r
 | `deck-revise <thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `_revision-log.md` |
 | `deck-audit <thread>` | auditor | latest `<thread>.{N}/`, `<thread>/BRIEF.md`, `<thread>/refs/**` | `<thread>.{N}.audit/` |
 | `deck-figures <thread>` | figurer | latest `<thread>.{N}/deck.md` + `figures/src/` | `<thread>.{N}/figures/` + `<thread>.{N}/deck.pdf` (PDF render) |
-| `deck-imagegen <thread>` | generative-imagery dispatcher (opt-in via `imagery_policy: generative-eligible`) | latest `<thread>.{N}/deck.md` + `<thread>.{N}/speaker-notes.md` + `<thread>/BRIEF.md` + `.anvil/config.toml` (`[deck.imagegen] backend`) + consumer-registered adapter | `<thread>.{N}/assets/generated/<slot>.png` + `<thread>.{N}/assets/_prompts.json` (Phase 2D prompt journal) + `<thread>.{N}/_progress.json` `phases.imagegen` |
+| `deck-imagegen <thread>` | generative-imagery dispatcher (opt-in via `imagery_policy: generative-eligible`) | latest `<thread>.{N}/deck.md` + `<thread>.{N}/speaker-notes.md` + `<thread>/BRIEF.md` + `.anvil/config.json` (`deck.imagegen.backend`) + consumer-registered adapter | `<thread>.{N}/assets/generated/<slot>.png` + `<thread>.{N}/assets/_prompts.json` (Phase 2D prompt journal) + `<thread>.{N}/_progress.json` `phases.imagegen` |
 
 The portfolio orchestrator is the user-facing entry point for status; the lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
 
@@ -357,7 +357,7 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 - `voice.md` (optional) — Founder/firm voice/tone guidance the drafter reads in addition to its base prompt.
 - `rubric.overrides.md` (optional) — Add stage-specific weight notes (e.g., "weight team higher for pre-seed") or domain-specific critical-flag examples.
 - `templates/<their-theme>.css` (optional) — Marp theme override. Consumers porting an existing brand identity (e.g., a LaTeX beamer `.sty`) start from the starter template at `anvil/lib/marp/brand-theme-starter.css` and the porting recipe at `anvil/lib/snippets/brand-theme-porting.md` (beamer-concept mapping table, registration, render-gate + vision validation).
-- `commands/deck-imagegen.md` — Generative-imagery command (opt-in via `imagery_policy: generative-eligible` in `BRIEF.md` frontmatter). See `commands/deck-imagegen.md` and `commands/deck-imagegen-adapter.md`. Anvil ships zero production backends; consumers register their own adapter via `.anvil/config.toml`. New consumers start with `commands/deck-imagegen-onboarding.md` — a five-minute smoke test against the shipped placeholder reference backend, the adapter-owned auth-bootstrap pattern for cloud backends, and a porting checklist for existing in-house image workers.
+- `commands/deck-imagegen.md` — Generative-imagery command (opt-in via `imagery_policy: generative-eligible` in `BRIEF.md` frontmatter). See `commands/deck-imagegen.md` and `commands/deck-imagegen-adapter.md`. Anvil ships zero production backends; consumers register their own adapter via `.anvil/config.json`. New consumers start with `commands/deck-imagegen-onboarding.md` — a five-minute smoke test against the shipped placeholder reference backend, the adapter-owned auth-bootstrap pattern for cloud backends, and a porting checklist for existing in-house image workers.
 
 ## Per CLAUDE.md
 
