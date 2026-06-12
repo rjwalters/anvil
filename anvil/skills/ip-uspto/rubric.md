@@ -68,6 +68,22 @@ Aggregation needs no special case: the reviser's mean-of-non-null rule (`anvil/l
 
 Despite scoring nothing, the adversary sibling's `_meta.json` still stamps `scorecard_kind: "machine-summary"` plus the issue #346 rubric-version fields (`rubric_id: "anvil-ip-uspto-v2"`, `rubric_total: 45`, `advance_threshold: 39`) — the stamp records which rubric's flag semantics and threshold regime the sibling participates in. The critic is **not in the default critic set**; operators enable it per-thread via `<thread>/.anvil.json`'s `critics` array.
 
+## FTO triage critic — report-only, never flags (optional sibling)
+
+The optional, on-demand `ip-uspto-fto` critic (`commands/ip-uspto-fto.md`, issue #446) is the skill's **third non-standard critic shape**: a zero-dimension, **report-only** scorecard that **NEVER raises a critical flag**. Like the adversary it is findings-only — its `_summary.md` carries all nine main-rubric dimension rows with score `null` (justification `n/a — report-only FTO triage critic`) and owns no dimension. The deliberate departure: where the adversary is critical-flag eligible (a patentability attack is a reviser-remediable drafting defect), the fto critic's `critical_flag` is hardcoded `false` — FTO exposure is not a quality defect the reviser can fix by editing the spec, and a machine-emitted blocking flag would read as an infringement verdict, which the command is structurally prohibited from rendering. Severity routes through counsel-action urgency buckets (`Critical` / `Important` / `Nice-to-have`) inside the report instead, and the only scoring vocabulary is the 0–4 relevance scale.
+
+Aggregation needs no special case: mean-of-non-null (`anvil/lib/critics.py::aggregate`) means the all-null scorecard contributes to no per-dimension mean, the findings join the deduped union, and `flagged: false` ORs to nothing — an fto sibling can **never short-circuit or block** the verdict. This is the report-only shape's defining property, the inverse of the adversary's flag semantics.
+
+Despite scoring nothing and never flagging, the fto sibling's `_meta.json` still stamps `scorecard_kind: "machine-summary"` plus the issue #346 fields (`rubric_id: "anvil-ip-uspto-v2"`, `rubric_total: 45`, `advance_threshold: 39`) so downstream consumers aggregate it apples-to-apples. The critic is **not in the default critic set**: expected use is on-demand (pre-finalize / pre-conversion), with `<thread>/.anvil.json` `critics`-array opt-in also supported. Its output is triage-for-counsel — NOT an FTO opinion — with the verbatim NOT-AN-FTO-OPINION boilerplate required at the top of both prose artifacts; see the command file for the full legal-framing rules.
+
+The three non-standard critic shapes, side by side:
+
+| Shape | Critic | Dimensions | Critical flag |
+|---|---|---|---|
+| Disjoint co-rubric | `vision` | dv1–dv5 (/25), main nine `null` | Eligible (`rendered_overflow_unrecoverable`) |
+| Findings-only | `adversary` | all nine `null` | **Eligible** — flags BLOCK like §101/§112 |
+| Report-only | `fto` | all nine `null` | **NEVER** — `critical_flag` always `false` |
+
 ## Scoring guidance
 
 For each dimension owned, the critic assigns an integer between 0 and 5. A short justification accompanies each score (1–3 sentences pointing to specific evidence: spec section, claim number, figure number).
