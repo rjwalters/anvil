@@ -137,10 +137,10 @@ When an orchestrator detects a gap (e.g., `<thread>.0.outline/` exists
 but no `<thread>.1/`), the state is `OUTLINED` (or `BRIEF_DONE`, etc.,
 per the skill's state machine), not an anomaly.
 
-## Convenience `.latest` symlinks (optional consumer convention)
+## Convenience `.latest` symlinks (framework-maintained by default, consumer-pinnable)
 
-Consumers MAY add convenience symlinks per project that alias the
-highest-N version of a thread:
+Convenience symlinks per thread alias the highest-N version of a
+thread:
 
 ```
 <thread>.latest        -> <thread>.{max_N}/
@@ -148,10 +148,36 @@ highest-N version of a thread:
 <thread>.latest.<tag>  -> <thread>.{max_N}.<tag>/      e.g., .latest.design, .latest.audit
 ```
 
-These are **optional and consumer-maintained**. Anvil-shipped commands
-do not write, require, or read them in v0 — they exist purely to give
-human operators and downstream tooling a stable path that always
-resolves to the current version (no N-parsing required).
+They exist to give human operators and downstream tooling a stable
+path that always resolves to the current version (no N-parsing
+required).
+
+**Contract** (issue #473; previously "optional and consumer-maintained"
+— the studio canary surfaced that the consumer-side convention was
+agent-invisible): skills that have adopted the writer (today:
+`anvil:memo`) maintain `<thread>.latest` and `<thread>.latest.review`
+**by default** at the end of each lifecycle write (draft / review /
+revise), via the canonical writer
+`anvil.lib.latest_resolution.update_latest_symlinks()` exposed through
+a per-skill phase CLI (memo: `anvil/skills/memo/lib/latest_phase.py`).
+Each suffix family is handled independently with **relative** targets
+(`ln -sfn` semantics); already-existing `<thread>.latest.<tag>`
+families are re-pointed too, but the framework never invents new tag
+families. Skills that have not yet adopted the writer remain on the
+consumer-maintained convention.
+
+**Consumer-pinnable**: the writer discriminates the steady-lifecycle
+stale link (still on the immediately-superseded version, set before
+the new highest dir existed — re-pointed freely; this is the tracking
+path) from an intentional pin: any other symlink that resolves to a
+real, **non-highest** version dir (e.g., "publish `.latest` against
+the reviewed-and-AUDITED v3 even though v4 is in progress") is
+presumptively an operator pin and is preserved with a notice —
+`--force` re-points. A real `.latest/` *directory* (non-symlink) is never
+replaced. Dangling symlinks are repaired freely. The writer is
+idempotent and non-blocking. The symlinks are framework-maintained
+output but never framework *input*: no shipped command requires them
+to exist, and deleting them breaks nothing.
 
 ### Discovery-glob guarantee
 
@@ -178,12 +204,13 @@ perspective.
 
 ### Typical usage
 
-After a reviser writes `<thread>.{N+1}/`, the consumer's wrapper script
-re-points the symlink in a single atomic step:
+After a memo lifecycle command writes `<thread>.{N+1}/` (or a
+`.review/` sibling), the command's final step invokes the latest-phase
+CLI, which re-points each family atomically (the `ln -sfn` idiom,
+implemented as create-temp-then-rename):
 
 ```
-ln -sfn <thread>.{N+1} <thread>.latest
-ln -sfn <thread>.{N+1}.review <thread>.latest.review   # if/when the review lands
+python3 .anvil/skills/memo/lib/latest_phase.py <thread-dir>     # [--force]
 ```
 
 Downstream tools (figure scripts cross-referencing another thread,
@@ -193,12 +220,13 @@ scripts in particular can reference other-skill artifacts via stable
 paths like `refs/<thread>.latest/...` rather than hardcoding
 `refs/<thread>.8/...`, which silently goes stale on the next revision.
 
-The studio canary consumer (2026-05-30) ships an ~80-line bash refresh
-script (`output/refresh-latest-symlinks.sh`, idempotent, dry-run-able)
-that sweeps every project dir and `ln -sfn`s the `.latest` aliases for
-every thread it finds. Anvil does **not** bundle this script — it is a
-~one-page idiom each consumer codifies to taste (in bash, Python, or
-their make/just/task runner).
+For skills that have not yet adopted the writer, the consumer-side
+idiom remains `ln -sfn <thread>.{N+1} <thread>.latest` after each
+write (the studio canary's ~80-line `output/refresh-latest-symlinks.sh`
+sweep script is the precedent). Consumer scripts and the framework
+writer compose safely: both are idempotent and both preserve
+resolvable non-highest pins only if written to do so — the framework
+writer always does.
 
 ### Edge cases worth noting
 
@@ -214,15 +242,17 @@ their make/just/task runner).
 - **Cross-platform**: macOS Finder and GNU/Linux `ls` follow symlinks
   natively; Windows shells handle them via WSL or `mklink /D`.
 
-### When to promote to a `lib/` primitive
+### Promotion history
 
-Not in v0. Per the "wait for the second consumer before generalizing"
-rule (CLAUDE.md), the `.latest` refresh logic stays consumer-side
-until a second consumer requests upstream automation. If/when that
-happens, the natural shape is
-`anvil.lib.latest_symlinks.refresh(project_dir)` called from
-`memo-revise` / `deck-revise` / similar at the end of a successful
-write — but only after the convention has been observed in the wild.
+The refresh logic was consumer-side in v0 per the "wait for the second
+consumer before generalizing" rule (CLAUDE.md). The convention was then
+observed load-bearing in the wild (every studio thread carries the
+symlinks) while remaining agent-invisible — so issue #473 shipped the
+predicted shape: `anvil.lib.latest_resolution.update_latest_symlinks()`
+called from the end of each successful memo lifecycle write
+(`memo-draft` / `memo-review` / `memo-revise`, via
+`anvil/skills/memo/lib/latest_phase.py`). Other skills (`deck`,
+`datasheet`, …) adopt in follow-ups once the memo shape settles.
 
 ## Immutability contract
 
