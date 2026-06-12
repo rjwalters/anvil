@@ -321,29 +321,46 @@ _COUNT_RE = re.compile(r"(?<![\w.])(?P<num>\d[\d,]*(?:\.\d+)?)(?![\w%])")
 _LIST_MARKER_RE = re.compile(r"^\s*\d+\.\s", re.MULTILINE)
 
 # Explicit fraction shapes (proportion-claim evidence): "47 of 94",
-# "47 out of 94", "47/94".
+# "47 out of 94", "47/94". Currency prefixes carry an optional K/M/B
+# scale suffix per operand ("$1.2B of $2.4B"); the suffix group is a
+# conditional `(?(c?)...)` so bare-number text keeps its exact pre-#469
+# match surface (a bare "m" stays meters/minutes, never millions).
 _FRACTION_RES: Tuple[re.Pattern, ...] = (
     re.compile(
-        r"(?<![\w.])(?P<a>\d[\d,]*(?:\.\d+)?)\s+(?:out\s+of|of)\s+(?:the\s+)?"
-        r"(?P<b>\d[\d,]*(?:\.\d+)?)(?![\w%])"
+        r"(?<![\w.])(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
+        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)"
+        r"\s+(?:out\s+of|of)\s+(?:the\s+)?"
+        r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
+        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)(?![\w%])"
     ),
     re.compile(r"(?<![\w.])(?P<a>\d[\d,]*)\s*/\s*(?P<b>\d[\d,]*)(?![\w%])"),
 )
 
 # Explicit pair shapes (ratio / relative-change evidence): "from 120 ms
-# to 15 ms", "120 vs 15", "120 → 15". Currency prefixes tolerated.
+# to 15 ms", "120 vs 15", "120 → 15". Currency prefixes tolerated, and
+# (mirroring _CURRENCY_RE) currency-prefixed operands carry an optional
+# K/M/B scale suffix ("from $1.2B to $600M"). The suffix slot must come
+# BEFORE the unit-word slot ([A-Za-z%]*), which otherwise swallows it;
+# it is currency-gated (conditional on the `$` group) so a bare "12 m"
+# is never misread as 12 million.
 _PAIR_RES: Tuple[re.Pattern, ...] = (
     re.compile(
-        r"\bfrom\s+\$?(?P<a>\d[\d,]*(?:\.\d+)?)\s*[A-Za-z%]*\s+to\s+"
-        r"\$?(?P<b>\d[\d,]*(?:\.\d+)?)"
+        r"\bfrom\s+(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
+        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)\s*[A-Za-z%]*\s+to\s+"
+        r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
+        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)"
     ),
     re.compile(
-        r"\$?(?P<a>\d[\d,]*(?:\.\d+)?)\s*[A-Za-z%]*\s+(?:vs\.?|versus)\s+"
-        r"\$?(?P<b>\d[\d,]*(?:\.\d+)?)"
+        r"(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
+        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)\s*[A-Za-z%]*\s+(?:vs\.?|versus)\s+"
+        r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
+        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)"
     ),
     re.compile(
-        r"\$?(?P<a>\d[\d,]*(?:\.\d+)?)\s*[A-Za-z%]*\s*(?:→|->)\s*"
-        r"\$?(?P<b>\d[\d,]*(?:\.\d+)?)"
+        r"(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
+        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)\s*[A-Za-z%]*\s*(?:→|->)\s*"
+        r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
+        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)"
     ),
 )
 
@@ -429,6 +446,24 @@ class _PairShape:
     paragraph: int
 
 
+def _shape_operand(m: "re.Match[str]", num_key: str, cur_key: str, scale_key: str) -> float:
+    """Parse one shape operand, applying K/M/B scale for currency operands.
+
+    Mirrors the _CURRENCY_RE scale handling in _extract_numbers. The
+    scale suffix is only honored when the operand is currency-prefixed
+    (the `$` group matched) — see the ambiguity note on _PAIR_RES.
+    Patterns without currency/scale groups (e.g. the slash fraction)
+    fall through to the raw value.
+    """
+    value = _parse_value(m.group(num_key))
+    groups = m.groupdict()
+    if groups.get(cur_key):
+        scale = (groups.get(scale_key) or "").lower()
+        if scale in _SCALE:
+            value *= _SCALE[scale]
+    return value
+
+
 def _extract_shapes(
     masked: str, spans: List[Tuple[int, int, int]], patterns: Tuple[re.Pattern, ...]
 ) -> List[_PairShape]:
@@ -436,8 +471,8 @@ def _extract_shapes(
     for pattern in patterns:
         for m in pattern.finditer(masked):
             try:
-                a = _parse_value(m.group("a"))
-                b = _parse_value(m.group("b"))
+                a = _shape_operand(m, "a", "ca", "sa")
+                b = _shape_operand(m, "b", "cb", "sb")
             except ValueError:
                 continue
             shapes.append(
@@ -831,6 +866,7 @@ def _check_relative_claim(
         return None
     best: Optional[_PairShape] = None
     best_pct = 0.0
+    best_base = 0.0
     for p in in_window:
         for base in (p.a, p.b):
             if base == 0:
@@ -839,17 +875,19 @@ def _check_relative_claim(
             if within_tolerance(claim.value, pct):
                 return None
             if best is None or abs(pct - claim.value) < abs(best_pct - claim.value):
-                best, best_pct = p, pct
+                best, best_pct, best_base = p, pct, base
     if best is None:
         return None
+    # Name the base that produced best_pct — the two base conventions
+    # generally disagree, so never imply "either" for a single value.
     return (
         PERCENT_MISMATCH,
         best_pct,
         (
             f"claim {claim.raw!r} asserts {_fmt(claim.value)}% but the "
             f"window pair {best.raw.strip()!r} ({_fmt(best.a)} vs "
-            f"{_fmt(best.b)}) computes a {best_pct:.1f}% change under "
-            f"either base convention, not {_fmt(claim.value)}%."
+            f"{_fmt(best.b)}) computes a {best_pct:.1f}% change "
+            f"(base {_fmt(best_base)}), not {_fmt(claim.value)}%."
         ),
     )
 
@@ -863,6 +901,8 @@ def _check_multiplier_claim(
         return None
     best: Optional[_PairShape] = None
     best_ratio = 0.0
+    best_num = 0.0
+    best_den = 0.0
     for p in in_window:
         for num, den in ((p.a, p.b), (p.b, p.a)):
             if den == 0:
@@ -872,15 +912,19 @@ def _check_multiplier_claim(
                 return None
             if best is None or abs(ratio - claim.value) < abs(best_ratio - claim.value):
                 best, best_ratio = p, ratio
+                best_num, best_den = num, den
     if best is None:
         return None
+    # Display the (num, den) that actually produced best_ratio — the
+    # closest direction may be min/max, in which case max/min would
+    # show arithmetic inconsistent with the quoted result.
     return (
         MULTIPLIER_MISMATCH,
         best_ratio,
         (
             f"claim {claim.raw!r} asserts {_fmt(claim.value)}x but the "
             f"window pair {best.raw.strip()!r} computes "
-            f"{_fmt(max(best.a, best.b))} / {_fmt(min(best.a, best.b))} = "
+            f"{_fmt(best_num)} / {_fmt(best_den)} = "
             f"{best_ratio:.1f}x, not {_fmt(claim.value)}x."
         ),
     )
