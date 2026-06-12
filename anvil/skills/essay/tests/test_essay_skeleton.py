@@ -203,6 +203,20 @@ class TestReviewCommandWiring(unittest.TestCase):
         self.assertIn("lint_rhetoric", self.text)
         self.assertIn("do NOT escalate severities", self.text)
 
+    def test_rhetoric_lint_resolves_consumer_rules(self):
+        # #479: voice.rhetoric_rules wired into step 3c via the
+        # memo-render step 4g contract, ported to the DIRECT
+        # lint_rhetoric call (kwarg is extra_rules_path=, not the
+        # gate's rhetoric_rules_path=).
+        self.assertIn("resolve_rhetoric_rules", self.text)
+        self.assertIn("extra_rules_path=", self.text)
+        # All three branches of the forwarding contract.
+        self.assertIn("omit the `extra_rules_path=` kwarg", self.text)
+        self.assertIn("extra_rules_path=entry.paths[0]", self.text)
+        self.assertIn("still pass the path", self.text)
+        # Declared-but-missing surfaces, never silently opts out.
+        self.assertIn("Do NOT silently omit the kwarg", self.text)
+
     def test_example_coherence_llm_pass_present(self):
         # blog-review step-2.5 port; no detector by design (#462 gate 1).
         self.assertIn("Example-coherence", self.text)
