@@ -92,7 +92,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .adopt_vn import _FOREIGN_TAG_SUFFIX_RE
+from .adopt_vn import _FOREIGN_TAG_SUFFIX_RE, _format_ambiguous_slot
 from .detect import BRIEF_FILENAME, Shape
 from .enroll import (
     EnrollError,
@@ -250,9 +250,15 @@ def _scan_families(
     sidecar dir names whose version dir is absent (untouched,
     reported per family), and ``strays`` lists directory names that
     match neither grammar (untouched, reported once).
+
+    A version slot or sidecar ``(stem, N, tag)`` slot claimed by more
+    than one directory name (the leading-zero collapse, issue #458:
+    ``Brasidas.C.07/`` + ``Brasidas.C.7/``) is a scan-time refusal —
+    the whole batch aborts BEFORE any slug/BRIEF/collision work,
+    naming every colliding dir per slot.
     """
-    families: Dict[str, Dict[int, Path]] = {}
-    sidecar_candidates: List[Tuple[str, int, str, Path]] = []
+    version_claims: Dict[Tuple[str, int], List[Path]] = {}
+    sidecar_claims: Dict[Tuple[str, int, str], List[Path]] = {}
     strays: List[str] = []
 
     try:
@@ -268,32 +274,66 @@ def _scan_families(
         name = child.name
         m = _FAMILY_SIDECAR_RE.match(name)
         if m is not None:
-            sidecar_candidates.append(
-                (m.group("stem"), int(m.group("num")), m.group("tag"), child)
-            )
+            sidecar_claims.setdefault(
+                (m.group("stem"), int(m.group("num")), m.group("tag")), []
+            ).append(child)
             continue
         m = _FAMILY_VERSION_RE.match(name)
         if m is not None:
-            families.setdefault(m.group("stem"), {})[
-                int(m.group("num"))
-            ] = child
+            version_claims.setdefault(
+                (m.group("stem"), int(m.group("num"))), []
+            ).append(child)
             continue
         strays.append(name)
 
+    ambiguous: List[str] = []
+    families: Dict[str, Dict[int, Path]] = {}
+    for stem, num in sorted(version_claims):
+        claimants = version_claims[(stem, num)]
+        if len(claimants) > 1:
+            ambiguous.append(
+                _format_ambiguous_slot(
+                    [c.name for c in claimants],
+                    f"`{stem}` version {num}",
+                )
+            )
+        else:
+            families.setdefault(stem, {})[num] = claimants[0]
+
+    stems_with_versions = {stem for stem, _ in version_claims}
     sidecars: Dict[str, Dict[int, List[Tuple[str, Path]]]] = {}
     orphans: Dict[str, List[str]] = {}
-    for stem, num, tag, child in sidecar_candidates:
-        if stem in families and num in families[stem]:
+    for stem, num, tag in sorted(sidecar_claims):
+        claimants = sidecar_claims[(stem, num, tag)]
+        if (stem, num) in version_claims:
+            if len(claimants) > 1:
+                ambiguous.append(
+                    _format_ambiguous_slot(
+                        [c.name for c in claimants],
+                        f"the `{stem}` version-{num} `{tag}` sidecar",
+                    )
+                )
+                continue
             sidecars.setdefault(stem, {}).setdefault(num, []).append(
-                (tag, child)
+                (tag, claimants[0])
             )
-        elif stem in families:
-            # Orphan sidecar (family exists, version dir absent) —
+        elif stem in stems_with_versions:
+            # Orphan sidecar(s) (family exists, version dir absent) —
             # untouched, reported on the family.
-            orphans.setdefault(stem, []).append(child.name)
+            orphans.setdefault(stem, []).extend(
+                c.name for c in claimants
+            )
         else:
-            # Sidecar of a stem with no version dirs at all — stray.
-            strays.append(child.name)
+            # Sidecar(s) of a stem with no version dirs at all — stray.
+            strays.extend(c.name for c in claimants)
+
+    if ambiguous:
+        raise AdoptFamilyError(
+            "Ambiguous version numbering: "
+            + "; ".join(ambiguous)
+            + " — rename one of each colliding set manually, then "
+            "re-run --adopt-family. Nothing was modified."
+        )
 
     return families, sidecars, orphans, sorted(strays)
 
@@ -553,14 +593,25 @@ def build_adopt_family_plan(
             ):
                 canonical = tag_map[tag]
                 sidecar_target = target_dir / f"{slug}.{n}.{canonical}"
-                if sidecar_target.exists() or (
-                    sidecar_target.name in seen_targets
-                ):
+                if sidecar_target.exists():
                     raise AdoptFamilyError(
                         f"Target collision: {sidecar_target} already "
                         f"exists (would clobber it when renaming "
                         f"`{sidecar_dir.name}/`). Resolve the collision "
                         f"manually, then re-run. Nothing was modified."
+                    )
+                if sidecar_target.name in seen_targets:
+                    # Backstop only (#458): duplicate sidecar slots and
+                    # same-dir tag-map collisions both refuse earlier,
+                    # at scan / tag-map time.
+                    raise AdoptFamilyError(
+                        f"In-plan target collision: two sidecars of "
+                        f"`{stem}.{n}` would both rename to "
+                        f"{sidecar_target} (renaming "
+                        f"`{sidecar_dir.name}/` collides with an "
+                        f"already-planned rename). Resolve the "
+                        f"ambiguity manually, then re-run. Nothing was "
+                        f"modified."
                     )
                 seen_targets.add(sidecar_target.name)
                 renames.append(

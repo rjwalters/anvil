@@ -12,14 +12,17 @@ from __future__ import annotations
 
 import hashlib
 
+import pytest
+
 from _fixtures import (
     DEFAULT_TAG_MAP,
     build_letter_family_threads,
     write_tag_map,
 )
-from _project_migrate_skill_lib import orchestrate
+from _project_migrate_skill_lib import adopt_family, orchestrate
 
 run_adopt_family = orchestrate.run_adopt_family
+AdoptFamilyError = adopt_family.AdoptFamilyError
 
 ARTIFACT_TYPE = "ip-uspto-provisional"
 
@@ -141,3 +144,42 @@ class TestAdoptFamilyDryRun:
         assert applied.success, applied.report
         written = (project / "BRIEF.md").read_text(encoding="utf-8")
         assert written.rstrip("\n") == previewed.rstrip("\n")
+
+    def test_leading_zero_refusal_mutates_nothing_even_under_apply(
+        self, tmp_path
+    ):
+        # Issue #458: the Brasidas.C.07/Brasidas.C.7 slot collision
+        # refuses at scan time — the whole batch (the clean Brasidas.A
+        # family included) stays byte-identical even with apply=True.
+        project = build_letter_family_threads(
+            tmp_path, with_leading_zero_dup=True
+        )
+        before = _tree_digest(project)
+        with pytest.raises(AdoptFamilyError):
+            run_adopt_family(
+                project,
+                tag_map=_tag_map(tmp_path),
+                artifact_type=ARTIFACT_TYPE,
+                apply=True,
+            )
+        assert _tree_digest(project) == before
+
+    def test_duplicate_sidecar_slot_refusal_mutates_nothing_under_apply(
+        self, tmp_path
+    ):
+        # Issue #458: a leading-zero sidecar twin on a single version
+        # dir is a plan-time refusal (not the old misleading
+        # seen_targets message) — tree untouched under apply=True.
+        project = build_letter_family_threads(tmp_path)
+        dup = project / "Brasidas.C.07.enablement"
+        dup.mkdir()
+        (dup / "review.md").write_text("# dup\n", encoding="utf-8")
+        before = _tree_digest(project)
+        with pytest.raises(AdoptFamilyError):
+            run_adopt_family(
+                project,
+                tag_map=_tag_map(tmp_path),
+                artifact_type=ARTIFACT_TYPE,
+                apply=True,
+            )
+        assert _tree_digest(project) == before

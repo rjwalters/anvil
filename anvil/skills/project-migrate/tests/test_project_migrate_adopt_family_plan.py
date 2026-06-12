@@ -335,3 +335,94 @@ class TestReport:
             "slug: brasidas-a  # adopted-from: Brasidas.A.{N}"
             in result.report
         )
+
+
+class TestLeadingZeroAmbiguity:
+    """Leading-zero slot collapse refusals (issue #458).
+
+    `Brasidas.C.07/` + `Brasidas.C.7/` both parse to `Brasidas.C`
+    version slot 7: the dict-keyed scan silently dropped one. Duplicate
+    sidecar slots previously fell through to the misleading
+    `seen_targets` "already exists" message. Both are now scan-time
+    refusals naming the stem and every colliding dir; the whole batch
+    (clean sibling families included) aborts.
+    """
+
+    def test_duplicate_version_slot_refused_naming_both_and_stem(
+        self, tmp_path
+    ):
+        project = build_letter_family_threads(
+            tmp_path, with_sidecars=False, with_leading_zero_dup=True
+        )
+        with pytest.raises(AdoptFamilyError) as excinfo:
+            build_adopt_family_plan(project, artifact_type=ARTIFACT_TYPE)
+        msg = str(excinfo.value)
+        assert "`Brasidas.C.07/`" in msg
+        assert "`Brasidas.C.7/`" in msg
+        assert "`Brasidas.C` version 7" in msg
+        assert "Nothing was modified" in msg
+
+    def test_refusal_fires_at_scan_time_before_required_flags(
+        self, tmp_path
+    ):
+        # Missing --artifact-type (and missing --tag-map with sidecars
+        # present) are refusals too — the scan-time ambiguity refusal
+        # must win over both.
+        project = build_letter_family_threads(
+            tmp_path, with_leading_zero_dup=True
+        )
+        with pytest.raises(AdoptFamilyError) as excinfo:
+            build_adopt_family_plan(project)
+        assert "Ambiguous version numbering" in str(excinfo.value)
+
+    def test_whole_batch_aborts_with_clean_sibling_family(self, tmp_path):
+        # Brasidas.A is collision-free, but the batch contract aborts
+        # EVERYTHING pre-mutation: the raise means no plan exists for
+        # the clean family either.
+        project = build_letter_family_threads(
+            tmp_path, with_sidecars=False, with_leading_zero_dup=True
+        )
+        with pytest.raises(AdoptFamilyError):
+            build_adopt_family_plan(project, artifact_type=ARTIFACT_TYPE)
+        assert not (project / "brasidas-a").exists()
+        assert not (project / "BRIEF.md").exists()
+
+    def test_duplicate_sidecar_slot_refused_at_plan_time(self, tmp_path):
+        # Single version dir (Brasidas.C.7/) with a leading-zero twin
+        # of one of its sidecars: previously this fell through to the
+        # misleading seen_targets "already exists" refusal — now it is
+        # a scan-time ambiguity refusal naming both sidecar dirs.
+        project = build_letter_family_threads(tmp_path)
+        dup = project / "Brasidas.C.07.enablement"
+        dup.mkdir()
+        (dup / "review.md").write_text("# dup\n", encoding="utf-8")
+        with pytest.raises(AdoptFamilyError) as excinfo:
+            build_adopt_family_plan(
+                project,
+                tag_map_path=_tag_map(tmp_path),
+                artifact_type=ARTIFACT_TYPE,
+            )
+        msg = str(excinfo.value)
+        assert "`Brasidas.C.07.enablement/`" in msg
+        assert "`Brasidas.C.7.enablement/`" in msg
+        assert "`enablement` sidecar" in msg
+        assert "Nothing was modified" in msg
+        assert "already exists" not in msg
+
+    def test_lone_leading_zero_dir_adopts_normalized(self, tmp_path):
+        # No Brasidas.C.7 sibling for slot 17: a lone Brasidas.C.017
+        # is NOT a refusal — it adopts, normalized to brasidas-c.17.
+        project = build_letter_family_threads(tmp_path, with_sidecars=False)
+        lone = project / "Brasidas.C.017"
+        lone.mkdir()
+        (lone / "spec.md").write_text("# v017\n", encoding="utf-8")
+        plan = build_adopt_family_plan(project, artifact_type=ARTIFACT_TYPE)
+        renames = {
+            r.source.name: r.target
+            for doc in plan.documents
+            for r in doc.renames
+        }
+        assert (
+            renames["Brasidas.C.017"]
+            == project / "brasidas-c" / "brasidas-c.17"
+        )
