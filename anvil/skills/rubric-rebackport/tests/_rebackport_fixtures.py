@@ -468,8 +468,77 @@ def build_deck_thread_no_brief(
     return project_dir
 
 
+# ---------------------------------------------------------------------------
+# Fixture: essay_44_unstamped (post-#366 catalog refresh — issue #482)
+# ---------------------------------------------------------------------------
+
+
+def _meta_essay_44_unstamped() -> dict:
+    """Return an essay reviewer ``_meta.json`` with rubric_total but no rubric_id."""
+    return {
+        "critic": "review",
+        "role": "essay-review.md",
+        "started": "2026-06-01T12:00:00Z",
+        "finished": "2026-06-01T12:05:00Z",
+        "model": "claude-opus-4-1",
+        "schema_version": 1,
+        "scorecard_kind": "human-verdict",
+        # Essay review missing its rubric_id stamp (e.g., a tool-edited
+        # or hand-rolled review). The planner must heuristically pick
+        # `anvil-essay-v1` from the (skill=essay, total=44) pair
+        # without --legacy-rubric.
+        "rubric_total": 44,
+    }
+
+
+def build_essay_44_unstamped(
+    root: Path,
+    project_name: str = "unstamped-essay-44",
+    *,
+    slug: str = "essay",
+) -> Path:
+    """Build an essay thread whose review is missing `rubric_id`.
+
+    Exercises the post-#366 catalog entry for ``("essay", 44)`` —
+    issue #482's second-occurrence catalog-drift repro. Skill
+    inference goes through the BRIEF route (rule 1): the essay skill's
+    body filename echoes the slug, so rule 2's fixed-filename table
+    cannot fire.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    _write(project_dir / "BRIEF.md", _brief_for_skill(slug, "essay"))
+
+    thread_dir = project_dir / slug
+    v1 = thread_dir / f"{slug}.1"
+    _write(v1 / f"{slug}.md", f"# {slug} v1\n\nBody.\n")
+    _write(
+        v1 / "_progress.json",
+        json.dumps(_progress_legacy(slug), indent=2) + "\n",
+    )
+
+    review_dir = thread_dir / f"{slug}.1.review"
+    _write(
+        review_dir / "_meta.json",
+        json.dumps(_meta_essay_44_unstamped(), indent=2) + "\n",
+    )
+    _write(
+        review_dir / "_summary.md",
+        "---\n"
+        "for_version: 1\n"
+        "scorecard_kind: human-verdict\n"
+        "critical_flag: false\n"
+        "---\n"
+        "\n"
+        "# Review summary\n\nUnstamped essay summary body.\n",
+    )
+    _write(review_dir / "verdict.md", "# Verdict\n\nEssay verdict.\n")
+    return project_dir
+
+
 __all__ = [
     "build_deck_thread_no_brief",
+    "build_essay_44_unstamped",
     "build_fully_stamped",
     "build_legacy_unstamped",
     "build_mixed_skill_portfolio",

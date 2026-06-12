@@ -110,6 +110,16 @@ KNOWN_RUBRICS: Dict[Tuple[str, int], RubricIdentity] = {
     ("slides", 44): RubricIdentity("anvil-slides-v2", 44, 35),
     ("installation", 44): RubricIdentity("anvil-installation-v2", 44, 35),
     ("ip-uspto", 45): RubricIdentity("anvil-ip-uspto-v2", 45, 39),
+    # Post-#366 skills (issue #482): datasheet (#421),
+    # ip-uspto-provisional (#444), and essay (#477) shipped with
+    # per-review stamping from day one — no /40 legacy rows exist.
+    # NOTE: the provisional skill's rubric_id is `anvil-ip-provisional-v1`
+    # (no "uspto") per `anvil/skills/ip-uspto-provisional/rubric.md`.
+    ("datasheet", 44): RubricIdentity("anvil-datasheet-v1", 44, 39),
+    ("ip-uspto-provisional", 45): RubricIdentity(
+        "anvil-ip-provisional-v1", 45, 39
+    ),
+    ("essay", 44): RubricIdentity("anvil-essay-v1", 44, 35),
 }
 
 
@@ -127,6 +137,9 @@ CURRENT_RUBRIC_BY_SKILL: Dict[str, RubricIdentity] = {
     "slides": KNOWN_RUBRICS[("slides", 44)],
     "installation": KNOWN_RUBRICS[("installation", 44)],
     "ip-uspto": KNOWN_RUBRICS[("ip-uspto", 45)],
+    "datasheet": KNOWN_RUBRICS[("datasheet", 44)],
+    "ip-uspto-provisional": KNOWN_RUBRICS[("ip-uspto-provisional", 45)],
+    "essay": KNOWN_RUBRICS[("essay", 44)],
 }
 
 

@@ -368,6 +368,13 @@ def _load_brief_skill_map(project_tree: Path) -> Dict[str, str]:
         "ip-uspto": "ip-uspto",
         "patent": "ip-uspto",
         "installation": "installation",
+        # Post-#366 skills (issue #482). Without these rows, BRIEF-route
+        # inference (rule 1) misses datasheet / provisional / essay
+        # threads even after the KNOWN_RUBRICS catalog gained their
+        # entries — the planner would see ``inferred_skill is None``.
+        "datasheet": "datasheet",
+        "ip-uspto-provisional": "ip-uspto-provisional",
+        "essay": "essay",
     }
 
     for brief in _walk_for_briefs(project_tree):
