@@ -19,8 +19,8 @@ Memo mode (``kind="memo"``)
 ---------------------------
 
 When invoked with ``kind="memo"``, the gate routes through a separate
-six-dimension flow tailored to the ``anvil:memo`` markdown → PDF
-rendering pipeline shipped by Epic #158. The six memo checks are:
+seven-dimension flow tailored to the ``anvil:memo`` markdown → PDF
+rendering pipeline shipped by Epic #158. The seven memo checks are:
 
 1. ``memo_compile_success`` — pandoc exited 0, the PDF exists, and the
    page count is positive.
@@ -65,6 +65,28 @@ rendering pipeline shipped by Epic #158. The six memo checks are:
    for markdown comment syntax (``<!-- TODO -->``, ``[TBD]``,
    ``_TKTKTK_``). Suppression via
    ``<!-- anvil-lint-disable: memo_placeholder_scan -->``.
+7. ``memo_rhetoric_lint`` — advisory deterministic rhetoric lint
+   (issue #463). Delegates to
+   ``anvil/lib/rhetoric_lint.py::lint_rhetoric`` over the body
+   markdown: rule-set-driven phrase/trope/AI-tell scanning (phrase,
+   regex, and frequency rule kinds; the framework default set is
+   ``DEFAULT_RHETORIC_RULES`` plus the em-dash-density frequency
+   rule). Fenced code blocks and HTML comments are excluded from the
+   scan. Consumer rules merge over the defaults via the optional
+   ``rhetoric_rules_path`` JSON file (the documented integration
+   point for #461's ``voice.rhetoric_rules`` sub-key); malformed
+   consumer JSON graceful-degrades to a defaults-only run with one
+   warning finding naming the parse error. ALL findings are warning
+   severity (info when suppressed or consumer-downgraded) and the
+   dimension never joins ``failed_gates`` — the same advisory model
+   as ``memo_image_dimensions`` (#395): findings recorded in
+   ``_progress.json.render_gate.findings``, ``passed`` unaffected,
+   no ``CriticalFlag``. Per-line suppression via
+   ``<!-- anvil-lint-disable: memo_rhetoric_lint -->`` (same line or
+   line directly above; suppressed hits surface as info findings).
+   Rationale: rhetoric rules have irreducible false positives (quoted
+   material, deliberate style); dim 9 *Rhetorical economy* critics
+   make the judgment call with this as mechanical evidence.
 
 The memo path also owns ``_render_memo_source`` (the pandoc → weasyprint
 OR wkhtmltopdf OR xelatex chain) with engine preflight via the
@@ -168,6 +190,7 @@ from anvil.lib.review_schema import (
     Review,
     Score,
 )
+from anvil.lib.rhetoric_lint import lint_rhetoric
 
 
 # Default placeholder patterns. Skills can extend via the placeholder_patterns
@@ -216,6 +239,7 @@ DIM_MEMO_OVERFULL = "memo_overfull_check"
 DIM_MEMO_IMAGE_REFS = "memo_image_refs_exist"
 DIM_MEMO_IMAGE_DIMENSIONS = "memo_image_dimensions"
 DIM_MEMO_PLACEHOLDERS = "memo_placeholder_scan"
+DIM_MEMO_RHETORIC = "memo_rhetoric_lint"
 
 # Engine names for the memo render chain. Selection priority per architect
 # Q1 (Epic #158): weasyprint > wkhtmltopdf > xelatex. Pandoc is the common
@@ -424,6 +448,11 @@ class GateResult:
             # change (issue #395).
             DIM_MEMO_IMAGE_DIMENSIONS,
             DIM_MEMO_PLACEHOLDERS,
+            # memo_rhetoric_lint is advisory today (never joins
+            # failed_gates) — listed here so a future severity promotion
+            # emits flags in the documented check order without a code
+            # change (issue #463).
+            DIM_MEMO_RHETORIC,
         ]
         for dim in ordered_dims:
             if dim not in self.failed_gates:
@@ -626,6 +655,7 @@ def gate(
     render_template: Optional[str] = None,
     render_lua_filters: Optional[list[str]] = None,
     render_metadata: Optional[dict] = None,
+    rhetoric_rules_path: Optional[Path] = None,
     log_path: Optional[Path] = None,
     source_paths: Optional[list[Path]] = None,
     page_cap: Optional[int] = None,
@@ -645,8 +675,9 @@ def gate(
       + ``page_cap`` + ``overfull_threshold_pt`` + ``placeholder_patterns``
       + ``pdfinfo_path`` + ``engine`` + ``compile_status`` +
       ``compile_exit_code``) is preserved verbatim.
-    - ``kind="memo"``: the six-dimension memo gate (Epic #158 / Phase 2;
-      sixth dimension ``memo_image_dimensions`` added by issue #395).
+    - ``kind="memo"``: the seven-dimension memo gate (Epic #158 / Phase 2;
+      sixth dimension ``memo_image_dimensions`` added by issue #395;
+      seventh dimension ``memo_rhetoric_lint`` added by issue #463).
       Requires ``version_dir``; ``out_pdf`` defaults to
       ``<version_dir>/memo.pdf``. ``target_length`` is the resolved
       ``{"words": [min, max]}`` or ``{"pages": [min, max]}`` dict (per
@@ -694,9 +725,19 @@ def gate(
       number parsed from the ``<slug>.{N}`` version-dir name) are
       engine-agnostic and always applied when set. Render provenance is
       surfaced on ``GateResult.engine_used`` / ``template_used``.
+      Optional ``rhetoric_rules_path`` (issue #463) is a consumer JSON
+      rule file for the advisory ``memo_rhetoric_lint`` dimension
+      (check 7), merged over ``rhetoric_lint.DEFAULT_RHETORIC_RULES``;
+      malformed input graceful-degrades to a defaults-only run with a
+      warning finding naming the parse error. ``None`` (the default)
+      runs the framework defaults — defaults-only behavior is
+      byte-identical whether or not any consumer declaration exists.
+      This is the documented integration point for #461's
+      ``voice.rhetoric_rules`` sub-key (wired as a follow-up once both
+      issues merge).
       Routes through :func:`_gate_memo` which invokes
       :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
-      engine, then runs the five memo-specific checks. See module
+      engine, then runs the memo-specific checks. See module
       docstring for the full check list.
 
     Parameters (kind="latex")
@@ -757,6 +798,7 @@ def gate(
             render_template=render_template,
             render_lua_filters=render_lua_filters,
             render_metadata=render_metadata,
+            rhetoric_rules_path=rhetoric_rules_path,
         )
     if kind != "latex":
         raise ValueError(
@@ -2298,8 +2340,9 @@ def _gate_memo(
     render_template: Optional[str] = None,
     render_lua_filters: Optional[list[str]] = None,
     render_metadata: Optional[dict] = None,
+    rhetoric_rules_path: Optional[Path] = None,
 ) -> GateResult:
-    """Six-dimension memo render-gate (kind="memo").
+    """Seven-dimension memo render-gate (kind="memo").
 
     See the module docstring for the dimension list and severity model.
     The function is structured to mirror the LaTeX gate's "all checks run
@@ -2343,6 +2386,12 @@ def _gate_memo(
     own. Render provenance lands on ``GateResult.engine_used`` /
     ``template_used`` so memo-render can persist
     ``_progress.json.phases.render.engine`` / ``.template``.
+
+    The optional ``rhetoric_rules_path`` parameter (issue #463) is a
+    consumer JSON rule file for the advisory ``memo_rhetoric_lint``
+    dimension (check 7), forwarded verbatim to
+    :func:`anvil.lib.rhetoric_lint.lint_rhetoric` as
+    ``extra_rules_path``. ``None`` runs the framework defaults.
     """
     if out_pdf is None:
         # PDF output basename echoes the thread slug per #295 (e.g.
@@ -2703,6 +2752,54 @@ def _gate_memo(
                 )
             )
 
+    # --- Check 7: memo_rhetoric_lint (issue #463, advisory) -----------------
+    # Deterministic rhetoric lint over the body markdown (phrase / regex /
+    # frequency AI-tell rules; see anvil/lib/rhetoric_lint.py). Warning
+    # severity throughout (info when suppressed via
+    # ``<!-- anvil-lint-disable: memo_rhetoric_lint -->`` or consumer-
+    # downgraded); the dimension is NOT added to ``failed`` — the same
+    # advisory model as memo_image_dimensions (#395): findings recorded,
+    # ``passed`` unaffected, no CriticalFlag. Findings flow to
+    # ``_progress.json.render_gate.findings`` with zero new plumbing.
+    if not memo_md.is_file():
+        reasons.append(
+            f"{DIM_MEMO_RHETORIC}: {body_filename} not found; rhetoric "
+            "lint skipped."
+        )
+    else:
+        rhetoric_result = lint_rhetoric(
+            memo_md.read_text(encoding="utf-8", errors="replace"),
+            extra_rules_path=rhetoric_rules_path,
+            suppress_rules=(DIM_MEMO_RHETORIC,),
+        )
+        rhetoric_warning_count = 0
+        for rf in rhetoric_result.findings:
+            if rf.severity == "warning":
+                rhetoric_warning_count += 1
+            matched = (
+                f" (matched {rf.match!r})"
+                if rf.match is not None and rf.line is not None
+                else ""
+            )
+            findings.append(
+                GateFinding(
+                    gate=DIM_MEMO_RHETORIC,
+                    severity=rf.severity,
+                    message=f"[{rf.rule_id}] {rf.message}{matched}",
+                    location=(
+                        f"{memo_md}:L{rf.line}"
+                        if rf.line is not None
+                        else str(memo_md)
+                    ),
+                )
+            )
+        if rhetoric_warning_count:
+            reasons.append(
+                f"{DIM_MEMO_RHETORIC}: {rhetoric_warning_count} rhetoric "
+                "warning(s) (advisory; mechanical evidence for dim 9 "
+                "Rhetorical economy)."
+            )
+
     # Build the GateResult. Keep the existing JSON shape (LaTeX-style
     # fields stay) and let the dim names disambiguate downstream
     # consumers. ``overfull_boxes`` is reused for the memo overflow hits
@@ -2889,6 +2986,7 @@ __all__ = [
     "DIM_MEMO_IMAGE_REFS",
     "DIM_MEMO_IMAGE_DIMENSIONS",
     "DIM_MEMO_PLACEHOLDERS",
+    "DIM_MEMO_RHETORIC",
     "COMPILE_OK",
     "COMPILE_FAILED",
     "COMPILE_SKIPPED",
