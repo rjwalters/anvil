@@ -15,6 +15,27 @@ This command is the memo-skill analog of `deck-figures`: an **optional, asset-pr
 
 **Composability**: `memo-render` is **independently re-runnable**. The consumer can hand-edit the `<thread>/.anvil/anvil/lib/memo/styles.css` override (or the framework `anvil/lib/memo/styles.css`), then re-invoke `memo-render <thread>` without going through draft / revise. Each invocation regenerates `<thread>.pdf` from the current `<thread>.md` and current styles; `<thread>.pdf` is a **derived artifact** and MUST NEVER be hand-edited. See §"Re-run pattern" below.
 
+## Canonical execution path
+
+The runnable implementation of this command is the **render-phase CLI** (issue #472):
+
+```bash
+# Consumer install (from the repo root; <version-dir> is the <thread>.{N}/ to render):
+python3 .anvil/skills/memo/lib/render_phase.py <version-dir>
+
+# When bare python3 cannot import the framework (pydantic missing), use the consumer venv:
+uv run --project .anvil python .anvil/skills/memo/lib/render_phase.py <version-dir>
+
+# Anvil source repo:
+python3 anvil/skills/memo/lib/render_phase.py <version-dir>
+```
+
+The CLI executes the full §Procedure below against one explicit version directory: idempotence check (step 2), `phases.render` checkpointing (step 3), the complete metadata-knob threading (steps 4–4g, reading `target_length_resolved` / `render_engine_requested` / `latex_header_includes_resolved` / the #391 passthrough trio from `_progress.json.metadata` and resolving the #463/#468 rhetoric rules from the project BRIEF), the `render_gate.gate(kind="memo", ...)` invocation (step 5), the shallow-merge persistence of `phases.render` + `render_gate` + the provenance keys (step 6), and the one-line operator report (step 7). It **always exits 0** — every failure mode in §"Failure modes" is non-blocking by design, including renderer-unavailable (recorded as `phases.render.reason = "renderer_unavailable"`).
+
+`memo-draft` step 9.5 and `memo-revise` step 9.7 instruct the executing agent to run this CLI directly — there is no separate runtime that performs the render (issue #472). The manual §Procedure below is retained as the **specification** the CLI implements (and as the fallback recipe when invoking the gate from a Python REPL — see §"Running anvil Python from a consumer").
+
+`memo-render <thread>` (thread-slug form) remains the operator-facing re-run surface: resolve the latest `<thread>.{N}/` per §Procedure step 1, then run the CLI on it.
+
 ## Inputs
 
 - **Thread slug** (positional argument): identifies the thread within the cwd portfolio.
