@@ -246,11 +246,47 @@ correct by being well-written.
 
 ## Dimension scoring guidance (applies to all skills)
 
-1. **Justify every score.** Each per-dim score in `scoring.md`
-   carries 1–3 sentences of justification citing specific evidence
-   from the artifact (section heading, slide number, excerpt, exhibit
-   reference). A score without justification is not a useful signal
-   for the reviser.
+1. **Justify every score — with quoted evidence.** Each per-dim score
+   in `scoring.md` carries 1–3 sentences of justification citing
+   specific evidence from the artifact (section heading, slide number,
+   excerpt, exhibit reference). A score without justification is not a
+   useful signal for the reviser. Beyond that (issue #464, the
+   draftwell "no score without quoted-evidence critique" discipline):
+
+   - **Quoted-evidence sub-rule.** Each dimension's justification MUST
+     embed at least one **verbatim quote from the reviewed body**,
+     wrapped in double quotes, followed by a location anchor:
+     `("the quoted span" — §2.1)`. The anchor is a section heading,
+     slide number, or line reference — human-facing navigation aid,
+     not machine-validated. Use inline `"..."` spans, NOT markdown
+     blockquotes — justifications live in single table cells
+     (`# | Dimension | Weight | Score | Justification`) and
+     blockquotes do not survive table cells. A quote that does not
+     appear verbatim in the body is **fabricated evidence** — a major
+     defect in the review itself, worse than no quote at all.
+   - **Ceiling-by-absence contract.** A dim scored at **full weight**
+     MAY substitute the marker phrase `no instance of <X> found` for a
+     quote — absence of defects has no quotable span (e.g., dim 9 at
+     4/4 with "no instance of multi-paragraph hedging found"). Below
+     ceiling, the quote requirement stands: a deduction always has a
+     quotable offending passage.
+   - **Deterministic verifier.** `anvil/lib/evidence_check.py`
+     (`python -m anvil.lib.evidence_check <version_dir>
+     [--scoring <path>]`) mechanically checks that each justification
+     contains at least one quoted span that actually appears in the
+     body. Missing quote → minor advisory finding; quoted span absent
+     from the body → major `fabricated_evidence` finding. Anchors are
+     not validated (judgment-free scope). Reviewer commands SHOULD run
+     it as a write-time self-check before their scoring sidecar lands;
+     it is also runnable post-hoc over legacy review dirs (advisory
+     only — never mutates, never gates).
+   - **Coordination with voice grounding (issue #461).** This rule
+     targets the *reviewed body*; `voice_grounding.md` §"Reviewer
+     contract" requires voice deductions to quote the *corpus*
+     (exemplar ground truth). The two are complementary, not in
+     conflict: a voice deduction under both contracts quotes BOTH the
+     offending body passage (this rule) and the corpus exemplar it
+     falls short of (voice grounding).
 
 2. **Be calibrated, not encouraging.** The rubric exists to surface
    problems early. A reviewer who scores generously to spare the
