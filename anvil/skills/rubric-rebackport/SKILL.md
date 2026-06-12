@@ -225,10 +225,18 @@ total but not id), the planner can heuristically pick from the
 | slides | 44 | `anvil-slides-v2` | 35 |
 | installation | 44 | `anvil-installation-v2` | 35 |
 | ip-uspto | 45 | `anvil-ip-uspto-v2` | 39 |
+| datasheet | 44 | `anvil-datasheet-v1` | 39 |
+| ip-uspto-provisional | 45 | `anvil-ip-provisional-v1` | 39 |
+| essay | 44 | `anvil-essay-v1` | 35 |
 
 The /40 rows remain in the catalog because stamp-only inference still
 needs them for legacy reviews authored against pre-#357 rubrics. The
-/44 (/45) rows are the targets for post-#357 reviews.
+/44 (/45) rows are the targets for post-#357 reviews. The datasheet
+(#421) / ip-uspto-provisional (#444) / essay (#477) skills shipped with
+per-review stamping from day one, so they carry no /40 legacy rows
+(issue #482). Note the id asymmetry: the provisional skill's directory
+name is `ip-uspto-provisional` but its rubric_id is
+`anvil-ip-provisional-v1` (no "uspto").
 
 When the legacy `_meta.json` lacks `rubric_total` entirely AND
 `--legacy-rubric` is absent, the review is skipped with an
