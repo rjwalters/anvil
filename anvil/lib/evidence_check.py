@@ -38,11 +38,35 @@ Deterministic subset (pure stdlib — no LLM, no new deps)
    module constant, tuned on canary signal.
 
 3. **Matching** — both the span and the body are normalized (curly →
-   straight quotes, markdown emphasis characters ``*`` / ``_`` /
-   backticks stripped, whitespace collapsed) and the span must appear
-   as a **case-sensitive substring** of the normalized body. LaTeX
-   bodies (``main.tex``) are matched against the ``.tex`` source
-   verbatim — reviewers read source, so quotes must match source.
+   straight quotes, em/en dashes and ``--`` / ``---`` hyphen runs
+   folded to one canonical dash token, markdown emphasis characters
+   ``*`` / ``_`` / backticks stripped, whitespace collapsed) and the
+   span must appear as a **case-sensitive substring** of the
+   normalized body. LaTeX bodies (``main.tex``) are matched against
+   the ``.tex`` source verbatim — reviewers read source, so quotes
+   must match source (the symmetric dash fold keeps ``--`` / ``---``
+   dash markup in ``.tex`` source self-consistent with quotes typed
+   either way).
+
+   **Ellipsis elision** (issue #478) is permitted *inside a span*:
+   a span containing ``...`` / ``…`` is split on the elision markers
+   and matches when every fragment (each ≥ :data:`MIN_QUOTE_CHARS`
+   normalized chars — the per-fragment floor that blocks
+   ``"the ... market"``-style trivial stitching) appears verbatim in
+   the body **in document order** (advancing-cursor match: fragment N
+   must start after fragment N−1 ends) **and** all fragments fall
+   within :data:`ELISION_WINDOW_CHARS` normalized characters of the
+   first fragment's match start (the anti-stitching proximity window —
+   two distant real fragments must not stitch into fabricated
+   meaning). Fragment matching is greedy-leftmost (each fragment binds
+   to its first in-order occurrence; no backtracking retry — a
+   documented v1 simplification). A span that matches the body as a
+   plain substring (e.g. it quotes a *literal* ellipsis present in the
+   body) passes without fragment splitting; leading/trailing ellipses
+   degrade to plain single-fragment matching. Elision handling lives
+   in :func:`span_matches_body`, NOT in :func:`normalize` — folding
+   ellipses in the normalizer would corrupt body text containing
+   literal ellipses.
 
 4. **Per-justification classification** (this ordering is
    load-bearing — it tolerates calibration-suffix quotes from
@@ -120,7 +144,18 @@ MIN_QUOTE_CHARS = 15
 
 Heuristic cutoff that skips trivial / idiomatic quoting ("why now",
 "soft target"). Ship-as-constant, tune on canary signal (issue #464
-risk note).
+risk note). Doubles as the per-fragment floor for ellipsis-elided
+spans (issue #478): each elided fragment must independently clear it.
+"""
+
+ELISION_WINDOW_CHARS = 500
+"""Proximity window for ellipsis-elided spans (issue #478).
+
+All fragments of an elided span must fall within this many normalized
+characters of the first fragment's match start — the anti-stitching
+constraint that prevents two distant real fragments from being
+stitched into fabricated meaning. Ship-as-constant, tune on canary
+signal (the MIN_QUOTE_CHARS posture).
 """
 
 # Finding codes (stable identifiers; consumers grep for these).
@@ -159,6 +194,22 @@ _CURLY_FOLD = {
     "’": "'",
 }
 
+# Dash variants folded to one canonical token by normalization (issue
+# #478): em dash, en dash, and 2-3 hyphen runs (`---` matched before
+# `--` via the greedy quantifier — order matters). Symmetric folding
+# means verbatim em-dash quotes still pass, `--`-typed quotes match
+# `—` bodies, and `--scoring`-style literals stay self-consistent
+# (both sides fold identically). Single hyphens are NOT folded —
+# compound words ("single-customer") are not dashes.
+_DASH_FOLD_RE = re.compile(r"—|–|-{2,3}")
+_DASH_CANONICAL = "—"
+
+# Elision markers splitting a quoted span into fragments (issue #478):
+# ASCII three-or-more dots or the Unicode horizontal ellipsis. Lives
+# in span matching, NOT in normalize() — folding ellipses in the
+# normalizer would corrupt body text containing literal ellipses.
+_ELISION_MARKER_RE = re.compile(r"\.\.\.+|…")
+
 
 # ---------------------------------------------------------------------------
 # Normalization + extraction
@@ -168,13 +219,19 @@ _CURLY_FOLD = {
 def normalize(text: str) -> str:
     """Normalize text for span-vs-body matching.
 
-    Folds curly quotes to straight, strips markdown emphasis characters
-    (``*``, ``_``, backticks), collapses all whitespace runs to single
-    spaces, and strips. Case is preserved — matching is case-sensitive
-    by contract (a quote is verbatim or it is not evidence).
+    Folds curly quotes to straight, folds dash variants (``—`` / ``–``
+    / ``---`` / ``--``) to one canonical dash token (issue #478),
+    strips markdown emphasis characters (``*``, ``_``, backticks),
+    collapses all whitespace runs to single spaces, and strips. Case
+    is preserved — matching is case-sensitive by contract (a quote is
+    verbatim or it is not evidence). Ellipses are deliberately NOT
+    folded here — elision is span-side semantics handled in
+    :func:`span_matches_body`, and folding it here would corrupt body
+    text containing literal ellipses.
     """
     for curly, straight in _CURLY_FOLD.items():
         text = text.replace(curly, straight)
+    text = _DASH_FOLD_RE.sub(_DASH_CANONICAL, text)
     text = _EMPHASIS_CHARS_RE.sub("", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -201,13 +258,66 @@ def has_absence_marker(text: str) -> bool:
     return bool(_ABSENCE_MARKER_RE.search(text))
 
 
+def _elided_fragments_match(
+    fragments: List[str], normalized_body: str
+) -> bool:
+    """In-order, windowed match of an elided span's fragments.
+
+    Every fragment must clear the per-fragment :data:`MIN_QUOTE_CHARS`
+    floor, appear in the body in document order (advancing cursor:
+    fragment N starts after fragment N−1 ends), and end within
+    :data:`ELISION_WINDOW_CHARS` of the first fragment's match start.
+    Matching is greedy-leftmost: each fragment binds to its first
+    in-order occurrence, with no backtracking retry when a later
+    occurrence would have satisfied the window — a documented v1
+    simplification (issue #478 curation).
+    """
+    if any(len(f) < MIN_QUOTE_CHARS for f in fragments):
+        return False
+    cursor = 0
+    first_start: Optional[int] = None
+    for fragment in fragments:
+        idx = normalized_body.find(fragment, cursor)
+        if idx == -1:
+            return False
+        if first_start is None:
+            first_start = idx
+        elif idx + len(fragment) > first_start + ELISION_WINDOW_CHARS:
+            return False
+        cursor = idx + len(fragment)
+    return True
+
+
 def span_matches_body(span: str, normalized_body: str) -> bool:
     """Case-sensitive substring match of a normalized span in the body.
 
     The caller pre-normalizes the body once (via :func:`normalize`) and
     passes it here for each span.
+
+    Ellipsis elision (issue #478): a span that does not match as a
+    plain substring but contains ``...`` / ``…`` markers is split into
+    fragments, and matches when every fragment is ≥
+    :data:`MIN_QUOTE_CHARS`, appears in the body in document order,
+    and falls within :data:`ELISION_WINDOW_CHARS` of the first
+    fragment's match start (see :func:`_elided_fragments_match`). The
+    plain-substring check runs first, so a quote of a *literal* body
+    ellipsis still passes verbatim. Leading/trailing ellipses leave a
+    single fragment and degrade to plain single-fragment matching
+    (no per-fragment floor beyond the extraction-time cutoff).
     """
-    return normalize(span) in normalized_body
+    normalized_span = normalize(span)
+    if normalized_span in normalized_body:
+        return True
+    fragments = [
+        f.strip() for f in _ELISION_MARKER_RE.split(normalized_span)
+    ]
+    fragments = [f for f in fragments if f]
+    if not fragments or fragments == [normalized_span]:
+        return False  # no elision markers — plain match already failed
+    if len(fragments) == 1:
+        # Leading/trailing ellipsis only: plain single-fragment match.
+        return fragments[0] in normalized_body
+    return _elided_fragments_match(fragments, normalized_body)
 
 
 # ---------------------------------------------------------------------------
@@ -531,6 +641,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 __all__ = [
     "CHECK_NAME",
     "MIN_QUOTE_CHARS",
+    "ELISION_WINDOW_CHARS",
     "FABRICATED_EVIDENCE",
     "MISSING_EVIDENCE",
     "SEVERITY_MAJOR",

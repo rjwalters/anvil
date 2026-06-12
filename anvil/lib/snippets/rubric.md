@@ -264,6 +264,15 @@ correct by being well-written.
      blockquotes do not survive table cells. A quote that does not
      appear verbatim in the body is **fabricated evidence** — a major
      defect in the review itself, worse than no quote at all.
+     **Elision with `...` / `…` is permitted** (issue #478): a quote
+     may skip intervening text with an ellipsis, provided each elided
+     fragment is itself verbatim from the body, long enough to count
+     as evidence on its own (≥ the verifier's `MIN_QUOTE_CHARS`
+     floor), in document order, and drawn from one nearby passage
+     (within the verifier's `ELISION_WINDOW_CHARS` proximity window —
+     do NOT stitch fragments from distant sections into one quote).
+     Em/en dashes may be typed as `--` / `---`; the verifier folds
+     dash variants symmetrically.
    - **Ceiling-by-absence contract.** A dim scored at **full weight**
      MAY substitute the marker phrase `no instance of <X> found` for a
      quote — absence of defects has no quotable span (e.g., dim 9 at
