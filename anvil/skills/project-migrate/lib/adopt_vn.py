@@ -30,6 +30,11 @@ Design notes
     naming each offending dir with a suggested manual target (the next
     free integer) — a ``--renumber`` escape hatch is deferred until
     canary friction demands it;
+  - ambiguous leading-zero numbering (``v07/`` + ``v7/`` parsing to
+    the same version slot, or duplicate sidecar slots like
+    ``v07.review/`` + ``v7.review/``) refuses the whole family at scan
+    time, naming every colliding dir per slot (#458) — a LONE ``v07``
+    still adopts, normalized to ``<slug>.7``;
   - target collisions (``<slug>.{N}`` already on disk, slug already in
     the BRIEF, slug dir occupied) refuse with a ``--slug`` suggestion;
   - a malformed existing BRIEF refuses (never modify a BRIEF we can't
@@ -154,6 +159,24 @@ def _resolve_enclosing_project(directory: Path) -> Tuple[Path, bool]:
     return start, (start / BRIEF_FILENAME).is_file()
 
 
+def _format_ambiguous_slot(names: List[str], slot_desc: str) -> str:
+    """One refusal clause for a parsed slot claimed by >1 directory name.
+
+    Leading-zero twins (``v07/`` + ``v7/``, issue #458) parse to the
+    same integer slot; a dict-keyed scan would silently drop all but
+    one, and same-slot sidecars would plan renames to one shared
+    target. Shared with :mod:`adopt_family` (the
+    ``_FOREIGN_TAG_SUFFIX_RE`` import precedent).
+    """
+    quoted = [f"`{n}/`" for n in sorted(names)]
+    if len(quoted) == 2:
+        joined = f"{quoted[0]} and {quoted[1]}"
+    else:
+        joined = ", ".join(quoted[:-1]) + " and " + quoted[-1]
+    verb = "both" if len(quoted) == 2 else "all"
+    return f"{joined} {verb} parse to {slot_desc}"
+
+
 def _scan_family(
     directory: Path,
 ) -> Tuple[Dict[int, Path], Dict[int, List[Tuple[str, Path]]], List[str], List[str]]:
@@ -164,9 +187,15 @@ def _scan_family(
     ``minors`` lists minor-versioned oddball dir names, and ``strays``
     lists non-versioned dir names left untouched (including orphan
     sidecars whose ``v{N}`` is absent — folded in by the caller).
+
+    A version slot or sidecar ``(N, tag)`` slot claimed by more than
+    one directory name (the leading-zero collapse, issue #458:
+    ``v07/`` + ``v7/``, ``v07.review/`` + ``v7.review/``) is a
+    scan-time refusal naming every colliding dir per slot — BEFORE any
+    slug/BRIEF/collision work.
     """
-    versions: Dict[int, Path] = {}
-    sidecar_candidates: List[Tuple[int, str, Path]] = []
+    version_claims: Dict[int, List[Path]] = {}
+    sidecar_claims: Dict[Tuple[int, str], List[Path]] = {}
     minors: List[str] = []
     strays: List[str] = []
 
@@ -183,26 +212,56 @@ def _scan_family(
         name = child.name
         m = _VN_DIR_RE.match(name)
         if m is not None:
-            versions[int(m.group("num"))] = child
+            version_claims.setdefault(int(m.group("num")), []).append(child)
             continue
         if _VN_MINOR_RE.match(name) is not None:
             minors.append(name)
             continue
         m = _VN_SIDECAR_RE.match(name)
         if m is not None:
-            sidecar_candidates.append(
-                (int(m.group("num")), m.group("tag"), child)
-            )
+            sidecar_claims.setdefault(
+                (int(m.group("num")), m.group("tag")), []
+            ).append(child)
             continue
         strays.append(name)
 
-    sidecars: Dict[int, List[Tuple[str, Path]]] = {}
-    for num, tag, child in sidecar_candidates:
-        if num in versions:
-            sidecars.setdefault(num, []).append((tag, child))
+    ambiguous: List[str] = []
+    versions: Dict[int, Path] = {}
+    for num in sorted(version_claims):
+        claimants = version_claims[num]
+        if len(claimants) > 1:
+            ambiguous.append(
+                _format_ambiguous_slot(
+                    [c.name for c in claimants], f"version {num}"
+                )
+            )
         else:
-            # Orphan sidecar (no matching v{N}) — untouched, reported.
-            strays.append(child.name)
+            versions[num] = claimants[0]
+
+    sidecars: Dict[int, List[Tuple[str, Path]]] = {}
+    for num, tag in sorted(sidecar_claims):
+        claimants = sidecar_claims[(num, tag)]
+        if num not in version_claims:
+            # Orphan sidecar(s) (no matching v{N}) — untouched, reported.
+            strays.extend(c.name for c in claimants)
+            continue
+        if len(claimants) > 1:
+            ambiguous.append(
+                _format_ambiguous_slot(
+                    [c.name for c in claimants],
+                    f"the version-{num} `{tag}` sidecar",
+                )
+            )
+            continue
+        sidecars.setdefault(num, []).append((tag, claimants[0]))
+
+    if ambiguous:
+        raise AdoptVnError(
+            "Ambiguous version numbering: "
+            + "; ".join(ambiguous)
+            + " — rename one of each colliding set manually, then "
+            "re-run --adopt-vn. Nothing was modified."
+        )
 
     return versions, sidecars, sorted(minors), sorted(strays)
 

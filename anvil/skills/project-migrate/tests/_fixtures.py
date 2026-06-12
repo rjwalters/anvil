@@ -855,6 +855,7 @@ def build_vn_report_dirs(
     versions: tuple = (1, 2, 3, 5),
     review_versions: tuple = (3, 5),
     with_minor: bool = False,
+    with_leading_zero_dup: bool = False,
     with_project_brief: bool = False,
 ) -> Path:
     """Build a foreign vN report-dir family (issue #432).
@@ -863,7 +864,8 @@ def build_vn_report_dirs(
     ``projects/<proj>/reports/v{N}/`` version dirs with ``v{N}.review/``
     siblings, hand-rolled ``report.md`` bodies, a stray non-versioned
     dir mixed in, and (optionally) a ``v14.1``-style minor-versioned
-    oddball.
+    oddball or a ``v07``/``v7`` leading-zero twin pair (issue #458 —
+    both parse to version slot 7).
 
     Shape (default ``versions=(1, 2, 3, 5)`` — gap at v4 deliberate):
 
@@ -876,6 +878,7 @@ def build_vn_report_dirs(
         v5.review/review.md
         notes-archive/scratch.md       ← stray non-versioned dir
         [v14.1/report.md]              ← with_minor=True
+        [v7/report.md + v07/report.md] ← with_leading_zero_dup=True
 
     When ``with_project_brief`` is True the enclosing project gets the
     tripwire-laden ``ENROLL_OPERATOR_BRIEF`` plus its two listed
@@ -907,6 +910,15 @@ def build_vn_report_dirs(
         _write(
             reports_dir / "v14.1" / "report.md",
             "# Report v14.1\n\nMinor-versioned oddball.\n",
+        )
+    if with_leading_zero_dup:
+        _write(
+            reports_dir / "v7" / "report.md",
+            "# Report v7\n\nLeading-zero twin (plain).\n",
+        )
+        _write(
+            reports_dir / "v07" / "report.md",
+            "# Report v07\n\nLeading-zero twin (zero-padded).\n",
         )
 
     if with_project_brief:
@@ -945,6 +957,7 @@ def build_letter_family_threads(
     project_name: str = "agent-workspace",
     *,
     with_sidecars: bool = True,
+    with_leading_zero_dup: bool = False,
     with_project_brief: bool = False,
 ) -> Path:
     """Build foreign letter-family threads (issue #440 — Phase 2 of #432).
@@ -953,6 +966,9 @@ def build_letter_family_threads(
     flat ``{Project}.{Letter}.{N}/`` version dirs with foreign-tagged
     critic siblings, hand-rolled single-file ``review.md`` payloads, a
     stray non-versioned dir, and an orphan sidecar.
+    ``with_leading_zero_dup=True`` adds a ``Brasidas.C.07/`` twin of
+    the existing ``Brasidas.C.7/`` (issue #458 — both parse to
+    ``Brasidas.C`` version slot 7).
 
     Shape (two letter families, gap at ``Brasidas.C.6`` deliberate)::
 
@@ -996,6 +1012,11 @@ def build_letter_family_threads(
                 project_dir / f"{stem}.{n}" / "spec.md",
                 f"# {stem} v{n}\n\nHand-rolled ip draft v{n}.\n",
             )
+    if with_leading_zero_dup:
+        _write(
+            project_dir / "Brasidas.C.07" / "spec.md",
+            "# Brasidas.C v07\n\nLeading-zero twin (zero-padded).\n",
+        )
 
     if with_sidecars:
         sidecar_names = (
