@@ -2,8 +2,9 @@
 
 Covers acceptance criteria on issue #178 (Epic #130 / Phase 2E):
 
-- Adapter loading from ``.anvil/config.toml`` works; clear error when
-  absent or malformed.
+- Adapter loading from ``.anvil/config.json`` works; clear error when
+  absent or malformed (the registration migrated off ``.anvil/config.toml``
+  in #442 — hard cutover with a substring-scan migration guard).
 - Anvil ships NO backend implementations — only the adapter contract.
   These tests use an in-process mock adapter (a 5-line class with a
   ``generate`` method that returns deterministic PNG bytes).
@@ -301,25 +302,35 @@ class TestLoadBriefFrontmatter(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# .anvil/config.toml loader
+# .anvil/config.json loader
 # ---------------------------------------------------------------------------
 
 
 class TestLoadConfig(unittest.TestCase):
-    """``load_config`` reads .anvil/config.toml with a clear error path."""
+    """``load_config`` reads .anvil/config.json with a clear error path."""
 
     def test_missing_file_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ImagegenError) as ctx:
-                load_config(Path(tmp) / "config.toml")
-            # The error MUST point at the adapter doc per AC.
-            self.assertIn("deck-imagegen-adapter.md", str(ctx.exception))
+                load_config(Path(tmp) / "config.json")
+            # The error MUST name config.json and point at the adapter
+            # doc per the #442 AC.
+            msg = str(ctx.exception)
+            self.assertIn(".anvil/config.json", msg)
+            self.assertIn("deck-imagegen-adapter.md", msg)
 
     def test_simple_backend(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            cfg = Path(tmp) / "config.toml"
+            cfg = Path(tmp) / "config.json"
             cfg.write_text(
-                '[deck.imagegen]\nbackend = "myrepo.adapter:Backend"\n',
+                json.dumps(
+                    {
+                        "version": 1,
+                        "deck": {
+                            "imagegen": {"backend": "myrepo.adapter:Backend"}
+                        },
+                    }
+                ),
                 encoding="utf-8",
             )
             data = load_config(cfg)
@@ -327,20 +338,62 @@ class TestLoadConfig(unittest.TestCase):
                 data["deck"]["imagegen"]["backend"], "myrepo.adapter:Backend"
             )
 
-    def test_unsupported_shape_raises_with_remediation(self) -> None:
-        """A malformed line surfaces a remediation pointer.
+    def test_malformed_json_raises_naming_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text("{not valid json", encoding="utf-8")
+            with self.assertRaises(ImagegenError) as ctx:
+                load_config(cfg)
+            msg = str(ctx.exception)
+            self.assertIn(str(cfg), msg)
+            self.assertIn("deck-imagegen-adapter.md", msg)
 
-        We feed an unsupported shape to the minimal fallback parser by
-        bypassing tomllib via a temporary import-error monkeypatch.
-        On Python 3.11+ this case is normally never hit (tomllib
-        handles arrays etc.); this test exercises the safety net so the
-        minimal parser doesn't silently drop unparseable content.
+    def test_non_object_top_level_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text('["not", "an", "object"]', encoding="utf-8")
+            with self.assertRaises(ImagegenError) as ctx:
+                load_config(cfg)
+            self.assertIn("JSON object", str(ctx.exception))
+
+    def test_missing_json_with_stale_toml_raises_migration_error(self) -> None:
+        """#442 migration guard: stale ``[deck.imagegen]`` TOML detected.
+
+        When config.json is absent BUT a sibling config.toml contains the
+        literal ``[deck.imagegen]`` text (substring scan — no TOML
+        parsing), the error must carry the paste-ready JSON snippet.
         """
-        import imagegen as _imagegen
+        with tempfile.TemporaryDirectory() as tmp:
+            anvil_dir = Path(tmp) / ".anvil"
+            anvil_dir.mkdir(parents=True)
+            (anvil_dir / "config.toml").write_text(
+                '[deck.imagegen]\nbackend = "myrepo.adapter:Backend"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ImagegenError) as ctx:
+                load_config(anvil_dir / "config.json")
+            msg = str(ctx.exception)
+            self.assertIn("MIGRATION REQUIRED", msg)
+            # The paste-ready JSON snippet, verbatim shape.
+            self.assertIn('"version": 1', msg)
+            self.assertIn('"deck"', msg)
+            self.assertIn('"imagegen"', msg)
+            self.assertIn('"backend"', msg)
 
-        bad = "not_a_valid_toml_line_at_all\n"
-        with self.assertRaises(ImagegenError):
-            _imagegen._parse_toml_minimal(bad)
+    def test_missing_json_with_unrelated_toml_raises_plain_error(self) -> None:
+        """A config.toml WITHOUT [deck.imagegen] adds no migration noise."""
+        with tempfile.TemporaryDirectory() as tmp:
+            anvil_dir = Path(tmp) / ".anvil"
+            anvil_dir.mkdir(parents=True)
+            (anvil_dir / "config.toml").write_text(
+                '[some.other.tool]\nkey = "value"\n', encoding="utf-8"
+            )
+            with self.assertRaises(ImagegenError) as ctx:
+                load_config(anvil_dir / "config.json")
+            msg = str(ctx.exception)
+            self.assertNotIn("MIGRATION REQUIRED", msg)
+            self.assertIn(".anvil/config.json", msg)
+            self.assertIn("deck-imagegen-adapter.md", msg)
 
 
 # ---------------------------------------------------------------------------
@@ -694,33 +747,81 @@ class TestRunImagegenOptInGate(unittest.TestCase):
             self.assertEqual(adapter.calls, [])
 
 
+def _write_json_config(
+    portfolio: Path, payload: dict[str, object]
+) -> Path:
+    """Write ``<portfolio>/.anvil/config.json`` with ``payload``."""
+    cfg = portfolio / ".anvil" / "config.json"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return cfg
+
+
 class TestRunImagegenAdapterRegistration(unittest.TestCase):
-    """Adapter registration via .anvil/config.toml works and fails-clear."""
+    """Adapter registration via .anvil/config.json works and fails-clear."""
 
     def test_missing_config_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             portfolio = Path(tmp)
             _build_thread_fixture(portfolio)
             with self.assertRaises(ImagegenError) as ctx:
-                # No adapter injected → forces config.toml read.
+                # No adapter injected → forces config.json read.
                 run_imagegen("acme", portfolio=portfolio)
-            self.assertIn(".anvil/config.toml", str(ctx.exception))
+            self.assertIn(".anvil/config.json", str(ctx.exception))
             self.assertIn("deck-imagegen-adapter.md", str(ctx.exception))
 
     def test_config_present_but_no_backend_key_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             portfolio = Path(tmp)
             _build_thread_fixture(portfolio)
-            cfg = portfolio / ".anvil" / "config.toml"
-            cfg.parent.mkdir(parents=True, exist_ok=True)
-            # Empty config — no [deck.imagegen] section.
-            cfg.write_text("# empty\n", encoding="utf-8")
+            # Empty envelope — no deck.imagegen section.
+            _write_json_config(portfolio, {"version": 1})
             with self.assertRaises(ImagegenError) as ctx:
                 run_imagegen("acme", portfolio=portfolio)
-            self.assertIn("[deck.imagegen]", str(ctx.exception))
+            self.assertIn("deck.imagegen.backend", str(ctx.exception))
+
+    def test_config_with_only_git_knob_raises_registration_error(self) -> None:
+        """Edge case (#442): a config.json carrying only the #426 git knob.
+
+        The imagegen registration is still absent → the plain
+        registration error, no crash, no migration noise.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(portfolio)
+            _write_json_config(
+                portfolio,
+                {"version": 1, "git": {"commit_per_phase": True, "push": False}},
+            )
+            with self.assertRaises(ImagegenError) as ctx:
+                run_imagegen("acme", portfolio=portfolio)
+            msg = str(ctx.exception)
+            self.assertIn("deck.imagegen.backend", msg)
+            self.assertNotIn("MIGRATION REQUIRED", msg)
+
+    def test_json_key_absent_with_stale_toml_raises_migration_error(self) -> None:
+        """#442 migration guard at the run level.
+
+        config.json exists (git knob only) AND a stale config.toml still
+        carries ``[deck.imagegen]`` → the migration error with the
+        paste-ready JSON snippet, not the plain registration error.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(portfolio)
+            _write_json_config(portfolio, {"version": 1})
+            (portfolio / ".anvil" / "config.toml").write_text(
+                '[deck.imagegen]\nbackend = "myrepo.adapter:Backend"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(ImagegenError) as ctx:
+                run_imagegen("acme", portfolio=portfolio)
+            msg = str(ctx.exception)
+            self.assertIn("MIGRATION REQUIRED", msg)
+            self.assertIn('"backend"', msg)
 
     def test_config_with_backend_loads_and_dispatches(self) -> None:
-        """End-to-end: config.toml → load_adapter → dispatch.
+        """End-to-end: config.json → load_adapter → dispatch.
 
         We register the mock adapter (this module's _MockAdapter) via
         a temporary alias in ``sys.modules`` so importlib can find it.
@@ -728,12 +829,17 @@ class TestRunImagegenAdapterRegistration(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             portfolio = Path(tmp)
             version_dir = _build_thread_fixture(portfolio)
-            cfg = portfolio / ".anvil" / "config.toml"
-            cfg.parent.mkdir(parents=True, exist_ok=True)
             sys.modules["test_imagegen_for_e2e"] = sys.modules[__name__]
-            cfg.write_text(
-                '[deck.imagegen]\nbackend = "test_imagegen_for_e2e:_MockAdapter"\n',
-                encoding="utf-8",
+            _write_json_config(
+                portfolio,
+                {
+                    "version": 1,
+                    "deck": {
+                        "imagegen": {
+                            "backend": "test_imagegen_for_e2e:_MockAdapter"
+                        }
+                    },
+                },
             )
             result = run_imagegen("acme", portfolio=portfolio)
             self.assertEqual(result.phase_state, "done")

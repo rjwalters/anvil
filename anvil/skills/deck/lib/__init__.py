@@ -14,7 +14,7 @@ Public modules:
   ``<thread>.{N}/assets/_prompts.json`` journal (Epic #130 Phase 2D).
 - :mod:`imagegen` — Generative-imagery orchestration runtime for the
   ``deck-imagegen`` command (Epic #130 Phase 2E). Loads the consumer
-  adapter from ``.anvil/config.toml``, dispatches one PNG per
+  adapter from ``.anvil/config.json``, dispatches one PNG per
   imagery-marker in ``deck.md``, and writes the prompt journal.
 - :mod:`imagegen_phrases` — Canonical allowed-attribution and
   forbidden-documentary phrase lists for the fabrication-attribution
