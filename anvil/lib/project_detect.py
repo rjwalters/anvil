@@ -171,6 +171,14 @@ class Shape(Enum):
         (project-migrate's ``lib/adopt_vn.py``) stamps it on the plan
         so apply / report dispatch can route the BRIEF write through
         the enroll-style append/synthesize path.
+    ADOPT_FAMILY
+        Plan-mode tag for letter-family adoption (issue #440 — Phase 2
+        of #432) — NOT a detected on-disk shape, following the ENROLL /
+        ADOPT_VN precedent. ``detect_shape`` never returns it and
+        ``_classify`` is untouched; the adopt-family planner
+        (project-migrate's ``lib/adopt_family.py``) stamps it on the
+        plan so apply / report dispatch can route the BRIEF write
+        through the enroll-style append/synthesize path.
     UNKNOWN
         Directory is not recognizable as any of the above. Caller should
         treat as an error.
@@ -181,6 +189,7 @@ class Shape(Enum):
     PRE_283_CLASSIC = "pre_283_classic"
     ENROLL = "enroll"
     ADOPT_VN = "adopt_vn"
+    ADOPT_FAMILY = "adopt_family"
     UNKNOWN = "unknown"
 
 

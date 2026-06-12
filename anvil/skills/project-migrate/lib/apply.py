@@ -1314,8 +1314,10 @@ def apply_plan(plan: Plan, *, use_git: bool = True) -> ApplyResult:
     # moved and MUST be listed or strict validate_dirs parsing breaks).
     # vN-adoption plans (issue #432) ride the same path: one document
     # per family, brief_mode-dispatched append/synthesize write,
-    # strict post-write validation with rollback.
-    if plan.shape in (Shape.ENROLL, Shape.ADOPT_VN):
+    # strict post-write validation with rollback. Letter-family
+    # adoption plans (issue #440) follow identically — N families per
+    # invocation, each its own document, succeeded-subset BRIEF write.
+    if plan.shape in (Shape.ENROLL, Shape.ADOPT_VN, Shape.ADOPT_FAMILY):
         _write_enroll_brief(plan, result)
         return result
 

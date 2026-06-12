@@ -33,15 +33,17 @@ _LIB_DIR = _SKILL_ROOT / "lib"
 _PACKAGE_NAME = "project_migrate_lib"
 
 # Dependency-safe load order (detect → plan → apply → enroll →
-# adopt_vn → verify → orchestrate): enroll imports detect/plan/apply;
-# adopt_vn imports detect/plan/apply/enroll; orchestrate imports
-# everything.
+# adopt_vn → adopt_family → verify → orchestrate): enroll imports
+# detect/plan/apply; adopt_vn imports detect/plan/apply/enroll;
+# adopt_family imports detect/plan/enroll/adopt_vn; orchestrate
+# imports everything.
 _MODULES = [
     "detect",
     "plan",
     "apply",
     "enroll",
     "adopt_vn",
+    "adopt_family",
     "verify",
     "orchestrate",
 ]
@@ -90,11 +92,13 @@ plan = sys.modules[f"{_PACKAGE_NAME}.plan"]
 apply_mod = sys.modules[f"{_PACKAGE_NAME}.apply"]
 enroll = sys.modules[f"{_PACKAGE_NAME}.enroll"]
 adopt_vn = sys.modules[f"{_PACKAGE_NAME}.adopt_vn"]
+adopt_family = sys.modules[f"{_PACKAGE_NAME}.adopt_family"]
 verify = sys.modules[f"{_PACKAGE_NAME}.verify"]
 orchestrate = sys.modules[f"{_PACKAGE_NAME}.orchestrate"]
 
 
 __all__ = [
+    "adopt_family",
     "adopt_vn",
     "apply_mod",
     "detect",

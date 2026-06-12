@@ -305,14 +305,18 @@ from anvil.lib.theme import find_consumer_root
 # The registered artifact types. The first seven are memo subtypes
 # (five seeds per the curator's confirmation comment on #283, plus the
 # canary-proven challenge-memo / strategy-memo registered under #394);
-# the last four are skill-identity values — deck / slides / proposal
+# the rest are skill-identity values — deck / slides / proposal
 # added under #386, pub added under #408 (a pub-class LaTeX paper
 # thread in a shared project BRIEF previously had NO registered type,
 # so project-migrate's BRIEF synthesis silently defaulted a research
-# paper to 'investment-memo'). Unknown values
-# are rejected with a clear error listing this set UNLESS a consumer
-# overlay JSON backs them (the #394 consumer extension tier — see
-# `discover_consumer_artifact_types` below).
+# paper to 'investment-memo'), report added under #432 (the vN
+# report-dir adoption mode's inferred type), and ip-uspto /
+# ip-uspto-provisional added under #440 (letter-family adoption's
+# REQUIRED `--artifact-type` values — strict post-write BRIEF
+# validation would otherwise roll back every adopted write). Unknown
+# values are rejected with a clear error listing this set UNLESS a
+# consumer overlay JSON backs them (the #394 consumer extension tier —
+# see `discover_consumer_artifact_types` below).
 #
 # Registering a new MEMO subtype upstream requires:
 #   1. Adding the literal here (and to MEMO_ARTIFACT_TYPES below).
@@ -339,6 +343,8 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "proposal",
     "pub",
     "report",
+    "ip-uspto",
+    "ip-uspto-provisional",
 )
 
 
@@ -401,6 +407,23 @@ class ArtifactType(str, Enum):
         thread's owning skill instead of silently defaulting to
         ``investment-memo`` (the same registry-gap shape #408 closed
         for ``pub``).
+    IP_USPTO
+        Skill-identity value (#440): an ``anvil:ip-uspto`` USPTO
+        non-provisional patent-application thread. Not a memo subtype —
+        selects no memo rubric overlay. Registered so project-migrate's
+        letter-family adoption (``--adopt-family``) can record the
+        operator's REQUIRED ``--artifact-type`` choice and survive
+        strict post-write BRIEF validation (the #432 ``report``
+        precedent).
+    IP_USPTO_PROVISIONAL
+        Skill-identity value (#440): an ``anvil:ip-uspto-provisional``
+        USPTO provisional-application thread (claims-optional,
+        enablement-depth-first — the conversion seed for
+        ``anvil:ip-uspto``). Not a memo subtype — selects no memo
+        rubric overlay. Registered alongside ``ip-uspto`` because
+        there is no safe inference between a full application and a
+        provisional — ``--adopt-family`` REQUIRES the operator to name
+        one explicitly.
     """
 
     INVESTMENT_MEMO = "investment-memo"
@@ -415,6 +438,8 @@ class ArtifactType(str, Enum):
     PROPOSAL = "proposal"
     PUB = "pub"
     REPORT = "report"
+    IP_USPTO = "ip-uspto"
+    IP_USPTO_PROVISIONAL = "ip-uspto-provisional"
 
 
 # The memo-scoped subset of the registry: values that select a memo
@@ -438,7 +463,8 @@ MEMO_ARTIFACT_TYPES: frozenset = frozenset(
 
 
 # The skill-identity subset of the registry (issue #386, made explicit
-# under #394; ``pub`` added under #408; ``report`` added under #432):
+# under #394; ``pub`` added under #408; ``report`` added under #432;
+# ``ip-uspto`` / ``ip-uspto-provisional`` added under #440):
 # values that name which
 # NON-memo skill owns a thread in a
 # shared project BRIEF. Memo's overlay dispatch
@@ -455,6 +481,8 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.PROPOSAL,
         ArtifactType.PUB,
         ArtifactType.REPORT,
+        ArtifactType.IP_USPTO,
+        ArtifactType.IP_USPTO_PROVISIONAL,
     }
 )
 
