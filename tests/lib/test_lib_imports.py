@@ -104,3 +104,18 @@ def test_numeric_consistency_imports_cleanly() -> None:
     assert callable(nc.check_numeric_consistency)
     assert callable(nc.check_text)
     assert callable(nc.write_review_dir)
+
+
+def test_evidence_check_imports_cleanly() -> None:
+    """``anvil.lib.evidence_check`` must import with base deps only.
+
+    The quoted-evidence verifier (issue #464) is pure stdlib plus the
+    ``critics`` lib sibling (pydantic is the lone base dep it touches
+    transitively via ``review_schema``). If a third-party import ever
+    sneaks into the module, this fails immediately.
+    """
+    import anvil.lib.evidence_check as ec
+
+    assert callable(ec.check_version_dir)
+    assert callable(ec.check_scoring_text)
+    assert callable(ec.classify_justification)
