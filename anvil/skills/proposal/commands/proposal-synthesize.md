@@ -223,3 +223,7 @@ The Studio canary reproducer from issue #246 — three siblings all flagged the 
 ```
 
 The reviser then writes one sentence (`"Mask cost $15-25M reflects the standard 14/16nm FinFET tape-out NRE (IBS analyst anchor: ~$5M base) with trusted-foundry overhead; Sphere finance to confirm."`), not three paragraphs. The contract documented here is what makes that one-sentence outcome reachable.
+
+## Git sync (opt-in, off by default)
+
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the staged-sidecar atomic rename (issue #350) lands the final-named `<thread>.{N}.synthesis/`, stage ONLY this command's own `<thread>.{N}.synthesis/` sidecar (never sibling critics' dirs — the narrow scope keeps the hook safe under parallel critic fan-out), commit as `anvil(proposal/synthesize): <thread>.{N} [<state>]` (the bracket carries the thread's current derived state per SKILL.md §State machine — the synthesis critic does not advance the state machine on its own), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the phase still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).

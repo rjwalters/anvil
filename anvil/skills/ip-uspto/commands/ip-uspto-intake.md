@@ -106,3 +106,7 @@ This command does NOT write a `_progress.json` — intake operates on the thread
 
 
 **Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.
+
+## Git sync (opt-in, off by default)
+
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/BRIEF.md` is written (this command writes no `_progress.json` — the well-formed brief itself is the state signal), stage ONLY `<thread>/BRIEF.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/intake): <thread> [INTAKE_DONE]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the intake still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).

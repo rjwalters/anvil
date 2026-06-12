@@ -247,3 +247,7 @@ When the brief sets `anonymous: true`, the drafter:
 3. Scrubs identifying language in acknowledgements and self-citations (`\citet{ourpriorwork}` becomes `\citet{anonprior}` with a note in `changelog.md`).
 
 Venue overrides handle their own anonymization on top of this.
+
+## Git sync hook (opt-in, off by default)
+
+Consumers running anvil under an external orchestrator (a sphere channel-agent, a Loom-style daemon) can opt in to a per-phase git commit hook so every lifecycle phase leaves the working tree clean: a repo-level `.anvil/config.json` with `git.commit_per_phase: true` (and optionally `git.push: true`) has each write-bearing pub command end its phase by staging only the dirs it wrote and committing as `anvil(pub/<phase>): <thread>.{N} [<state>]`. The full contract — knob shape, defaults-off rule, commit-message format, staging scope, warn-and-continue failure semantics, and ordering after the `_progress.json` `done` write and the #350 sidecar atomic rename — lives in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo). All 7 write-bearing pub commands adopt it; the read-only `pub` portfolio orchestrator is exempt by definition. When `.anvil/config.json` is absent or the knob is false, behavior is byte-identical to a pre-#426 install — the hook is **default off**.

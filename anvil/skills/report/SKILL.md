@@ -283,3 +283,7 @@ The patterns that recurred vs `anvil:memo` (#3) — input for #10's framework ex
 | PDF as primary deliverable | — | New: pandoc default + LaTeX opt-in |
 
 **Extraction candidates for `anvil/lib/` (per #10)**: project-scope loader, two-stage promotion state-machine extension hook, pandoc render helper. None should be extracted from a single consumer — wait until at least one more skill (likely `pub` or `ip-uspto`) needs a parallel pattern.
+
+## Git sync hook (opt-in, off by default)
+
+Consumers running anvil under an external orchestrator (a sphere channel-agent, a Loom-style daemon) can opt in to a per-phase git commit hook so every lifecycle phase leaves the working tree clean: a repo-level `.anvil/config.json` with `git.commit_per_phase: true` (and optionally `git.push: true`) has each write-bearing report command end its phase by staging only the dirs it wrote and committing as `anvil(report/<phase>): <thread>.{N} [<state>]`. The full contract — knob shape, defaults-off rule, commit-message format, staging scope, warn-and-continue failure semantics, and ordering after the `_progress.json` `done` write and the #350 sidecar atomic rename — lives in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo). All 9 write-bearing report commands adopt it; the read-only `report` portfolio orchestrator and the `report-figure-adapter` contract document are exempt by definition. When `.anvil/config.json` is absent or the knob is false, behavior is byte-identical to a pre-#426 install — the hook is **default off**.

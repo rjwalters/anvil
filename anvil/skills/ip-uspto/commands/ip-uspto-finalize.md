@@ -229,3 +229,7 @@ This is the terminal command. After `ip-uspto-finalize` succeeds, the package is
 
 
 **Snippet references**: See `anvil/lib/snippets/progress.md` for the `_progress.json` read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC timestamp convention. The merge is shallow: preserve fields and phases not touched by this command.
+
+## Git sync (opt-in, off by default)
+
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the staged-sidecar atomic rename (issues #350, #376) lands the complete `<thread>.final/` package dir, stage ONLY the `<thread>.final/` package dir, commit as `anvil(ip-uspto/finalize): <thread>.final [FINALIZED]` (a terminal package dir, not a `<thread>.{N}` version — the version token is the literal `<thread>.final` per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the finalize still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).

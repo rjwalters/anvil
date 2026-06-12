@@ -357,3 +357,7 @@ Test files:
 - `test_project_migrate_adopt_vn_idempotent.py` — re-run after adopt
   is a no-op; post-adopt names pass project-scout's
   `find_foreign_families` clean (issue #432).
+
+## Git sync hook (opt-in, off by default)
+
+Consumers running anvil under an external orchestrator (a sphere channel-agent, a Loom-style daemon) can opt in to a per-phase git commit hook so every write-bearing run leaves the working tree clean: a repo-level `.anvil/config.json` with `git.commit_per_phase: true` (and optionally `git.push: true`) has the `project-migrate` command end its run by staging only the paths it wrote and committing as `anvil(project-migrate/apply): <project> [MIGRATED]`. The full contract — knob shape, defaults-off rule, commit-message format, staging scope, and warn-and-continue failure semantics — lives in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo). The apply-mode run adopts it (the non-thread commit shape per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"); dry-run and `--report` modes write nothing and are unaffected. When `.anvil/config.json` is absent or the knob is false, behavior is byte-identical to a pre-#426 install — the hook is **default off**.

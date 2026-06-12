@@ -116,3 +116,7 @@ Merge rule (shallow): read existing `_progress.json` if present, update only `ph
 - **One idea per slide.** This is the highest-leverage discipline for Dimension 2 (Pedagogical clarity). When in doubt, split.
 - **Notes are not optional.** A slide without notes is a slide the talk has not earned. Write notes as you draft, not in a separate pass.
 - **Never invent data.** Figures and statistics come from the brief, refs, or outline. If a number is needed and not provided, request it in `figures/_specs.md` rather than guessing.
+
+## Git sync (opt-in, off by default)
+
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `_progress.json` records `phases.draft.state = done`, stage ONLY the new `<thread>.{N+1}/` version dir, commit as `anvil(slides/draft): <thread>.{N+1} [DRAFTED]`, and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the phase still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
