@@ -82,7 +82,7 @@ Concretely in shell:
 ls -d <thread>.<N>.*/ 2>/dev/null
 ```
 
-The `<tag>` is a single short token (no nesting, no dots within the tag). All v0 critic tags: `review`, `s101`, `s112`, `claims`, `priorart`, `preflight`, `audit`. The optional opt-in `adversary` tag (issue #434) is a findings-only adversarial critic that attacks rather than verifies — see `commands/ip-uspto-adversary.md`.
+The `<tag>` is a single short token (no nesting, no dots within the tag). All v0 critic tags: `review`, `s101`, `s112`, `claims`, `priorart`, `preflight`, `audit`. The optional opt-in `adversary` tag (issue #434) is a findings-only adversarial critic that attacks rather than verifies — see `commands/ip-uspto-adversary.md`. The optional on-demand `fto` tag (issue #446) is a report-only (never-flags) FTO triage critic that screens operator-supplied third-party references from `<thread>/fto-refs/` into a triage-for-counsel report — NOT an FTO opinion — see `commands/ip-uspto-fto.md`.
 
 ## Critic output schema (uniform across all critics)
 
