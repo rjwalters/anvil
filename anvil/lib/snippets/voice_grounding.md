@@ -129,7 +129,11 @@ precedent). Rules:
   artifact passage AND quotes the exemplar passage it falls short of.
   This is the load-bearing discipline that makes the consumer's loop
   work; a voice deduction without a corpus quote is itself a defective
-  finding.
+  finding. (Complementary, not conflicting, with the quoted-evidence
+  sub-rule in `rubric.md` §"Dimension scoring guidance" rule 1, which
+  quotes the *reviewed body* — a voice deduction under both contracts
+  quotes BOTH the offending body passage and the corpus exemplar, as
+  this rule already requires.)
 - **The convergence-with-Claude adversarial check**: for each passage
   under voice scrutiny, the reviewer asks — *would I, the AI, also
   write this sentence?* If yes, scrutinize harder, never defend.
