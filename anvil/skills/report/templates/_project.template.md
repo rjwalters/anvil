@@ -9,6 +9,15 @@ customer: "acme"                   # OPTIONAL — cross-project customer-context
                                    # .anvil/config.json key report.customers_dir).
                                    # Omit the key entirely to leave the customer-
                                    # context tier off (byte-identical behavior).
+# audience_class: "commercial"     # OPTIONAL — audience-class house-style switch
+                                   # (closed vocabulary: commercial | defense |
+                                   # internal; issue #450). Overrides the customer's
+                                   # context.yaml `audience_class:` default; also the
+                                   # sole locus for internal reports with NO customer.
+                                   # Omit everywhere → byte-identical pre-#450
+                                   # behavior. `defense` requires consumer-supplied
+                                   # assets/audience/defense.md boilerplate (anvil
+                                   # ships no legal text) and adds a DRAFT watermark.
 prior_reports:
   - thread: findings
     final_version: 3
