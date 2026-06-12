@@ -1,6 +1,6 @@
 ---
 name: ip-uspto-inventorship
-description: Inventorship interview generator. Produces a per-independent-claim attribution matrix the human attorney countersigns. Run before first draft AND re-run before finalize once claims are stable.
+description: Inventorship interview generator. Produces a per-independent-claim attribution matrix the human attorney countersigns. Run before first draft AND re-run before finalize once claims are stable. Opt-in --evidence mode mines repo git history into reduction-to-practice citations that pre-fill the matrix Notes column only.
 ---
 
 # ip-uspto-inventorship — Inventorship interviewer
@@ -16,12 +16,17 @@ description: Inventorship interview generator. Produces a per-independent-claim 
 - **Thread slug** (positional argument).
 - **`<thread>/BRIEF.md`**: required. Provides the named inventors and the inventive features.
 - **`<thread>.{N}/claims.tex`** (optional): if a draft exists, the inventorship matrix attributes each independent claim's inventive concept(s) to named inventors. Without claims, the matrix attributes the inventive features from `BRIEF.md` §3.
+- **`--evidence [<repo_path>]`** (optional flag, opt-in): additionally mine the git history of the implementation repository at `<repo_path>` (default: the git toplevel of the current working directory) into reduction-to-practice evidence artifacts, and pre-fill the matrix **Notes column only** with commit citations. See "Evidence mode" below. **Without this flag, behavior is byte-identical to the base command — no git access, no evidence artifacts.**
+- **`--reseed`** (optional flag, only meaningful with `--evidence`): discard the cached `inventorship_map.json` and re-seed the element→paths map from scratch.
 
 ## Outputs
 
 ```
 <thread>/
   inventorship.md   Inventorship interview prompts + attribution matrix + attestation block
+  inventorship-evidence/        (--evidence mode only; thread-level, like the matrix)
+    inventorship_map.json       Element/feature → repo-paths map (semi-manual seed; cached)
+    evidence.jsonl              Append-only git evidence rows (reduction-to-practice citations)
 ```
 
 The file has the following structure:
@@ -108,6 +113,90 @@ Attorney signature: ___________________________  Date: ___________
    - Attestation block: copy verbatim, leave all checkboxes unchecked and attorney signature blank.
 5. **Report**: print the path written and a one-line summary (e.g., `Inventorship matrix generated: acme-widget/inventorship.md (basis: thread.3/claims.tex, 3 independent claims, 2 named inventors, 4 attribution cells pre-filled, 5 marked TBD)`).
 
+## Evidence mode (`--evidence`) — v1, opt-in
+
+`ip-uspto-inventorship <thread> --evidence [<repo_path>] [--reseed]`
+
+Mines the implementation repository's git history into an evidentiary trail backing the matrix. For AI-assisted invention this trail is increasingly load-bearing: reduction-to-practice attribution backed by commits, not recollection.
+
+**What evidence mode is — and is not (advisory-only contract):**
+
+- Git history documents **reduction to practice** (who committed working implementation), NOT **conception** (the legal test for inventorship). Every git-derived annotation MUST carry the reduction-to-practice label and the conception caveat.
+- Evidence **informs the attorney interview; it never adjudicates**. It never adds or removes named inventors, and it never marks or unmarks `●` cells — the `●` pre-fill rules in the Procedure above (including "Never guess at attribution") govern unchanged.
+- Evidence pre-fills the matrix **Notes column only**.
+
+### Step E1 — Path map (`inventorship_map.json`): seed, cache, reseed
+
+The map associates each matrix row key (feature IDs under basis A, claim element labels under basis B — matching the basis selected in Procedure step 3) with the repo paths that implement it:
+
+```json
+{
+  "thread": "acme-widget",
+  "basis": "B:thread.3/claims.tex",
+  "seeded_at": "2026-06-12T00:00:00Z",
+  "vendored_prefixes": ["third_party/", "vendor/"],
+  "elements": {
+    "C1": {
+      "label": "Independent claim 1 — adaptive widget controller",
+      "paths": [
+        {"path": "src/controller.py", "role": "primary", "manually_seeded": true, "seeded_at": "2026-06-12T00:00:00Z", "lines": [40, 120]}
+      ]
+    }
+  }
+}
+```
+
+- `role` is one of `primary` / `vendored-primary` / `diverged-copy` / `supporting`.
+- **Seeding is semi-manual**: on first run the agent proposes the element→paths map (from the basis rows and its reading of the repo) and the **operator confirms it** before the map is written. Path attribution is never guessed silently.
+- **Cache semantics**: on reruns the cached map is reused and re-validated. A mapped path that has moved or disappeared produces a `stale-path` finding that **prompts the operator** for the new location — the cached map is never silently updated. `--reseed` discards the cache and seeds fresh.
+- `vendored_prefixes` is an optional operator-maintained list; any mapped path under a listed prefix (or with role `vendored-primary`) is **BLOCKED** for evidence purposes: local git history attributes the importer, not the author, so upstream history is required. BLOCKED paths surface in the matrix Notes and the command report — never silently skipped.
+
+### Step E2 — Deterministic mining (`inventorship_evidence.py`)
+
+Run the skill-local lib by direct file path (the skill dir is hyphenated, so there is no dotted `python -m` path; in an installed consumer repo the path is `.anvil/skills/ip-uspto/lib/inventorship_evidence.py`):
+
+```bash
+python3 anvil/skills/ip-uspto/lib/inventorship_evidence.py \
+  <thread>/inventorship-evidence/inventorship_map.json \
+  --repo <repo_path> \
+  --write-evidence <thread>/inventorship-evidence/evidence.jsonl
+```
+
+JSON report to stdout. Exit codes per the tool-evidence convention: `0` = clean collection; `1` = findings (vendored/BLOCKED paths, `suspected-vendored` bulk-import heuristic hits, stale map paths, zero-history paths) — review each finding with the operator; `2` = invocation error (invalid map, git unavailable, not a git repository) — evidence mode degrades gracefully: report the error and continue with the matrix un-annotated.
+
+`evidence.jsonl` is **append-only**, one JSON object per (path, sha): `{path, sha, author, email, date, subject, claim_element, classification, rationale}`. The miner emits `classification: "unclassified"`; rows already present (including rows the classification step has annotated) are never rewritten.
+
+The miner also flags `suspected-vendored` when a path's add-commit touches more than 50 files AND its message matches the vendor heuristic (`vendor|import|port|migrat|consolidat`, case-insensitive) — prompt the operator before treating that history as authorship evidence.
+
+### Step E3 — Classification (LLM step, in this command)
+
+For each unclassified row, read the commit's **diff content** (via the lib's `commit_diff` helper, ~4000-char per-commit budget) and classify it as `conception` / `implementation` / `mixed` / `unclassified`, writing the classification and a one-line `rationale` back to the row. **Classify on diff content, never on the commit message alone** — commit messages are the #1 documented misclassification source. A commit whose diff introduces the inventive mechanism itself may evidence conception-adjacent activity; note it for the interview, but it still proves only reduction to practice.
+
+### Step E4 — Matrix pre-fill (Notes column ONLY)
+
+For each matrix row with classified evidence, append citations to the **Notes** cell in this shape:
+
+```
+git evidence (RTP): abc1234 Alice Author, 2025-03-02 — adds adaptive threshold loop
+```
+
+- `(RTP)` — the reduction-to-practice label — is mandatory on every annotation.
+- BLOCKED paths render as `BLOCKED — vendored path (upstream history required): third_party/blob/` in the row's Notes.
+- Add this caveat once, directly beneath the matrix table:
+
+> Git evidence above documents **reduction to practice only**. Conception — the legal test for inventorship — must be established through the inventor interviews. A commit author is not thereby an inventor; an inventor need not appear in the commit log.
+
+- **Never touch any other column.** `●` cells, inventor columns, and TBD markers follow the base rules exactly as if `--evidence` were not passed.
+- **Locked matrix**: if `matrix_locked: true`, the matrix file is never modified (same rule as the base command); evidence artifacts are still written/refreshed under `<thread>/inventorship-evidence/`, and the report notes that Notes pre-fill is pending the next unlocked regeneration.
+
+### Evidence-mode report
+
+Extend the step-5 report line with an evidence summary, e.g. `evidence: 14 rows mined (3 new), 11 classified, 2 findings (1 stale-path, 1 suspected-vendored), 1 BLOCKED vendored path`.
+
+### Out of scope for v1
+
+Inventor-interview packet generation (`--interview`) and determination synthesis (`--synthesize`) are deliberately deferred to a follow-up issue — the evidence contracts above are designed so that pass is purely additive.
+
 ## Re-validation pre-finalize
 
 After the claim set stabilizes (during AUDITED → FINALIZED transition), re-run this command to regenerate the matrix against the final `claims.tex`. The previous matrix is backed up. The human attorney must re-attest against the final matrix before `ip-uspto-finalize` will proceed.
@@ -131,4 +220,4 @@ After the claim set stabilizes (during AUDITED → FINALIZED transition), re-run
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/inventorship.md` is written, stage ONLY `<thread>/inventorship.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/inventorship): <thread> [<state>]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"; the bracket is `INVENTORSHIP_DONE` on the pre-draft run, or the thread's current derived state on a pre-finalize re-validation), and push when `git.push` is also `true`. A preserved-matrix no-op run writes nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the command still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/inventorship.md` is written, stage ONLY `<thread>/inventorship.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/inventorship): <thread> [<state>]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"; the bracket is `INVENTORSHIP_DONE` on the pre-draft run, or the thread's current derived state on a pre-finalize re-validation), and push when `git.push` is also `true`. A preserved-matrix no-op run writes nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the command still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off). In `--evidence` mode, additionally stage `<thread>/inventorship-evidence/inventorship_map.json` and `<thread>/inventorship-evidence/evidence.jsonl` (explicitly by path) in the same commit when they were written or appended this run; default (no-flag) runs stage exactly what they staged before.

@@ -23,6 +23,9 @@ A **patent thread** is a single patent application authored across one or more r
     refs/                         Optional reference material (transcripts, sketches, lab notebooks)
     prior-art/                    Operator-supplied prior art (PDFs or markdown summaries)
     inventorship.md               Inventorship matrix (inventorship phase output)
+    inventorship-evidence/        Optional (ip-uspto-inventorship --evidence); thread-level like the matrix
+      inventorship_map.json       Element/feature → repo-paths map (semi-manual seed; cached; --reseed discards)
+      evidence.jsonl              Append-only git evidence rows (reduction-to-practice citations only)
     .anvil.json                   Optional per-thread overrides (max_iterations, critic set)
   <thread>.1/                     First drafted version (immutable once written)
     spec.tex                      Specification (LaTeX, using anvil-uspto.cls)
@@ -89,7 +92,7 @@ Iteration cap: default `max_iterations: 5`. Configurable per-thread by writing `
 |---|---|---|---|
 | `ip-uspto` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
 | `ip-uspto-intake <thread>` | intake | inventor disclosure (transcript, brain dump, notes) in `<thread>/refs/` | `<thread>/BRIEF.md` (structured) |
-| `ip-uspto-inventorship <thread>` | inventorship interviewer | `<thread>/BRIEF.md`, latest `<thread>.{N}/claims.tex` if present | `<thread>/inventorship.md` (matrix) |
+| `ip-uspto-inventorship <thread> [--evidence [<repo>]] [--reseed]` | inventorship interviewer | `<thread>/BRIEF.md`, latest `<thread>.{N}/claims.tex` if present; with `--evidence` also the implementation repo's git history (via `lib/inventorship_evidence.py`) | `<thread>/inventorship.md` (matrix); with `--evidence` also `<thread>/inventorship-evidence/` (map + evidence.jsonl; Notes-column citations only) |
 | `ip-uspto-pre-flight <thread>` | pre-flight checker | latest `<thread>.{N}/` (all files) | `<thread>.{N}.preflight/` with `_summary.md`, `findings.md`, `_meta.json` |
 | `ip-uspto-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/inventorship.md`, `<thread>/refs/`, `<thread>/prior-art/`; for revisions also prior version + all critic siblings | `<thread>.{N}/` with spec/claims/abstract/drawings |
 | `ip-uspto-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
@@ -347,7 +350,7 @@ Beyond the standard `draft → review → revise → figures → audit` lifecycl
 | Phase | Command | When | Purpose |
 |---|---|---|---|
 | **Intake** | `ip-uspto-intake` | Before first draft | Convert raw inventor disclosure into a structured brief: problem, prior approaches, key inventive features, embodiments, ranges, edge cases. Without this, the drafter hallucinates. |
-| **Inventorship** | `ip-uspto-inventorship` | Before first draft; re-checked pre-finalize | Generate inventor interview prompts to attribute each independent claim concept to ≥1 named inventor. 37 CFR 1.63 inventor oath requires correct inventorship; mis-attributed inventorship is grounds for unenforceability. |
+| **Inventorship** | `ip-uspto-inventorship` | Before first draft; re-checked pre-finalize | Generate inventor interview prompts to attribute each independent claim concept to ≥1 named inventor. 37 CFR 1.63 inventor oath requires correct inventorship; mis-attributed inventorship is grounds for unenforceability. Opt-in `--evidence` mode mines the implementation repo's git history (skill-local `lib/inventorship_evidence.py`, pure stdlib + subprocess git) into reduction-to-practice citations that pre-fill the matrix **Notes column only** — advisory evidence for the attorney interview; conception attribution and the `●` rules are untouched. |
 | **Pre-flight** | `ip-uspto-pre-flight` | After each revise, before next review | Mechanical compliance scan: paragraph numbering (`[0001]`, `[0002]`, ...), abstract word count ≤150, claims numbered 1..N, no multiple-dependent-on-multiple-dependent claims (37 CFR 1.75(c)), margin/font checks via LaTeX class, render-gate (compile + overfull-box + source-side placeholder scan via `anvil/lib/render_gate.py` — the LaTeX-skill analog of `marp_lint`; `page_cap=None` since patents are uncapped; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`). Deterministic-first with LLM fallback for ambiguous cases. Render-gate is mechanical pass/fail (Check 9, no rubric score) — failure short-circuits pre-flight per the standard rule. See `commands/ip-uspto-pre-flight.md` Check 9. |
 | **Finalize** | `ip-uspto-finalize` | After AUDITED | Assemble submission package: `spec.pdf`, `drawings.pdf`, ADS placeholder, fee schedule placeholder, inventorship attestation. Does **not** file — that is a human + Patent Center action. |
 
