@@ -272,3 +272,7 @@ Test files:
   `_meta.json` parses with all three required fields.
 - `test_rubric_rebackport_doc.py` — pins CLI flag set, mode-dispatch
   matrix, and per-skill stamping values.
+
+## Git sync hook (opt-in, off by default)
+
+Consumers running anvil under an external orchestrator (a sphere channel-agent, a Loom-style daemon) can opt in to a per-phase git commit hook so every write-bearing run leaves the working tree clean: a repo-level `.anvil/config.json` with `git.commit_per_phase: true` (and optionally `git.push: true`) has the `rubric-rebackport` command end its run by staging only the paths it wrote and committing as `anvil(rubric-rebackport/stamp): <thread>.{N}.review [STAMPED]`. The full contract — knob shape, defaults-off rule, commit-message format, staging scope, and warn-and-continue failure semantics — lives in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo). The `--apply` run adopts it (the non-thread commit shape per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"; `--rescore` commits as `anvil(rubric-rebackport/rescore): <thread>.{N}.review [RESCORED]`); dry-run mode writes nothing and is unaffected. When `.anvil/config.json` is absent or the knob is false, behavior is byte-identical to a pre-#426 install — the hook is **default off**.

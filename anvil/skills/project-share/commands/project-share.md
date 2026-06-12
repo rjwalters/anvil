@@ -124,3 +124,7 @@ the rebuild was refused, verification failed, or any doc failed to resolve
 Re-running rebuilds the out dir cleanly — stale folders from removed or
 reordered docs disappear (blow-away rebuild). Two runs over the same inputs
 differ only in the `EXPORT.md` build-timestamp line.
+
+## Git sync (opt-in, off by default)
+
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): on the apply (default) path only, after the export rebuild and verification complete, stage ONLY the rebuilt out dir (`<project>/SHARE/` by default, or the `export.out` override) and, when `--zip` was passed, the produced zip — each staged explicitly by path, commit as `anvil(project-share/share): <project> [SHARED]` (a project-scoped tool, not a `<thread>.{N}` phase — the version token is the project slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"), and push when `git.push` is also `true`. `--dry-run` writes nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the export still reports its own result unchanged; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
