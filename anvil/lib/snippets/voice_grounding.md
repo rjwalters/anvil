@@ -31,6 +31,9 @@ voice:
                                      #            voice signatures / failure modes
   corpus: writing-corpus/**/*.md     # optional glob — published exemplars quoted
                                      #                 as voice ground truth
+  rhetoric_rules: rhetoric-rules.json  # optional — consumer JSON rules for the
+                                       #            rhetoric lint (gate side; NOT
+                                       #            a grounding doc — see below)
 ```
 
 | Doc | Role | What it carries |
@@ -41,6 +44,21 @@ voice:
 | **corpus** | Proof | Published exemplars — the ground truth a reviewer quotes when judging whether new prose sounds like the author |
 
 Every sub-key is optional; the block itself is optional.
+
+**`rhetoric_rules` is the asymmetric fifth sub-key** (issue #468): a
+path to a consumer **JSON rule file** consumed by the render gate's
+advisory `memo_rhetoric_lint` check (issue #463) — lint-side
+configuration, NOT a grounding doc. It never enters the drafter's load
+order or the reviewer's calibration, is excluded from
+`resolve_voice_docs` output, and does NOT count toward
+`VoiceDocs.is_empty`: a `rhetoric_rules`-only `voice:` block activates
+only the lint wiring (resolved by
+`anvil/lib/project_brief.py::resolve_rhetoric_rules`, same
+project-root-then-consumer-root walk) and never the judgment tier
+below. A declared-but-missing rule file is still forwarded to the gate,
+where the lint emits one warning finding naming the error and runs
+defaults-only (the same defect-to-surface posture as the grounding
+docs, with zero extra machinery).
 
 ## Activation pattern (the #428/#452 contract)
 
@@ -54,10 +72,12 @@ Every sub-key is optional; the block itself is optional.
   `anvil/skills/report/lib/customer_context.py` posture).
   `resolve_voice_docs` carries missing files as structured
   `missing: true` entries; it never raises on absence.
-- **Empty block (`voice: {}`) or unknown-sub-keys-only block →
-  inactive**, same as absent (`VoiceDocs.is_empty`). Unknown sub-keys
-  are preserved verbatim under `unknown_keys` with a warning
-  (forward-compat — issue #463 may add a `rhetoric_rules` sub-key).
+- **Empty block (`voice: {}`), unknown-sub-keys-only block, or
+  `rhetoric_rules`-only block → inactive** for this judgment tier,
+  same as absent (`VoiceDocs.is_empty`; the `rhetoric_rules` sub-key
+  is recognized but gate-side — it activates only the rhetoric-lint
+  wiring, see above). Unknown sub-keys are preserved verbatim under
+  `unknown_keys` with a warning (forward-compat).
 
 ## Path resolution: project root first, then consumer root
 

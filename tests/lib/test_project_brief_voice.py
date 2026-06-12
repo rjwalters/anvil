@@ -9,13 +9,17 @@ are structured ``missing: true`` entries (never a raise); an absent
 block is the byte-identical inactive path.
 
 One deliberate deviation from the curation comment's "unknown sub-keys
-rejected (STRICT)" line, per the orchestration note on the build: the
-companion rhetoric lint (issue #463, building in parallel) may add a
-``voice.rhetoric_rules`` sub-key, so unknown sub-keys are TOLERATED —
-preserved verbatim under ``VoiceDocs.unknown_keys`` with a
-``warnings.warn`` breadcrumb (the lenient inner-block posture of
-``rubric_overrides.unknown_keys``). The recognized sub-keys remain
-STRICT on type (non-string values raise).
+rejected (STRICT)" line, per the orchestration note on the build:
+unknown sub-keys are TOLERATED — preserved verbatim under
+``VoiceDocs.unknown_keys`` with a ``warnings.warn`` breadcrumb (the
+lenient inner-block posture of ``rubric_overrides.unknown_keys``). The
+recognized sub-keys remain STRICT on type (non-string values raise).
+
+Issue #468 wired the fifth recognized sub-key, ``rhetoric_rules`` — a
+gate-side JSON rule file for the #463 rhetoric lint, resolved by the
+dedicated :func:`resolve_rhetoric_rules` (NOT a grounding doc: it
+never appears in ``resolve_voice_docs`` output and does not count
+toward ``is_empty``). Those tests live in the dedicated section below.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from anvil.lib.project_brief import (
     VoiceDocs,
     load_project_brief,
     load_rubric_overrides_for_slug,
+    resolve_rhetoric_rules,
     resolve_voice_docs,
 )
 from anvil.lib.project_discovery import BRIEF_FILENAME
@@ -132,8 +137,9 @@ def test_absent_voice_block_is_none(tmp_path: Path) -> None:
 
 
 def test_unknown_sub_key_tolerated_with_warning(tmp_path: Path) -> None:
-    """Unknown sub-keys are preserved under unknown_keys (forward-compat
-    for the #463 ``rhetoric_rules`` surface), with a warning."""
+    """Unknown sub-keys are preserved under unknown_keys (forward-compat),
+    with a warning. (Fixture migrated off ``rhetoric_rules`` when #468
+    made it a recognized key — ``tone_matrix`` is synthetic.)"""
     project = tmp_path / "proj"
     _write_brief(
         project,
@@ -141,27 +147,29 @@ def test_unknown_sub_key_tolerated_with_warning(tmp_path: Path) -> None:
         project: proj
         voice:
           values: VALUES.md
-          rhetoric_rules: RHETORIC.md
+          tone_matrix: TONE.md
         {_DOCS_STANZA}""",
     )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         brief = load_project_brief(project)
     assert brief is not None and brief.voice is not None
-    assert brief.voice.unknown_keys == {"rhetoric_rules": "RHETORIC.md"}
+    assert brief.voice.unknown_keys == {"tone_matrix": "TONE.md"}
     assert brief.voice.values == "VALUES.md"
-    assert any("rhetoric_rules" in str(w.message) for w in caught)
+    assert any("tone_matrix" in str(w.message) for w in caught)
 
 
 def test_unknown_keys_only_block_is_inactive(tmp_path: Path) -> None:
-    """A block declaring ONLY unknown sub-keys does not activate the tier."""
+    """A block declaring ONLY unknown sub-keys does not activate the tier.
+    (Fixture migrated off ``rhetoric_rules`` when #468 made it a
+    recognized key.)"""
     project = tmp_path / "proj"
     _write_brief(
         project,
         f"""\
         project: proj
         voice:
-          rhetoric_rules: RHETORIC.md
+          tone_matrix: TONE.md
         {_DOCS_STANZA}""",
     )
     with warnings.catch_warnings():
@@ -442,6 +450,248 @@ def test_resolve_absolute_path(tmp_path: Path) -> None:
     assert len(resolved) == 1
     assert resolved[0].source == "absolute"
     assert resolved[0].paths == [str(abs_doc)]
+
+
+# ---------------------------------------------------------------------------
+# rhetoric_rules sub-key + resolve_rhetoric_rules (issue #468)
+# ---------------------------------------------------------------------------
+
+
+def test_rhetoric_rules_recognized_no_warning(tmp_path: Path) -> None:
+    """``rhetoric_rules`` parses as a typed field — not unknown_keys,
+    no warning (issue #468 AC 1)."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          values: VALUES.md
+          rhetoric_rules: rhetoric-rules.json
+        {_DOCS_STANZA}""",
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.rhetoric_rules == "rhetoric-rules.json"
+    assert brief.voice.unknown_keys == {}
+    assert not any("rhetoric_rules" in str(w.message) for w in caught)
+
+
+def test_rhetoric_rules_non_string_rejected(tmp_path: Path) -> None:
+    """STRICT on type, same as the four grounding-doc sub-keys."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          rhetoric_rules: [a.json, b.json]
+        {_DOCS_STANZA}""",
+    )
+    with pytest.raises(ValueError, match=r"BRIEF\.voice\.rhetoric_rules"):
+        load_project_brief(project)
+
+
+def test_rhetoric_rules_whitespace_normalizes_to_none(tmp_path: Path) -> None:
+    """Whitespace-only value → None → resolver returns None (kwarg omitted)."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          rhetoric_rules: "   "
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.rhetoric_rules is None
+    assert resolve_rhetoric_rules(project, consumer_root=tmp_path) is None
+
+
+def test_rhetoric_rules_only_block_does_not_activate_grounding_tier(
+    tmp_path: Path,
+) -> None:
+    """The asymmetry contract (issue #468 AC 3/4): a rhetoric_rules-only
+    block keeps ``is_empty`` True, ``resolve_voice_docs`` returns [],
+    and ``rhetoric_rules`` never appears in resolve_voice_docs output —
+    but ``resolve_rhetoric_rules`` still resolves."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          rhetoric_rules: rhetoric-rules.json
+        {_DOCS_STANZA}""",
+    )
+    (project / "rhetoric-rules.json").write_text("{}", encoding="utf-8")
+
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.is_empty
+    assert resolve_voice_docs(project, consumer_root=consumer) == []
+
+    entry = resolve_rhetoric_rules(project, consumer_root=consumer)
+    assert entry is not None
+    assert entry.kind == "rhetoric_rules"
+    assert entry.missing is False
+
+
+def test_resolve_voice_docs_excludes_rhetoric_rules(tmp_path: Path) -> None:
+    """Mixed block: the grounding docs resolve via resolve_voice_docs;
+    rhetoric_rules never joins that list (return shape unchanged)."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          values: VALUES.md
+          rhetoric_rules: rhetoric-rules.json
+        {_DOCS_STANZA}""",
+    )
+    (project / "VALUES.md").write_text("v", encoding="utf-8")
+    (project / "rhetoric-rules.json").write_text("{}", encoding="utf-8")
+
+    resolved = resolve_voice_docs(project, consumer_root=consumer)
+    assert [e.kind for e in resolved] == ["values"]
+
+
+def test_resolve_rhetoric_rules_project_root_hit_wins(tmp_path: Path) -> None:
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          rhetoric_rules: rhetoric-rules.json
+        {_DOCS_STANZA}""",
+    )
+    (consumer / "rhetoric-rules.json").write_text("{}", encoding="utf-8")
+    (project / "rhetoric-rules.json").write_text("{}", encoding="utf-8")
+
+    entry = resolve_rhetoric_rules(project, consumer_root=consumer)
+    assert entry is not None
+    assert entry.source == "project"
+    assert entry.paths == [str((project / "rhetoric-rules.json").resolve())]
+
+
+def test_resolve_rhetoric_rules_consumer_fallback(tmp_path: Path) -> None:
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          rhetoric_rules: rhetoric-rules.json
+        {_DOCS_STANZA}""",
+    )
+    (consumer / "rhetoric-rules.json").write_text("{}", encoding="utf-8")
+
+    entry = resolve_rhetoric_rules(project, consumer_root=consumer)
+    assert entry is not None
+    assert entry.source == "consumer"
+    assert entry.paths == [str((consumer / "rhetoric-rules.json").resolve())]
+
+
+def test_resolve_rhetoric_rules_both_missing_structured(tmp_path: Path) -> None:
+    """Declared-but-missing → structured ``missing: true`` entry (never
+    a raise, never None) — the caller forwards the joined path anyway."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          rhetoric_rules: rhetoric-rules.json
+        {_DOCS_STANZA}""",
+    )
+    entry = resolve_rhetoric_rules(project, consumer_root=consumer)
+    assert entry is not None
+    assert entry.missing is True
+    assert entry.paths == []
+    assert entry.source is None
+    assert entry.declared == "rhetoric-rules.json"
+
+
+def test_resolve_rhetoric_rules_absolute_path(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    abs_rules = tmp_path / "elsewhere" / "rhetoric-rules.json"
+    abs_rules.parent.mkdir(parents=True)
+    abs_rules.write_text("{}", encoding="utf-8")
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          rhetoric_rules: {abs_rules}
+        {_DOCS_STANZA}""",
+    )
+    entry = resolve_rhetoric_rules(project, consumer_root=tmp_path)
+    assert entry is not None
+    assert entry.source == "absolute"
+    assert entry.paths == [str(abs_rules)]
+
+
+def test_resolve_rhetoric_rules_inactive_returns_none(tmp_path: Path) -> None:
+    """No BRIEF / no voice block / no sub-key / malformed BRIEF → None
+    (the caller omits the kwarg; byte-identical defaults-only gate)."""
+    # No BRIEF at all.
+    bare = tmp_path / "no-brief"
+    bare.mkdir()
+    assert resolve_rhetoric_rules(bare, consumer_root=tmp_path) is None
+
+    # BRIEF without a voice block.
+    no_voice = tmp_path / "no-voice"
+    _write_brief(no_voice, f"project: no-voice\n{_DOCS_STANZA}")
+    assert resolve_rhetoric_rules(no_voice, consumer_root=tmp_path) is None
+
+    # voice block without the sub-key.
+    no_key = tmp_path / "no-key"
+    _write_brief(
+        no_key,
+        f"""\
+        project: no-key
+        voice:
+          values: VALUES.md
+        {_DOCS_STANZA}""",
+    )
+    assert resolve_rhetoric_rules(no_key, consumer_root=tmp_path) is None
+
+    # Structurally invalid BRIEF → lenient swallow.
+    invalid = tmp_path / "invalid"
+    _write_brief(
+        invalid,
+        """\
+        project: invalid
+        voice:
+          rhetoric_rules: rhetoric-rules.json
+        documents:
+          - slug: acme
+            artifact_type: not-a-registered-type
+        """,
+    )
+    assert resolve_rhetoric_rules(invalid, consumer_root=tmp_path) is None
+
+
+def test_rhetoric_rules_not_in_voice_doc_kinds() -> None:
+    """The load-order tuple stays a four-doc grounding surface."""
+    assert "rhetoric_rules" not in VOICE_DOC_KINDS
+
+
+def test_resolve_rhetoric_rules_exported() -> None:
+    import anvil.lib.project_brief as pb
+
+    assert "resolve_rhetoric_rules" in pb.__all__
+    assert resolve_rhetoric_rules is pb.resolve_rhetoric_rules
 
 
 # ---------------------------------------------------------------------------

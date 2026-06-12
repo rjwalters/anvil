@@ -73,8 +73,10 @@ rendering pipeline shipped by Epic #158. The seven memo checks are:
    ``DEFAULT_RHETORIC_RULES`` plus the em-dash-density frequency
    rule). Fenced code blocks and HTML comments are excluded from the
    scan. Consumer rules merge over the defaults via the optional
-   ``rhetoric_rules_path`` JSON file (the documented integration
-   point for #461's ``voice.rhetoric_rules`` sub-key); malformed
+   ``rhetoric_rules_path`` JSON file (wired from the #461 voice
+   contract's ``voice.rhetoric_rules`` sub-key via
+   ``anvil.lib.project_brief.resolve_rhetoric_rules`` — issue #468;
+   memo-render step 4g is the caller); malformed
    consumer JSON graceful-degrades to a defaults-only run with one
    warning finding naming the parse error. ALL findings are warning
    severity (info when suppressed or consumer-downgraded) and the
@@ -732,9 +734,12 @@ def gate(
       warning finding naming the parse error. ``None`` (the default)
       runs the framework defaults — defaults-only behavior is
       byte-identical whether or not any consumer declaration exists.
-      This is the documented integration point for #461's
-      ``voice.rhetoric_rules`` sub-key (wired as a follow-up once both
-      issues merge).
+      Wired (issue #468) from the #461 voice contract's
+      ``voice.rhetoric_rules`` sub-key: memo-render step 4g calls
+      ``anvil.lib.project_brief.resolve_rhetoric_rules`` and forwards
+      the resolved path (or the joined declared path when the file is
+      missing, so the lint surfaces the broken declaration as a
+      warning finding).
       Routes through :func:`_gate_memo` which invokes
       :func:`_render_memo_source` for pandoc + the preferred HTML/PDF
       engine, then runs the memo-specific checks. See module
@@ -2391,7 +2396,9 @@ def _gate_memo(
     consumer JSON rule file for the advisory ``memo_rhetoric_lint``
     dimension (check 7), forwarded verbatim to
     :func:`anvil.lib.rhetoric_lint.lint_rhetoric` as
-    ``extra_rules_path``. ``None`` runs the framework defaults.
+    ``extra_rules_path``. ``None`` runs the framework defaults. The
+    BRIEF-side carrier is ``voice.rhetoric_rules``, resolved by
+    ``anvil.lib.project_brief.resolve_rhetoric_rules`` (issue #468).
     """
     if out_pdf is None:
         # PDF output basename echoes the thread slug per #295 (e.g.
