@@ -55,6 +55,11 @@ The current skill index:
 - `anvil:datasheet` — customer-facing IC / component datasheet (mandatory
   spec source-of-truth audit, pin-map/bus-width pre-flight, revision-history
   READY-gate, shared-die SKU coherence). See `datasheet/SKILL.md`.
+- `anvil:essay` — short-form voice-grounded essay / blog post
+  (markdown-only; `anvil-essay-v1` /44 rubric with voice fidelity as the
+  owned dim 2 per the #461 grounding contract; convergence-blocking
+  numeric-consistency + hyperlink gates; READY-terminal with a documented
+  publish handoff — no audit/figures/PDF). See `essay/SKILL.md`.
 - `anvil:project-migrate` — bridge tool migrating existing projects to the
   post-#295 / post-#296 model (project root + `BRIEF.md` absorbing all
   config + `<slug>.md` body filename). Opinionated, idempotent, dry-run

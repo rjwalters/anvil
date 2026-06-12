@@ -14,9 +14,9 @@ This command is the memo-skill's **hyperlink-resolver critic** — a determinist
 **Design contract** (settled at Epic #328 kickoff; do NOT re-litigate):
 
 - **No schema delta.** Ships using the existing free-form `Finding.fix` / `Finding.suggested_fix` text per `anvil/lib/review_schema.py`. No `action` / `target_anchor` / `proposed_content` fields. The structured-action experiment is preserved as a Deferred line item on #328.
-- **Skill-local first.** Implementation lives at `anvil/skills/memo/lib/hyperlink_resolver.py`. Promotion to `anvil/lib/` is deferred per the CLAUDE.md "wait for the second consumer" rule.
+- **Promoted to `anvil/lib/` under #460.** The implementation was born skill-local at `anvil/skills/memo/lib/hyperlink_resolver.py` per the CLAUDE.md "wait for the second consumer" rule; `anvil:essay` (#460) became that second consumer (its review wires broken-link resolution as a convergence-blocking gate), so the canonical module now lives at `anvil/lib/hyperlink_resolver.py`. The memo path remains a back-compat re-export shim — both import paths (and both `python -m` invocations) keep working.
 - **External HTTP check off by default.** `--check-external` is opt-in; the critic stays offline-safe and CI-reproducible by default.
-- **Memo first.** Pub / report / etc. extensions land in follow-on issues when a second consumer surfaces.
+- **Memo + essay.** Pub / report / etc. extensions land in follow-on issues when those skills surface the need.
 
 **State-machine status**: hyperlinks is a **sub-step** of `REVIEWED`, NOT a new state. The critic sibling dir `<thread>.{N}.hyperlinks/` is one of N parallel critics that feed the aggregator (`anvil/lib/critics.py::aggregate`); absence of the sibling means the critic never ran (a fully legal pre-#335 state).
 
@@ -83,16 +83,20 @@ The cross-thread-anchor critical flag is the load-bearing short-circuit: when me
 ## CLI entry-point
 
 ```bash
-# From a consumer repo (uv-runnable install per issue #230):
-uv run --project .anvil python -m anvil.skills.memo.lib.hyperlink_resolver \
+# From a consumer repo (uv-runnable install per issue #230) — canonical
+# promoted path (issue #460):
+uv run --project .anvil python -m anvil.lib.hyperlink_resolver \
     <thread>.{N}/
 
 # Or from the anvil source repo (development):
-python -m anvil.skills.memo.lib.hyperlink_resolver \
+python -m anvil.lib.hyperlink_resolver \
     anvil/skills/memo/examples/<example>/<thread>.{N}/
+
+# Historical memo path — still works through the back-compat shim:
+python -m anvil.skills.memo.lib.hyperlink_resolver <thread>.{N}/
 ```
 
-The CLI entry-point convention (`python -m anvil.skills.memo.lib.<module> <version_dir>`) is the **agreed coordination point** with the Phase 3 citation-coverage critic (#336) — both critics share an invocation shape so consumer wiring is uniform. Similarly the output-dir naming (`<thread>.{N}.hyperlinks/` here vs. `<thread>.{N}.citations/` for #336) follows the `<version_dir>.<tag>/` convention that `anvil/lib/critics.py::discover_critics` recognizes without code changes.
+The CLI entry-point convention (`python -m <module> <version_dir>`) is the **agreed coordination point** with the Phase 3 citation-coverage critic (#336) — both critics share an invocation shape so consumer wiring is uniform. Similarly the output-dir naming (`<thread>.{N}.hyperlinks/` here vs. `<thread>.{N}.citations/` for #336) follows the `<version_dir>.<tag>/` convention that `anvil/lib/critics.py::discover_critics` recognizes without code changes.
 
 ## Auto-discovery wiring
 

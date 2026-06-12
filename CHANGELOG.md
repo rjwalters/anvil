@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **NEW SKILL `anvil:essay`** (issue #460). Eleventh artifact-class skill: short-form voice-grounded essays / blog posts (markdown-only `<slug>.md` body, 500–1500 words typical), grounded in the rjwalters.info adoption survey — its pre-anvil blog skill is strictly upgraded (monolithic review.md → critic sidecars; 6-dim /30 → 9-dim /44 `anvil-essay-v1` with full #346 stamping; ≥35 general tier ≈ the consumer's 80% bar). Deliberately small command set (`essay` status orchestrator + `essay-draft` / `essay-review` / `essay-revise`; **no figures, no audit, no PDF**); the state machine ends at `READY` with a documented **publish handoff contract** (the report CUSTOMER-READY precedent — TSX conversion / registry / Cloudflare deploy stay consumer-native). **Voice fidelity is the OWNED dim 2 at weight 7** (first heavy consumer of the #461 voice/persona grounding contract; corpus-quoted deductions mandatory; a missing `voice:` block is a `major` finding every pass, not a crash); dim 9 *Rhetorical economy* is load-bearing (absorbs the consumer's length-discipline dim, fed by the #463 rhetoric lint as advisory evidence). Gates: `numeric_consistency --blocking` (the #462 hook built for this skill — its first blocking consumer) and broken-link resolution are convergence-BLOCKING; rhetoric lint stays advisory per its #463 contract; example coherence ships as the blog-review step-2.5 LLM critical-flag prose check (detector deferred per #462 gate 1). Seven critical flags ported from the consumer's blog-review (anti-stance violation, out-of-standing claim, generic AI cadence, factual error, unattributed borrowing, example-coherence failure, numeric-consistency failure). `essay` registered as a skill-identity `artifact_type`; `anvil-essay-{drafter,reviewer,reviser}` agents generated. Deferred: worked example, rjwalters.info `drafts/` migration, `voice.rhetoric_rules` wiring (#468), PDF path, example-coherence detector.
+
+### Changed
+
+- **Lib promotion (issue #460, second-consumer trigger)**: `hyperlink_resolver.py` moves from `anvil/skills/memo/lib/` to `anvil/lib/` — the essay skill's blocking link gate is the second consumer of the #335 deterministic link-validation critic, firing the CLAUDE.md "wait for the second consumer before generalizing" rule (the #382/#393 promotion pattern). The memo path remains a back-compat re-export shim (both import paths and both `python -m` invocations keep working); tests move to `tests/lib/test_hyperlink_resolver.py` with shim-identity coverage. `citation_coverage.py` deliberately **stays memo-local** (assessed in its docstring: memo detects unlinked load-bearing *claims*; essay's coverage concern is unlinked named *entities* — judgment-side, carried as essay-review prose).
+
 ## [0.5.0] — 2026-06-11
 
 ### Summary

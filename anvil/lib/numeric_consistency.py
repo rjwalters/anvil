@@ -81,9 +81,10 @@ Findings emit at warning severity (schema ``Finding.severity="minor"``)
 with NO ``CriticalFlag`` — the ``memo_image_dimensions`` /
 ``revise_consistency`` warn-only model. ``to_review(blocking=True)``
 additionally emits one ``CriticalFlag`` per finding-code cluster, which
-forces ``Verdict.BLOCK`` through ``critics.compute_verdict``. Nothing
-ships wired to ``blocking=True`` today: it is the convergence-blocking
-hook the essay skill (#460) consumes.
+forces ``Verdict.BLOCK`` through ``critics.compute_verdict``. The essay
+skill (#460) is the shipped ``blocking=True`` consumer: ``essay-review``
+invokes the CLI with ``--blocking`` as its convergence-blocking
+numeric gate (memo/pub stay advisory).
 
 Suppression
 -----------

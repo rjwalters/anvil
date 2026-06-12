@@ -25,6 +25,20 @@ Architecture
   to ``anvil/lib/`` is deferred until ``pub`` / ``report`` / ``proposal``
   reach for the same primitive (current pattern: wait for the second
   consumer before generalizing).
+
+  **Promotion assessment (issue #460, recorded per the curation):** the
+  essay skill promoted the Phase 2 sibling (``hyperlink_resolver`` →
+  ``anvil/lib/``) but this module deliberately **stays memo-local**.
+  The two skills' coverage concerns are different axes: memo's detector
+  finds unlinked load-bearing *claims* (numeric / named-author /
+  date-pinned assertions hooked against a ``refs/`` evidence pool);
+  essay's concern is unlinked named *entities* (papers, benchmarks,
+  projects, organizations a curious reader would want a URL for) — a
+  judgment-side, corpus-convention-dependent call carried as
+  essay-review prose (the blog-review step-2.7 port), not a detector.
+  Essay is therefore NOT a second consumer of this primitive. Follow-up:
+  promote only if a third skill reaches for the *claims* detector
+  specifically.
 - **No schema delta.** The Epic #328 reframing settled on shipping with
   the existing free-form :attr:`anvil.lib.review_schema.Finding.fix`
   text. No ``action`` / ``target_anchor`` / ``proposed_content`` fields
