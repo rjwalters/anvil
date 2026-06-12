@@ -28,6 +28,7 @@ from typing import List, Optional, Tuple
 import pytest
 
 from anvil.lib.evidence_check import (
+    ELISION_WINDOW_CHARS,
     FABRICATED_EVIDENCE,
     MIN_QUOTE_CHARS,
     MISSING_EVIDENCE,
@@ -41,6 +42,7 @@ from anvil.lib.evidence_check import (
     has_absence_marker,
     main,
     normalize,
+    span_matches_body,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -250,6 +252,216 @@ class TestClassification:
         assert finding.code == MISSING_EVIDENCE
 
 
+# ---------------------------------------------------------------------------
+# Ellipsis elision (issue #478)
+# ---------------------------------------------------------------------------
+
+
+class TestElision:
+    def test_ascii_ellipsis_elision_passes(self) -> None:
+        # The issue-body repro: both fragments verbatim, '...' elides.
+        finding = _classify(
+            3, 5, '"The thesis is that ... beat greenfield automation"'
+        )
+        assert finding is None
+
+    def test_unicode_ellipsis_elision_passes(self) -> None:
+        finding = _classify(
+            3, 5, '"The thesis is that … beat greenfield automation"'
+        )
+        assert finding is None
+
+    def test_four_dot_run_is_an_elision_marker(self) -> None:
+        body = normalize(BODY)
+        assert span_matches_body(
+            "The thesis is that .... beat greenfield automation", body
+        )
+
+    def test_out_of_order_fragments_are_fabricated(self) -> None:
+        # Body order is "The thesis is that ... beat greenfield automation";
+        # reversed fragments must NOT pass (anti-stitching ordering).
+        finding = _classify(
+            3, 5, '"beat greenfield automation ... The thesis is that"'
+        )
+        assert finding is not None
+        assert finding.code == FABRICATED_EVIDENCE
+        assert finding.severity == SEVERITY_MAJOR
+
+    def test_short_fragment_fails_per_fragment_floor(self) -> None:
+        # "The thesis" (10 chars) is below the per-fragment floor even
+        # though it is verbatim and in order — trivial-stitching guard.
+        assert len(normalize("The thesis")) < MIN_QUOTE_CHARS
+        finding = _classify(
+            3, 5, '"The thesis ... beat greenfield automation on payback"'
+        )
+        assert finding is not None
+        assert finding.code == FABRICATED_EVIDENCE
+
+    def test_distant_fragments_outside_window_are_rejected(self) -> None:
+        # Two verbatim, floor-clearing, in-order fragments separated by
+        # more than ELISION_WINDOW_CHARS must NOT stitch into a pass.
+        filler = "filler sentence padding the gap. " * 40  # ~1320 chars
+        body = normalize(
+            "The retrofit thesis opens the memo here. "
+            + filler
+            + "The closing ask lands at the very end."
+        )
+        span = (
+            "The retrofit thesis opens the memo ... "
+            "closing ask lands at the very end"
+        )
+        assert not span_matches_body(span, body)
+        finding = classify_justification(
+            dimension="d",
+            score=3,
+            weight=5,
+            justification=f'"{span}"',
+            normalized_body=body,
+        )
+        assert finding is not None
+        assert finding.code == FABRICATED_EVIDENCE
+
+    def test_nearby_fragments_inside_window_pass(self) -> None:
+        # Same shape as the window-rejection test but within the window.
+        body = normalize(
+            "The retrofit thesis opens the memo here. One short bridge "
+            "sentence sits between. The closing ask lands at the very end."
+        )
+        assert span_matches_body(
+            "The retrofit thesis opens the memo ... "
+            "closing ask lands at the very end",
+            body,
+        )
+
+    def test_window_constant_is_canary_tunable_documented(self) -> None:
+        # Ship-as-constant posture (MIN_QUOTE_CHARS precedent).
+        assert ELISION_WINDOW_CHARS == 500
+
+    def test_leading_ellipsis_degrades_to_plain_span(self) -> None:
+        finding = _classify(
+            3, 5, '"... beat greenfield automation on payback period"'
+        )
+        assert finding is None
+
+    def test_trailing_ellipsis_degrades_to_plain_span(self) -> None:
+        finding = _classify(
+            3, 5, '"The retrofit market is underserved by incumbents ..."'
+        )
+        assert finding is None
+
+    def test_literal_body_ellipsis_is_preserved_by_normalize(self) -> None:
+        # Elision handling lives in span matching, NOT normalize() —
+        # body text containing a literal ellipsis must survive intact.
+        assert "..." in normalize("The plan is simple... ship it now.")
+        assert "…" in normalize("The plan is simple… ship it now.")
+
+    def test_literal_body_ellipsis_quote_matches_verbatim(self) -> None:
+        # A verbatim quote of a literal body ellipsis passes via the
+        # plain-substring check even though its second fragment would
+        # fail the per-fragment floor under elision splitting.
+        body = normalize("The plan is simple... ship it. Nothing else.")
+        assert span_matches_body("The plan is simple... ship it", body)
+
+    def test_two_dots_are_not_an_elision_marker(self) -> None:
+        body = normalize(BODY)
+        assert not span_matches_body(
+            "The thesis is that .. beat greenfield automation", body
+        )
+
+    def test_three_fragment_elision_in_order(self) -> None:
+        finding = _classify(
+            3,
+            5,
+            '"The thesis is that ... beat greenfield automation '
+            '... underserved by incumbents"',
+        )
+        assert finding is None
+
+
+# ---------------------------------------------------------------------------
+# Dash folding (issue #478)
+# ---------------------------------------------------------------------------
+
+
+DASH_BODY = """# Dash memo
+
+Retrofits — not greenfield builds — win on payback math today.
+The en-dash range 2024–2026 covers the pilot window. Run the
+self-check with the --scoring flag before the sidecar lands.
+"""
+
+
+class TestDashFolding:
+    def test_double_hyphen_quote_matches_em_dash_body(self) -> None:
+        body = normalize(DASH_BODY)
+        assert span_matches_body(
+            "Retrofits -- not greenfield builds -- win on payback math",
+            body,
+        )
+
+    def test_verbatim_em_dash_quote_still_passes(self) -> None:
+        body = normalize(DASH_BODY)
+        assert span_matches_body(
+            "Retrofits — not greenfield builds — win on payback math",
+            body,
+        )
+
+    def test_triple_hyphen_quote_matches_em_dash_body(self) -> None:
+        body = normalize(DASH_BODY)
+        assert span_matches_body(
+            "Retrofits --- not greenfield builds --- win on payback math",
+            body,
+        )
+
+    def test_en_dash_folds_symmetrically(self) -> None:
+        body = normalize(DASH_BODY)
+        assert span_matches_body("en-dash range 2024--2026 covers", body)
+        assert span_matches_body("en-dash range 2024–2026 covers", body)
+
+    def test_double_hyphen_literal_stays_self_consistent(self) -> None:
+        # `--scoring`-style literals fold identically on both sides.
+        body = normalize(DASH_BODY)
+        assert span_matches_body(
+            "self-check with the --scoring flag before", body
+        )
+
+    def test_single_hyphen_is_not_folded(self) -> None:
+        # Compound words keep their hyphen — "self-check" must not
+        # match a body that spells it "self—check".
+        assert normalize("self-check") == "self-check"
+        assert not span_matches_body("self-check", normalize("self—check"))
+
+    def test_tex_body_dash_markup(self, tmp_path: Path) -> None:
+        # LaTeX bodies use --/--- as en/em dash markup; a reviewer
+        # quoting the rendered dash (or the source markup) must pass.
+        version_dir = tmp_path / "paper" / "paper.1"
+        version_dir.mkdir(parents=True)
+        (version_dir / "main.tex").write_text(
+            "\\section{Method}\n"
+            "Retrofits---not greenfield builds---win on payback math; "
+            "the 2024--2026 pilot window confirms it.\n",
+            encoding="utf-8",
+        )
+        review = version_dir.parent / "paper.1.review"
+        review.mkdir()
+        (review / "scoring.md").write_text(
+            scoring_table(
+                [
+                    (
+                        "Methodology",
+                        6,
+                        5,
+                        '"Retrofits—not greenfield builds—win on payback '
+                        'math" and "the 2024–2026 pilot window confirms it"',
+                    )
+                ]
+            ),
+            encoding="utf-8",
+        )
+        result = check_version_dir(version_dir)
+        assert result.passed()
+
+
 class TestCheckScoringText:
     def test_mixed_table(self) -> None:
         table = scoring_table(
@@ -453,6 +665,9 @@ def test_memo_review_doc_wires_the_self_check() -> None:
     assert "anvil.lib.evidence_check" in doc
     assert "fabricated_evidence" in doc
     assert "no instance of <X> found" in doc
+    # Issue #478: step 5 documents the permitted elision form.
+    assert "Elision with `...` / `…` is permitted" in doc
+    assert "ELISION_WINDOW_CHARS" in doc
 
 
 def test_rubric_snippet_carries_quoted_evidence_rule() -> None:
@@ -463,6 +678,9 @@ def test_rubric_snippet_carries_quoted_evidence_rule() -> None:
     assert "no instance of <X> found" in doc
     assert "voice_grounding.md" in doc
     assert "evidence_check" in doc
+    # Issue #478: rule 1 documents the permitted elision form.
+    assert "Elision with `...` / `…` is permitted" in doc
+    assert "ELISION_WINDOW_CHARS" in doc
 
 
 def test_voice_grounding_snippet_cross_references_back() -> None:
