@@ -4,8 +4,8 @@ Covers: rename mapping (in-place default + `--slug` relocation), slug
 default sanitization + canonical-only `--slug` validation, artifact-type
 inference (`report` + TODO marker) and the two-tier `--artifact-type`
 validation, collision refusals (BRIEF entry / target dir / target
-version dir), BRIEF-mode selection, and the dry-run report's full BRIEF
-preview.
+version dir), BRIEF-mode selection, the dry-run report's full BRIEF
+preview, and the leading-zero slot-collapse refusals (issue #458).
 """
 
 from __future__ import annotations
@@ -203,3 +203,84 @@ class TestReport:
         original_fm_end = ENROLL_OPERATOR_BRIEF.index("\n---\n", 4)
         assert ENROLL_OPERATOR_BRIEF[:original_fm_end] in result.report
         assert "slug: reports  # adopted-from: reports/vN" in result.report
+
+
+class TestLeadingZeroAmbiguity:
+    """Leading-zero slot collapse refusals (issue #458).
+
+    `v07/` + `v7/` both parse to version slot 7: the dict-keyed scan
+    silently dropped one, and same-slot sidecars (`v07.review/` +
+    `v7.review/`) planned two renames to ONE target with no in-plan
+    guard — failing mid-apply. Both are now scan-time refusals naming
+    every colliding dir; a LONE `v07` still adopts, normalized.
+    """
+
+    def test_duplicate_version_slot_refused_naming_both(self, tmp_path):
+        reports = build_vn_report_dirs(tmp_path, with_leading_zero_dup=True)
+        with pytest.raises(AdoptVnError) as excinfo:
+            build_adopt_vn_plan(reports)
+        msg = str(excinfo.value)
+        assert "`v07/`" in msg
+        assert "`v7/`" in msg
+        assert "version 7" in msg
+        assert "Nothing was modified" in msg
+
+    def test_refusal_fires_at_scan_time_before_slug_work(self, tmp_path):
+        # A non-canonical --slug would refuse too — the ambiguity
+        # refusal must win (scan time precedes all slug/BRIEF work).
+        reports = build_vn_report_dirs(tmp_path, with_leading_zero_dup=True)
+        with pytest.raises(AdoptVnError) as excinfo:
+            build_adopt_vn_plan(reports, slug="Not_Canonical")
+        assert "Ambiguous version numbering" in str(excinfo.value)
+
+    def test_duplicate_sidecar_slot_refused_at_plan_time(self, tmp_path):
+        # Single version dir (v3/) with BOTH v03.review/ and v3.review/:
+        # previously both renames targeted <slug>.3.review and the
+        # collision only surfaced MID-APPLY. Now: plan-time refusal.
+        reports = build_vn_report_dirs(tmp_path)
+        dup = reports / "v03.review"
+        dup.mkdir()
+        (dup / "review.md").write_text("# dup\n", encoding="utf-8")
+        with pytest.raises(AdoptVnError) as excinfo:
+            build_adopt_vn_plan(reports)
+        msg = str(excinfo.value)
+        assert "`v03.review/`" in msg
+        assert "`v3.review/`" in msg
+        assert "`review` sidecar" in msg
+        assert "Nothing was modified" in msg
+
+    def test_three_way_collision_names_every_dir(self, tmp_path):
+        reports = build_vn_report_dirs(tmp_path, with_leading_zero_dup=True)
+        third = reports / "v007"
+        third.mkdir()
+        (third / "report.md").write_text("# v007\n", encoding="utf-8")
+        with pytest.raises(AdoptVnError) as excinfo:
+            build_adopt_vn_plan(reports)
+        msg = str(excinfo.value)
+        assert "`v007/`" in msg
+        assert "`v07/`" in msg
+        assert "`v7/`" in msg
+        assert "all parse to version 7" in msg
+
+    def test_lone_leading_zero_dir_adopts_normalized(self, tmp_path):
+        # No v7 sibling: a lone v07 is NOT a refusal — it adopts,
+        # normalized to <slug>.7.
+        reports = build_vn_report_dirs(tmp_path)
+        lone = reports / "v07"
+        lone.mkdir()
+        (lone / "report.md").write_text("# v07\n", encoding="utf-8")
+        plan = build_adopt_vn_plan(reports)
+        rename_map = {
+            r.source.name: r.target for r in plan.documents[0].renames
+        }
+        assert rename_map["v07"] == reports / "reports.7"
+
+    def test_lone_leading_zero_dir_applies_normalized(self, tmp_path):
+        reports = build_vn_report_dirs(tmp_path)
+        lone = reports / "v07"
+        lone.mkdir()
+        (lone / "report.md").write_text("# v07\n", encoding="utf-8")
+        result = run_adopt_vn(reports, apply=True)
+        assert result.success, result.report
+        assert (reports / "reports.7" / "report.md").is_file()
+        assert not (reports / "v07").exists()
