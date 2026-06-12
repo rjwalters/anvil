@@ -101,6 +101,23 @@ CONTEXT_VERSION = 1
 #: tier for a project.
 PROJECT_CUSTOMER_KEY = "customer"
 
+#: Closed audience-class vocabulary (issue #450). The knob selects
+#: consumer-supplied house-style boilerplate + render metadata in
+#: ``report-figures`` and gates the defense-class distribution-statement
+#: critical flag in ``report-review``. The vocabulary is CLOSED in v1 —
+#: enforcement needs known semantics; a consumer-extensible class
+#: registry is deferred. An out-of-vocabulary value is a structured
+#: ``bad-value`` error (never a crash) and the field is treated as
+#: absent. Orthogonal to ``confidentiality_class`` (watermark trigger)
+#: and ``export_control`` (judgment input) — do NOT merge or derive.
+#: Resolution helpers live in the sibling ``audience_class.py``.
+AUDIENCE_CLASSES = ("commercial", "defense", "internal")
+
+#: The optional top-level ``context.yaml`` key carrying the customer's
+#: default audience class (overridable per project via the same-named
+#: ``_project.md`` frontmatter key — see ``audience_class.py``).
+AUDIENCE_CLASS_KEY = "audience_class"
+
 #: Audit-side critical-flag identifier. Upper-case constant mirrors
 #: the ``audit_flags.py`` / ``data_contract.py`` convention. The
 #: review-side twin is the judgment-prose flag "Discusses a topic on
@@ -134,7 +151,7 @@ class ContextError:
     """A structured customer-context validation error.
 
     ``kind`` is one of: ``context-missing``, ``malformed-yaml``,
-    ``bad-shape``, ``bad-version``, ``missing-field``,
+    ``bad-shape``, ``bad-version``, ``bad-value``, ``missing-field``,
     ``customer-mismatch``, ``bad-config``, ``malformed-ledger-line``.
     ``message`` is operator-facing prose. Each error becomes a
     ``major`` finding when the tier is active — a declared-but-broken
@@ -540,6 +557,7 @@ class CustomerContext:
     nda: Mapping[str, Any]
     export_control: Optional[str]
     topics_to_avoid: Sequence[TopicToAvoid]
+    audience_class: Optional[str] = None
     errors: Sequence[ContextError] = field(default_factory=tuple)
 
     @property
@@ -675,6 +693,37 @@ def load_context(customers_dir: Path, slug: str) -> CustomerContext:
         )
         export_control = None
 
+    audience_class = raw.get(AUDIENCE_CLASS_KEY)
+    if audience_class is not None and not isinstance(audience_class, str):
+        errors.append(
+            ContextError(
+                kind="bad-shape",
+                message=(
+                    f"'{AUDIENCE_CLASS_KEY}' must be a scalar string, "
+                    f"got {type(audience_class).__name__} — treating "
+                    f"it as absent"
+                ),
+            )
+        )
+        audience_class = None
+    elif isinstance(audience_class, str):
+        audience_class = audience_class.strip()
+        if audience_class not in AUDIENCE_CLASSES:
+            errors.append(
+                ContextError(
+                    kind="bad-value",
+                    message=(
+                        f"'{AUDIENCE_CLASS_KEY}' must be one of "
+                        f"{', '.join(AUDIENCE_CLASSES)}; got "
+                        f"{audience_class!r} — treating it as absent "
+                        f"(the vocabulary is closed in v1; a "
+                        f"consumer-extensible class registry is "
+                        f"deferred)"
+                    ),
+                )
+            )
+            audience_class = None
+
     topics: list[TopicToAvoid] = []
     raw_topics = raw.get("topics_to_avoid")
     if raw_topics is None:
@@ -740,6 +789,7 @@ def load_context(customers_dir: Path, slug: str) -> CustomerContext:
         nda=nda,
         export_control=export_control,
         topics_to_avoid=tuple(topics),
+        audience_class=audience_class,
         errors=tuple(errors),
     )
 
