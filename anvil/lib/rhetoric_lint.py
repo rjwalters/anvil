@@ -749,9 +749,13 @@ def lint_rhetoric(
         Optional path to a consumer JSON rule file (same shape).
         Malformed input graceful-degrades to a defaults-only run with
         one warning finding naming the parse error. This is the
-        documented integration point for the #461 voice contract's
-        ``voice.rhetoric_rules`` sub-key (wired as a follow-up once
-        both issues merge).
+        integration point for the #461 voice contract's
+        ``voice.rhetoric_rules`` sub-key, wired in issue #468:
+        ``anvil.lib.project_brief.resolve_rhetoric_rules`` resolves
+        the declared path and memo-render step 4g forwards it through
+        ``render_gate.gate(kind="memo", rhetoric_rules_path=...)``
+        (a missing declared file is forwarded too, so the OSError
+        graceful-degrade above surfaces the broken declaration).
     suppress_rules:
         Directive tokens honored for per-line suppression. Defaults to
         :data:`DEFAULT_SUPPRESS_RULES` (the memo gate dimension name

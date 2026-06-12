@@ -597,11 +597,21 @@ _KNOWN_RUBRIC_OVERRIDE_KEYS = {"memo_subtype", "target_length"}
 
 # Recognized sub-keys inside the optional top-level ``voice:`` block
 # (issue #461 — the voice/persona grounding-docs contract; see
-# ``anvil/lib/snippets/voice_grounding.md``). Anything else is preserved
-# verbatim under ``VoiceDocs.unknown_keys`` (forward-compat surface —
-# the companion rhetoric lint, issue #463, may add a ``rhetoric_rules``
-# sub-key; the same lenient-inner-block posture as ``rubric_overrides``).
-_RECOGNIZED_VOICE_KEYS = {"style_guide", "vocabulary", "values", "corpus"}
+# ``anvil/lib/snippets/voice_grounding.md``). ``rhetoric_rules`` (issue
+# #468) is the companion rhetoric lint's consumer rule file (issue
+# #463) — recognized here but lint-side only; it is NOT a grounding
+# doc, never joins :data:`VOICE_DOC_KINDS`, and does not activate the
+# voice-grounding tier (see :func:`resolve_rhetoric_rules`). Anything
+# else is preserved verbatim under ``VoiceDocs.unknown_keys``
+# (forward-compat surface — the same lenient-inner-block posture as
+# ``rubric_overrides``).
+_RECOGNIZED_VOICE_KEYS = {
+    "style_guide",
+    "vocabulary",
+    "values",
+    "corpus",
+    "rhetoric_rules",
+}
 
 # Load order for resolved voice docs (issue #461): values first (stances
 # / anti-stances / standing), then register rules, then vocabulary
@@ -940,6 +950,7 @@ class VoiceDocs(BaseModel):
           vocabulary: VOCABULARY.md          # AI-tell guidance (judgment side)
           values: VALUES.md                  # stances / anti-stances / standing
           corpus: writing-corpus/**/*.md     # published exemplars (glob)
+          rhetoric_rules: rhetoric-rules.json  # consumer lint rules (gate side)
 
     **No ``voice:`` block → byte-identical behavior** (the #428/#452
     activation pattern). Declared paths resolve **project-root first,
@@ -954,11 +965,20 @@ class VoiceDocs(BaseModel):
     a defect to surface, not an opt-out" (the
     ``report/lib/customer_context.py`` posture).
 
+    **``rhetoric_rules`` is the asymmetric fifth sub-key** (issue
+    #468): a path to a consumer **JSON rule file** consumed by the
+    render gate's advisory ``memo_rhetoric_lint`` check (issue #463),
+    NOT a markdown grounding doc for the drafter/reviewer loop. It
+    never joins :data:`VOICE_DOC_KINDS`, is excluded from
+    :func:`resolve_voice_docs` output, and does NOT count toward
+    :attr:`is_empty` — a ``rhetoric_rules``-only block activates ONLY
+    the lint wiring (via :func:`resolve_rhetoric_rules`), never the
+    voice-grounding judgment tier.
+
     Unknown sub-keys are **preserved verbatim** under ``unknown_keys``
     (lenient inner-block posture, same as
-    ``RubricOverrides.unknown_keys``) so a forward-shipped sub-key —
-    e.g. the companion rhetoric lint's ``rhetoric_rules`` (issue
-    #463) — can land in BRIEF.md ahead of loader support without
+    ``RubricOverrides.unknown_keys``) so a forward-shipped sub-key
+    can land in BRIEF.md ahead of loader support without
     breaking existing consumers. The loader warns via
     ``warnings.warn`` so the typo case stays visible.
     """
@@ -995,23 +1015,36 @@ class VoiceDocs(BaseModel):
             "truth — e.g. ``writing-corpus/**/*.md``."
         ),
     )
+    rhetoric_rules: Optional[str] = Field(
+        None,
+        description=(
+            "Path to a consumer JSON rule file for the render gate's "
+            "advisory ``memo_rhetoric_lint`` check (issue #463; wired "
+            "by #468). Gate-side only — NOT a grounding doc: excluded "
+            "from ``VOICE_DOC_KINDS``, ``resolve_voice_docs``, and "
+            "``is_empty``. Resolved by ``resolve_rhetoric_rules``."
+        ),
+    )
     unknown_keys: Dict[str, Any] = Field(
         default_factory=dict,
         description=(
             "Forward-compat passthrough: any sub-keys the loader does "
-            "not recognize land here verbatim (e.g. a future "
-            "``rhetoric_rules`` from issue #463). Surfaced via "
+            "not recognize land here verbatim. Surfaced via "
             "``warnings.warn`` at parse time."
         ),
     )
 
     @property
     def is_empty(self) -> bool:
-        """Return True when no recognized voice doc is declared.
+        """Return True when no recognized voice **grounding doc** is declared.
 
         An empty block (``voice: {}`` or only unknown sub-keys) does
         NOT activate the voice-grounding tier — consumers treat
-        ``is_empty`` exactly like an absent block.
+        ``is_empty`` exactly like an absent block. ``rhetoric_rules``
+        deliberately does NOT count: it is gate-side lint config, not
+        drafter/reviewer grounding, so a ``rhetoric_rules``-only block
+        is still ``is_empty`` (the lint wiring activates independently
+        via :func:`resolve_rhetoric_rules`).
         """
         return (
             self.style_guide is None
@@ -1032,9 +1065,16 @@ class ResolvedVoiceDoc(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["values", "style_guide", "vocabulary", "corpus"] = Field(
+    kind: Literal[
+        "values", "style_guide", "vocabulary", "corpus", "rhetoric_rules"
+    ] = Field(
         ...,
-        description="Which voice doc this entry resolves.",
+        description=(
+            "Which voice doc this entry resolves. ``rhetoric_rules`` "
+            "entries (issue #468) come only from "
+            ":func:`resolve_rhetoric_rules` — never from "
+            ":func:`resolve_voice_docs`."
+        ),
     )
     declared: str = Field(
         ...,
@@ -1502,16 +1542,15 @@ def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
     A mapping is normalized to a :class:`VoiceDocs`:
 
     - Recognized sub-keys (``style_guide`` / ``vocabulary`` /
-      ``values`` / ``corpus``) must be strings when present —
-      non-string values raise ``ValueError`` with the field path
-      (STRICT on recognized keys, catching fat-finger shapes like
-      ``corpus: [a.md, b.md]``). Empty / whitespace-only strings
-      normalize to ``None`` (same as ``theme``).
+      ``values`` / ``corpus`` / ``rhetoric_rules``) must be strings
+      when present — non-string values raise ``ValueError`` with the
+      field path (STRICT on recognized keys, catching fat-finger
+      shapes like ``corpus: [a.md, b.md]``). Empty / whitespace-only
+      strings normalize to ``None`` (same as ``theme``).
     - Unknown sub-keys are **preserved verbatim** under
       ``unknown_keys`` with a ``warnings.warn`` breadcrumb — the
       lenient inner-block posture of ``rubric_overrides``, kept here
-      so the companion rhetoric lint (issue #463) can add a
-      ``rhetoric_rules`` sub-key without breaking this parser.
+      so forward-shipped sub-keys don't break this parser.
 
     Any non-mapping value raises ``ValueError`` — the block is
     strictly a mapping when present.
@@ -1535,10 +1574,9 @@ def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
             unknown_keys[key] = raw
             warnings.warn(
                 f"BRIEF.voice.{key}: unknown sub-key — preserved "
-                f"verbatim under unknown_keys (forward-compat; e.g. "
-                f"the issue #463 rhetoric_rules surface); the voice-"
-                f"grounding consumers will not act on it. Recognized "
-                f"sub-keys: {sorted(_RECOGNIZED_VOICE_KEYS)}.",
+                f"verbatim under unknown_keys (forward-compat); the "
+                f"voice-grounding consumers will not act on it. "
+                f"Recognized sub-keys: {sorted(_RECOGNIZED_VOICE_KEYS)}.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -1547,12 +1585,15 @@ def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
             recognized[key] = None
             continue
         if not isinstance(raw, str):
+            example = {
+                "corpus": "writing-corpus/**/*.md",
+                "rhetoric_rules": "rhetoric-rules.json",
+            }.get(key, "VALUES.md")
             raise ValueError(
                 f"BRIEF.voice.{key} must be a string path"
                 f"{' / glob' if key == 'corpus' else ''} when set; got "
                 f"{type(raw).__name__}: {raw!r} — suggested fix: quote "
-                f"a single path (e.g. `{key}: "
-                f"{'writing-corpus/**/*.md' if key == 'corpus' else 'VALUES.md'}`) "
+                f"a single path (e.g. `{key}: {example}`) "
                 f"or remove the sub-key."
             )
         stripped = raw.strip()
@@ -2931,7 +2972,11 @@ def resolve_voice_docs(
     Returns
     -------
     List[ResolvedVoiceDoc]
-        One entry per **declared** sub-key, in load order. Empty list
+        One entry per **declared grounding-doc** sub-key, in load
+        order. ``rhetoric_rules`` (issue #468) NEVER appears here — it
+        is gate-side lint config resolved separately by
+        :func:`resolve_rhetoric_rules`, keeping this return shape
+        stable for existing drafter/reviewer consumers. Empty list
         when the tier is INACTIVE: no BRIEF, malformed / structurally
         invalid BRIEF (lenient swallow, mirroring
         :func:`load_rubric_overrides_for_slug`), no ``voice:`` block,
@@ -2964,6 +3009,69 @@ def resolve_voice_docs(
         else:
             out.append(_resolve_voice_path(declared, kind, roots))
     return out
+
+
+def resolve_rhetoric_rules(
+    project_dir: Path,
+    consumer_root: Optional[Path] = None,
+) -> Optional[ResolvedVoiceDoc]:
+    """Resolve the BRIEF's ``voice.rhetoric_rules`` JSON rule file (issue #468).
+
+    The render-gate-side companion to :func:`resolve_voice_docs`:
+    resolves the optional ``voice.rhetoric_rules`` sub-key — a path to
+    a consumer **JSON rule file** for the advisory
+    ``memo_rhetoric_lint`` gate check (issue #463;
+    ``anvil/lib/rhetoric_lint.py``) — using the same project-root-
+    first, consumer-root-fallback walk (absolute paths bypass the
+    walk). The value is a plain file path, never a glob.
+
+    Deliberately INDEPENDENT of the voice-grounding tier: this helper
+    does NOT gate on ``VoiceDocs.is_empty`` — a ``rhetoric_rules``-only
+    ``voice:`` block resolves here while :func:`resolve_voice_docs`
+    still returns ``[]`` (the lint wiring activates without the
+    judgment tier).
+
+    **Never raises on absence.** A declared-but-missing file comes
+    back as a structured ``missing: true`` entry; the caller
+    (``memo-render`` step 4g) forwards the project-root-joined
+    declared path to ``gate(..., rhetoric_rules_path=...)`` anyway, so
+    ``lint_rhetoric``'s graceful-degrade emits the one warning finding
+    naming the broken declaration ("a defect to surface, not an
+    opt-out") with framework defaults still applied.
+
+    Returns
+    -------
+    Optional[ResolvedVoiceDoc]
+        A ``kind="rhetoric_rules"`` entry when the sub-key is
+        declared; ``None`` when INACTIVE: no BRIEF, malformed /
+        structurally invalid BRIEF (lenient swallow), no ``voice:``
+        block, or no ``rhetoric_rules`` sub-key. ``None`` → the caller
+        omits the kwarg for byte-identical defaults-only gate
+        behavior.
+    """
+    try:
+        brief = load_project_brief(project_dir, consumer_root=consumer_root)
+    except ValueError:
+        return None
+    if (
+        brief is None
+        or brief.voice is None
+        or brief.voice.rhetoric_rules is None
+    ):
+        return None
+
+    roots: List[Tuple[str, Path]] = [("project", Path(project_dir))]
+    resolved_consumer = (
+        Path(consumer_root)
+        if consumer_root is not None
+        else find_consumer_root(Path(project_dir))
+    )
+    if resolved_consumer is not None:
+        roots.append(("consumer", resolved_consumer))
+
+    return _resolve_voice_path(
+        brief.voice.rhetoric_rules, "rhetoric_rules", roots
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3156,5 +3264,6 @@ __all__ = [
     "load_project_brief_strict",
     "load_recommendation_target",
     "load_rubric_overrides_for_slug",
+    "resolve_rhetoric_rules",
     "resolve_voice_docs",
 ]

@@ -543,6 +543,21 @@ def test_memo_render_doc_names_the_dimension():
     assert "rhetoric_rules_path" in doc
 
 
+def test_memo_render_doc_wires_resolve_rhetoric_rules():
+    """Issue #468: step 4g documents the full BRIEF-side wiring — the
+    resolver is named, the deferral breadcrumb is gone, and the
+    missing-file forward-the-path posture is explicit."""
+    doc = (
+        REPO_ROOT / "anvil/skills/memo/commands/memo-render.md"
+    ).read_text(encoding="utf-8")
+    assert "resolve_rhetoric_rules" in doc
+    assert "omit until" not in doc
+    assert "voice.rhetoric_rules" in doc
+    # The declared-but-missing posture: forward the joined path so the
+    # lint surfaces the broken declaration as a warning finding.
+    assert "still pass the path" in doc
+
+
 def test_memo_review_doc_carries_dim9_note():
     doc = (
         REPO_ROOT / "anvil/skills/memo/commands/memo-review.md"

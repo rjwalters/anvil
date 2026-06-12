@@ -136,6 +136,26 @@ def test_snippet_documents_463_deferral() -> None:
     )
 
 
+def test_snippet_documents_rhetoric_rules_sub_key() -> None:
+    """Issue #468: the snippet names ``rhetoric_rules`` as a recognized
+    sub-key with the lint-side caveat — gate config, not a grounding
+    doc, and never an activator of the judgment tier."""
+    body = _norm(SNIPPET)
+    assert "rhetoric_rules" in body, (
+        "voice_grounding.md MUST document the rhetoric_rules sub-key "
+        "(issue #468)"
+    )
+    assert "resolve_rhetoric_rules" in body, (
+        "voice_grounding.md MUST name the dedicated resolver "
+        "(resolve_rhetoric_rules), not resolve_voice_docs, for the "
+        "rhetoric_rules sub-key"
+    )
+    assert "NOT a grounding doc" in body, (
+        "voice_grounding.md MUST carry the lint-side caveat: "
+        "rhetoric_rules is gate config, not drafter/reviewer grounding"
+    )
+
+
 def test_snippet_documents_activation_pattern() -> None:
     body = _norm(SNIPPET)
     assert "byte-identical" in body, (
