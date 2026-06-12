@@ -219,6 +219,8 @@ Suggested calibration:
 - **~25% of weight** — present but inadequate; major rework needed.
 - **0** — absent or actively incoherent.
 
+**Quoted evidence (issue #464 / #475).** Every justification follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `proposal.tex` with a location anchor — `("the quoted span" — §2.1)` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The reviewer self-checks its `scoring.md` against the body via `anvil/lib/evidence_check.py` before the review sidecar lands (see `commands/proposal-review.md` step 5b); a quote that does not appear verbatim in the body is fabricated evidence and the justification must be re-derived. No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
+
 ## Advance threshold
 
 - **≥35/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling).
