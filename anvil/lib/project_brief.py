@@ -170,6 +170,18 @@ Public API
     contract — empty instance on every absence path, never raise —
     mirrors the prior lenient form exactly.
 
+``VoiceDocs`` / ``ResolvedVoiceDoc`` / ``resolve_voice_docs``
+    The voice/persona grounding-docs contract (issue #461). The
+    optional top-level ``voice:`` BRIEF block declares up to four
+    voice artifacts (``style_guide`` / ``vocabulary`` / ``values`` /
+    ``corpus`` glob); ``resolve_voice_docs(project_dir,
+    consumer_root=None)`` resolves them project-root-first then
+    consumer-root (never raising on absence — missing files come back
+    as structured ``missing: true`` entries). Absent block →
+    byte-identical behavior. See
+    ``anvil/lib/snippets/voice_grounding.md`` for the drafter /
+    reviewer role contracts.
+
 ``body_filename_for(slug: str) -> str``
     Return the body markdown filename for a thread (``f"{slug}.md"``).
     Issue #295's slug-echo convention; the only recognized shape. Lives
@@ -281,6 +293,7 @@ input. The shared on-disk constants — ``BRIEF_FILENAME`` and
 
 from __future__ import annotations
 
+import glob as _glob
 import re
 from enum import Enum
 from pathlib import Path
@@ -581,6 +594,25 @@ _DIM_WAIVER_RE = re.compile(r"^dim_(\d+)_waiver$")
 # "Concision Discipline" knob can land in BRIEF.md ahead of loader
 # support without breaking existing consumers).
 _KNOWN_RUBRIC_OVERRIDE_KEYS = {"memo_subtype", "target_length"}
+
+# Recognized sub-keys inside the optional top-level ``voice:`` block
+# (issue #461 — the voice/persona grounding-docs contract; see
+# ``anvil/lib/snippets/voice_grounding.md``). Anything else is preserved
+# verbatim under ``VoiceDocs.unknown_keys`` (forward-compat surface —
+# the companion rhetoric lint, issue #463, may add a ``rhetoric_rules``
+# sub-key; the same lenient-inner-block posture as ``rubric_overrides``).
+_RECOGNIZED_VOICE_KEYS = {"style_guide", "vocabulary", "values", "corpus"}
+
+# Load order for resolved voice docs (issue #461): values first (stances
+# / anti-stances / standing), then register rules, then vocabulary
+# guidance, then the published-exemplar corpus. Mirrors the consumer
+# ground truth (rjwalters.info blog-review step 1 order).
+VOICE_DOC_KINDS: Tuple[str, ...] = (
+    "values",
+    "style_guide",
+    "vocabulary",
+    "corpus",
+)
 
 # Recognized keys on a ``BriefDocument`` entry. Anything else is a
 # schema violation (BRIEF-side is STRICT).
@@ -893,6 +925,148 @@ class RubricOverrides(BaseModel):
         return None
 
 
+class VoiceDocs(BaseModel):
+    """Parsed optional top-level ``voice:`` block (issue #461).
+
+    The voice/persona grounding-docs contract: a project declares up to
+    four voice artifacts that ground the drafter's register and the
+    reviewer's voice-fidelity calibration (see
+    ``anvil/lib/snippets/voice_grounding.md`` for the role contracts).
+
+    On-disk shape (every sub-key optional; the block itself optional)::
+
+        voice:
+          style_guide: STYLE_GUIDE.md        # register / cadence rules
+          vocabulary: VOCABULARY.md          # AI-tell guidance (judgment side)
+          values: VALUES.md                  # stances / anti-stances / standing
+          corpus: writing-corpus/**/*.md     # published exemplars (glob)
+
+    **No ``voice:`` block → byte-identical behavior** (the #428/#452
+    activation pattern). Declared paths resolve **project-root first,
+    then consumer-root** via :func:`resolve_voice_docs` — voice docs
+    are usually persona-level repo-root artifacts shared across
+    projects, but a project ghostwriting in a different persona can
+    shadow them locally.
+
+    File existence is NOT validated at parse time (environment, not
+    schema). A declared-but-missing file ACTIVATES the tier and
+    surfaces as a ``major`` review finding — "a broken declaration is
+    a defect to surface, not an opt-out" (the
+    ``report/lib/customer_context.py`` posture).
+
+    Unknown sub-keys are **preserved verbatim** under ``unknown_keys``
+    (lenient inner-block posture, same as
+    ``RubricOverrides.unknown_keys``) so a forward-shipped sub-key —
+    e.g. the companion rhetoric lint's ``rhetoric_rules`` (issue
+    #463) — can land in BRIEF.md ahead of loader support without
+    breaking existing consumers. The loader warns via
+    ``warnings.warn`` so the typo case stays visible.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    style_guide: Optional[str] = Field(
+        None,
+        description=(
+            "Path to the register/cadence rules doc, relative to the "
+            "project root (consumer-root fallback) or absolute."
+        ),
+    )
+    vocabulary: Optional[str] = Field(
+        None,
+        description=(
+            "Path to the vocabulary guidance doc (AI-tell words, "
+            "frequency discipline). Judgment-side only — deterministic "
+            "screening is the rhetoric lint's job (issue #463)."
+        ),
+    )
+    values: Optional[str] = Field(
+        None,
+        description=(
+            "Path to the values doc (stances / anti-stances / standing "
+            "/ voice signatures / failure modes)."
+        ),
+    )
+    corpus: Optional[str] = Field(
+        None,
+        description=(
+            "Glob (relative to project root, consumer-root fallback) "
+            "selecting published exemplars quoted as voice ground "
+            "truth — e.g. ``writing-corpus/**/*.md``."
+        ),
+    )
+    unknown_keys: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Forward-compat passthrough: any sub-keys the loader does "
+            "not recognize land here verbatim (e.g. a future "
+            "``rhetoric_rules`` from issue #463). Surfaced via "
+            "``warnings.warn`` at parse time."
+        ),
+    )
+
+    @property
+    def is_empty(self) -> bool:
+        """Return True when no recognized voice doc is declared.
+
+        An empty block (``voice: {}`` or only unknown sub-keys) does
+        NOT activate the voice-grounding tier — consumers treat
+        ``is_empty`` exactly like an absent block.
+        """
+        return (
+            self.style_guide is None
+            and self.vocabulary is None
+            and self.values is None
+            and self.corpus is None
+        )
+
+
+class ResolvedVoiceDoc(BaseModel):
+    """One resolved entry from :func:`resolve_voice_docs` (issue #461).
+
+    Missing-file results are carried as **structured entries** —
+    resolution never raises on absence. A ``missing: true`` entry is
+    the reviewer's signal to surface a ``major`` finding (broken
+    declaration) while keeping the tier active.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["values", "style_guide", "vocabulary", "corpus"] = Field(
+        ...,
+        description="Which voice doc this entry resolves.",
+    )
+    declared: str = Field(
+        ...,
+        description="The verbatim path / glob string from the BRIEF.",
+    )
+    paths: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Absolute path strings of the resolved file(s). Single "
+            "element for the three doc kinds; sorted list for the "
+            "corpus glob. Empty when ``missing``."
+        ),
+    )
+    missing: bool = Field(
+        ...,
+        description=(
+            "True when the declared path / glob matched nothing at "
+            "either resolution root."
+        ),
+    )
+    source: Optional[Literal["project", "consumer", "absolute"]] = Field(
+        None,
+        description=(
+            "Which root the entry resolved against: ``project`` "
+            "(project-root hit, first precedence), ``consumer`` "
+            "(consumer-root fallback via the ``.anvil/`` marker walk), "
+            "``absolute`` (declared as an absolute path). ``None`` "
+            "when ``missing``."
+        ),
+    )
+
+
 class BriefDocument(BaseModel):
     """One entry in the project BRIEF's ``documents:`` frontmatter list.
 
@@ -1182,6 +1356,14 @@ class ProjectBrief(BaseModel):
         enum validation is enforced. A name pointing to a missing theme
         directory is tolerated (the resolver falls through to the next
         tier silently).
+    voice
+        Optional voice/persona grounding-docs block (issue #461). When
+        set, the drafter loads the declared docs in the documented
+        order (values → style_guide → vocabulary → corpus exemplars)
+        and the reviewer calibrates its owned dimension against them
+        per ``anvil/lib/snippets/voice_grounding.md``. Absent →
+        byte-identical behavior (the #428/#452 activation pattern).
+        Path resolution is deferred to :func:`resolve_voice_docs`.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1191,6 +1373,7 @@ class ProjectBrief(BaseModel):
     hard_rules: List[str] = Field(default_factory=list)
     documents: List[BriefDocument] = Field(..., min_length=1)
     theme: Optional[str] = Field(default=None)
+    voice: Optional[VoiceDocs] = Field(default=None)
 
     def document_for_slug(self, slug: str) -> Optional[BriefDocument]:
         """Return the ``BriefDocument`` whose ``slug`` matches, or ``None``.
@@ -1310,6 +1493,72 @@ def _normalize_theme(value: Any) -> Optional[str]:
     if not stripped:
         return None
     return stripped
+
+
+def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
+    """Normalize the optional top-level ``voice:`` block (issue #461).
+
+    Returns ``None`` when the key is absent or an explicit ``null``.
+    A mapping is normalized to a :class:`VoiceDocs`:
+
+    - Recognized sub-keys (``style_guide`` / ``vocabulary`` /
+      ``values`` / ``corpus``) must be strings when present —
+      non-string values raise ``ValueError`` with the field path
+      (STRICT on recognized keys, catching fat-finger shapes like
+      ``corpus: [a.md, b.md]``). Empty / whitespace-only strings
+      normalize to ``None`` (same as ``theme``).
+    - Unknown sub-keys are **preserved verbatim** under
+      ``unknown_keys`` with a ``warnings.warn`` breadcrumb — the
+      lenient inner-block posture of ``rubric_overrides``, kept here
+      so the companion rhetoric lint (issue #463) can add a
+      ``rhetoric_rules`` sub-key without breaking this parser.
+
+    Any non-mapping value raises ``ValueError`` — the block is
+    strictly a mapping when present.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"BRIEF.voice must be a mapping when set; got "
+            f"{type(value).__name__}: {value!r} — suggested fix: use "
+            f"the block shape with optional sub-keys "
+            f"{sorted(_RECOGNIZED_VOICE_KEYS)} (see "
+            f"anvil/lib/snippets/voice_grounding.md), or remove the "
+            f"key for byte-identical no-voice behavior."
+        )
+
+    recognized: Dict[str, Optional[str]] = {}
+    unknown_keys: Dict[str, Any] = {}
+    for key, raw in value.items():
+        if key not in _RECOGNIZED_VOICE_KEYS:
+            unknown_keys[key] = raw
+            warnings.warn(
+                f"BRIEF.voice.{key}: unknown sub-key — preserved "
+                f"verbatim under unknown_keys (forward-compat; e.g. "
+                f"the issue #463 rhetoric_rules surface); the voice-"
+                f"grounding consumers will not act on it. Recognized "
+                f"sub-keys: {sorted(_RECOGNIZED_VOICE_KEYS)}.",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
+        if raw is None:
+            recognized[key] = None
+            continue
+        if not isinstance(raw, str):
+            raise ValueError(
+                f"BRIEF.voice.{key} must be a string path"
+                f"{' / glob' if key == 'corpus' else ''} when set; got "
+                f"{type(raw).__name__}: {raw!r} — suggested fix: quote "
+                f"a single path (e.g. `{key}: "
+                f"{'writing-corpus/**/*.md' if key == 'corpus' else 'VALUES.md'}`) "
+                f"or remove the sub-key."
+            )
+        stripped = raw.strip()
+        recognized[key] = stripped if stripped else None
+
+    return VoiceDocs(**recognized, unknown_keys=unknown_keys)
 
 
 def _normalize_target_length_range(
@@ -2311,9 +2560,8 @@ def _parse_brief_body(
 
     Raises ``ValueError`` on any schema violation. Recognized top-level
     keys: ``project``, ``audience``, ``hard_rules``, ``documents``,
-    ``theme``. Other keys are ignored (forward-compat surface for
-    project-level fields that may land later — e.g., a ``voice:``
-    block).
+    ``theme``, ``voice``. Other keys are ignored (forward-compat
+    surface for project-level fields that may land later).
 
     The consumer artifact-type set (issue #394) is discovered ONCE per
     parse here and threaded down to the per-entry ``artifact_type``
@@ -2344,6 +2592,7 @@ def _parse_brief_body(
         consumer_overlay_dir=consumer_overlay_dir,
     )
     theme = _normalize_theme(frontmatter.get("theme"))
+    voice = _normalize_voice(frontmatter.get("voice"))
 
     try:
         return ProjectBrief(
@@ -2352,6 +2601,7 @@ def _parse_brief_body(
             hard_rules=hard_rules,
             documents=documents,
             theme=theme,
+            voice=voice,
         )
     except ValidationError as exc:
         raise ValueError(
@@ -2560,6 +2810,163 @@ def load_rubric_overrides_for_slug(
 
 
 # ---------------------------------------------------------------------------
+# Voice grounding-docs resolution (issue #461)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_voice_path(
+    declared: str, kind: str, roots: List[Tuple[str, Path]]
+) -> ResolvedVoiceDoc:
+    """Resolve one non-corpus voice doc path against the root list.
+
+    ``roots`` is the ordered ``[("project", <dir>), ("consumer",
+    <dir>)]`` precedence list (consumer entry absent when no
+    ``.anvil/`` marker exists). First hit wins. Absolute declared
+    paths bypass the root walk entirely.
+    """
+    declared_path = Path(declared)
+    if declared_path.is_absolute():
+        if declared_path.is_file():
+            return ResolvedVoiceDoc(
+                kind=kind,
+                declared=declared,
+                paths=[str(declared_path)],
+                missing=False,
+                source="absolute",
+            )
+        return ResolvedVoiceDoc(kind=kind, declared=declared, missing=True)
+
+    for source, root in roots:
+        candidate = root / declared_path
+        if candidate.is_file():
+            return ResolvedVoiceDoc(
+                kind=kind,
+                declared=declared,
+                paths=[str(candidate.resolve())],
+                missing=False,
+                source=source,
+            )
+    return ResolvedVoiceDoc(kind=kind, declared=declared, missing=True)
+
+
+def _resolve_voice_corpus(
+    declared: str, roots: List[Tuple[str, Path]]
+) -> ResolvedVoiceDoc:
+    """Resolve the corpus glob against the root list (first root with
+    ≥1 match wins; matches sorted; zero matches everywhere = missing).
+    """
+    if Path(declared).is_absolute():
+        try:
+            matches = sorted(
+                p
+                for p in _glob.glob(declared, recursive=True)
+                if Path(p).is_file()
+            )
+        except (OSError, ValueError):
+            matches = []
+        if matches:
+            return ResolvedVoiceDoc(
+                kind="corpus",
+                declared=declared,
+                paths=matches,
+                missing=False,
+                source="absolute",
+            )
+        return ResolvedVoiceDoc(kind="corpus", declared=declared, missing=True)
+
+    for source, root in roots:
+        try:
+            matches = sorted(
+                str(p.resolve()) for p in root.glob(declared) if p.is_file()
+            )
+        except (OSError, ValueError):
+            matches = []
+        if matches:
+            return ResolvedVoiceDoc(
+                kind="corpus",
+                declared=declared,
+                paths=matches,
+                missing=False,
+                source=source,
+            )
+    return ResolvedVoiceDoc(kind="corpus", declared=declared, missing=True)
+
+
+def resolve_voice_docs(
+    project_dir: Path,
+    consumer_root: Optional[Path] = None,
+) -> List[ResolvedVoiceDoc]:
+    """Resolve the project BRIEF's ``voice:`` block to on-disk paths (issue #461).
+
+    The voice/persona grounding-docs resolution helper. Reads
+    ``<project_dir>/BRIEF.md`` leniently, and when an active ``voice:``
+    block is declared, resolves each declared doc in the documented
+    load order — **values → style_guide → vocabulary → corpus** (the
+    order the drafter consumes them per
+    ``anvil/lib/snippets/voice_grounding.md``).
+
+    Path resolution — **project root first, then consumer root** (the
+    #322/#394 walk; first hit wins):
+
+    1. ``<project_dir>/<declared>`` — a project ghostwriting in a
+       different persona shadows the repo-level docs locally.
+    2. ``<consumer_root>/<declared>`` — the common case: voice docs
+       are persona-level repo-root artifacts (``STYLE_GUIDE.md``,
+       ``VOCABULARY.md``, ``VALUES.md``, ``writing-corpus/``) shared
+       across every project in the consumer repo. The consumer root
+       is the directory carrying the ``.anvil/`` install marker,
+       discovered via :func:`anvil.lib.theme.find_consumer_root`
+       unless an explicit ``consumer_root`` override is supplied
+       (test fixtures / callers that already know the root).
+
+    Absolute declared paths are used as-is. The ``corpus`` value is a
+    glob (``Path.glob`` semantics, ``**`` supported); matches are
+    sorted; a root "hits" when the glob matches ≥1 file.
+
+    **Never raises on absence.** Missing-file results come back as
+    structured ``missing: true`` entries — a broken declaration is a
+    defect for the reviewer to surface (``major`` finding), not an
+    opt-out and not a crash (the ``customer_context.py`` posture).
+
+    Returns
+    -------
+    List[ResolvedVoiceDoc]
+        One entry per **declared** sub-key, in load order. Empty list
+        when the tier is INACTIVE: no BRIEF, malformed / structurally
+        invalid BRIEF (lenient swallow, mirroring
+        :func:`load_rubric_overrides_for_slug`), no ``voice:`` block,
+        or an empty block (``VoiceDocs.is_empty``). Callers branch on
+        ``if not resolved:`` for the byte-identical inactive path.
+    """
+    try:
+        brief = load_project_brief(project_dir, consumer_root=consumer_root)
+    except ValueError:
+        return []
+    if brief is None or brief.voice is None or brief.voice.is_empty:
+        return []
+
+    roots: List[Tuple[str, Path]] = [("project", Path(project_dir))]
+    resolved_consumer = (
+        Path(consumer_root)
+        if consumer_root is not None
+        else find_consumer_root(Path(project_dir))
+    )
+    if resolved_consumer is not None:
+        roots.append(("consumer", resolved_consumer))
+
+    out: List[ResolvedVoiceDoc] = []
+    for kind in VOICE_DOC_KINDS:
+        declared = getattr(brief.voice, kind)
+        if declared is None:
+            continue
+        if kind == "corpus":
+            out.append(_resolve_voice_corpus(declared, roots))
+        else:
+            out.append(_resolve_voice_path(declared, kind, roots))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Thread-level BRIEF.md helpers (issue #348)
 # ---------------------------------------------------------------------------
 #
@@ -2734,10 +3141,13 @@ __all__ = [
     "MIN_DIM",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
+    "ResolvedVoiceDoc",
     "RubricOverrides",
     "SKILL_IDENTITY_ARTIFACT_TYPES",
     "TargetLengthOverrides",
     "TargetLengthRange",
+    "VOICE_DOC_KINDS",
+    "VoiceDocs",
     "WaiverOverride",
     "body_filename_for",
     "consumer_overlay_dir_for",
@@ -2746,4 +3156,5 @@ __all__ = [
     "load_project_brief_strict",
     "load_recommendation_target",
     "load_rubric_overrides_for_slug",
+    "resolve_voice_docs",
 ]
