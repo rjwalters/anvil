@@ -22,6 +22,9 @@
     $date$     — memo date (from YAML frontmatter or --metadata date=)
     $body$     — rendered memo body
     $lang$     — document language (defaults to "en")
+    $css$      — stylesheet path(s) from the pandoc --css flag; emitted as
+                 <link rel="stylesheet"> tags. render_gate.py passes the
+                 absolute path to styles.css here (issue #470).
 
   All four are optional; the template degrades to "untitled" / hidden
   author/date rows when the values are absent. This matches the
@@ -33,6 +36,9 @@
   <meta name="generator" content="pandoc + anvil/lib/memo" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <title>$if(title)$$title$$else$Untitled Memo$endif$</title>
+$for(css)$
+  <link rel="stylesheet" href="$css$" />
+$endfor$
 $for(header-includes)$
   $header-includes$
 $endfor$
