@@ -2,6 +2,12 @@
 
 Scaffolds for new skills and rubrics. Used by a `scripts/new-skill.sh` (planned) and by humans copying a starting point.
 
+## Shipped templates
+
+| Template | Purpose |
+|---|---|
+| `themes/starter/` | Consumer starter theme (issue #471). `scripts/install-anvil.sh` Stage 7.8 scaffolds it to `<consumer>/.anvil/themes/starter/` when `memo` is among the selected skills (skip-if-exists — the installer never overwrites files under `.anvil/themes/`). Ships `theme.yml` plus a navy-accented `memo/styles.css` that preserves the framework default's functional baseline (booktabs-class tables, `@page` footer). |
+
 ## Planned templates
 
 | Template | Purpose |

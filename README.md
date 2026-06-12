@@ -78,6 +78,18 @@ uv run --project .anvil python -c "from anvil.lib.render_gate import gate; print
 
 The generated `.anvil/pyproject.toml` declares the framework's base runtime deps (`pydantic`, `pyyaml`); no manual `uv add` is required. The importable `anvil/` package mirror lives at `<consumer>/.anvil/anvil/`, fully self-contained — the install-time `anvil_source` recorded in `install-metadata.json` is provenance metadata only and is not consulted at runtime. The pre-#230 install layout (`.anvil/lib/` for framework Python) is detected on upgrade and surfaced with a one-line migration warning; no auto-deletion (hand-edited override files there are preserved for the operator to port).
 
+### Memo styling: the starter theme
+
+The framework's memo stylesheet is deliberately minimal (black-on-white, no accents) — branding belongs to the consumer, not the framework default. So an install that includes `memo` also scaffolds a consumer-owned **starter theme** at `.anvil/themes/starter/` (navy-accented headings and table rules over the same functional baseline). The scaffold is skip-if-exists: the installer never overwrites anything under `.anvil/themes/`, so your edits survive every re-install and `--force` upgrade.
+
+The theme is inert until a project opts in. Enable it by declaring the theme in the project `BRIEF.md` frontmatter:
+
+```yaml
+theme: starter
+```
+
+The durable override path for memo styling is `.anvil/themes/<theme>/memo/styles.css`. Editing the installed framework copy at `.anvil/anvil/lib/memo/styles.css` also works but is overwritten on every re-install/upgrade — prefer the theme tier.
+
 ### Renderer dependencies
 
 The skills shell out to language-appropriate renderers. None are required by the install itself; each is needed only by the skills that use it.

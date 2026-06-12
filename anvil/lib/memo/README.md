@@ -115,8 +115,8 @@ this precedence:
 
 | Tier | Path (consumer repo) | When to use |
 |---|---|---|
-| Per-theme (issue #322) | `<consumer>/.anvil/themes/<theme>/memo/<asset>` | Multiple brands / portfolios run through the same anvil install |
-| Consumer single-tenant | `<consumer>/.anvil/anvil/lib/memo/<asset>` | One brand for the whole repo (the post-#230 in-place edit of the framework default) |
+| Per-theme (issue #322) | `<consumer>/.anvil/themes/<theme>/memo/<asset>` | **The durable override path.** Consumer-owned; the installer never overwrites files under `.anvil/themes/`. Use for one brand or many. |
+| Consumer single-tenant | `<consumer>/.anvil/anvil/lib/memo/<asset>` | In-place edit of the installed framework copy. **Overwritten on every re-install/upgrade** (the Stage 5 lib copy is unconditional — no hash tracking). Use only for throwaway experiments. |
 | Framework default | shipped at `anvil/lib/memo/<asset>` (this directory) | Anvil's neutral baseline |
 
 `<asset>` is one of `styles.css`, `template.html`, `template.tex`.
@@ -126,10 +126,17 @@ project BRIEF surfaces the theme name via the `theme:` frontmatter
 key documented in `anvil/skills/memo/lib/project_brief.py`.
 
 The install script (`scripts/install-anvil.sh`) copies the framework
-defaults to `.anvil/anvil/lib/memo/` and respects in-place modifications
-under the standard `--force` discipline (see #163). When the consumer
-ships a custom `styles.css`, Phase 3's `memo-render` command picks it
-up unchanged.
+defaults to `.anvil/anvil/lib/memo/` **unconditionally on every run**:
+the issue-#152 override-detection matrix guards skill bodies
+(`.anvil/skills/<name>/`) only, not the Stage 5 lib copy. In-place
+edits under `.anvil/anvil/lib/memo/` are therefore silently reverted
+by the next install/upgrade. For a durable override, use the theme
+tier: the installer scaffolds a consumer-owned starter theme at
+`.anvil/themes/starter/` on install (skip-if-exists, issue #471);
+declare `theme: starter` in the project BRIEF to enable it, or copy
+it to a theme name of your own. When the consumer ships a custom
+`styles.css` via either tier, the `memo-render` command picks it up
+unchanged.
 
 ### Per-theme override (issue #322)
 
