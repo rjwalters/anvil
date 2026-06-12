@@ -425,6 +425,21 @@ The dim 7 justification SHOULD record **both** numbers when both are available (
 
 **Backwards-compat**: a memo without `_progress.json.render_gate` (legal pre-Phase-3 state, every legacy version dir on disk) reviews exactly as before — the reviewer falls back to word-count-only dim 7 judgment and the `_summary.md.render_gate` block is `{"ran": false, "reason": "no render_gate block in _progress.json"}`.
 
+## Dim 8 — voice-grounding calibration
+
+**Trigger** (issue #461): the project-level `<project>/BRIEF.md` declares an optional top-level `voice:` block naming up to four persona docs — `style_guide` (register / cadence rules), `vocabulary` (AI-tell guidance), `values` (stances / anti-stances / standing / voice signatures / failure modes), and `corpus` (a glob over published exemplars quoted as voice ground truth). The block is parsed by `anvil/lib/project_brief.py::VoiceDocs` and resolved — project-root first, then consumer-root — by `resolve_voice_docs`. The full role contracts live in `anvil/lib/snippets/voice_grounding.md`.
+
+**What changes when triggered**: dim 8 (*Prose & structure*) is where register and voice live, so the voice-fidelity calibration attaches there as a **triggered fixed suffix** — the #348 `recommendation_target: undecided` precedent. This calibration does NOT add a tenth dimension and does NOT alter the /44 total; dim 9 (*Rhetorical economy*) stays economy-scoped (its deterministic vocabulary feeder is the rhetoric lint, issue #463).
+
+- **Verbatim suffix** appended to the dim 8 `scoring.md` justification when the calibration fires: `voice grounding active — dim 8 scored against <resolved values/style_guide paths>; voice deductions must quote corpus exemplars` (with the placeholder replaced by the actual resolved paths).
+- **Composition order** (when multiple surfaces fire on dim 8): base reviewer-prose justification → artifact-type overlay suffix → triggered voice-grounding suffix → per-doc `dim_8_calibration` suffix. Per-doc author wording still wins last — the same ordering as the dim 1 undecided calibration.
+- **Corpus-quote rule**: every voice deduction MUST quote a corpus passage showing what the target voice sounds like. Vague feedback is insufficient — the deduction names the offending memo passage AND the exemplar passage it falls short of. A voice deduction without a corpus quote is itself a defective finding.
+- **Convergence-with-Claude adversarial check**: for each passage under voice scrutiny the reviewer asks — *would I, the AI, also write this sentence?* If yes, scrutinize harder, never defend. Convergence between the memo's voice and the reviewing model's own default register is the biggest meta-failure mode of AI-assisted voice work.
+- **Anti-stance violations are critical-flag candidates** under the existing critical-flag machinery (§"Critical flags" below; the `hard_rules` precedent) — not a new flag category. The flag justification quotes the violated values-doc passage.
+- **Declared-but-missing docs**: the tier stays ACTIVE and each missing doc surfaces as a `major` finding in `comments.md` (a broken declaration is a defect to surface, not an opt-out — the `report/lib/customer_context.py` posture).
+
+**Backwards-compat**: when the BRIEF declares no `voice:` block (or an empty one), the calibration does NOT fire — no suffix, no corpus-quote requirement, no `_summary.md.voice_grounding` block. Dim 8 scores against its standard calibration **byte-identically** to pre-#461 behavior. The audit trail of an active calibration is the `scoring.md` suffix plus the `_summary.md.voice_grounding` block (`commands/memo-review.md` step 9).
+
 ## Dim 9 — rhetorical economy
 
 **Rhetorical economy** (weight: 4) — Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds?

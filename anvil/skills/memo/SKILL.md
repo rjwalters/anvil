@@ -508,6 +508,26 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 - Reference brief shapes: `templates/BRIEF.fresh.md.example` (new-thread case — no prior version, no migration context, idea seed only) and `templates/BRIEF.migration.md.example` (migrate-from-prior-pipeline case — carries forward a prior version body, prior critic siblings, and a named delta to land). Both are freeform prose with optional YAML frontmatter. Copy whichever shape matches the thread state into `<thread>/BRIEF.md` and edit in place.
 - Reference rubric-override shape (issues #233 + #296): `templates/BRIEF.rubric-overrides.md.example` is a worked-example project `BRIEF.md` calibrated against both canary subtypes (`synthesis-brief` and `feedback-memo`) documented below. Copy it into `<project>/BRIEF.md`, trim or extend the `documents:` list to match your project, and tune the per-doc `rubric_overrides:` blocks (and `target_length_overrides:` for per-version targets) from there.
 
+### Voice grounding (project BRIEF `voice:` block — issue #461)
+
+A project that writes in a specific author persona declares its voice artifacts via ONE optional top-level key in the project `<project>/BRIEF.md` frontmatter:
+
+```yaml
+voice:
+  style_guide: STYLE_GUIDE.md        # optional — register / cadence rules
+  vocabulary: VOCABULARY.md          # optional — AI-tell guidance (judgment side)
+  values: VALUES.md                  # optional — stances / anti-stances / standing
+  corpus: writing-corpus/**/*.md     # optional glob — published exemplars
+```
+
+The contract is framework-level — see `anvil/lib/snippets/voice_grounding.md` for the four-doc taxonomy and the drafter / reviewer / reviser role contracts. The memo wiring:
+
+- **`memo-draft` step 5e**: loads values → style_guide → vocabulary → 3–5 voice-matched, topically-adjacent corpus exemplars; records the consulted exemplar paths in `_progress.json.metadata.voice_exemplars`.
+- **`memo-review` step 4l + the dim 8 sub-step**: calibrates dim 8 (*Prose & structure*) against the voice docs via a **triggered fixed suffix** (the #348 composition order: base → artifact-type overlay → voice suffix → per-doc `dim_8_calibration` last); every voice deduction must quote a corpus passage; anti-stance violations route through the existing critical-flag machinery; the `_summary.md.voice_grounding` block carries the audit trail. See `rubric.md` §"Dim 8 — voice-grounding calibration". No tenth dimension; the /44 total is unchanged.
+- **`memo-revise` step 6**: reads the voice docs when active and preserves voice signatures the reviewer flagged as working.
+
+Paths resolve **project-root first, then consumer-root** (`anvil/lib/project_brief.py::resolve_voice_docs`) — voice docs are usually persona-level repo-root artifacts shared across projects; a project ghostwriting in a different persona shadows them locally. No `voice:` block → every command behaves **byte-identically** to pre-#461. A declared-but-missing file keeps the tier active and surfaces as a `major` review finding. Deterministic vocabulary / AI-tell screening is NOT this surface — that is the rhetoric lint (issue #463); this block drives the judgment-side calibration only. The consumer-wide `.anvil/skills/memo/voice.md` override above composes with this block (both load; the BRIEF-declared persona docs win on conflict).
+
 ## Rubric overrides and non-investment-memo shapes
 
 `anvil:memo` ships a single rubric calibrated for **investment memos** — Recommendation clarity = "single unambiguous recommendation with check size" (dim 1), Market & competitive framing = "TAM/SAM/SOM sized to the artifact" (dim 5), Financial reasoning = "unit economics + scenario math" (dim 6), Scope discipline = "2000–3000 word memo expectation" (dim 7). Studio canary use (2026-06-02) surfaced two READY threads at 39/40 that are **not** investment memos: a decision-framework portfolio synthesis (~11K words across 5 vertical sub-recommendations) and a studio-side feedback memo TO a third party (~5K words validating + sharpening another document). Both threads worked around the rubric mismatch via per-dimension reviewer-guidance prose telling the reviewer how to interpret dims 1, 5, 6, 7 for the non-standard shape.
