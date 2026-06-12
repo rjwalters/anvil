@@ -202,8 +202,10 @@ def test_memo_review_step_5_documents_dim_9_scope_reduce_echo():
     idx = body.find("Score each dimension")
     assert idx > -1, "memo-review.md MUST have a step 5 'Score each dimension'"
     # The dim 9 echo sub-step lives inside step 5 (or in its trailing prose).
-    # It MUST reference both dim 9 and `scope: reduce`.
-    nearby = body[idx : idx + 6000]
+    # It MUST reference both dim 9 and `scope: reduce`. Window sized to
+    # cover step 5's sub-steps as they grow (widened 6000 → 8000 when the
+    # #478 elision contract extended the quoted-evidence sub-step).
+    nearby = body[idx : idx + 8000]
     assert "Dim 9" in nearby or "dim 9" in nearby, (
         "memo-review.md step 5 MUST reference dim 9 in the echo sub-step — "
         "issue #242 AC 2"
