@@ -949,6 +949,46 @@ else
   note "source agents dir not found: $SRC_AGENTS (skipping; pre-#377 source checkout?)"
 fi
 
+# ----- Stage 7.8: scaffold starter theme (issue #471) ------------------------
+# The framework memo CSS is deliberately minimal by maintainer policy, so a
+# fresh consumer's first rendered memo looks unstyled ("did the render
+# break?"). Seed a consumer-owned starter theme at <target>/.anvil/themes/
+# starter/ — the theme tier is the only consumer-owned path the installer
+# never touches on upgrade, so the scaffold survives every re-install
+# (including --force), unlike the Stage 5 lib copy which is overwritten
+# unconditionally.
+#
+# Contract:
+#   * Gated on `memo` being in SELECTED_SKILLS (the scaffold is memo-side).
+#   * Skip-if-exists: if .anvil/themes/starter/ already exists (in any
+#     state), the installer leaves it alone — NEVER overwrite anything
+#     under .anvil/themes/. Sibling themes are untouched by construction
+#     (we only ever write the starter/ subdir, and only when absent).
+#   * Scaffolding alone is inert: the theme tier activates only when a
+#     project BRIEF declares `theme: starter`. The Stage 11 summary prints
+#     the enable step so the operator (or agent) sees the one-liner.
+#   * --dry-run reports the would-scaffold action and writes nothing
+#     (issue #81 honesty discipline).
+info "Stage 7.8: scaffold starter theme (anvil/templates/themes/starter -> .anvil/themes/starter)"
+SRC_STARTER_THEME="$ANVIL_ROOT/anvil/templates/themes/starter"
+DST_STARTER_THEME="$TARGET/.anvil/themes/starter"
+MEMO_SELECTED=false
+for s in "${SELECTED_SKILLS[@]}"; do
+  if [[ "$s" == "memo" ]]; then MEMO_SELECTED=true; break; fi
+done
+if [[ "$MEMO_SELECTED" != true ]]; then
+  note "memo not in selected skills; skipping starter theme scaffold"
+elif [[ ! -d "$SRC_STARTER_THEME" ]]; then
+  note "source starter theme not found: $SRC_STARTER_THEME (skipping)"
+elif [[ -e "$DST_STARTER_THEME" ]]; then
+  note "existing .anvil/themes/starter detected — preserving (the installer never overwrites files under .anvil/themes/)"
+else
+  do_action "scaffold starter theme at .anvil/themes/starter (consumer-owned; never overwritten on upgrade)" \
+    copy_tree "$SRC_STARTER_THEME" "$DST_STARTER_THEME"
+  # Suppress post-action confirmation under --dry-run (issue #81).
+  [[ "$DRY_RUN" == true ]] || ok "starter theme scaffolded (enable per project with 'theme: starter' in BRIEF.md)"
+fi
+
 # ----- Stage 8: CLAUDE.md additive merge ------------------------------------
 info "Stage 8: CLAUDE.md additive merge"
 CLAUDE_MD="$TARGET/CLAUDE.md"
@@ -1184,6 +1224,25 @@ if [[ "$DRY_RUN" == true ]]; then
   warn "DRY-RUN: no files were written"
 else
   ok "Anvil v$ANVIL_VERSION installed into $TARGET"
+  # Memo styling hint (issue #471): the framework default CSS is deliberately
+  # minimal (black-on-white, no accents) — first-time consumers read that as
+  # "the styling failed." Print the correct post-#230 override paths and the
+  # one-line theme enable step so the operator (or an agent with no aesthetic
+  # intuition) knows where styling lives. Paths per
+  # anvil/skills/memo/lib/theme_resolver.py::resolve_memo_asset.
+  if [[ "$MEMO_SELECTED" == true ]]; then
+    echo ""
+    note "memo styling: the framework default CSS is deliberately minimal."
+    echo "         A starter theme is scaffolded at .anvil/themes/starter/ (consumer-"
+    echo "         owned; the installer never overwrites files under .anvil/themes/)."
+    echo "         Enable it per project in the project BRIEF.md frontmatter:"
+    echo "             theme: starter"
+    echo "         Override paths (resolution order):"
+    echo "           durable (theme tier):  .anvil/themes/<theme>/memo/styles.css"
+    echo "           in-place (lib copy):   .anvil/anvil/lib/memo/styles.css"
+    echo "             CAUTION: the in-place copy is overwritten on every re-install/"
+    echo "             upgrade — prefer the theme tier for durable overrides."
+  fi
   if [[ "$DEPS_MISSING" -gt 0 ]]; then
     warn "install complete, but $DEPS_MISSING renderer dependenc$([[ "$DEPS_MISSING" -eq 1 ]] && echo y || echo ies) missing (see above) -- deck/slides rendering will be impaired until installed"
   fi

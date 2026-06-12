@@ -1,34 +1,33 @@
 /*
- * anvil/lib/memo/styles.css
+ * .anvil/themes/starter/memo/styles.css
  *
- * Canonical pinned default theme for anvil:memo PDF rendering.
- * Consumed by pandoc via anvil/lib/memo/template.html and the
- * weasyprint / wkhtmltopdf render chain (see README.md in this dir).
+ * Starter memo theme, scaffolded by scripts/install-anvil.sh (#471).
  *
- * DESIGN NOTE: This stylesheet is DELIBERATELY MINIMAL. The maintainer
- * policy is to close aesthetic-tuning PRs against the default. Consumers
- * who want custom typography, color, or layout SHOULD override at the
- * theme tier: `<consumer>/.anvil/themes/<theme>/memo/styles.css` (the
- * installer scaffolds a starter theme at `.anvil/themes/starter/`;
- * enable with `theme: starter` in the project BRIEF). See README.md
- * "Override discipline" for the full resolution order.
+ * This file is CONSUMER-OWNED: the installer writes it once
+ * (skip-if-exists) and never touches anything under .anvil/themes/
+ * again — your edits survive every re-install and --force upgrade.
+ * That makes this the DURABLE override tier for memo styling. (Editing
+ * the installed framework copy at .anvil/anvil/lib/memo/styles.css
+ * also works, but that copy is overwritten on every upgrade.)
  *
- * Pinned choices and why:
- *   - System sans-serif fallback (Helvetica / Arial) — keeps the renderer
- *     dependency-free; no @font-face declarations, no external font
- *     downloads, no Marp-style themeSet shenanigans. The chain has to
- *     work in CI containers without TeX Live or webfont caches.
- *   - 11pt body, 1.45 line-height — middle of the readable-on-paper band
- *     for a US-Letter memo. Matches the 600-words-per-page proxy used by
- *     anvil:memo target_length (#122).
- *   - 0.75in margins — generous enough that page footers and headers
- *     never collide with body content, tight enough that an 8-page memo
- *     stays within the cap.
- *   - @page rule with footer page numbers — required for any
- *     review-grade artifact; without page numbers, a printed memo loses
- *     its navigation aid the moment it leaves the renderer.
- *   - No color, no logos, no background images — those belong in the
- *     consumer override, not the framework default.
+ * Enable per project with `theme: starter` in the project BRIEF
+ * frontmatter. See .anvil/anvil/lib/memo/README.md "Override
+ * discipline" for the full resolution order.
+ *
+ * Design: a tasteful minimal default. The framework's deliberately
+ * minimal baseline (Helvetica/Arial, 11pt body, 0.75in margins,
+ * booktabs-class table rules, @page footer page numbers) is preserved
+ * verbatim; on top of it, headings and structural rules pick up the
+ * Anvil navy palette (anvil/lib/figures/palette.py):
+ *
+ *   navy   #1f4e7a   headings, links, table top rule
+ *   ink    #1a1a1a   body text
+ *   muted  #6b6b6b   metadata, footer, blockquote text
+ *   rule   #d6d6d6   horizontal rules, light dividers
+ *
+ * Replace the navy with your own brand accent, uncomment the branded
+ * blocks at the bottom (footer wordmark, custom fonts), or rewrite the
+ * whole file — it's yours.
  */
 
 /* ------------------------------------------------------------------ */
@@ -37,14 +36,14 @@
 /* ------------------------------------------------------------------ */
 
 @page {
-  size: 8.5in 11in;  /* US Letter — explicit dims, portable across WeasyPrint versions */
+  size: 8.5in 11in;  /* US Letter */
   margin: 0.75in;
 
   @bottom-center {
     content: counter(page) " / " counter(pages);
     font-family: Helvetica, Arial, sans-serif;
     font-size: 9pt;
-    color: #555;
+    color: #6b6b6b;
   }
 }
 
@@ -56,18 +55,23 @@ body {
   font-family: Helvetica, Arial, sans-serif;
   font-size: 11pt;
   line-height: 1.45;
-  color: #000;
+  color: #1a1a1a;
   margin: 0;
   padding: 0;
 }
 
+a {
+  color: #1f4e7a;
+}
+
 /* ------------------------------------------------------------------ */
-/* Headings — minimal hierarchy, no decorative rules                    */
+/* Headings — navy accent, restrained hierarchy                         */
 /* ------------------------------------------------------------------ */
 
 h1 {
   font-size: 18pt;
   font-weight: bold;
+  color: #1f4e7a;
   margin-top: 0;
   margin-bottom: 0.5em;
 }
@@ -75,6 +79,9 @@ h1 {
 h2 {
   font-size: 14pt;
   font-weight: bold;
+  color: #1f4e7a;
+  border-bottom: 0.5pt solid #d6d6d6;
+  padding-bottom: 0.15em;
   margin-top: 1.2em;
   margin-bottom: 0.4em;
 }
@@ -82,6 +89,7 @@ h2 {
 h3 {
   font-size: 12pt;
   font-weight: bold;
+  color: #1f4e7a;
   margin-top: 1em;
   margin-bottom: 0.3em;
 }
@@ -89,6 +97,7 @@ h3 {
 h4, h5, h6 {
   font-size: 11pt;
   font-weight: bold;
+  color: #1a1a1a;
   margin-top: 0.8em;
   margin-bottom: 0.2em;
 }
@@ -99,18 +108,21 @@ h4, h5, h6 {
 
 .title-block {
   margin-bottom: 1.5em;
+  border-bottom: 1pt solid #1f4e7a;
+  padding-bottom: 0.75em;
 }
 
 .title-block .title {
   font-size: 18pt;
   font-weight: bold;
+  color: #1f4e7a;
   margin-bottom: 0.25em;
 }
 
 .title-block .author,
 .title-block .date {
   font-size: 10pt;
-  color: #333;
+  color: #6b6b6b;
   margin-bottom: 0.1em;
 }
 
@@ -136,12 +148,12 @@ li {
 blockquote {
   margin: 0.7em 0 0.7em 1em;
   padding-left: 0.7em;
-  border-left: 2px solid #888;
-  color: #333;
+  border-left: 2px solid #1f4e7a;
+  color: #6b6b6b;
 }
 
 /* ------------------------------------------------------------------ */
-/* Code — fixed-width, no syntax-highlight color                        */
+/* Code — fixed-width, light panel                                      */
 /* ------------------------------------------------------------------ */
 
 code {
@@ -166,24 +178,14 @@ pre code {
 }
 
 /* ------------------------------------------------------------------ */
-/* Tables — booktabs-class rule weights (#238)                          */
+/* Tables — booktabs-class rule weights (#238), navy structural rules   */
 /* ------------------------------------------------------------------ */
 /*
- * The default styling emulates the LaTeX booktabs convention used by
- * `template.tex`: top rule on the table, a thinner rule below the
- * header, no internal vertical or horizontal rules, and a bottom rule
- * after the final data row. Comparison tables in synthesis / feedback
- * memos carry rhetorical load — rule-weight tuning here is in-scope
- * per the maintainer policy carve-out documented in README.md.
- *
- * The visual booktabs effect comes from the rule WEIGHTS (1pt top /
- * 0.5pt header-bottom / 1pt final-row), not from color. We stay on
- * `#000` for consistency with the body `color: #000` pin in the
- * README's "no color" rule. No zebra striping, no vertical rules.
- *
- * `font-variant-numeric: tabular-nums` ensures numeric columns line
- * up at the digit position, which is the other half of the booktabs
- * "comparative tables read cleanly" effect.
+ * Booktabs convention inherited from the framework default: top rule
+ * on the table, a thinner rule below the header, no internal vertical
+ * or horizontal rules, bottom rule after the final data row.
+ * `tabular-nums` keeps numeric columns digit-aligned. The starter
+ * theme renders the structural rules in navy.
  */
 
 table {
@@ -195,10 +197,11 @@ table {
 }
 
 thead th {
-  border-top: 1pt solid #000;
-  border-bottom: 0.5pt solid #000;
+  border-top: 1pt solid #1f4e7a;
+  border-bottom: 0.5pt solid #1f4e7a;
   padding: 0.25em 0.5em;
   font-weight: bold;
+  color: #1f4e7a;
   text-align: left;
   vertical-align: top;
 }
@@ -212,7 +215,7 @@ tbody td {
 }
 
 tbody tr:last-child td {
-  border-bottom: 1pt solid #000;
+  border-bottom: 1pt solid #1f4e7a;
 }
 
 /* ------------------------------------------------------------------ */
@@ -230,7 +233,7 @@ img {
 
 hr {
   border: none;
-  border-top: 1px solid #888;
+  border-top: 1px solid #d6d6d6;
   margin: 1em 0;
 }
 
@@ -241,3 +244,33 @@ hr {
 .page-break {
   page-break-before: always;
 }
+
+/* ------------------------------------------------------------------ */
+/* BRANDED BLOCKS — examples, shipped commented-out                     */
+/* ------------------------------------------------------------------ */
+/*
+ * Footer wordmark: pairs the page counter with your studio name.
+ * Set `studio:` in theme.yml as the metadata counterpart.
+ *
+ * @page {
+ *   @bottom-left {
+ *     content: "Your Studio Name";
+ *     font-family: Helvetica, Arial, sans-serif;
+ *     font-size: 8pt;
+ *     letter-spacing: 0.08em;
+ *     text-transform: uppercase;
+ *     color: #6b6b6b;
+ *   }
+ * }
+ */
+/*
+ * Custom typeface: weasyprint resolves @font-face from local files.
+ * Keep a fallback stack — the framework default is dependency-free by
+ * design, and CI containers may not have your font installed.
+ *
+ * @font-face {
+ *   font-family: "YourBrandFont";
+ *   src: url(".anvil/themes/starter/assets/YourBrandFont.woff2");
+ * }
+ * body { font-family: "YourBrandFont", Helvetica, Arial, sans-serif; }
+ */
