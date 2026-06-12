@@ -21,4 +21,4 @@ Short-form personal/professional essays and blog posts — markdown body, 500–
 
 ## Deferred (tracked follow-ups)
 
-Worked example; rjwalters.info `drafts/` migration (project-migrate + rubric-rebackport); `voice.rhetoric_rules` wiring (#468); PDF render path; example-coherence detector (LLM prose carries it until a second observed failure); audit/figures commands.
+Worked example; rjwalters.info `drafts/` migration (project-migrate + rubric-rebackport); PDF render path; example-coherence detector (LLM prose carries it until a second observed failure); audit/figures commands. (`voice.rhetoric_rules` wiring shipped in #479.)

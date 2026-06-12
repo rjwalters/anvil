@@ -61,7 +61,7 @@ The skill consumes the issue #461 contract (`anvil/lib/snippets/voice_grounding.
 - **Declared-but-missing file** → the tier ACTIVATES; the breakage surfaces as a `major` finding directing the operator to create or fix the file (`resolve_voice_docs` carries `missing: true` entries; never raises).
 - The reviser **preserves voice signatures the reviewer flagged as working** — voice-grounded revision must not sand off the persona while chasing rubric points.
 
-The `voice.rhetoric_rules` sub-key (consumer-tunable lint rules, #463's documented integration point) is a tracked follow-up (#468; builds in parallel) — this skill does not wire it.
+The `voice.rhetoric_rules` sub-key (consumer-tunable lint rules, #463's documented integration point) **is wired** (issue #479, porting the memo-render step 4g contract from #468): essay-review step 3c resolves it via `anvil/lib/project_brief.py::resolve_rhetoric_rules(project_dir)` and forwards the path to `lint_rhetoric(extra_rules_path=...)` — the direct-call kwarg, not the gate's `rhetoric_rules_path=`. A declared-but-missing file is still forwarded so the loader's graceful-degrade surfaces the broken declaration as a warning finding; the advisory severity ceiling is untouched.
 
 ## State machine
 
@@ -132,7 +132,6 @@ Every critic-writing pass stamps `_meta.json` with `scorecard_kind: "human-verdi
 
 - **Worked example** — same deferral as the datasheet (#418) and ip-uspto-provisional (#433) precedents.
 - **rjwalters.info `drafts/` migration** — 8 threads / ~22 version dirs of anvil-adjacent foreign grammar (`post.md` body, monolithic review.md, /30 rubric); needs `anvil:project-migrate` enrollment + `anvil:rubric-rebackport` stamping once this skill exists.
-- **`voice.rhetoric_rules` wiring** — issue #468 (builds in parallel; #463 left the integration point documented in `lint_rhetoric`).
 - **PDF render path** — the publish target is TSX, not PDF.
 - **Example-coherence detector** — deferred per #462 gate 1 until a second observed failure; the LLM prose check carries it.
 - **Audit / figures commands** — no current need for the artifact class; the state machine ends at `READY`.
