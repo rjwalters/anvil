@@ -20,7 +20,7 @@ backend adapter (Flux, DALL-E, an Anthropic vision-edit endpoint, a local
 Stable Diffusion node, etc.) encodes the *execution*. The same
 `editorial-photography` preset should produce visually-coherent magazine-style
 shots regardless of which backend a consumer registers via
-`.anvil/config.toml` `[deck.imagegen]`.
+`.anvil/config.json` `deck.imagegen.backend`.
 
 **Backend-agnostic by design.** Preset prose deliberately avoids
 model-specific keywords (no Midjourney `--ar` flags, no Stable Diffusion

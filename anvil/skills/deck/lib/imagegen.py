@@ -6,7 +6,7 @@ dispatch loop:
 
 1. Read ``<thread>/BRIEF.md`` frontmatter and enforce the
    ``imagery_policy: generative-eligible`` opt-in gate.
-2. Read ``.anvil/config.toml`` for the ``[deck.imagegen] backend``
+2. Read ``.anvil/config.json`` for the ``deck.imagegen.backend``
    adapter registration. Missing → adapter-registration error pointing at
    ``commands/deck-imagegen-adapter.md``.
 3. Enumerate slots needing imagery from the latest ``deck.md`` — the
@@ -32,13 +32,13 @@ Anvil-specific scope
 
 - **Anvil ships ZERO backends.** Only the adapter *contract*. Tests use
   an in-process mock adapter; production consumers register their own
-  via ``.anvil/config.toml``. See ``commands/deck-imagegen-adapter.md``.
+  via ``.anvil/config.json``. See ``commands/deck-imagegen-adapter.md``.
 - **No new base deps.** The orchestrator uses stdlib only:
   ``importlib`` for adapter loading, ``re`` for marker/preset/frontmatter
-  parsing, ``json`` for ``_progress.json``, and ``tomllib`` (3.11+) with
-  a graceful fallback to a minimal regex parser for the single key we
-  read from ``.anvil/config.toml`` on Python 3.10. The ``pydantic``
-  base dep is unchanged.
+  parsing, and ``json`` for both ``_progress.json`` and the
+  ``.anvil/config.json`` registration (stdlib ``json`` parses on every
+  supported Python — this is why the registration migrated off TOML in
+  #442). The ``pydantic`` base dep is unchanged.
 - **Skill-local under ``anvil/skills/deck/lib/``** per CLAUDE.md
   § "Working on this repo" ("Skill-local first, lib promotion later").
 - **Idempotence via the journal.** If a slot's PNG already exists AND
@@ -136,7 +136,7 @@ class ImagegenError(Exception):
     Unlike :class:`BackendError` (per-slot, recoverable, continue with
     next slot), an ``ImagegenError`` is a run-level abort: missing
     ``imagery_policy: generative-eligible``, missing adapter
-    registration in ``.anvil/config.toml``, adapter import failure, etc.
+    registration in ``.anvil/config.json``, adapter import failure, etc.
 
     The error message is the user-facing remediation pointer (per the
     "clear error" requirement on issue #178). Callers should print
@@ -276,131 +276,112 @@ def load_brief_frontmatter(brief_path: Path | str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# .anvil/config.toml loader
+# .anvil/config.json loader
 # ---------------------------------------------------------------------------
 
+# Paste-ready registration shape included in migration / remediation
+# errors. Mirrors the ``report.figure_adapters`` precedent: a single
+# versioned ``.anvil/config.json`` envelope shared by all runtime-
+# consulted skill config (#426 git knob, #427 figure adapters, #442
+# deck-imagegen).
+_CONFIG_JSON_SNIPPET: str = (
+    "{\n"
+    '  "version": 1,\n'
+    '  "deck": {\n'
+    '    "imagegen": {\n'
+    '      "backend": "<module>:<attr>"\n'
+    "    }\n"
+    "  }\n"
+    "}"
+)
 
-def _parse_toml_minimal(text: str) -> dict[str, Any]:
-    """Minimal TOML parser sufficient to read ``[deck.imagegen] backend``.
 
-    This is a graceful-fallback parser used on Python 3.10 where stdlib
-    ``tomllib`` is not available and the consumer has not installed
-    ``tomli``. It is INTENTIONALLY tiny:
+def _stale_toml_migration_hint(config_path: Path) -> str | None:
+    """Detect a pre-#442 ``[deck.imagegen]`` registration left in TOML.
 
-    - Supports ``[section]`` and ``[section.subsection]`` headers
-      (dotted), nesting one level deep on read into a flat ``{"section":
-      {"key": ...}}`` shape.
-    - Supports ``key = "string"`` and ``key = 'string'`` (single+double
-      quotes). Integer values are NOT supported (the v0 contract only
-      reads a string backend path).
-    - Ignores blank lines and ``# comment`` lines.
-    - Does NOT support arrays, inline tables, multi-line strings, or any
-      of the rest of TOML. A consumer with a richer ``.anvil/config.toml``
-      is expected to be on Python 3.11+ (with stdlib tomllib) or have
-      ``tomli`` installed.
+    ``deck-imagegen`` reads ONLY ``.anvil/config.json`` (hard cutover,
+    #442). When the JSON registration is absent but a sibling
+    ``.anvil/config.toml`` still contains the literal text
+    ``[deck.imagegen]``, the operator almost certainly has a stale
+    pre-migration registration — return a self-healing migration
+    message carrying the paste-ready JSON snippet.
 
-    Raises:
-        ImagegenError: On any line that does not match the recognized
-            shapes. The error names the offending line so the operator
-            can fix the config or upgrade Python.
+    Detection is a cheap substring scan only — the TOML parser was
+    deleted in the same change (#442) and is NOT reintroduced here.
+
+    Returns ``None`` when no stale registration is detected (missing
+    TOML file, unreadable file, or no ``[deck.imagegen]`` section).
     """
-    out: dict[str, Any] = {}
-    current: dict[str, Any] = out
-    for lineno, raw in enumerate(text.splitlines(), start=1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        # Section header.
-        if line.startswith("[") and line.endswith("]"):
-            section = line[1:-1].strip()
-            parts = [p.strip() for p in section.split(".")]
-            current = out
-            for part in parts:
-                if part not in current or not isinstance(current[part], dict):
-                    current[part] = {}
-                current = current[part]
-            continue
-        # key = "value" — strict v0 shape.
-        m = re.match(
-            r'^([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(".*"|\'.*\')\s*(?:#.*)?$',
-            line,
-        )
-        if not m:
-            raise ImagegenError(
-                f".anvil/config.toml line {lineno}: cannot parse {raw!r}. "
-                f"The bundled minimal-TOML reader supports only "
-                f'``[section]`` headers and ``key = "value"`` string assignments. '
-                f"For richer TOML, upgrade to Python 3.11+ (stdlib tomllib) or "
-                f"`pip install tomli`."
-            )
-        key = m.group(1)
-        val = m.group(2)
-        # Strip the matching quotes.
-        val = val[1:-1]
-        current[key] = val
-    return out
-
-
-def _load_toml(path: Path) -> dict[str, Any]:
-    """Load a TOML file as a dict.
-
-    Strategy: prefer stdlib ``tomllib`` (3.11+); fall back to ``tomli``
-    (the standard 3.10-compat backport); fall back to a minimal regex
-    parser that handles the single shape ``deck-imagegen`` needs.
-    """
-    # Prefer stdlib (3.11+).
+    toml_path = config_path.parent / "config.toml"
+    if not toml_path.exists():
+        return None
     try:
-        import tomllib  # type: ignore[import-not-found]
-
-        with path.open("rb") as fh:
-            return tomllib.load(fh)
-    except ImportError:
-        pass
-    # Fall back to the standard 3.10 backport.
-    try:
-        import tomli  # type: ignore[import-not-found]
-
-        with path.open("rb") as fh:
-            return tomli.load(fh)
-    except ImportError:
-        pass
-    # Last-resort minimal parser. Sufficient for the v0 shape of
-    # ``.anvil/config.toml`` (a single ``[deck.imagegen] backend = "..."``
-    # entry); fails loud on anything richer with a clear remediation pointer.
-    return _parse_toml_minimal(path.read_text(encoding="utf-8"))
+        text = toml_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if "[deck.imagegen]" not in text:
+        return None
+    return (
+        f"MIGRATION REQUIRED (#442): {toml_path} still contains a "
+        f"[deck.imagegen] registration, but deck-imagegen now reads ONLY "
+        f"{config_path}. Move the backend value into {config_path}:\n"
+        f"\n"
+        f"{_CONFIG_JSON_SNIPPET}\n"
+        f"\n"
+        f"…then delete the [deck.imagegen] section from "
+        f"{toml_path.name}. See commands/deck-imagegen-adapter.md "
+        f"§ 'Consumer registration'."
+    )
 
 
 def load_config(config_path: Path | str) -> dict[str, Any]:
-    """Read ``.anvil/config.toml`` and return its parsed contents.
+    """Read ``.anvil/config.json`` and return its parsed contents.
 
     Args:
-        config_path: Filesystem path to ``.anvil/config.toml``.
+        config_path: Filesystem path to ``.anvil/config.json``.
 
     Returns:
-        The parsed TOML as a nested dict.
+        The parsed JSON as a nested dict. The expected registration
+        shape is ``{"version": 1, "deck": {"imagegen": {"backend":
+        "<module>:<attr>"}}}`` — validation of the ``deck.imagegen``
+        section happens at the call site (:func:`run_imagegen`
+        precondition 3), mirroring the section-must-be-object-else-
+        treated-absent convention of
+        ``anvil/skills/report/lib/figure_adapters.py``.
 
     Raises:
-        ImagegenError: When the file does not exist OR parses but is
-            malformed (the message names the file and points at the
-            adapter-contract doc).
+        ImagegenError: When the file does not exist, is not valid JSON,
+            or its top level is not a JSON object (the message names the
+            file and points at the adapter-contract doc). A missing
+            file with a stale sibling ``.anvil/config.toml`` carrying a
+            ``[deck.imagegen]`` section raises the #442 migration error
+            instead (with the paste-ready JSON snippet).
     """
     p = Path(config_path)
     if not p.exists():
+        hint = _stale_toml_migration_hint(p)
+        if hint is not None:
+            raise ImagegenError(hint)
         raise ImagegenError(
-            f".anvil/config.toml not found at {p} — deck-imagegen needs "
-            f'a [deck.imagegen] backend = "<module>:<attr>" registration. '
+            f".anvil/config.json not found at {p} — deck-imagegen needs "
+            f'a deck.imagegen.backend = "<module>:<attr>" registration. '
             f"See commands/deck-imagegen-adapter.md § 'Consumer registration'."
         )
     try:
-        return _load_toml(p)
-    except ImagegenError:
-        raise
-    except Exception as exc:  # noqa: BLE001 — surface backend-agnostic errors
+        cfg = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ImagegenError(
-            f".anvil/config.toml at {p} is malformed: {exc}. "
+            f".anvil/config.json at {p} is not valid JSON: {exc}. "
             f"See commands/deck-imagegen-adapter.md § 'Consumer registration' "
             f"for the expected shape."
         ) from exc
+    if not isinstance(cfg, dict):
+        raise ImagegenError(
+            f"{p}: top level must be a JSON object, got "
+            f"{type(cfg).__name__}. See commands/deck-imagegen-adapter.md "
+            f"§ 'Consumer registration' for the expected shape."
+        )
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +395,7 @@ def load_adapter(backend_spec: str) -> Any:
     Args:
         backend_spec: A dotted Python path of the form
             ``"<module>:<attribute>"`` as registered under
-            ``[deck.imagegen] backend`` in ``.anvil/config.toml``.
+            ``deck.imagegen.backend`` in ``.anvil/config.json``.
 
     Returns:
         An object that exposes ``generate(prompt, style, steps) -> bytes``
@@ -439,7 +420,7 @@ def load_adapter(backend_spec: str) -> Any:
     """
     if ":" not in backend_spec:
         raise ImagegenError(
-            f'[deck.imagegen] backend = "{backend_spec}": missing '
+            f'deck.imagegen.backend = "{backend_spec}": missing '
             f"``:`` separator. Expected ``<module>:<attribute>`` per "
             f"commands/deck-imagegen-adapter.md § 'Consumer registration'."
         )
@@ -448,7 +429,7 @@ def load_adapter(backend_spec: str) -> Any:
     attr_name = attr_name.strip()
     if not module_name or not attr_name:
         raise ImagegenError(
-            f'[deck.imagegen] backend = "{backend_spec}": both module '
+            f'deck.imagegen.backend = "{backend_spec}": both module '
             f"and attribute must be non-empty. Expected "
             f"``<module>:<attribute>``."
         )
@@ -456,7 +437,7 @@ def load_adapter(backend_spec: str) -> Any:
         module = importlib.import_module(module_name)
     except ImportError as exc:
         raise ImagegenError(
-            f'[deck.imagegen] backend = "{backend_spec}": cannot import '
+            f'deck.imagegen.backend = "{backend_spec}": cannot import '
             f"module {module_name!r}: {exc}. Verify the adapter package "
             f"is installed in the same venv that runs deck-imagegen."
         ) from exc
@@ -464,7 +445,7 @@ def load_adapter(backend_spec: str) -> Any:
         attr = getattr(module, attr_name)
     except AttributeError as exc:
         raise ImagegenError(
-            f'[deck.imagegen] backend = "{backend_spec}": module '
+            f'deck.imagegen.backend = "{backend_spec}": module '
             f"{module_name!r} has no attribute {attr_name!r}: {exc}."
         ) from exc
     # If the attribute is a class, ALWAYS instantiate it before
@@ -478,7 +459,7 @@ def load_adapter(backend_spec: str) -> Any:
             instance = attr()
         except Exception as exc:  # noqa: BLE001
             raise ImagegenError(
-                f'[deck.imagegen] backend = "{backend_spec}": resolved to '
+                f'deck.imagegen.backend = "{backend_spec}": resolved to '
                 f"class {attr_name!r} but constructing it with zero "
                 f"arguments raised: {exc}. The adapter contract expects a "
                 f"zero-arg constructor for the class form."
@@ -486,7 +467,7 @@ def load_adapter(backend_spec: str) -> Any:
         if hasattr(instance, "generate") and callable(getattr(instance, "generate")):
             return instance
         raise ImagegenError(
-            f'[deck.imagegen] backend = "{backend_spec}": resolved to '
+            f'deck.imagegen.backend = "{backend_spec}": resolved to '
             f"class {attr_name!r}, but its instances have no ``generate`` "
             f"method. See commands/deck-imagegen-adapter.md § 'Adapter "
             f"contract'."
@@ -504,7 +485,7 @@ def load_adapter(backend_spec: str) -> Any:
     if callable(attr):
         return attr
     raise ImagegenError(
-        f'[deck.imagegen] backend = "{backend_spec}": resolved attribute '
+        f'deck.imagegen.backend = "{backend_spec}": resolved attribute '
         f"is neither callable nor has a ``generate`` method. See "
         f"commands/deck-imagegen-adapter.md § 'Adapter contract'."
     )
@@ -984,8 +965,8 @@ def run_imagegen(
         portfolio: The directory that contains both ``<thread>/`` and
             ``<thread>.{N}/`` (typically the current working directory of
             the command).
-        config_path: Optional override for ``.anvil/config.toml`` path.
-            Defaults to ``<portfolio>/.anvil/config.toml``. When
+        config_path: Optional override for ``.anvil/config.json`` path.
+            Defaults to ``<portfolio>/.anvil/config.json``. When
             ``adapter`` is supplied, the config file is NOT read (tests
             inject the adapter directly).
         presets_path: Optional override for the style-preset library.
@@ -994,12 +975,12 @@ def run_imagegen(
             to this module. Tests may point at a custom preset file.
         backend_name_for_journal: Override the ``backend`` field written
             into each ``_prompts.json`` entry. Defaults to the
-            ``[deck.imagegen] backend`` string from config (or
+            ``deck.imagegen.backend`` string from config (or
             ``"injected-adapter"`` when ``adapter`` is supplied without
             config).
         adapter: Pre-loaded adapter (skips ``load_adapter``). Used by
             tests with a mock adapter; production callers MUST NOT pass
-            this — the dispatcher should always go through config.toml
+            this — the dispatcher should always go through config.json
             in production so the journal records the registered backend
             name verbatim.
 
@@ -1012,7 +993,7 @@ def run_imagegen(
     Raises:
         ImagegenError: When a precondition fails BEFORE any slot can be
             dispatched (e.g., ``imagery_policy`` is not
-            ``generative-eligible``, no ``[deck.imagegen] backend``
+            ``generative-eligible``, no ``deck.imagegen.backend``
             registered, the adapter cannot be loaded). The caller
             (deck-imagegen.md's exit-code mapping) should print
             ``str(exc)`` and exit non-zero. The ``_progress.json`` is
@@ -1081,14 +1062,22 @@ def run_imagegen(
         cfg_path = (
             Path(config_path)
             if config_path is not None
-            else portfolio_path / ".anvil" / "config.toml"
+            else portfolio_path / ".anvil" / "config.json"
         )
         cfg = load_config(cfg_path)
-        deck_section = cfg.get("deck", {}).get("imagegen", {}) if isinstance(cfg, dict) else {}
-        backend_spec = (
-            deck_section.get("backend") if isinstance(deck_section, dict) else None
+        # Section-must-be-object-else-treated-absent, per the
+        # ``report.figure_adapters`` precedent in
+        # ``anvil/skills/report/lib/figure_adapters.py``.
+        deck_section = cfg.get("deck")
+        imagegen_section = (
+            deck_section.get("imagegen") if isinstance(deck_section, dict) else None
         )
-        if not backend_spec:
+        backend_spec = (
+            imagegen_section.get("backend")
+            if isinstance(imagegen_section, dict)
+            else None
+        )
+        if not backend_spec or not isinstance(backend_spec, str):
             _write_progress_phase(
                 version_dir / "_progress.json",
                 thread=thread,
@@ -1098,12 +1087,19 @@ def run_imagegen(
                     "started": _utc_now(),
                     "completed": _utc_now(),
                     "reason": (
-                        "missing [deck.imagegen] backend in .anvil/config.toml"
+                        "missing deck.imagegen.backend in .anvil/config.json"
                     ),
                 },
             )
+            # The key is absent from JSON — if a stale pre-#442 TOML
+            # registration is sitting next door, surface the migration
+            # error (with the paste-ready snippet) instead of the plain
+            # registration error.
+            hint = _stale_toml_migration_hint(cfg_path)
+            if hint is not None:
+                raise ImagegenError(hint)
             raise ImagegenError(
-                f"no ``[deck.imagegen] backend`` registered in {cfg_path}. "
+                f"no ``deck.imagegen.backend`` registered in {cfg_path}. "
                 f"deck-imagegen needs a consumer-registered adapter — anvil "
                 f"ships zero backends. See commands/deck-imagegen-adapter.md "
                 f"§ 'Consumer registration'."

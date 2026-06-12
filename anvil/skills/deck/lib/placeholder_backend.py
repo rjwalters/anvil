@@ -4,7 +4,7 @@ This module is the executable spec of the ``deck-imagegen`` adapter
 contract (``commands/deck-imagegen-adapter.md``). It exists so that:
 
 1. **Consumers can smoke-test the full registration path in five
-   minutes** — register the dotted path in ``.anvil/config.toml``, run
+   minutes** — register the dotted path in ``.anvil/config.json``, run
    ``deck-imagegen``, and watch real PNGs land in ``assets/generated/``
    without standing up any cloud backend. The walkthrough lives in
    ``commands/deck-imagegen-onboarding.md``.
