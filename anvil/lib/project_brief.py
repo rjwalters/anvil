@@ -326,7 +326,8 @@ from anvil.lib.theme import find_consumer_root
 # report-dir adoption mode's inferred type), and ip-uspto /
 # ip-uspto-provisional added under #440 (letter-family adoption's
 # REQUIRED `--artifact-type` values — strict post-write BRIEF
-# validation would otherwise roll back every adopted write). Unknown
+# validation would otherwise roll back every adopted write), and
+# essay added under #460 (the `anvil:essay` artifact class). Unknown
 # values are rejected with a clear error listing this set UNLESS a
 # consumer overlay JSON backs them (the #394 consumer extension tier —
 # see `discover_consumer_artifact_types` below).
@@ -358,6 +359,7 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "report",
     "ip-uspto",
     "ip-uspto-provisional",
+    "essay",
 )
 
 
@@ -437,6 +439,13 @@ class ArtifactType(str, Enum):
         there is no safe inference between a full application and a
         provisional — ``--adopt-family`` REQUIRES the operator to name
         one explicitly.
+    ESSAY
+        Skill-identity value (#460): an ``anvil:essay`` short-form
+        voice-grounded essay / blog-post thread (markdown-only body,
+        READY-terminal with a consumer-native publish handoff). Not a
+        memo subtype — selects no memo rubric overlay. Registered per
+        the #439/#457 precedent so a shared project BRIEF can declare
+        which skill owns an essay thread.
     """
 
     INVESTMENT_MEMO = "investment-memo"
@@ -453,6 +462,7 @@ class ArtifactType(str, Enum):
     REPORT = "report"
     IP_USPTO = "ip-uspto"
     IP_USPTO_PROVISIONAL = "ip-uspto-provisional"
+    ESSAY = "essay"
 
 
 # The memo-scoped subset of the registry: values that select a memo
@@ -496,6 +506,7 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.REPORT,
         ArtifactType.IP_USPTO,
         ArtifactType.IP_USPTO_PROVISIONAL,
+        ArtifactType.ESSAY,
     }
 )
 

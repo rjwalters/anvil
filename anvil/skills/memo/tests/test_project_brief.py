@@ -411,7 +411,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 14)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 15)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -452,7 +452,10 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
         inferred type — the same registry-gap shape); issue #440 grew
         it with ``ip-uspto`` / ``ip-uspto-provisional`` (the
         letter-family adoption mode's REQUIRED --artifact-type values
-        — same registry-gap shape, legal-artifact stakes)."""
+        — same registry-gap shape, legal-artifact stakes); issue #460
+        grew it with ``essay`` (the ``anvil:essay`` artifact class —
+        short-form voice-grounded essays own their threads in a shared
+        project BRIEF)."""
         from project_brief import (  # noqa: PLC0415
             SKILL_IDENTITY_ARTIFACT_TYPES,
         )
@@ -468,6 +471,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.REPORT,
                     ArtifactType.IP_USPTO,
                     ArtifactType.IP_USPTO_PROVISIONAL,
+                    ArtifactType.ESSAY,
                 }
             ),
         )

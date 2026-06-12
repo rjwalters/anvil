@@ -1,6 +1,13 @@
-"""Tests for ``anvil/skills/memo/lib/hyperlink_resolver.py`` (issue #335).
+"""Tests for ``anvil/lib/hyperlink_resolver.py`` (issue #335; promoted under #460).
 
-Covers the acceptance criteria documented on the issue:
+Moved from ``tests/skills/memo/test_hyperlink_resolver.py`` when the
+module was promoted from the memo skill-local lib to ``anvil/lib/``
+(``anvil:essay`` is the second consumer per the CLAUDE.md "wait for the
+second consumer" rule). The memo import path keeps working through the
+back-compat shim at ``anvil/skills/memo/lib/hyperlink_resolver.py`` —
+see ``TestPromotionShim`` below.
+
+Covers the acceptance criteria documented on issue #335:
 
 1. Fixture memo with intact cross-thread refs → no findings.
 2. Fixture memo with broken cross-thread ref (target version missing) →
@@ -18,8 +25,7 @@ Covers the acceptance criteria documented on the issue:
    recognized by ``anvil/lib/critics.py::aggregate`` without code changes.
 
 Per the #58 packaging convention, this filename
-(``test_hyperlink_resolver.py``) is unique across the
-``tests/skills/*/`` tree.
+(``test_hyperlink_resolver.py``) is unique across the test tree.
 """
 
 from __future__ import annotations
@@ -33,10 +39,9 @@ from pathlib import Path
 from unittest import mock
 
 
-# Repo-root sys.path injection — see test_memo_migrate_refs.py for
-# precedent (this file is three levels deep from the repo root).
+# Repo-root sys.path injection (this file is two levels deep).
 _HERE = Path(__file__).resolve().parent
-_REPO_ROOT = _HERE.parents[2]
+_REPO_ROOT = _HERE.parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -49,7 +54,7 @@ from anvil.lib.review_schema import (  # noqa: E402
     Kind,
     Verdict,
 )
-from anvil.skills.memo.lib.hyperlink_resolver import (  # noqa: E402
+from anvil.lib.hyperlink_resolver import (  # noqa: E402
     CLASS_CROSS_THREAD,
     CLASS_MARKDOWN_EXTERNAL,
     CLASS_MARKDOWN_INTERNAL,
@@ -276,7 +281,7 @@ class TestExternalCheckOff(unittest.TestCase):
             )
             # Sentinel: monkey-patch subprocess.run so it raises if called.
             with mock.patch(
-                "anvil.skills.memo.lib.hyperlink_resolver.subprocess.run",
+                "anvil.lib.hyperlink_resolver.subprocess.run",
                 side_effect=AssertionError(
                     "subprocess.run must NOT be called with check_external=False"
                 ),
@@ -328,7 +333,7 @@ class TestExternalCheckOn(unittest.TestCase):
                 "# Primary memo\n\nSee [source](https://example.com/ok).\n",
             )
             with mock.patch(
-                "anvil.skills.memo.lib.hyperlink_resolver.subprocess.run",
+                "anvil.lib.hyperlink_resolver.subprocess.run",
                 side_effect=_fake_curl_factory(200),
             ):
                 result = resolve_hyperlinks(version_dir, check_external=True)
@@ -343,7 +348,7 @@ class TestExternalCheckOn(unittest.TestCase):
                 "# Primary memo\n\nSee [missing](https://example.com/gone).\n",
             )
             with mock.patch(
-                "anvil.skills.memo.lib.hyperlink_resolver.subprocess.run",
+                "anvil.lib.hyperlink_resolver.subprocess.run",
                 side_effect=_fake_curl_factory(404),
             ):
                 result = resolve_hyperlinks(version_dir, check_external=True)
@@ -363,7 +368,7 @@ class TestExternalCheckOn(unittest.TestCase):
                 "# Primary memo\n\nSee [oops](https://example.com/err).\n",
             )
             with mock.patch(
-                "anvil.skills.memo.lib.hyperlink_resolver.subprocess.run",
+                "anvil.lib.hyperlink_resolver.subprocess.run",
                 side_effect=_fake_curl_factory(500),
             ):
                 result = resolve_hyperlinks(version_dir, check_external=True)
@@ -380,7 +385,7 @@ class TestExternalCheckOn(unittest.TestCase):
                 "# Primary memo\n\nSee [src](https://example.com/x).\n",
             )
             with mock.patch(
-                "anvil.skills.memo.lib.hyperlink_resolver.shutil.which",
+                "anvil.lib.hyperlink_resolver.shutil.which",
                 return_value=None,
             ):
                 result = resolve_hyperlinks(version_dir, check_external=True)
@@ -666,6 +671,55 @@ class TestCommandDocShipped(unittest.TestCase):
         )
         body = cmd.read_text(encoding="utf-8")
         self.assertIn(".hyperlinks", body)
+
+
+# ---------------------------------------------------------------------------
+# Promotion shim (issue #460): memo path keeps working, same objects
+# ---------------------------------------------------------------------------
+
+
+class TestPromotionShim(unittest.TestCase):
+    def test_memo_shim_reexports_canonical_objects(self):
+        """``anvil.skills.memo.lib.hyperlink_resolver`` re-exports the
+        canonical ``anvil.lib.hyperlink_resolver`` objects (identity, not
+        copies) per the #382/#393 promotion-shim pattern."""
+        import anvil.lib.hyperlink_resolver as canonical
+        import anvil.skills.memo.lib.hyperlink_resolver as shim
+
+        for name in (
+            "resolve_hyperlinks",
+            "write_review_dir",
+            "main",
+            "HyperlinkFinding",
+            "HyperlinkResolverResult",
+        ):
+            self.assertIs(
+                getattr(shim, name),
+                getattr(canonical, name),
+                f"shim attribute {name!r} is not the canonical object",
+            )
+        self.assertEqual(shim.CRITIC_ID, canonical.CRITIC_ID)
+        self.assertEqual(
+            shim.CRITICAL_BROKEN_CROSS_THREAD_ANCHOR,
+            canonical.CRITICAL_BROKEN_CROSS_THREAD_ANCHOR,
+        )
+        self.assertEqual(shim.HYPERLINKS_SUFFIX, canonical.HYPERLINKS_SUFFIX)
+
+    def test_memo_shim_behavioral_smoke(self):
+        """The shim import path resolves links end-to-end (a representative
+        behavioral check through the historical import path)."""
+        from anvil.skills.memo.lib.hyperlink_resolver import (
+            resolve_hyperlinks as shim_resolve,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\n[missing](exhibits/missing.png)\n",
+            )
+            result = shim_resolve(version_dir)
+            self.assertFalse(result.passed())
 
 
 if __name__ == "__main__":
