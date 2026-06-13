@@ -29,16 +29,21 @@ Deterministic subset (pure stdlib — no LLM, no new deps)
    - **Table (``human-verdict``)** — reuses
      ``anvil/lib/critics.py::parse_memo_scoring_table`` on the
      ``| # | Dimension | Weight | Score | Justification |`` row shape.
-   - **JSON ``dimensions`` block (``machine-summary``)** — the two ip
-     skills (``ip-uspto``, ``ip-uspto-provisional``) write a partial
-     scorecard as a fenced ``json`` block inside ``_summary.md`` whose
-     ``dimensions`` object maps each rubric dimension key to either
-     ``null`` (un-owned dim) or an object carrying ``score`` +
-     ``justification`` (+ optional ``weight``). Parsed by
-     :func:`parse_machine_summary_dimensions` (issue #496). The
-     classifier, normalization, span+elision matching, and the
-     by-absence marker are all scorecard-source-agnostic — only the
-     parser differs.
+   - **Machine-summary (``machine-summary``)** — the two ip skills
+     (``ip-uspto``, ``ip-uspto-provisional``) write a *partial* scorecard
+     inside ``_summary.md``. The canonical shape the commands instruct
+     and the examples carry is the SAME markdown table
+     (``| # | Dimension | Weight | Score | Justification |``), so the
+     machine-summary path reuses ``parse_memo_scoring_table`` too (issue
+     #536). A fenced ``json`` ``dimensions`` block (issue #496) is also
+     accepted when present — :func:`parse_machine_summary_dimensions`
+     parses each dimension key to ``null`` (un-owned) or an object with
+     ``score`` + ``justification`` (+ optional ``weight``) — but no
+     shipped command doc or example emits it, so it is forward-compat /
+     legacy and the table fallback fires in practice. The classifier,
+     normalization, span+elision matching, and the by-absence marker are
+     all scorecard-source-agnostic — only the parser differs, and the
+     machine-summary route tries JSON first then the table.
 
    Rows with a ``null`` / ``n/a`` / ``-`` score are skipped entirely:
    a critic that does not own a dimension (the partial-scorecard rule
@@ -573,13 +578,21 @@ def _coerce_score(raw: object) -> Optional[int]:
 def parse_machine_summary_dimensions(
     summary_text: str,
 ) -> List[SummaryDimension]:
-    """Parse the JSON ``dimensions`` block from a ``_summary.md``.
+    """Parse an OPTIONAL JSON ``dimensions`` block from a ``_summary.md``.
 
-    The two ip skills (``ip-uspto``, ``ip-uspto-provisional``) write a
-    fenced ```json``` block inside ``_summary.md`` carrying a
-    ``dimensions`` object: each key is a rubric dimension, mapping to
-    either ``null`` (un-owned dim) or an object with ``score`` +
-    ``justification`` (+ optional ``weight``). This parser:
+    NOTE (issue #536): this JSON shape is forward-compat / legacy — no
+    shipped ip command doc or worked example emits it. The ip skills
+    (``ip-uspto``, ``ip-uspto-provisional``) actually write the
+    machine-summary scorecard as a markdown TABLE (the same
+    ``| # | Dimension | Weight | Score | Justification |`` shape the
+    human-verdict path uses; ``critics.py`` and
+    ``snippets/scorecard_kind.md`` are the contract). When a ``_summary.md``
+    instead carries a fenced ```json``` block with a ``dimensions``
+    object — each key a rubric dimension mapping to ``null`` (un-owned)
+    or an object with ``score`` + ``justification`` (+ optional
+    ``weight``) — this parser reads it; otherwise it returns an empty
+    list and :func:`check_summary_text` falls back to the table parser.
+    This parser:
 
     - extracts every fenced ```json``` block and uses the first one
       that parses to an object carrying a ``dimensions`` mapping
@@ -666,19 +679,33 @@ def check_summary_text(
 ) -> Tuple[List[EvidenceFinding], int]:
     """Run the quoted-evidence check over one ``_summary.md``'s text.
 
-    The machine-summary analog of :func:`check_scoring_text`: parses the
-    JSON ``dimensions`` block via
-    :func:`parse_machine_summary_dimensions` and feeds each non-null-
-    score dimension through the SAME :func:`classify_justification` flow
-    (the classifier, normalization, span+elision matching, and the
-    by-absence marker are scorecard-source-agnostic). Pure function of
-    the two texts (no filesystem). Returns ``(findings,
-    dimensions_checked)``.
+    The machine-summary analog of :func:`check_scoring_text`. The
+    canonical machine-summary scorecard is a **markdown table** (the
+    ``| # | Dimension | Weight | Score | Justification |`` shape the ip
+    commands instruct and the ip examples carry — see
+    ``anvil/lib/snippets/scorecard_kind.md`` and ``critics.py``). This
+    routine therefore tries two scorecard shapes, in order:
+
+    1. A fenced ```json``` ``dimensions`` block (issue #496), parsed by
+       :func:`parse_machine_summary_dimensions`. Forward-compat / legacy:
+       no shipped command doc or example actually emits this shape.
+    2. When the JSON path yields no checkable rows, **fall back** to the
+       same table parser the human-verdict path uses
+       (:func:`parse_memo_scoring_table`) over the same text — this is the
+       shape the ip ``_summary.md`` scorecards actually carry, so the
+       write-time self-check is non-vacuous in real reviews (issue #536).
+
+    Either way, each non-null-score dimension feeds the SAME
+    :func:`classify_justification` flow (the classifier, normalization,
+    span+elision matching, and the by-absence marker are
+    scorecard-source-agnostic). Pure function of the two texts (no
+    filesystem). Returns ``(findings, dimensions_checked)``.
     """
     normalized_body = normalize(body_text)
     findings: List[EvidenceFinding] = []
     checked = 0
-    for row in parse_machine_summary_dimensions(summary_text):
+    json_rows = parse_machine_summary_dimensions(summary_text)
+    for row in json_rows:
         if row.score is None:
             continue
         checked += 1
@@ -692,6 +719,24 @@ def check_summary_text(
         )
         if finding is not None:
             findings.append(finding)
+    if checked == 0 and not findings:
+        # No JSON-block dimensions parsed (the table-shaped machine-summary
+        # scorecard the commands/examples/snippet actually emit — issue
+        # #536). Re-run over the markdown table so the self-check is live.
+        for trow in parse_memo_scoring_table(summary_text):
+            if trow.score is None:
+                continue
+            checked += 1
+            finding = classify_justification(
+                dimension=trow.dimension,
+                score=trow.score,
+                weight=trow.max,
+                justification=trow.justification,
+                normalized_body=normalized_body,
+                scoring_path=scoring_path,
+            )
+            if finding is not None:
+                findings.append(finding)
     return findings, checked
 
 

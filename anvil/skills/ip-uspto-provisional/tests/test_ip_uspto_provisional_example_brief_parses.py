@@ -26,6 +26,7 @@ import json
 import unittest
 from pathlib import Path
 
+from anvil.lib import evidence_check
 from anvil.lib.project_brief import (
     ArtifactType,
     load_project_brief_strict,
@@ -145,6 +146,34 @@ class TestS112MachineSummarySidecar(unittest.TestCase):
         self.assertIn(RUBRIC_ID, summary)
         # s112 owns dims 1, 2, 3, 9; the rest are null (n/a — see owning critic).
         self.assertIn("n/a — see", summary)
+
+    def test_evidence_check_is_non_vacuous(self) -> None:
+        """The vendored machine-summary specimen exercises the quote check.
+
+        Regression guard for #536: the s112 ``_summary.md`` carries the
+        scored dims (1, 2, 3, 9) in a markdown TABLE — the shape the ip
+        commands instruct and ``critics.py`` parses — NOT a fenced-JSON
+        ``dimensions`` block. Before #536, ``evidence_check`` read only the
+        JSON block and reported ``dimensions_checked == 0`` (a vacuous
+        pass: the quotes were never machine-checked). After the table
+        fallback the check is live: it examines all four owned dims and
+        finds zero fabricated quotes (the justifications quote ``spec.tex``
+        verbatim — verified by the #534 judge).
+        """
+        result = evidence_check.check_version_dir(
+            _VERSION_DIR, scoring=_S112_DIR / "_summary.md"
+        )
+        self.assertEqual(
+            result.dimensions_checked,
+            4,
+            "expected the 4 owned dims (1, 2, 3, 9) to be checked, not a "
+            f"vacuous 0; got {result.dimensions_checked} "
+            f"(findings: {result.findings})",
+        )
+        self.assertTrue(
+            result.passed(),
+            f"genuine quotes must yield zero findings; got {result.findings}",
+        )
 
 
 if __name__ == "__main__":
