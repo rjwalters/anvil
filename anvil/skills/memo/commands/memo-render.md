@@ -270,4 +270,10 @@ If `uv` is not on the consumer's PATH, fall back to the source-checkout pattern 
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `_progress.json` records the `phases.render` outcome and the `render_gate` block, stage ONLY the `<thread>.{N}/` version dir this phase wrote into (the PDF + `_progress.json`), commit as `anvil(memo/render): <thread>.{N} [<state>]` (the bracket carries the thread's current derived state per SKILL.md §State machine — render is informational and does not advance the state machine), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the render still reports its own non-blocking outcome unchanged; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase (the render still reports its own non-blocking outcome unchanged). When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after `_progress.json` records the `phases.render` outcome and the `render_gate` block.
+- **Staging target**: ONLY the `<thread>.{N}/` version dir this phase wrote into (the PDF + `_progress.json`).
+- **Commit**: `anvil(memo/render): <thread>.{N} [<state>]` — the bracket carries the thread's current derived state per SKILL.md §State machine, since render is informational and does not advance the state machine.
