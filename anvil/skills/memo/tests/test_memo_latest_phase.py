@@ -77,16 +77,27 @@ def _copy_fixture(name: str, dest_root: Path) -> Path:
 
     ``symlinks=True`` preserves the pinned-symlink fixture's link as a
     link (not a dereferenced copy). The copied link's own mtime is then
-    bumped to "now" so the pin classification is deterministic (a link
-    at least as new as the highest version dir is a pin, not a
-    superseded tracking link — see ``update_latest_symlinks``).
+    bumped to strictly after every version directory's mtime, so the pin
+    classification is deterministic: ``update_latest_symlinks`` treats a
+    link whose lstat mtime is >= the highest version dir's mtime as an
+    intentional operator pin (set *after* the dirs existed), not a
+    superseded tracking link. ``copytree`` copies the fixture's stored
+    mtimes verbatim, so on a fresh checkout the version dirs and the
+    thread root share a near-identical timestamp; anchoring the bump to
+    ``max(version-dir mtime) + margin`` (rather than the thread-root
+    mtime) makes the comparison unambiguous regardless of checkout time.
     """
     dest = dest_root / name
     shutil.copytree(_FIXTURES / name, dest, symlinks=True)
+    version_mtimes = [
+        child.stat().st_mtime
+        for child in dest.iterdir()
+        if child.is_dir() and not child.is_symlink()
+    ]
+    pin_mtime = (max(version_mtimes) if version_mtimes else os.stat(dest).st_mtime) + 10
     for child in dest.iterdir():
         if child.is_symlink():
-            now = os.stat(dest).st_mtime
-            os.utime(child, (now, now), follow_symlinks=False)
+            os.utime(child, (pin_mtime, pin_mtime), follow_symlinks=False)
     return dest
 
 
