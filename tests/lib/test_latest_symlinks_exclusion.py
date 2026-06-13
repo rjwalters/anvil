@@ -58,12 +58,29 @@ def test_version_layout_documents_latest_symlink_convention():
     )
 
 
-def test_version_layout_states_latest_is_consumer_maintained():
+def test_version_layout_states_latest_maintenance_contract():
+    """Issue #473 amended the #120/#153 contract deliberately.
+
+    The convention moved from "consumer-maintained, framework-tolerated"
+    to "framework-maintained by default, consumer-pinnable": adopted
+    skills (memo) maintain the symlinks at the end of each lifecycle
+    write via the canonical writer, and a resolvable non-highest pin is
+    preserved (#288 AC). version_layout.md MUST state the new contract.
+    """
     body = _read(SNIPPETS / "version_layout.md")
-    # The convention is opt-in; shipped commands do not write/require it.
-    assert "consumer-maintained" in body, (
+    assert "framework-maintained by default" in body, (
         "version_layout.md MUST state that .latest symlinks are "
-        "consumer-maintained (issue #120 AC1)"
+        "framework-maintained by default for adopted skills "
+        "(issue #473)"
+    )
+    assert "consumer-pinnable" in body, (
+        "version_layout.md MUST state that .latest symlinks are "
+        "consumer-pinnable — a resolvable non-highest pin is preserved "
+        "(issues #288/#473)"
+    )
+    assert "update_latest_symlinks" in body, (
+        "version_layout.md MUST name the canonical writer "
+        "anvil.lib.latest_resolution.update_latest_symlinks (issue #473)"
     )
 
 
@@ -103,18 +120,32 @@ def test_deck_skill_mentions_latest_convention():
 
 
 def test_no_shipped_command_writes_or_requires_latest_symlinks():
-    """AC4: anvil-shipped commands must not depend on or write .latest.
+    """AC4 (amended under issue #473): one sanctioned write path only.
 
-    The convention is consumer-maintained in v0. If a shipped command
-    starts writing ``.latest`` symlinks, the convention contract
-    silently widens — block on the test.
+    The original #153 contract forbade shipped command markdown from
+    referencing ``.latest`` outside documentation-only disclaimer
+    lines — the convention was consumer-maintained. Issue #473 amended
+    the contract **deliberately**: the convention is now
+    framework-maintained by default, and the lifecycle commands carry
+    fenced invocations of the canonical latest-phase CLI
+    (``anvil/skills/memo/lib/latest_phase.py``, delegating to
+    ``anvil.lib.latest_resolution.update_latest_symlinks``).
 
-    Per issue #153, command markdown MAY contain a documentation-only
-    cross-reference that explicitly disclaims interaction (e.g., "the
-    reviser neither reads nor updates ``.latest``"). Such lines are
-    allow-listed by sentinel substring — they document the convention's
-    non-interaction guarantee, they do not invoke it.
+    What this test still blocks: command markdown that **hand-rolls**
+    symlink maintenance (``ln -sfn``, ad-hoc ``os.symlink`` prose) or
+    that depends on ``.latest`` outside the two allowed line shapes:
+
+    1. a line that references the canonical CLI by name
+       (``latest_phase.py`` — the #473 sanctioned-invocation sentinel),
+       or
+    2. a documentation-only cross-reference that explicitly disclaims
+       interaction (the original #153 disclaimer sentinels).
     """
+    # Lines naming the canonical CLI are the sanctioned interaction form
+    # (issue #473). Everything .latest-related a command body says about
+    # writing/maintenance must co-occur with this sentinel on the line.
+    CANONICAL_INVOCATION_SENTINELS = ("latest_phase.py",)
+
     # Sentinel substrings that mark a line as a documentation-only,
     # non-interaction-disclaiming cross-reference. Adding a new line that
     # actually writes or requires .latest will NOT match these sentinels
@@ -131,19 +162,39 @@ def test_no_shipped_command_writes_or_requires_latest_symlinks():
         "tolerates",
     )
 
+    ALLOWED_SENTINELS = CANONICAL_INVOCATION_SENTINELS + DISCLAIMER_SENTINELS
+
     matches: list[tuple[Path, str]] = []
+    hand_rolled: list[tuple[Path, str]] = []
     for command_md in SKILLS.rglob("commands/*.md"):
         body = command_md.read_text(encoding="utf-8")
         for line in body.splitlines():
+            # Hand-rolled symlink writes are never allowed in command
+            # markdown, sentinel or not — the canonical CLI is the only
+            # write path (#473). The negative-context forms ("do NOT
+            # hand-roll `ln -sfn`") are allowed.
+            if "ln -sfn" in line and ".latest" in line:
+                lowered = line.lower()
+                if "not hand-roll" not in lowered and "never" not in lowered:
+                    hand_rolled.append((command_md, line))
+                    continue
             if ".latest" not in line:
                 continue
-            if any(sentinel in line for sentinel in DISCLAIMER_SENTINELS):
+            if any(sentinel in line for sentinel in ALLOWED_SENTINELS):
                 continue
             matches.append((command_md, line))
+    assert not hand_rolled, (
+        "Shipped command markdown must not hand-roll .latest symlink "
+        "maintenance with ln -sfn; the canonical latest_phase.py CLI is "
+        "the single sanctioned write path (issue #473). Offenders:\n"
+        + "\n".join(f"  {p}: {ln.strip()}" for p, ln in hand_rolled)
+    )
     assert not matches, (
         "Shipped command markdown must not reference .latest unless the "
-        "line is a documentation-only disclaimer of non-interaction "
-        "(see DISCLAIMER_SENTINELS in this test; issue #153). Offenders:\n"
+        "line names the canonical latest_phase.py CLI (issue #473) or is "
+        "a documentation-only disclaimer of non-interaction "
+        "(see ALLOWED_SENTINELS in this test; issues #153/#473). "
+        "Offenders:\n"
         + "\n".join(f"  {p}: {ln.strip()}" for p, ln in matches)
     )
 
