@@ -193,9 +193,61 @@ git evidence (RTP): abc1234 Alice Author, 2025-03-02 — adds adaptive threshold
 
 Extend the step-5 report line with an evidence summary, e.g. `evidence: 14 rows mined (3 new), 11 classified, 2 findings (1 stale-path, 1 suspected-vendored), 1 BLOCKED vendored path`.
 
-### Out of scope for v1
+## Interview mode (`--interview`) — v2, opt-in
 
-Inventor-interview packet generation (`--interview`) and determination synthesis (`--synthesize`) are deliberately deferred to a follow-up issue — the evidence contracts above are designed so that pass is purely additive.
+`ip-uspto-inventorship <thread> --interview`
+
+Generates one structured **interview packet** per candidate inventor from the v1-mined artifacts. Git history documents reduction to practice; the actual §115/§116 inventorship determination requires a *conception* interview that git logs never capture (whiteboard / hallway / phone conception). `--interview` does what counsel does: it turns each candidate into a personalized, structured packet they (or counsel, in a ~1-hour interview) complete.
+
+**What `--interview` is — and is NOT (advisory-only contract carries over from v1):**
+
+- **IS** deterministic template-fill from existing v1 artifacts (`inventorship_map.json` + `evidence.jsonl` + the matrix rows). Every sentence in a packet body is either statutory boilerplate (copied verbatim) or a deterministic projection of mined rows.
+- **IS NOT** a re-run of v1 evidence collection — `--interview` consumes v1 outputs and **never re-mines** — and **never adjudicates**. The packet asks questions; it never answers them. Evidence anchors in the packet are labelled **memory aids only**, NOT evidence of conception.
+- **Legal framing (load-bearing, do not weaken)**: packets are **ATTORNEY WORK PRODUCT**. They **never touch** the `●` matrix, inventor columns, or TBD markers. The `●` rules + "never guess attribution" + the attestation block above stay byte-identical. As with `--evidence`, the interview surface **informs the attorney interview; it never adjudicates** and **never adds or removes named inventors**. Without `--interview`, behavior is unchanged.
+
+Packets are written to `<thread>/inventorship-evidence/interviews/{slug}.md`, where `{slug}` is the lowercased hyphenated full name (e.g. `alice-author.md`). (The issue body specifies `interviews/`; the native consumer uses `interview_packets/` — `interviews/` is chosen here per the issue body.)
+
+### Step I1 — Locate v1 inputs (no auto re-mine)
+
+`--interview` runs **only** against existing v1 artifacts. Read `<thread>/inventorship-evidence/inventorship_map.json` and `<thread>/inventorship-evidence/evidence.jsonl`. If either is absent, emit the notice "run `ip-uspto-inventorship <thread> --evidence` first" and exit cleanly — write no packets, touch nothing. Evidence is never re-mined here.
+
+### Step I2 — Candidate list (never invent inventors)
+
+The candidate list is the **union** of: (1) named inventors from `BRIEF.md` frontmatter (anvil's analog of the title page), (2) `(author, email)` pairs surfaced by v1 classification as conception-class committers NOT in the named list, (3) resolved human director(s) for bot rows. Anvil never invents inventors beyond this union — same "never invent inventors" rule as the base command. A bot identity is **never** a candidate.
+
+### Step I3 — Vendored detection (reuse the v1 helper)
+
+Reuse v1's `is_vendored_path` + `vendored-primary` / `vendored_prefixes` logic from `inventorship_evidence.py` (do NOT reimplement). When a candidate's mapped/evidence paths intersect a vendored path, the packet MUST include the upstream-conception prompt (the `VENDORED_CODE_PROMPT` constant): the in-repo history attributes the importer, not the upstream author, so the packet asks the candidate to confirm any upstream-conception involvement directly.
+
+### Step I4 — Bot-author resolution
+
+For rows whose `author` / `email` match a CI/agent identity (operator-configurable pattern, defaulting to the documented `…[bot]` / `…-agents` / `noreply@` shape), apply the 5-step resolution chain: (1) triggering-issue author — **auto** when pre-resolved; (2) triggering chat thread — counsel-resolved; (3) channel-agent operator — counsel-resolved; (4) project lead — fallback; (5) sync-commit author — weakest signal. Steps 2–5 are surfaced as questions / flagged fallbacks for counsel, **never** silently auto-attributed. The bot is **never** a §115 inventor (not a natural person).
+
+> Open question for counsel: the bot-chain step ordering, the Q5 derivation phrasing, and the ex-employee distribution channel are native open questions for counsel ratification. The documented defaults above are implemented; do not block on them.
+
+### Step I5 — Render packets
+
+Run the skill-local lib by direct file path (the skill dir is hyphenated, so there is no dotted `python -m` path; in an installed consumer repo the path is `.anvil/skills/ip-uspto/lib/inventorship_interview.py`):
+
+```bash
+python3 anvil/skills/ip-uspto/lib/inventorship_interview.py \
+  <thread>/inventorship-evidence/inventorship_map.json \
+  <thread>/inventorship-evidence/evidence.jsonl \
+  --thread <thread> \
+  --inventor "Alice Author:alice@example.com" \
+  --inventor "Bob Builder:bob@example.com" \
+  --out-dir <thread>/inventorship-evidence/interviews
+```
+
+`render_packet` assembles, per candidate: a **sensitivity header** (`counsel-eyes-only` for the stored template by default; `distribute-to-named-candidate-only` for a distributed copy; `confidential-internal` for working drafts) → confidential top disclaimer → `STATUTORY_INTRO` (Burroughs Wellcome conception standard, MPEP §2138.04, plain-English §115/§116/§256) → bot-resolution block (when applicable) → vendored prompt (when applicable) → evidence-anchors disclaimer → **per-element Q1–Q7 blocks**: Q1 conception moment, Q2 definiteness (Burroughs Wellcome), Q3 joint conception (§116), Q4 corroboration, Q5 derivation (§102(f)/§102(a)), Q6 prior art, Q7 post-conception RTP authorship — **exactly one Q1–Q7 block per element**, where a composite label like `1(b)(iv-v)` collapses to one block at the composite label, not one per leaf → per-element evidence anchors (from `evidence.jsonl` rows matching the candidate by email OR display-name, case-insensitive, labelled memory-aids-only) → attorney-work-product footer (`CONFIDENTIAL_FOOTER`, top and bottom). Exit `0` = packets written; exit `2` = missing v1 artifacts (the "run --evidence first" notice).
+
+### Step I6 — Commit / report
+
+Report the packet count and any open-question-for-counsel flags, e.g. `interview: 3 packets written (alice-author, bob-builder, carol-coder); 1 vendored prompt, 1 bot-resolution block (1 UNRESOLVED — counsel follow-up)`. **Locked matrix** (`matrix_locked: true`): packets still generate (they are read-only consumers of v1 artifacts) and the matrix file stays byte-unchanged.
+
+### Out of scope for v2 (`--interview`) → `--synthesize` is the follow-up
+
+Determination synthesis (`--synthesize`) — parsing completed interview packets back into per-element inventorship determinations (the candidacy table, disputed-elements classification, convergence rollup) — is the judgment-laden half and is the deferred **follow-up issue**, filed once the packet markdown shape this command emits is frozen (the synthesis parser depends on that exact shape). Synthesis proposes; the attorney attests. The advisory-only contract governs both halves.
 
 ## Re-validation pre-finalize
 
@@ -220,4 +272,4 @@ After the claim set stabilizes (during AUDITED → FINALIZED transition), re-run
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/inventorship.md` is written, stage ONLY `<thread>/inventorship.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/inventorship): <thread> [<state>]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"; the bracket is `INVENTORSHIP_DONE` on the pre-draft run, or the thread's current derived state on a pre-finalize re-validation), and push when `git.push` is also `true`. A preserved-matrix no-op run writes nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the command still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off). In `--evidence` mode, additionally stage `<thread>/inventorship-evidence/inventorship_map.json` and `<thread>/inventorship-evidence/evidence.jsonl` (explicitly by path) in the same commit when they were written or appended this run; default (no-flag) runs stage exactly what they staged before.
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/inventorship.md` is written, stage ONLY `<thread>/inventorship.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/inventorship): <thread> [<state>]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"; the bracket is `INVENTORSHIP_DONE` on the pre-draft run, or the thread's current derived state on a pre-finalize re-validation), and push when `git.push` is also `true`. A preserved-matrix no-op run writes nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the command still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off). In `--evidence` mode, additionally stage `<thread>/inventorship-evidence/inventorship_map.json` and `<thread>/inventorship-evidence/evidence.jsonl` (explicitly by path) in the same commit when they were written or appended this run; default (no-flag) runs stage exactly what they staged before. In `--interview` mode, additionally stage `<thread>/inventorship-evidence/interviews/` (explicitly by path) when interview packets were written this run, using a generic commit subject (no claim language, contributor names, or findings in the subject — same hygiene as `--evidence`).
