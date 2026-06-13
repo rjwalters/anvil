@@ -173,6 +173,25 @@ confirmation marker) when the operator passes the REQUIRED
 a provisional and a full application (`ip-uspto`), so the choice is
 always explicit.
 
+`anvil:project-migrate` also **enrolls native provisional threads**
+(issue #503) — directories whose version-dir body is `provisional.tex`
+(the COUNSEL-READY companion is `counsel_memo.tex`, #480). Recognition
+is **FILENAME-driven, never `\documentclass` content**: anvil's own
+provisional body is `spec.tex` with `\documentclass{anvil-uspto}` — the
+*same* class the full ip-uspto spec uses — so a content scan cannot
+disambiguate a provisional from a full application (this section's
+"no inference" invariant). The operator's body filename `provisional.tex`
+is the declaration; it maps to `artifact_type: ip-uspto-provisional`
+(TODO-marked) on both the single-file `--enroll` surface and the
+whole-project bare-thread surface. The `provisional.tex` body is
+**recorded, never renamed** (the #382/#408 carve-out — anvil's canonical
+body is `spec.tex`, but renaming a consumer's externally-compiled
+`provisional.tex` would break their xelatex/build tooling). A
+`counsel_memo.tex` is recognized as a **preserved companion** — never
+selected as the body, never renamed; a version dir carrying
+`counsel_memo.tex` with **no** `provisional.tex` is a plan-time refusal
+(a counsel memo is not a fileable body).
+
 ## Conversion linkage (mechanical, issue #501)
 
 The provisional's reason to exist is the eventual `anvil:ip-uspto` non-provisional conversion under 35 U.S.C. §119(e). That linkage is **mechanical**, not manual:

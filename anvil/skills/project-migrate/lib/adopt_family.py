@@ -93,7 +93,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .adopt_vn import _FOREIGN_TAG_SUFFIX_RE, _format_ambiguous_slot
-from .detect import BRIEF_FILENAME, Shape
+from .detect import (
+    BRIEF_FILENAME,
+    COUNSEL_MEMO_FILENAME,
+    PROVISIONAL_BODY_FILENAME,
+    Shape,
+    has_counsel_memo_companion,
+    has_native_provisional_body,
+)
 from .enroll import (
     EnrollError,
     _check_existing_brief,
@@ -574,6 +581,28 @@ def build_adopt_family_plan(
 
         versions = families[stem]
         version_nums = sorted(versions)
+
+        # Counsel-memo-only refusal (issue #503, shared rule): a family
+        # whose version dirs carry `counsel_memo.tex` but NO
+        # `provisional.tex` is not a fileable body — a counsel memo is a
+        # finalize-output companion. Refuse before any mutation (the
+        # whole batch aborts; nothing is touched).
+        family_bodies = _observed_body_filenames(
+            [versions[n] for n in version_nums]
+        )
+        if has_counsel_memo_companion(
+            family_bodies
+        ) and not has_native_provisional_body(family_bodies):
+            raise AdoptFamilyError(
+                f"Letter family `{stem}` carries `{COUNSEL_MEMO_FILENAME}` "
+                f"but no `{PROVISIONAL_BODY_FILENAME}`. A counsel memo is "
+                f"a finalize-output companion (anvil writes it into "
+                f"`<thread>.counsel/`), not a fileable provisional body. "
+                f"Suggested fix: add the `{PROVISIONAL_BODY_FILENAME}` "
+                f"body this counsel memo accompanies, then re-run. "
+                f"Nothing was modified."
+            )
+
         renames: List[Rename] = []
         resolution: List[Tuple[str, str, str]] = []
         sidecar_count = 0
@@ -668,6 +697,19 @@ def build_adopt_family_plan(
                 "carve-out — dir-level renames move them along): "
                 + ", ".join(f"`{b}`" for b in bodies)
                 + "."
+            )
+        # Counsel-memo companion preservation (issue #503): when a
+        # `provisional.tex` body and a `counsel_memo.tex` coexist, the
+        # provisional is the body and the counsel memo is a PRESERVED
+        # COMPANION (never the body, never renamed).
+        if has_native_provisional_body(bodies) and has_counsel_memo_companion(
+            bodies
+        ):
+            doc.notes.append(
+                f"{slug}: {COUNSEL_MEMO_FILENAME} preserved as a companion "
+                f"alongside {PROVISIONAL_BODY_FILENAME} (a finalize-output "
+                f"counsel memo, never a version-dir body) — recorded, "
+                f"never selected as the body, never renamed."
             )
         doc.notes.append(
             f"{slug}: artifact_type `{doc_artifact_type}` applied "

@@ -132,6 +132,27 @@ _RETAINED_BODY_FILENAMES = frozenset({"deck.md", "proposal.tex"})
 # artifact-type inference only, never the shape classification.
 _OBSERVED_BODY_EXTENSIONS = (".tex",)
 
+# Native ip-uspto-provisional body filename (issue #503). A version dir
+# carrying ``provisional.tex`` declares — by FILENAME, never by
+# ``\documentclass`` content — that the thread is an
+# ``anvil:ip-uspto-provisional`` provisional. This is the only safe
+# provisional signal: anvil's own provisional body is ``spec.tex`` with
+# ``\documentclass{anvil-uspto}`` — the SAME class the full ip-uspto
+# spec uses — so a ``\documentclass`` scan cannot disambiguate a
+# provisional from a full application (SKILL.md:160 forbids that
+# inference). The operator's body filename is the declaration.
+PROVISIONAL_BODY_FILENAME = "provisional.tex"
+
+# COUNSEL-READY companion filename (issue #503 / #480). In anvil,
+# ``counsel_memo.*`` is a finalize-OUTPUT artifact (written into
+# ``<thread>.counsel/`` by ``ip-uspto-provisional-finalize``), never a
+# version-dir body. A native ``counsel_memo.tex`` sitting alongside
+# ``provisional.tex`` in a version dir is a PRESERVED COMPANION: recognized,
+# recorded, left in place, NEVER selected as the body and NEVER renamed.
+# A version dir carrying ``counsel_memo.tex`` but NO ``provisional.tex``
+# is a refusal (a counsel memo is not a fileable body).
+COUNSEL_MEMO_FILENAME = "counsel_memo.tex"
+
 # Sibling directories that are never thread dirs (review siblings, audit
 # siblings, generic critic siblings, plus bookkeeping dirs the operator
 # may have placed at the project root).
@@ -459,6 +480,28 @@ def _observed_candidate_body_files(version_dir: Path) -> List[str]:
         return []
     out.sort()
     return out
+
+
+def has_native_provisional_body(filenames) -> bool:
+    """Return True iff ``provisional.tex`` is among ``filenames`` (issue #503).
+
+    Filename-driven recognition of a native ``anvil:ip-uspto-provisional``
+    body. ``filenames`` is any iterable of basenames (e.g.
+    ``ThreadInventory.observed_body_files`` or the directory listing of a
+    version dir). Recognition is by NAME only — content is never inspected
+    (SKILL.md:160: no provisional-vs-full ``\\documentclass`` inference).
+    """
+    return PROVISIONAL_BODY_FILENAME in set(filenames)
+
+
+def has_counsel_memo_companion(filenames) -> bool:
+    """Return True iff ``counsel_memo.tex`` is among ``filenames`` (issue #503).
+
+    The COUNSEL-READY companion (#480). Recognized so callers can record
+    it as a preserved companion (never the body) and refuse a
+    counsel-memo-only version dir (a counsel memo is not a fileable body).
+    """
+    return COUNSEL_MEMO_FILENAME in set(filenames)
 
 
 def _has_project_brief(project_dir: Path) -> bool:
@@ -818,10 +861,14 @@ def _classify(inv: ProjectInventory) -> Shape:
 __all__ = [
     "ANVIL_JSON_FILENAME",
     "BRIEF_FILENAME",
+    "COUNSEL_MEMO_FILENAME",
     "MEMO_BODY_FILENAME",
+    "PROVISIONAL_BODY_FILENAME",
     "ProjectInventory",
     "Shape",
     "ThreadInventory",
     "detect_shape",
+    "has_counsel_memo_companion",
+    "has_native_provisional_body",
     "inventory_project",
 ]
