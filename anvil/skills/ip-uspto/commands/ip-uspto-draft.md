@@ -119,6 +119,17 @@ The renderer-per-id logic for the default sections (mapping directly onto the le
    - Title (from `BRIEF.md` frontmatter `title`).
    - Inventors (from `BRIEF.md` frontmatter `inventors`).
    - Field of use (from `BRIEF.md` frontmatter `field_of_use`).
+   - **§119(e) CROSS-REFERENCE paragraph (only when `BRIEF.md` carries a `converts_provisional` block)**: emit, as the spec's FIRST paragraph (before FIELD OF THE INVENTION), a "CROSS-REFERENCE TO RELATED APPLICATIONS" paragraph so the filed specification itself carries the priority claim (not only the ADS produced at finalize):
+
+     ```
+     CROSS-REFERENCE TO RELATED APPLICATIONS
+
+     This application claims the benefit of U.S. Provisional Application No.
+     <converts_provisional.application_number>, filed <converts_provisional.filing_date>,
+     the entire disclosure of which is incorporated herein by reference.
+     ```
+
+     Drafter-time emission (here, into the spec body) is the canonical home for the priority claim; finalize emits the ADS *data* copy. **Fail loud, never silent**: if `converts_provisional` is present but `filing_date` is missing/empty, abort the draft with an error naming the missing field — never render a cross-reference paragraph with a blank filing date (the silent-priority-failure risk the conversion linkage exists to prevent). When `converts_provisional` is ABSENT, emit NO cross-reference paragraph — the spec's first paragraph is FIELD OF THE INVENTION as before (byte-identical to pre-#501).
 
    #### 5b. `field` — FIELD OF THE INVENTION (heading via `\fieldoftheinvention`)
    One paragraph naming the technical field, sized for a USPTO examiner classifier.
