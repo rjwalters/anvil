@@ -20,7 +20,7 @@ A single command an operator (or orchestrating agent) runs to see the state of e
 
 ## Procedure
 
-1. Enumerate directories under cwd matching `<slug>`, `<slug>.{N}`, `<slug>.{N}.<tag>` (`<tag>` ∈ {`review`, `s112`, `priorart`, `preflight`, `claimseed`, `audit`, or consumer-added tags}), or the terminal `<slug>.counsel` filing-package dir.
+1. Enumerate directories under cwd matching `<slug>`, `<slug>.{N}`, `<slug>.{N}.<tag>` (`<tag>` ∈ {`review`, `s112`, `priorart`, `preflight`, `claimseed`, `vision`, `audit`, or consumer-added tags}), or the terminal `<slug>.counsel` filing-package dir.
 2. Group by slug. For each slug, identify:
    - Whether `<slug>/BRIEF.md` exists (intake done?).
    - The latest `N` for which `<slug>.{N}/` exists.
@@ -87,5 +87,6 @@ Follow with `## Anomalies` (if any) and `## Operator notes` (iteration cap reach
 ## Notes
 
 - This command does **not** write to disk. Safe to run repeatedly.
+- **Drawings (opt-in, non-gating)**: `ip-uspto-provisional-figures <thread>` renders/stubs the drawings into `<thread>.{N}/drawings/` (deterministic; stub-default, opt-in `--mode tikz`), and `ip-uspto-provisional-vision <thread>` scores any *rendered* drawings (the pixels-side half of rubric Dim 4). Neither is in the default critic set; recommend the vision pass only when rendered `fig-*` drawings exist at the latest `N` (a stub-only thread degrades gracefully — vision skips with no `_review.json` and no Dim-4 deduction). Surface "rendered drawings present but no `<slug>.{N}.vision/` pass" as an `## Operator notes` gap, not a blocker.
 - Critic concurrency: v0 reports state only; run critics serially for debuggability or in parallel — the staged-sidecar per-critic sweep (issue #376) makes parallel fan-out safe.
 - A non-provisional conversion thread is a separate `anvil:ip-uspto` thread; the conversion linkage (priority-claim text, deadline surfacing) is a tracked follow-up to issue #433.
