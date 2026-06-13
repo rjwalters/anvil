@@ -777,6 +777,18 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
 11. **Update `_progress.json`** inside the staging dir: `phases.review.state = done`, `phases.review.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.review.tmp/` → `<thread>.{N}.review/`. The final-named dir only ever exists in **complete** form.
 12. **Report**: print the path to the (now-renamed) review dir and a one-line status (e.g., `Reviewed acme-seed.1 → acme-seed.1.review/ (30/44, advance: false, 0 critical flags)`).
 
+12.5. **Update the `.latest` convenience symlinks (YOU run this)**: after step 11's atomic rename lands the final-named `<thread>.{N}.review/` sibling, run the latest-phase CLI (`latest_phase.py`) on the thread directory — the parent of the version dir and its critic siblings:
+
+       python3 .anvil/skills/memo/lib/latest_phase.py <thread-dir>
+
+   (Path shown for a consumer install; from the anvil source repo the CLI lives at `anvil/skills/memo/lib/latest_phase.py`. If bare `python3` cannot import the framework, run it under the consumer venv: `uv run --project .anvil python .anvil/skills/memo/lib/latest_phase.py <thread-dir>`.)
+
+   The CLI is the canonical maintenance path for the convenience-symlink convention (issue #473; see SKILL.md §"`.latest` convenience symlinks" and `anvil/lib/snippets/version_layout.md`): it delegates to `anvil.lib.latest_resolution.update_latest_symlinks()`, which points `<thread>.latest.review` at the review sibling you just wrote (the highest-N `.review/` dir) and keeps `<thread>.latest` on the highest version dir, with relative targets (`ln -sfn` semantics); `latest_phase.py` is the single sanctioned write path for command bodies (the #153 exclusion contract, amended under #473) — do NOT hand-roll `ln -sfn` here.
+
+   **Pin preservation (#288).** A symlink still tracking the immediately-superseded sibling (set before the newer one existed — the normal post-write shape) is re-pointed freely; any other symlink resolving to a real, non-highest target is presumptively an intentional operator pin and the CLI preserves it with a notice (`--force` re-points). A real directory at the symlink name is never replaced. Dangling symlinks are repaired freely. The CLI is idempotent — re-running on an unchanged thread dir is a no-op with a notice.
+
+   **Non-blocking by design.** The CLI exits 0 in every failure mode. Symlink maintenance never aborts `memo-review`; the review sidecar is already complete (step 11) before this sub-step runs. The symlinks remain invisible to discovery (`enumerate_versions` / `enumerate_siblings` regex-exclude them; see `anvil/lib/snippets/thread_state.md`).
+
 ## Idempotence and resumability
 
 - A completed review (the final-named `<thread>.{N}.review/` dir exists) is never re-run. Re-invoking is a no-op with a notice. Per the staged-sidecar atomic-rename contract (issue #350), the final dir only ever exists in complete form — `verdict.md`, `scoring.md`, `comments.md`, `_summary.md`, `_meta.json`, and `_progress.json` are all present whenever the final dir exists; partial sidecars cannot manifest under this contract.

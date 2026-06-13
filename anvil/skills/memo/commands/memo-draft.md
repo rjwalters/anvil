@@ -127,6 +127,18 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
 
    See `commands/memo-render.md` §"Failure modes" for the full enumeration of non-blocking failure shapes and `commands/memo-render.md` §"Composability with `memo-draft` and `memo-revise`" for the design contract.
 
+9.6. **Update the `.latest` convenience symlinks (YOU run this)**: after the render sub-step, run the latest-phase CLI (`latest_phase.py`) on the thread directory — the parent of the `<thread>.{N}/` version dir you just wrote:
+
+       python3 .anvil/skills/memo/lib/latest_phase.py <thread-dir>
+
+   (Path shown for a consumer install; from the anvil source repo the CLI lives at `anvil/skills/memo/lib/latest_phase.py`. If bare `python3` cannot import the framework, run it under the consumer venv: `uv run --project .anvil python .anvil/skills/memo/lib/latest_phase.py <thread-dir>`.)
+
+   The CLI is the canonical maintenance path for the convenience-symlink convention (issue #473; see SKILL.md §"`.latest` convenience symlinks" and `anvil/lib/snippets/version_layout.md`): it delegates to `anvil.lib.latest_resolution.update_latest_symlinks()`, which points `<thread>.latest` at the new highest version dir — and `<thread>.latest.review` at the highest review sibling, when one exists — with relative targets (`ln -sfn` semantics), printing one line per symlink family; `latest_phase.py` is the single sanctioned write path for command bodies (the #153 exclusion contract, amended under #473) — do NOT hand-roll `ln -sfn` here.
+
+   **Pin preservation (#288).** A symlink still tracking the immediately-superseded version (set before the new version dir existed — the normal post-write shape) is re-pointed freely; any other symlink resolving to a real, non-highest target is presumptively an intentional operator pin and the CLI preserves it with a notice (`--force` re-points). A real directory at the symlink name is never replaced. Dangling symlinks are repaired freely. The CLI is idempotent — re-running on an unchanged thread dir is a no-op with a notice.
+
+   **Non-blocking by design.** The CLI exits 0 in every failure mode (missing thread dir, per-family filesystem errors, framework import failure). Symlink maintenance never aborts `memo-draft`; the drafter still reports per step 9. The symlinks remain invisible to discovery (`enumerate_versions` / `enumerate_siblings` regex-exclude them; see `anvil/lib/snippets/thread_state.md`).
+
 ## Voice and style overrides
 
 If `.anvil/skills/memo/voice.md` exists in the consumer repo, load it and apply its guidance during drafting. This is how a fund or author customizes voice without forking the skill.
