@@ -597,10 +597,14 @@ class TestCommandFileStructure:
         assert "never silently updated" in self.text
         assert "discards the cache" in self.text
 
-    def test_interview_synthesize_out_of_scope(self):
+    def test_interview_and_synthesize_modes_documented(self):
+        # Both v2 modes are now documented (synthesis shipped in #511): the
+        # judgment-laden --synthesize half is no longer deferred but
+        # implemented as its own mode section, advisory-only like --interview.
         assert "--interview" in self.text
         assert "--synthesize" in self.text
-        assert "deferred" in self.text
+        assert "Synthesis mode (`--synthesize`)" in self.text
+        assert "never** reads or writes the `●` matrix" in self.text
 
 
 class TestSkillMdStructure:

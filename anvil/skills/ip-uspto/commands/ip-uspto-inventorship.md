@@ -245,9 +245,62 @@ python3 anvil/skills/ip-uspto/lib/inventorship_interview.py \
 
 Report the packet count and any open-question-for-counsel flags, e.g. `interview: 3 packets written (alice-author, bob-builder, carol-coder); 1 vendored prompt, 1 bot-resolution block (1 UNRESOLVED — counsel follow-up)`. **Locked matrix** (`matrix_locked: true`): packets still generate (they are read-only consumers of v1 artifacts) and the matrix file stays byte-unchanged.
 
-### Out of scope for v2 (`--interview`) → `--synthesize` is the follow-up
+### Companion mode: `--synthesize` (v2, the judgment-laden half)
 
-Determination synthesis (`--synthesize`) — parsing completed interview packets back into per-element inventorship determinations (the candidacy table, disputed-elements classification, convergence rollup) — is the judgment-laden half and is the deferred **follow-up issue**, filed once the packet markdown shape this command emits is frozen (the synthesis parser depends on that exact shape). Synthesis proposes; the attorney attests. The advisory-only contract governs both halves.
+Determination synthesis (`--synthesize`, the section below) — parsing completed interview packets back into per-element inventorship determinations (the candidacy table, disputed-elements classification, convergence rollup) — is the judgment-laden half. It is **now implemented** (issue #511); the synthesis parser depends on the exact `--interview` packet markdown shape (now frozen by the merged `--interview` mode above). Synthesis proposes; the attorney attests. The advisory-only contract governs both halves.
+
+## Synthesis mode (`--synthesize`) — v2, opt-in
+
+`ip-uspto-inventorship <thread> --synthesize`
+
+Parses the **filled-in** interview packets (from `--interview`) back into a per-element inventorship **determination that the attorney reviews**, written to `<thread>/inventorship-evidence/synthesis.md`. Git history documents reduction to practice; the `--interview` packets capture each candidate's *conception* claim; `--synthesize` aggregates those claims into a candidacy table, classifies disputes, and rolls up convergent inventors — **all FOR COUNSEL, never adjudicated here**.
+
+**What `--synthesize` is — and is NOT (advisory-only contract carries over from v1/--interview):**
+
+- **IS** a determination FOR COUNSEL: a 7-section `synthesis.md` aggregating every candidate's filled packet (candidacy table → disputed elements → convergent inventors → suggested inventors → open questions → bot-resolution status → partial-response handling). Synthesis proposes; the attorney attests.
+- **IS NOT** an adjudication. It **never** reads or writes the `●` matrix (`inventorship.md`), **never** adds or removes named inventors, and **never infers conception in the absence of a candidate response** — `unanswered` (no returned date) and `partial` (returned packet, element skipped) are surfaced in §5 / §7 and **never** resolved to a conceiver. The bot is **never** a §115 inventor; bot-resolution status is reported in §6 but never auto-confirmed.
+- **Legal framing (load-bearing, do not weaken)**: `synthesis.md` is **ATTORNEY WORK PRODUCT**, defaulting to `counsel-eyes-only` (it aggregates every candidate's packet). The `●` rules + attestation block stay byte-identical. Without `--synthesize`, behavior is unchanged.
+
+`synthesis.md` is written to `<thread>/inventorship-evidence/synthesis.md`.
+
+### Phase S1 — Parse filled packets (LLM-in-command, calling `parse_packet` for the deterministic skeleton)
+
+Read every `<thread>/inventorship-evidence/interviews/{slug}.md` packet. If the `interviews/` dir is absent or empty, emit the notice "run `ip-uspto-inventorship <thread> --interview` first" and exit cleanly (exit `2`) — write no synthesis, touch nothing.
+
+The **deterministic skeleton** is lifted by the lib helper `parse_packet(markdown) -> ParsedPacket`: it extracts (a) the candidate display name from the `**Candidate:**` header, (b) the returned date from the signature block (`None`/unanswered when the date line is blank), (c) per-`### Element <key>` raw Q1–Q7 answer strings, and (d) a per-answer `placeholder_unchanged` flag (the `> _Your answer:_` line was not filled). This is the unit-testable contract against the frozen `--interview` `render_packet` shape.
+
+**Interpreting** those raw free-text answers into a `CandidateResponse` is the **LLM-in-command** half (the rubric-rebackport precedent: deterministic extraction in the lib, judgment in the runtime). A free-text Q1 like "around mid-Feb, on the whiteboard with Bob" needs light normalization; Q3 "Bob and I sketched it" needs name extraction. Construct one `CandidateResponse(candidate, returned_date, answers, notes)` per packet, where `answers` is `{element_key -> {"Q1": ..., "Q3": ..., …}}` and an element the candidate genuinely skipped is simply **absent** (→ `partial`). **Never** synthesize an answer the candidate did not give; an unanswered/partial element stays unanswered/partial. For a purely mechanical run (no LLM interpretation available), the lib's `response_from_parsed` / `build_synthesis` give a deterministic projection that drops placeholder-only elements — same invariants.
+
+### Phase S2 — Render the synthesis (deterministic lib)
+
+Once `CandidateResponse` objects exist, the classification + rollup is a **pure function** of structured input — call the lib's `render_synthesis(filing, thread, generated_date, inv_map, responses, bot_resolutions)`. It produces the 7-section `synthesis.md`:
+
+1. **Candidacy table** — per-element rows × candidate columns (`claimed-sole` / `claimed-joint` / `claimed-none` / `unanswered` / `partial`).
+2. **Disputed elements** — `CONFLICTING` (≥2 candidates claim sole conception), `MIXED` (sole + joint to reconcile), `NAMED NON-RESPONDENT` (a joint claimant names a conceiver who returned no packet). v2 never resolves these.
+3. **Convergent inventor list** — elements where the responses agree (one sole conceiver, or a consistent joint set).
+4. **Suggested inventor list (advisory-only)** — the per-candidate rollup of the convergent map, with §116 framing. Counsel makes the final call.
+5. **Open questions for counsel** — non-respondents and unclaimed elements.
+6. **Bot-author resolution status** — surfaced from the v1 bot-resolution chain, never auto-confirmed.
+7. **Partial-response handling** — every `unanswered` / `partial` element, with the explicit "v2 does NOT infer conception in the absence of a candidate response" reminder.
+
+The classification helpers (`_summarize_response_for_element`, `_identify_disputed_elements`, `_identify_convergent_elements`, `_suggest_inventors`, `_open_questions`, `_q1_indicates_no_claim`, `_q3_named_others`) are ported verbatim-adapted from the native `render_synthesis`, on anvil's `inv_map["elements"]` basis (the element *key* is the join — it is what `parse_packet` lifts from `### Element <key>` and what the §1/§2/§3 tables key on).
+
+Run the skill-local lib by direct file path (the skill dir is hyphenated; in an installed consumer repo the path is `.anvil/skills/ip-uspto/lib/inventorship_interview.py`):
+
+```bash
+python3 anvil/skills/ip-uspto/lib/inventorship_interview.py \
+  <thread>/inventorship-evidence/inventorship_map.json \
+  <thread>/inventorship-evidence/evidence.jsonl \
+  --thread <thread> \
+  --synthesize \
+  --interviews-dir <thread>/inventorship-evidence/interviews
+```
+
+This writes `<thread>/inventorship-evidence/synthesis.md`. Exit `0` = synthesis written; exit `2` = missing v1 artifacts OR missing/empty `interviews/` dir (the graceful "run `--interview` first" notice). The `●` matrix is never read or written.
+
+### Phase S3 — Commit / report
+
+Report the candidate count and any disputed-element flags, e.g. `synthesize: 3 packets parsed (alice-author, bob-builder, carol-coder); 1 CONFLICTING, 1 convergent-joint, 1 unanswered, 1 bot-row UNRESOLVED — counsel follow-up`. **Locked matrix** (`matrix_locked: true`): synthesis still generates (it is a read-only consumer of the interview packets + v1 artifacts) and the matrix file stays byte-unchanged.
 
 ## Re-validation pre-finalize
 
@@ -272,4 +325,4 @@ After the claim set stabilizes (during AUDITED → FINALIZED transition), re-run
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/inventorship.md` is written, stage ONLY `<thread>/inventorship.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/inventorship): <thread> [<state>]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"; the bracket is `INVENTORSHIP_DONE` on the pre-draft run, or the thread's current derived state on a pre-finalize re-validation), and push when `git.push` is also `true`. A preserved-matrix no-op run writes nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the command still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off). In `--evidence` mode, additionally stage `<thread>/inventorship-evidence/inventorship_map.json` and `<thread>/inventorship-evidence/evidence.jsonl` (explicitly by path) in the same commit when they were written or appended this run; default (no-flag) runs stage exactly what they staged before. In `--interview` mode, additionally stage `<thread>/inventorship-evidence/interviews/` (explicitly by path) when interview packets were written this run, using a generic commit subject (no claim language, contributor names, or findings in the subject — same hygiene as `--evidence`).
+If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/inventorship.md` is written, stage ONLY `<thread>/inventorship.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/inventorship): <thread> [<state>]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"; the bracket is `INVENTORSHIP_DONE` on the pre-draft run, or the thread's current derived state on a pre-finalize re-validation), and push when `git.push` is also `true`. A preserved-matrix no-op run writes nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the command still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off). In `--evidence` mode, additionally stage `<thread>/inventorship-evidence/inventorship_map.json` and `<thread>/inventorship-evidence/evidence.jsonl` (explicitly by path) in the same commit when they were written or appended this run; default (no-flag) runs stage exactly what they staged before. In `--interview` mode, additionally stage `<thread>/inventorship-evidence/interviews/` (explicitly by path) when interview packets were written this run, using a generic commit subject (no claim language, contributor names, or findings in the subject — same hygiene as `--evidence`). In `--synthesize` mode, stage ONLY `<thread>/inventorship-evidence/synthesis.md` (explicitly by path) when the synthesis was written this run, using the same generic commit subject (no contributor names, claim language, or findings in the subject — synthesis.md is `counsel-eyes-only` attorney work product; the subject must leak nothing).
