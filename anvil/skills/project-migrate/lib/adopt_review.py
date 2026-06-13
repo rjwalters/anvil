@@ -29,9 +29,40 @@ canonical ``_review.json`` that is **recognizable-but-explicitly-unscored**
 ``_meta.json`` foreign-provenance marker, while preserving the original
 ``review.md`` **byte-identical**. NO LLM call. NO score synthesis.
 
-Phase 3b (optional operator-driven LLM rescore — turning the stub into a
-real scored review) is **deferred to a separate issue**; this module never
-attempts it.
+Phase 3b: operator-driven LLM rescore (issue #507)
+--------------------------------------------------
+
+Phase 3b turns a Phase-3a stub into a **real scored review**. It is an
+opt-in ``--rescore`` modifier on ``--adopt-review`` — NOT a
+``rubric-rebackport`` extension (rubric-rebackport's detector only sees
+``.review`` siblings and its ``--rescore`` requires a prior anvil score a
+stub lacks; see the issue #507 curation comment for the three
+code-grounded reasons).
+
+The scoring itself is an **operator-driven LLM step that stays in the
+slash-command runtime** — the exact precedent set by
+``anvil/skills/rubric-rebackport/lib/rescore.py`` ("the actual LLM call
+belongs in the consumer's slash-command runtime, not in this Python
+library"). The Python here is a THIN **planner + marker-flip +
+atomic-write** harness:
+
+- :func:`build_rescore_plan` scans an adopted tree for sidecars carrying a
+  Phase-3a stub (``_review.json`` ``unscored: true`` + ``_meta.json``
+  ``source: foreign-adopted``), resolves the target anvil rubric per
+  sidecar (BRIEF ``documents:`` block → body-filename fallback), and
+  returns a (possibly empty) plan. A stub whose rubric cannot be resolved
+  is SKIPPED with an operator-visible note — never guessed (the honesty
+  guard, mirroring rubric-rebackport's ``inferred_skill is None`` → skip).
+- The operator/LLM reads the verbatim ``review.md`` + the resolved rubric
+  and produces per-dimension scores. The caller hands those back as a
+  :class:`ScoredReviewInput`.
+- :func:`apply_rescore_plan` writes the scored :class:`Review` back
+  per-sidecar atomically — reusing Phase 3a's ``_convert_one``
+  staged/backup/swap pattern so ``review.md`` stays byte-identical — flips
+  ``unscored`` ``True → False``, stamps the v0.4.0 per-review rubric
+  fields (``rubric_id`` / ``rubric_total`` / ``advance_threshold``) into
+  ``_meta.json``, and records the lineage (``rescored_from:
+  foreign-adopted``, retaining ``origin_filename``).
 
 Design notes
 ------------
@@ -84,10 +115,15 @@ from anvil.lib.critics import (
     _infer_critic_id,
     _infer_version_dir,
 )
-from anvil.lib.review_schema import Kind, Review
+from anvil.lib.review_schema import Kind, Review, Score, Verdict
 from anvil.lib.sidecar import cleanup_one_staging, staged_sidecar
 
 from .detect import _VERSION_DIR_RE
+from .rescore_rubrics import (
+    RubricIdentity,
+    _build_brief_skill_map,
+    resolve_rubric_for_sidecar,
+)
 
 
 class AdoptReviewError(ValueError):
@@ -452,14 +488,410 @@ def _convert_one(conv: StubConversion, backup: Path) -> None:
     shutil.rmtree(backup)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3b: operator-driven LLM rescore of stubs (issue #507)
+# ---------------------------------------------------------------------------
+
+
+# Stamped into the rescored ``_meta.json`` to record that this review was
+# scored FROM a foreign-adopted stub (the lineage breadcrumb the issue #507
+# curation comment asks for). The original ``source: foreign-adopted`` is
+# preserved alongside, so the full provenance chain is legible.
+RESCORED_FROM = PROVENANCE_SOURCE  # "foreign-adopted"
+RESCORED_BY = "anvil:project-migrate#507"
+
+
+def _is_foreign_stub(sidecar: Path) -> bool:
+    """Return True iff ``sidecar`` carries a Phase-3a foreign stub.
+
+    The dual marker (issue #454): ``_review.json`` with ``unscored: true``
+    AND ``_meta.json`` ``source: foreign-adopted``. A real review (no
+    ``unscored``), an already-rescored sidecar (``unscored: false``), or a
+    non-adopted ``_review.json`` is NOT a stub.
+    """
+    review_path = sidecar / CANONICAL_REVIEW_FILENAME
+    meta_path = sidecar / PROVENANCE_FILENAME
+    if not review_path.is_file() or not meta_path.is_file():
+        return False
+    try:
+        review = json.loads(review_path.read_text(encoding="utf-8"))
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(review, dict)
+        and review.get("unscored") is True
+        and isinstance(meta, dict)
+        and meta.get("source") == PROVENANCE_SOURCE
+    )
+
+
+@dataclass
+class RescoreTarget:
+    """One planned stub → scored-review rescore.
+
+    Attributes
+    ----------
+    sidecar_dir
+        The ``<slug>.{N}.<tag>/`` stub sidecar to rescore.
+    version_dir
+        The version-dir name the critic reviews (from the stub's
+        ``_review.json``). Echoed into the rescored ``Review.version_dir``.
+    critic_id
+        The trailing tag (the stub's ``critic_id``).
+    review_filename
+        The verbatim-preserved prose payload (always ``review.md``).
+    skill
+        The resolved owning skill (e.g. ``"memo"``). Surfaced in the
+        report; used only to look up the rubric.
+    rubric
+        The resolved target :class:`rescore_rubrics.RubricIdentity`. The
+        operator/LLM scores ``review.md`` against this; the writer stamps
+        its three fields.
+    skill_source
+        Where the skill inference came from (``"brief"`` /
+        ``"body-filename"``) — operator-facing provenance.
+    """
+
+    sidecar_dir: Path
+    version_dir: str
+    critic_id: str
+    skill: str
+    rubric: RubricIdentity
+    skill_source: str
+    review_filename: str = FOREIGN_REVIEW_FILENAME
+
+
+@dataclass
+class RescorePlan:
+    """The (possibly empty) batch of rescores for one adopted tree.
+
+    Attributes
+    ----------
+    directory
+        The adopted-tree root the plan was built for.
+    targets
+        One :class:`RescoreTarget` per foreign stub whose rubric resolved.
+        Empty when the tree has no resolvable stub (idempotent no-op).
+    skipped
+        ``(sidecar_name, reason)`` for sidecars left untouched: not a stub
+        (real review / already rescored), or a stub whose rubric could not
+        be resolved (the honesty guard — never guessed).
+    """
+
+    directory: Path
+    targets: List[RescoreTarget] = field(default_factory=list)
+    skipped: List[tuple] = field(default_factory=list)
+
+    @property
+    def is_noop(self) -> bool:
+        return not self.targets
+
+
+def build_rescore_plan(directory: Path) -> RescorePlan:
+    """Build a :class:`RescorePlan` of foreign stubs to rescore.
+
+    Pure planner (no mutations). Scans an already-adopted tree for sidecars
+    carrying a Phase-3a stub (``_review.json`` ``unscored: true`` +
+    ``_meta.json`` ``source: foreign-adopted``) and resolves the target
+    anvil rubric per stub (BRIEF ``documents:`` → body-filename fallback).
+
+    A stub whose rubric cannot be resolved is SKIPPED with an
+    operator-visible note (the honesty guard) — never assigned a guessed
+    rubric. A tree with no resolvable stub yields an EMPTY plan
+    (``plan.is_noop``): re-running on a fully-rescored tree is a no-op, and
+    running on a tree with no Phase-3a stub is an empty plan, not an error.
+
+    Raises
+    ------
+    AdoptReviewError
+        When ``directory`` does not exist or is not a directory.
+    """
+    directory = Path(directory).resolve()
+    if not directory.is_dir():
+        raise AdoptReviewError(
+            f"--adopt-review --rescore target {directory} does not exist "
+            f"or is not a directory."
+        )
+
+    # Resolve the slug→skill map ONCE for the whole tree (BRIEF walk).
+    brief_skill_map = _build_brief_skill_map(directory)
+
+    plan = RescorePlan(directory=directory)
+
+    for sidecar in _scan_adopted_tree(directory):
+        if not _is_foreign_stub(sidecar):
+            plan.skipped.append(
+                (sidecar.name, "not a foreign stub (real review or already rescored)")
+            )
+            continue
+        rubric, skill, source = resolve_rubric_for_sidecar(
+            sidecar, brief_skill_map=brief_skill_map
+        )
+        if rubric is None:
+            plan.skipped.append(
+                (
+                    sidecar.name,
+                    "rubric could not be resolved (no BRIEF entry, no "
+                    "body-filename match) — SKIPPED, never guessed",
+                )
+            )
+            continue
+        plan.targets.append(
+            RescoreTarget(
+                sidecar_dir=sidecar,
+                version_dir=_infer_version_dir(sidecar),
+                critic_id=_infer_critic_id(sidecar),
+                skill=skill,
+                rubric=rubric,
+                skill_source=source,
+            )
+        )
+
+    return plan
+
+
+@dataclass
+class ScoredReviewInput:
+    """Operator/LLM-supplied score set for one rescore target.
+
+    The slash-command runtime reads the verbatim ``review.md`` + the
+    resolved rubric and produces this — the ONLY judgment-laden input the
+    Python harness consumes. It carries the per-dimension scores, optional
+    findings, and optional critical flags. The harness derives ``total`` /
+    ``verdict`` deterministically from these against the target rubric (so
+    the operator cannot accidentally desync the verdict from the scores).
+
+    Attributes
+    ----------
+    sidecar_name
+        The target sidecar's directory name — the key that pairs this
+        input to its :class:`RescoreTarget`.
+    scores
+        Per-dimension :class:`anvil.lib.review_schema.Score` objects (the
+        full scorecard). Non-empty — flipping ``unscored`` to ``False``
+        REQUIRES a populated scorecard per the #454 schema contract.
+    findings
+        Optional itemized findings (default empty).
+    critical_flags
+        Optional top-level critical flags (default empty). Any non-empty
+        list forces a ``BLOCK`` verdict.
+    """
+
+    sidecar_name: str
+    scores: List[Score]
+    findings: List = field(default_factory=list)
+    critical_flags: List = field(default_factory=list)
+
+
+def build_scored_review(
+    target: RescoreTarget, scored: ScoredReviewInput
+) -> Review:
+    """Build the scored :class:`Review` for ``target`` from ``scored``.
+
+    Flips ``unscored`` to ``False``, populates ``scores`` / ``findings`` /
+    ``critical_flags``, stamps the rubric id, and derives ``total`` /
+    ``threshold`` / ``verdict`` deterministically:
+
+    - ``total`` = sum of non-null per-dimension scores.
+    - ``threshold`` = the rubric's ``advance_threshold``.
+    - ``verdict`` = ``BLOCK`` if any critical flag (or any
+      ``Score.critical``); else ``ADVANCE`` if ``total >= threshold``;
+      else ``REVISE``.
+
+    Raises
+    ------
+    AdoptReviewError
+        When ``scored.scores`` is empty (the #454 schema contract forbids
+        an empty scorecard once ``unscored`` is ``False``).
+    """
+    if not scored.scores:
+        raise AdoptReviewError(
+            f"rescore for {target.sidecar_dir.name} supplied no scores; "
+            f"a scored review REQUIRES a non-empty scorecard (flipping "
+            f"unscored=False with empty scores fails schema validation)."
+        )
+
+    total = sum(s.score for s in scored.scores if s.score is not None)
+    threshold = target.rubric.advance_threshold
+    has_critical = bool(scored.critical_flags) or any(
+        s.critical for s in scored.scores
+    )
+    if has_critical:
+        verdict = Verdict.BLOCK
+    elif total >= threshold:
+        verdict = Verdict.ADVANCE
+    else:
+        verdict = Verdict.REVISE
+
+    return Review(
+        schema_version="1",
+        kind=Kind.JUDGMENT,
+        version_dir=target.version_dir,
+        critic_id=target.critic_id,
+        rubric=target.rubric.id,
+        scores=scored.scores,
+        findings=scored.findings,
+        critical_flags=scored.critical_flags,
+        total=total,
+        threshold=threshold,
+        verdict=verdict,
+        unscored=False,
+    )
+
+
+def build_rescored_marker(target: RescoreTarget) -> dict:
+    """Build the rescored ``_meta.json`` marker for ``target``.
+
+    Flips ``unscored`` to ``False``, stamps the v0.4.0 per-review rubric
+    fields (``rubric_id`` / ``rubric_total`` / ``advance_threshold``), and
+    records lineage: ``rescored_from: foreign-adopted`` while retaining
+    ``source: foreign-adopted`` + ``origin_filename`` so the full
+    provenance chain (foreign → stub → scored) stays legible.
+    """
+    return {
+        "source": PROVENANCE_SOURCE,
+        "unscored": False,
+        "origin_filename": target.review_filename,
+        "adopted_by": PROVENANCE_ADOPTED_BY,
+        "rescored_from": RESCORED_FROM,
+        "rescored_by": RESCORED_BY,
+        "rubric_id": target.rubric.id,
+        "rubric_total": target.rubric.total,
+        "advance_threshold": target.rubric.advance_threshold,
+    }
+
+
+@dataclass
+class RescoreApplyResult:
+    """Typed outcome of :func:`apply_rescore_plan`.
+
+    Attributes
+    ----------
+    rescored
+        Sidecar dir names successfully rescored (scored review written).
+    skipped_no_input
+        Sidecar dir names in the plan for which the caller supplied no
+        :class:`ScoredReviewInput` (the LLM step produced nothing) — left
+        as honest stubs, untouched.
+    failed
+        ``(sidecar_name, error)`` for any rescore that failed; its dir was
+        restored byte-identical (still the original stub).
+    """
+
+    rescored: List[str] = field(default_factory=list)
+    skipped_no_input: List[str] = field(default_factory=list)
+    failed: List[tuple] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed
+
+
+def apply_rescore_plan(
+    plan: RescorePlan, scored_reviews: dict
+) -> RescoreApplyResult:
+    """Execute a rescore plan (``--rescore --apply`` only).
+
+    ``scored_reviews`` maps a target sidecar name → its
+    :class:`ScoredReviewInput` (produced by the operator/LLM step in the
+    slash-command runtime). A target with no entry is left as an honest
+    stub (recorded in ``skipped_no_input``) — the harness NEVER fabricates
+    scores.
+
+    Each rescore is per-sidecar atomic and verbatim-preserving — it reuses
+    the exact :func:`_rescore_one` staged/backup/swap pattern so
+    ``review.md`` stays byte-identical and the write is crash-safe via
+    ``anvil/lib/sidecar.py::staged_sidecar``. On any failure the original
+    stub is restored untouched.
+    """
+    result = RescoreApplyResult()
+
+    for target in plan.targets:
+        sidecar = target.sidecar_dir
+        scored = scored_reviews.get(sidecar.name)
+        if scored is None:
+            result.skipped_no_input.append(sidecar.name)
+            continue
+        backup = sidecar.parent / f".{sidecar.name}.bak"
+        try:
+            _rescore_one(target, scored, backup)
+            result.rescored.append(sidecar.name)
+        except BaseException as exc:  # noqa: BLE001 — isolate per sidecar
+            if backup.exists() and not sidecar.exists():
+                backup.rename(sidecar)
+            elif backup.exists():
+                shutil.rmtree(backup)
+            cleanup_one_staging(sidecar)
+            result.failed.append((sidecar.name, str(exc)))
+
+    return result
+
+
+def _rescore_one(
+    target: RescoreTarget, scored: ScoredReviewInput, backup: Path
+) -> None:
+    """Atomically replace ``target.sidecar_dir`` with the scored review.
+
+    Mirrors :func:`_convert_one` exactly (staged/backup/swap), but writes a
+    SCORED ``_review.json`` (``unscored=False``) + a rescored ``_meta.json``
+    (lineage + rubric stamping). ``review.md`` and any other original file
+    travel along byte-identical. Raises on any failure; the caller restores
+    from ``backup``.
+    """
+    sidecar = target.sidecar_dir
+    review = build_scored_review(target, scored)
+    marker = build_rescored_marker(target)
+
+    cleanup_one_staging(sidecar)
+
+    if backup.exists():
+        shutil.rmtree(backup)
+    sidecar.rename(backup)
+
+    with staged_sidecar(
+        final_dir=sidecar,
+        required_files=[
+            target.review_filename,
+            CANONICAL_REVIEW_FILENAME,
+            PROVENANCE_FILENAME,
+        ],
+    ) as staging:
+        for entry in sorted(backup.iterdir()):
+            if entry.name in (CANONICAL_REVIEW_FILENAME, PROVENANCE_FILENAME):
+                # Overwritten below with the scored payload — do NOT copy
+                # the stub versions across.
+                continue
+            if entry.is_dir():
+                shutil.copytree(entry, staging / entry.name)
+            else:
+                shutil.copy2(entry, staging / entry.name)
+        (staging / CANONICAL_REVIEW_FILENAME).write_text(
+            review.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
+        (staging / PROVENANCE_FILENAME).write_text(
+            json.dumps(marker, indent=2) + "\n", encoding="utf-8"
+        )
+
+    shutil.rmtree(backup)
+
+
 __all__ = [
     "AdoptReviewApplyResult",
     "AdoptReviewError",
     "AdoptReviewPlan",
+    "RescoreApplyResult",
+    "RescorePlan",
+    "RescoreTarget",
+    "ScoredReviewInput",
     "StubConversion",
     "apply_adopt_review_plan",
+    "apply_rescore_plan",
     "build_adopt_review_plan",
     "build_provenance_marker",
+    "build_rescore_plan",
+    "build_rescored_marker",
+    "build_scored_review",
     "build_stub_review",
     "FOREIGN_REVIEW_FILENAME",
     "PROVENANCE_FILENAME",
