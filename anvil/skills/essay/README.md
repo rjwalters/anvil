@@ -12,6 +12,12 @@ Short-form personal/professional essays and blog posts — markdown body, 500–
 | `commands/essay-draft.md` | Drafter. BRIEF + voice docs (3–5 corpus exemplars, recorded in `_progress.json.metadata.voice_exemplars`) + refs → `<slug>.md`. |
 | `commands/essay-review.md` | Reviewer. Deterministic pre-flight (numeric consistency `--blocking`, promoted hyperlink resolver, advisory rhetoric lint) + the three coherence LLM passes (dinner-party register, example coherence, claim-vs-claim arithmetic) + corpus-grounded scoring → `.review/` sidecar with `_gate.json`. |
 | `commands/essay-revise.md` | Reviser. Consumes review + gate sidecars, preserves flagged-as-working voice signatures, appends the `score_history` row. |
+| `examples/the-version-dir-is-the-unit/` | Vendored worked example (issue #531) — a synthesized original essay grounded in a `voice:` block (`VALUES.md` / `STYLE_GUIDE.md` / `corpus/`), a markdown-only `<slug>.md` body, `_progress.json` with `metadata.voice_exemplars`, and a converged `<slug>.1.review/` sidecar stamped `anvil-essay-v1` (39/44, `advance: true`). Illustrative, not a golden file; no `post.md` / `.tex` / `.cls` / `.pdf`. |
+| `examples/expected-thread.1/README.md` | The structural contract the vendored example satisfies (which files exist / parse / stamp — not text equality). |
+
+## Worked example
+
+`examples/the-version-dir-is-the-unit/` is a complete, converged essay thread vendored inside the skill (mirroring `anvil:proposal`'s `examples/gossamer-lan/`). The body is an **original, synthesized** short essay — it reproduces no rjwalters.info content. It exercises the dim-2 voice contract end to end: the project BRIEF declares a `voice:` block, the drafter records its consulted corpus exemplars in `_progress.json`, and the reviewer's `scoring.md` quotes both a body span and a corpus exemplar when justifying dim 2 *Voice fidelity* and dim 9 *Rhetorical economy*. The structural contract (not a golden file) is documented in `examples/expected-thread.1/README.md`; `tests/test_essay_example_brief_parses.py` pins the parse + slug-echo + no-`post.md` guards.
 
 ## What is distinctive in this skill
 
@@ -21,4 +27,4 @@ Short-form personal/professional essays and blog posts — markdown body, 500–
 
 ## Deferred (tracked follow-ups)
 
-Worked example; rjwalters.info `drafts/` migration (project-migrate + rubric-rebackport); PDF render path; example-coherence detector (LLM prose carries it until a second observed failure); audit/figures commands. (`voice.rhetoric_rules` wiring shipped in #479.)
+rjwalters.info `drafts/` migration (project-migrate + rubric-rebackport); PDF render path; example-coherence detector (LLM prose carries it until a second observed failure); audit/figures commands. (`voice.rhetoric_rules` wiring shipped in #479; the worked example shipped in #531 — `examples/the-version-dir-is-the-unit/`.)

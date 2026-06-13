@@ -130,7 +130,6 @@ Every critic-writing pass stamps `_meta.json` with `scorecard_kind: "human-verdi
 
 ## Deferred (tracked follow-ups; deliberately NOT in v1)
 
-- **Worked example** — same deferral as the datasheet (#418) and ip-uspto-provisional (#433) precedents.
 - **rjwalters.info `drafts/` migration** — 8 threads / ~22 version dirs of anvil-adjacent foreign grammar (`post.md` body, monolithic review.md, /30 rubric); needs `anvil:project-migrate` enrollment + `anvil:rubric-rebackport` stamping once this skill exists.
 - **PDF render path** — the publish target is TSX, not PDF.
 - **Example-coherence detector** — deferred per #462 gate 1 until a second observed failure; the LLM prose check carries it.
