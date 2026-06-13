@@ -31,4 +31,10 @@ description: Reviser for the essay skill. Consumes the review sibling + gate sid
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the `_progress.json` `done` write lands, stage ONLY this command's own `<thread>.{N+1}/` version dir, commit as `anvil(essay/revise): <thread>.{N+1} [REVISED]`, and push when `git.push` is also `true`. On the no-write paths (READY / BLOCKED at step 2–3) there is nothing to commit and the hook is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the revision still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after the `_progress.json` `done` write lands. On the no-write paths (READY / BLOCKED at step 2–3) there is nothing to commit and the hook is a silent no-op.
+- **Staging target**: ONLY this command's own `<thread>.{N+1}/` version dir.
+- **Commit**: `anvil(essay/revise): <thread>.{N+1} [REVISED]`.
