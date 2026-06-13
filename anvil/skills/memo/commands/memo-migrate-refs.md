@@ -106,4 +106,10 @@ The auto-invoke from `memo-migrate` uses `force=False` (the migration itself jus
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the stub writes complete, stage ONLY the `<thread>/refs/` stub files this command seeded (staged explicitly by path — never `git add -A`), commit as `anvil(memo/migrate-refs): <thread>.{N} [<state>]` (where `<thread>.{N}` names the thread's latest version and the bracket carries the thread's current derived state per SKILL.md §State machine — refs seeding does not advance the state machine), and push when `git.push` is also `true`. An idempotent no-op re-run seeds nothing, so the hook has nothing to commit and is a silent no-op. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the command still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after the stub writes complete. An idempotent no-op re-run seeds nothing, so the hook has nothing to commit and is a silent no-op.
+- **Staging target**: ONLY the `<thread>/refs/` stub files this command seeded (staged explicitly by path — never `git add -A`).
+- **Commit**: `anvil(memo/migrate-refs): <thread>.{N} [<state>]` — `<thread>.{N}` names the thread's latest version and the bracket carries the thread's current derived state per SKILL.md §State machine, since refs seeding does not advance the state machine.

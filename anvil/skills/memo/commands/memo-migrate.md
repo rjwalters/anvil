@@ -258,4 +258,10 @@ The rule is the most forgiving of the cohort layouts surfaced by the bower migra
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the migration's `_progress.json` writes complete, stage ONLY the paths the migration wrote — the migrated `<thread>.{N}/` version dir(s), the project `BRIEF.md` it created or merged, and any `refs/` stubs seeded by the step-13 auto-invoke — each staged explicitly by path (never `git add -A`), commit as `anvil(memo/migrate): <thread>.{N} [<state>]` (the bracket carries the thread's derived state per SKILL.md §State machine after migration), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the migration still reports its own result unchanged; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase (the migration still reports its own result unchanged). When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after the migration's `_progress.json` writes complete.
+- **Staging target**: ONLY the paths the migration wrote — the migrated `<thread>.{N}/` version dir(s), the project `BRIEF.md` it created or merged, and any `refs/` stubs seeded by the step-13 auto-invoke — each staged explicitly by path (never `git add -A`).
+- **Commit**: `anvil(memo/migrate): <thread>.{N} [<state>]` — the bracket carries the thread's derived state per SKILL.md §State machine after migration.
