@@ -80,7 +80,7 @@ If aggregate **<39** OR any unresolved critical flag, write the next version:
 
 ## Convergence loop integration
 
-After Path B the orchestrator runs the configured critics (`review + s112 + priorart`) on `<thread>.{N+1}/`, then calls this command again. The loop ends at `READY` (Path A), `BLOCKED` (cap), or `STALLED` (plateau). There is no pre-flight gate in Phase 1 (the provisional pre-flight is a tracked follow-up).
+After Path B the orchestrator runs the **mechanical pre-flight gate** `ip-uspto-provisional-pre-flight <thread>` on the new `<thread>.{N+1}/` (gating the `REVISED → REVIEWED` edge), then — on pre-flight pass — runs the configured critics (`review + s112 + priorart`, plus the opt-in `claimseed` when configured) on `<thread>.{N+1}/`, then calls this command again. If the pre-flight FAILS (any `blocker`), the orchestrator reports `PRE_FLIGHT_FAILED — revise required` and this command runs again with the pre-flight `findings.md` fed in as additional revision input (alongside the critic findings) — address the mechanical blockers before re-running critics. The loop ends at `READY` (Path A), `BLOCKED` (cap), or `STALLED` (plateau). See `commands/ip-uspto-provisional-pre-flight.md` (issue #502).
 
 ## Critical flag policy
 

@@ -88,7 +88,9 @@ Thresholds: **≥39/45 advances** (legal artifact → the high threshold band pe
 
 Iteration cap: default `max_iterations: 5`, overridable via `<thread>/.anvil.json`. Exceeding the cap marks the thread `BLOCKED` (human review). Stable-score termination (`STALLED`) follows `anvil/lib/snippets/rubric.md` §"Termination resolution order".
 
-The `AUDITED` state is reached by `ip-uspto-provisional-audit` (the post-convergence fact-check on a `READY` version), and the terminal `COUNSEL-READY` state by `ip-uspto-provisional-finalize` (which assembles the `<thread>.counsel/` filing package from an `AUDITED` version). The finalizer's only gate is audit-passed — there is no inventorship-lock gate and no pre-flight gate (the provisional pre-flight is a tracked follow-up, issue #502).
+The `AUDITED` state is reached by `ip-uspto-provisional-audit` (the post-convergence fact-check on a `READY` version), and the terminal `COUNSEL-READY` state by `ip-uspto-provisional-finalize` (which assembles the `<thread>.counsel/` filing package from an `AUDITED` version). The finalizer's only gate is audit-passed — there is no inventorship-lock gate (an inventorship-lite pass is a tracked follow-up).
+
+A **mechanical pre-flight gate** (`ip-uspto-provisional-pre-flight`, issue #502) now gates the `REVISED → REVIEWED` loop edge: after each revise, before the next critic cycle, the pre-flight runs deterministic provisional-shape checks (paragraph numbering, reference-numeral coherence, required-section presence, documentclass, render-gate compile/overfull/placeholder, plus an advisory §112 enablement-stub scan) so the critics don't spend attention budget on mechanical defects. It is a loop-edge gate, **not** a finalizer gate. It drops the non-provisional abstract / claim-numbering / claim-count / 37 CFR 1.77(b) checks (the claims-optional, no-abstract, no-1.77(b) posture) and replaces 1.77(b) with the five-id required-section presence check. See `commands/ip-uspto-provisional-pre-flight.md`.
 
 ## Command dispatch
 
@@ -99,13 +101,15 @@ The `AUDITED` state is reached by `ip-uspto-provisional-audit` (the post-converg
 | `ip-uspto-provisional-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` |
 | `ip-uspto-provisional-112 <thread>` | §112(a) enablement-depth critic | latest `<thread>.{N}/` | `<thread>.{N}.s112/` |
 | `ip-uspto-provisional-prior-art <thread>` | prior-art critic | latest `<thread>.{N}/` + `<thread>/prior-art/**` | `<thread>.{N}.priorart/` |
+| `ip-uspto-provisional-pre-flight <thread>` | pre-flight checker (mechanical gate, `REVISED → REVIEWED` edge) | latest `<thread>.{N}/` (`spec.tex`, optional `claims.tex`, `drawings/`, `_outline.json`) | `<thread>.{N}.preflight/` (`_summary.md` records `passed`) |
+| `ip-uspto-provisional-claims-seed <thread>` | claim-seed critic (**opt-in**, not in default set) | latest `<thread>.{N}/` (`claims.tex` IFF present, `spec.tex`) + optional `<thread>/BRIEF.md` | `<thread>.{N}.claimseed/` (dim 9 contribution; `null` when no seed) |
 | `ip-uspto-provisional-revise <thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.<tag>/` critic siblings | `<thread>.{N+1}/` with `_revision-log.md`, or a `READY` marker |
 | `ip-uspto-provisional-audit <thread>` | auditor | `READY` `<thread>.{N}/` + `<thread>/BRIEF.md` + `<thread>/prior-art/**` | `<thread>.{N}.audit/` (`_summary.md` records `passed`) |
 | `ip-uspto-provisional-finalize <thread>` | finalizer | `AUDITED` `<thread>.{N}/` + `<thread>.{N}.audit/_summary.md` + `<thread>/BRIEF.md` | `<thread>.counsel/` filing package (spec.pdf, drawings.pdf, SB/16 cover-sheet placeholder, `counsel_memo.md`, README, manifest) |
 
 **Intake**: there is no `ip-uspto-provisional-intake` command in Phase 1. The brief shape is identical to the non-provisional's; run **`ip-uspto-intake <thread>`** (from `anvil:ip-uspto`) to convert a raw inventor disclosure into `<thread>/BRIEF.md`, or hand-author one to the same shape. The orchestrator recommends exactly that for `EMPTY` threads.
 
-**No `s101` critic, no `claims` critic**: a provisional is never examined, so Alice/Mayo screening of claims that don't exist is not a useful review pass; statutory-subject-matter posture is better assessed at conversion time against real claims. The claim-seed critic is a tracked follow-up.
+**No `s101` critic, no required `claims` critic**: a provisional is never examined, so Alice/Mayo screening of claims that don't exist is not a useful review pass; statutory-subject-matter posture is better assessed at conversion time against real claims. The deliberately-lighter, conversion-readiness-oriented analog — `ip-uspto-provisional-claims-seed` (issue #502) — now ships as an **opt-in** critic: it scores defects inside a *present* claim-seed (capped at `major`; disclosure-gap defects routed to `s112`) and contributes positive evidence to dim 9 (Conversion readiness), but it **never penalizes the absence** of a claim-seed and is **not in the default critic set** (`review + s112 + priorart`). See `commands/ip-uspto-provisional-claims-seed.md`.
 
 ## Multi-critic primitive — sibling directory convention
 
@@ -120,6 +124,10 @@ The standard N-parallel-critics-one-reviser shape, with the default critic set `
 ```
 
 Operators can subset via `{ "critics": ["review", "s112"] }` in `<thread>/.anvil.json` (e.g., skip `priorart` when no prior art was supplied — though that critic also degrades gracefully to a `null` score). The reviser refuses to advance without all configured critics present. **`s112` may not be subsetted out** — it owns the dominant dimension; a configuration removing it is an error the reviser reports.
+
+The **`claimseed`** tag (the opt-in `ip-uspto-provisional-claims-seed` critic, issue #502) is **NOT in the default set** and is added explicitly: `{ "critics": ["review", "s112", "priorart", "claimseed"] }`. Its sibling is `<thread>.{N}.claimseed/`. Because it is opt-in, the reviser must **NOT refuse to advance when `claimseed` is absent** — only the *configured* critics gate advancement, and `claimseed` is never in the configured set by default. When opted in on a thread with no claim-seed at version `N`, the critic still writes a valid sibling scoring nothing (dim 9 `null`, no finding, no flag) — the absence of a claim-seed is never penalized.
+
+A **mechanical pre-flight gate** sits on the loop's `REVISED → REVIEWED` edge: after each revise produces `<thread>.{N+1}/`, run `ip-uspto-provisional-pre-flight <thread>` (writing `<thread>.{N+1}.preflight/`) **before** running the critics on the new version. On pass, run the critics; on fail, the orchestrator reports `PRE_FLIGHT_FAILED — revise required` and the operator re-runs `ip-uspto-provisional-revise` with the pre-flight findings as input. The pre-flight is a `machine-summary` sibling (like the critics) but scores no rubric dimension — it is a deterministic gate, not a scored perspective.
 
 ### Uniform critic output schema
 
