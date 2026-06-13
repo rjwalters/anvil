@@ -51,7 +51,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # The pinned schema version. Bump only when the on-disk shape changes in a
@@ -365,6 +365,20 @@ class Review(BaseModel):
             "otherwise."
         ),
     )
+    unscored: bool = Field(
+        False,
+        description=(
+            "True ONLY for honest unscored-foreign stubs produced by "
+            "`anvil:project-migrate --adopt-review` (issue #454). A "
+            "foreign critic sidecar's prose `review.md` was never scored "
+            "on any anvil rubric, so the stub carries empty `scores` and "
+            "null `total`/`threshold`/`verdict` rather than fabricated "
+            "values. This flag is the ONLY condition under which `scores` "
+            "may be empty; for every real (scored) review the validator "
+            "still requires a full scorecard. Absent (the default `False`) "
+            "is byte-identical to a pre-#454 Review."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_kind_required_fields(self) -> "Review":
@@ -379,17 +393,25 @@ class Review(BaseModel):
                         f"kind='tool_evidence' requires tool_calls on every "
                         f"finding; finding[{i}] is missing tool_calls"
                     )
-        return self
-
-    @field_validator("scores")
-    @classmethod
-    def _scores_nonempty(cls, v: List[Score]) -> List[Score]:
-        if not v:
+        # Empty `scores` is valid ONLY for an honest unscored-foreign stub
+        # (issue #454): such a stub carries no fabricated dimensions. Every
+        # real (scored) review must still enumerate its full scorecard so
+        # the aggregator can mean-of-non-null cleanly. The check lives here
+        # (model-level, after `unscored` is bound) rather than as a
+        # standalone field_validator so it can consult `self.unscored`.
+        if not self.scores and not self.unscored:
             raise ValueError(
                 "scores must enumerate every rubric dimension; empty list "
-                "is not valid even for null-everywhere critics"
+                "is not valid even for null-everywhere critics (set "
+                "unscored=True only for an honest unscored-foreign stub)"
             )
-        return v
+        if self.scores and self.unscored:
+            raise ValueError(
+                "unscored=True marks an honest unscored-foreign stub and "
+                "requires empty `scores`; a stub must never carry fabricated "
+                "dimensions"
+            )
+        return self
 
 
 class AggregatedReview(BaseModel):

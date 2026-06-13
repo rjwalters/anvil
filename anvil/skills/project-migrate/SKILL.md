@@ -144,6 +144,7 @@ hand-rolled unstamped review content stays invisible-but-intact to
 | `/anvil:project-migrate --enroll <file> [...]` | **Single-file enrollment** (issue #406): wrap loose `.md`/`.tex` files into project threads. Dry-run by default; `--apply` executes. Optional `--project <dir>`, `--slug <slug>`, `--artifact-type <type>`. |
 | `/anvil:project-migrate --adopt-vn <dir>` | **vN report-dir adoption** (issue #432 Phase 1): adopt a foreign `v{N}/` family (+ `v{N}.review/` siblings) into `<project>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Optional `--slug <slug>`, `--artifact-type <type>`. |
 | `/anvil:project-migrate --adopt-family <dir> --tag-map <file> --artifact-type <type>` | **Letter-family adoption** (issue #440 — Phase 2 of #432): adopt foreign `{Project}.{Letter}.{N}` families (+ foreign-tagged critic siblings, mapped declaratively) into `<dir>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Slugs are derived (no `--slug`); `--artifact-type` is REQUIRED. |
+| `/anvil:project-migrate --adopt-review <dir>` | **Foreign `review.md` stub conversion** (issue #454 — Phase 3a of #432): on an already-adopted tree, convert each `<slug>.{N}.<tag>/` critic sibling holding only a single-file prose `review.md` into a recognizable-but-explicitly-**unscored** `_review.json` stub (+ `_meta.json` foreign-provenance marker), preserving `review.md` byte-identical. **NO LLM, NO synthesized scores.** Dry-run by default; `--apply` executes. |
 
 See `commands/project-migrate.md` for the operator-facing contract.
 
@@ -252,8 +253,55 @@ sphere survey). `--adopt-family` is their conversion path:
 - Renamed sidecars holding only a single-file `review.md` payload stay
   **invisible-but-intact** to `discover_critics` (the #346 additive
   contract); content conversion to a recognizable review payload is
-  **Phase 3** (issue #454 — `anvil:rubric-rebackport` does not apply:
-  it targets anvil-shaped legacy reviews only).
+  **Phase 3a** (`--adopt-review`, issue #454 — see next section;
+  `anvil:rubric-rebackport` does not apply: it targets anvil-shaped
+  legacy reviews only).
+
+## Foreign `review.md` stub conversion (`--adopt-review`, issue #454 — Phase 3a of #432)
+
+Phases 1–2 make foreign version-dir and critic-sibling **names**
+canonical. `--adopt-review` is the deferred **content** step: it converts
+a foreign critic sibling's single-file prose `review.md` into a payload
+`anvil/lib/critics.py::discover_critics` recognizes — so the review
+history becomes visible to the reviser. It runs **standalone on an
+already-adopted tree** (single responsibility; compose with
+`--adopt-family` via two operator runs), touches **no `BRIEF.md`**, and is
+**dry-run by default**.
+
+**Honest scope: STUB conversion, NOT prose→score extraction.** Foreign
+`review.md` payloads (sphere `.enablement` / `.s101` / `.fto` / `.critic`
+/ `.audit2` / `.pre_flight` siblings) were **never scored on any anvil
+rubric** — there is no per-dimension table, no `Total: X/Y`, no
+`advance: true|false` to parse. Synthesizing /44 scores from foreign prose
+would be **fabrication**, and a deterministic pass cannot do it honestly.
+So this mode does the minimal honest thing per sidecar:
+
+- Write a canonical `_review.json` that is **recognizable-but-explicitly-
+  unscored**: empty `scores` / `findings` / `critical_flags`; null
+  `total` / `threshold` / `verdict`; `unscored: true` (the one schema flag
+  that lets `scores` be empty — issue #454 added it to `review_schema.py`,
+  additive, absent = byte-identical).
+- Write a sibling `_meta.json` foreign-provenance marker
+  (`{"source": "foreign-adopted", "unscored": true, "origin_filename":
+  "review.md", "adopted_by": "anvil:project-migrate#454"}`) so a reader
+  distinguishes an unscored-foreign stub from a real review.
+- Preserve the original `review.md` **byte-identical** — the stub is
+  purely additive. All writes go through
+  `anvil/lib/sidecar.py::staged_sidecar` (per-sidecar atomic, crash-safe;
+  the live dir is moved aside and restored untouched on any mid-write
+  failure).
+
+**NO LLM call. NO score synthesis.** Idempotent: a sidecar that already
+carries `_review.json` is skipped (re-run = empty plan). An empty-scores
+stub passes `_has_recognizable_review` and feeds `aggregate`, contributing
+**zero dimensions** — it never corrupts a real co-sibling's total or flips
+its verdict (regression-locked in the discovery test).
+
+**Phase 3b (deferred, separate issue): optional operator-driven LLM
+rescore.** Turning a stub into a real scored review is an LLM-judgment
+problem (closer to `rubric-rebackport --rescore`'s per-review stamping
+territory) and is explicitly out of scope for Phase 3a. This skill mode
+never attempts it.
 
 ## Atomicity & rollback
 
@@ -421,6 +469,33 @@ Test files:
   adopt is a no-op; post-adopt names pass `find_foreign_families`
   clean on all three predicates; `review.md`-only sidecars stay
   undiscovered by `discover_critics` (#346 regression) (issue #440).
+- `test_project_migrate_adopt_review_detect.py` — finds `review.md`-only
+  sidecars under an adopted tree; ignores already-converted
+  (`_review.json`-present) and real scored siblings; never treats version
+  dirs / bodies as sidecars (issue #454).
+- `test_project_migrate_adopt_review_plan.py` — stub paths planned;
+  `review.md` recorded as PRESERVED (never a rename source); the stub
+  `Review` is unscored/empty and validates against `review_schema`; the
+  provenance marker shape is pinned (issue #454).
+- `test_project_migrate_adopt_review_apply.py` — `_review.json` +
+  `_meta.json` written via `staged_sidecar`; `review.md` byte-identical
+  pre/post (hash compare); injected mid-write failure restores the dir
+  untouched; whole-batch failure leaves the tree byte-identical
+  (issue #454).
+- `test_project_migrate_adopt_review_dry_run.py` — dry-run default leaves
+  the input tree byte-identical (snapshot-and-diff); the report names the
+  conversions and the "no LLM / no synthesized scores" contract
+  (issue #454).
+- `test_project_migrate_adopt_review_idempotent.py` — second `--apply`
+  yields an empty plan, zero diff (issue #454).
+- `test_project_migrate_adopt_review_discovery.py` — post-apply
+  `discover_critics` finds the converted sidecar, `load_review` parses the
+  stub, and `aggregate([stub, real_sibling])` does NOT corrupt the real
+  sibling's total or flip its verdict (the zero-dimension-tolerance check
+  — the load-bearing risk) (issue #454).
+- `test_project_migrate_adopt_review_doc.py` — pins the `--adopt-review`
+  flag, the "no LLM / no synthesized scores" contract, the stub field
+  set, and the Phase 3a/3b split (issue #454).
 
 ## Git sync hook (opt-in, off by default)
 

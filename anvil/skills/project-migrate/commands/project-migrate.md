@@ -23,6 +23,9 @@ post-#295 / post-#296 model.
 
 /anvil:project-migrate --adopt-family <dir>            # dry-run letter-family adoption
     --tag-map <file> --artifact-type <type> [--apply]
+
+/anvil:project-migrate --adopt-review <dir>           # dry-run review.md stub conversion
+    [--apply]
 ```
 
 `<project-dir>` is the project root: the directory that holds (or will hold)
@@ -55,6 +58,16 @@ version-dir families (with foreign-tagged critic siblings mapped
 through a declarative `--tag-map`) into the canonical
 `<dir>/<slug>/<slug>.{N}/` shape. Adoption runs through
 `orchestrate.run_adopt_family(...)` (dry-run by default) — see §8
+below.
+
+`--adopt-review <dir>` selects **foreign `review.md` stub-conversion
+mode** (issue #454 — Phase 3a of #432): on an ALREADY-ADOPTED tree, it
+converts each `<slug>.{N}.<tag>/` critic sibling holding only a
+single-file prose `review.md` into a recognizable-but-explicitly-
+**unscored** `_review.json` stub (+ a `_meta.json` foreign-provenance
+marker), preserving `review.md` byte-identical. **NO LLM call, NO
+synthesized scores.** Conversion runs through
+`orchestrate.run_adopt_review(...)` (dry-run by default) — see §9
 below.
 
 ### 1. Detect current shape
@@ -367,8 +380,66 @@ Hard errors (plan-time, pre-mutation — the whole batch aborts):
 - A BRIEF-less project root containing other thread-shaped dirs — run
   plain `project-migrate` on it first.
 
-Out of scope (deferred to issue #454, Phase 3): single-file
-`review.md` → recognizable-review-payload conversion.
+Single-file `review.md` → recognizable-review-payload conversion is
+**Phase 3a** (`--adopt-review`, issue #454 — see §9). An optional
+operator-driven LLM rescore (turning a stub into a real scored review)
+is **Phase 3b**, deferred to a separate issue.
+
+### 9. Foreign `review.md` stub-conversion mode (`--adopt-review`, issue #454 — Phase 3a of #432)
+
+```
+/anvil:project-migrate --adopt-review agents/agent-workspace
+/anvil:project-migrate --adopt-review agents/agent-workspace --apply
+```
+
+Call `orchestrate.run_adopt_review(directory, apply=...)`. The flow runs
+**standalone on an already-adopted tree** (canonical
+`<slug>/<slug>.{N}/` version dirs with `<slug>.{N}.<tag>` siblings); it
+touches **no `BRIEF.md`** and is **dry-run by default** like every mode
+in this skill. Steps:
+
+1. **Scan** the adopted tree for `<slug>.{N}.<tag>/` critic siblings
+   that hold only a single-file prose `review.md` — those that FAIL
+   `critics._has_recognizable_review` and so stay invisible to
+   `discover_critics` (the #346 additive contract). A sidecar that
+   already carries `_review.json` (a prior conversion, or a real review)
+   is skipped.
+
+2. **Plan** one stub conversion per such sidecar. The original
+   `review.md` is recorded as PRESERVED, never as a rename source.
+
+3. **Honest STUB conversion — NO LLM, NO synthesized scores.** Foreign
+   `review.md` payloads were never scored on any anvil rubric (no
+   per-dimension table, no `Total: X/Y`, no `advance: true|false`), so
+   extracting scores would be **fabrication**. Each conversion writes:
+   - a canonical `_review.json` with empty `scores` / `findings` /
+     `critical_flags`, null `total` / `threshold` / `verdict`, and
+     `unscored: true` (the schema flag — issue #454, additive — that
+     lets `scores` be empty for an honest unscored-foreign stub);
+   - a sibling `_meta.json` foreign-provenance marker
+     `{"source": "foreign-adopted", "unscored": true, "origin_filename":
+     "review.md", "adopted_by": "anvil:project-migrate#454"}`;
+   - and preserves `review.md` **byte-identical** (the stub is purely
+     additive).
+
+4. **Apply** (`--apply` only): per-sidecar atomic + crash-safe via
+   `anvil/lib/sidecar.py::staged_sidecar`. The live dir is moved aside,
+   the full replacement (verbatim `review.md` + the two new files) is
+   staged and atomically renamed in, and the moved-aside original is
+   removed. On any mid-write failure the original dir is restored
+   untouched and the conversion is recorded as failed (failures isolate
+   per sidecar).
+
+5. **Idempotence**: re-running finds no `review.md`-only sidecar and is
+   a successful no-op (even under `--apply`). An empty-`scores` stub
+   passes `_has_recognizable_review` and feeds `aggregate`, contributing
+   **zero dimensions** — it never corrupts a real co-sibling's total or
+   flips its verdict.
+
+**Phase 3b (deferred, separate issue)**: an optional operator-driven LLM
+rescore that turns a stub into a real scored review — an LLM-judgment
+problem (closer to `rubric-rebackport --rescore`'s territory). This mode
+NEVER attempts it.
 
 ## Output
 
