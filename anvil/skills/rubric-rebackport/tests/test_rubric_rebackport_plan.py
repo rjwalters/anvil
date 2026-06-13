@@ -14,6 +14,7 @@ sys.path.insert(0, str(_HERE))
 
 from _skill_lib import detect, plan  # noqa: E402
 from _rebackport_fixtures import (  # noqa: E402
+    build_datasheet_44_unstamped,
     build_deck_thread_no_brief,
     build_essay_44_unstamped,
     build_fully_stamped,
@@ -410,6 +411,46 @@ class TestEssay44AutoInference(unittest.TestCase):
             self.assertEqual(rp.stamp_meta.rubric_id, "anvil-essay-v1")
             self.assertEqual(rp.stamp_meta.rubric_total, 44)
             self.assertEqual(rp.stamp_meta.advance_threshold, 35)
+
+
+class TestDatasheet44AutoInference(unittest.TestCase):
+    """End-to-end: a datasheet review with `rubric_total: 44` but no
+    `rubric_id` should resolve to `anvil-datasheet-v1` without
+    `--legacy-rubric` (issue #486, mirroring the #482
+    TestEssay44AutoInference pattern).
+
+    This is the path #484 left stranded: the `("datasheet", 44)`
+    KNOWN_RUBRICS row and detect's `datasheet` BRIEF map row both
+    existed, but `artifact_type: datasheet` was rejected by strict
+    BRIEF validation because the type was absent from
+    `REGISTERED_ARTIFACT_TYPES`. #486 registers it, giving rule-1
+    BRIEF-route inference a validated carrier. The body is a fixed-name
+    `datasheet.tex` that is intentionally NOT in
+    `_BODY_FILENAME_TO_SKILL`, so rule-2 stays inert — the BRIEF route
+    is the only path (parity with provisional's `spec.tex`).
+    """
+
+    def test_datasheet_44_heuristic_inference_resolves_to_v1(self) -> None:
+        with TemporaryDirectory() as td:
+            project = build_datasheet_44_unstamped(Path(td))
+            inv = inventory_tree(project)
+            self.assertEqual(len(inv.reviews), 1)
+            self.assertEqual(inv.reviews[0].inferred_skill, "datasheet")
+            p = build_plan(inv, mode=Mode.STAMP_ONLY)
+            rp = p.reviews[0]
+            self.assertFalse(
+                rp.skipped,
+                f"Expected stamping plan; got skip with reason: "
+                f"{rp.skip_reason}",
+            )
+            self.assertIsNotNone(rp.rubric)
+            self.assertEqual(rp.rubric.id, "anvil-datasheet-v1")
+            self.assertEqual(rp.rubric.total, 44)
+            self.assertEqual(rp.rubric.advance_threshold, 39)
+            self.assertIsNotNone(rp.stamp_meta)
+            self.assertEqual(rp.stamp_meta.rubric_id, "anvil-datasheet-v1")
+            self.assertEqual(rp.stamp_meta.rubric_total, 44)
+            self.assertEqual(rp.stamp_meta.advance_threshold, 39)
 
 
 # ---------------------------------------------------------------------------

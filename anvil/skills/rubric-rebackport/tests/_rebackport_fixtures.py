@@ -536,7 +536,79 @@ def build_essay_44_unstamped(
     return project_dir
 
 
+# ---------------------------------------------------------------------------
+# Fixture: datasheet_44_unstamped (registry backfill — issue #486)
+# ---------------------------------------------------------------------------
+
+
+def _meta_datasheet_44_unstamped() -> dict:
+    """Return a datasheet reviewer ``_meta.json`` with rubric_total but no rubric_id."""
+    return {
+        "critic": "review",
+        "role": "datasheet-review.md",
+        "started": "2026-06-01T12:00:00Z",
+        "finished": "2026-06-01T12:05:00Z",
+        "model": "claude-opus-4-1",
+        "schema_version": 1,
+        "scorecard_kind": "human-verdict",
+        # Datasheet review missing its rubric_id stamp. The planner must
+        # heuristically pick `anvil-datasheet-v1` from the
+        # (skill=datasheet, total=44) pair without --legacy-rubric.
+        "rubric_total": 44,
+    }
+
+
+def build_datasheet_44_unstamped(
+    root: Path,
+    project_name: str = "unstamped-datasheet-44",
+    *,
+    slug: str = "ax101-objdet",
+) -> Path:
+    """Build a datasheet thread whose review is missing `rubric_id`.
+
+    Exercises the `("datasheet", 44)` catalog row (#484) through the
+    BRIEF route (rule 1). The body is a fixed-name `datasheet.tex`,
+    which is deliberately ABSENT from detect's
+    `_BODY_FILENAME_TO_SKILL` table (BRIEF-route-only contract,
+    matching `ip-uspto-provisional`'s `spec.tex`; issue #486), so
+    rule-2 cannot fire — the only inference path is the registered
+    `artifact_type: datasheet` BRIEF entry that #486 makes survive
+    strict validation.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    _write(project_dir / "BRIEF.md", _brief_for_skill(slug, "datasheet"))
+
+    thread_dir = project_dir / slug
+    v1 = thread_dir / f"{slug}.1"
+    # Fixed-name tex body — NOT slug-derived, NOT in rule-2 table.
+    _write(v1 / "datasheet.tex", f"% {slug} v1\n\\documentclass{{anvil-datasheet}}\n")
+    _write(
+        v1 / "_progress.json",
+        json.dumps(_progress_legacy(slug), indent=2) + "\n",
+    )
+
+    review_dir = thread_dir / f"{slug}.1.review"
+    _write(
+        review_dir / "_meta.json",
+        json.dumps(_meta_datasheet_44_unstamped(), indent=2) + "\n",
+    )
+    _write(
+        review_dir / "_summary.md",
+        "---\n"
+        "for_version: 1\n"
+        "scorecard_kind: human-verdict\n"
+        "critical_flag: false\n"
+        "---\n"
+        "\n"
+        "# Review summary\n\nUnstamped datasheet summary body.\n",
+    )
+    _write(review_dir / "verdict.md", "# Verdict\n\nDatasheet verdict.\n")
+    return project_dir
+
+
 __all__ = [
+    "build_datasheet_44_unstamped",
     "build_deck_thread_no_brief",
     "build_essay_44_unstamped",
     "build_fully_stamped",
