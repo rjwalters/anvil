@@ -21,8 +21,20 @@ Covers the acceptance criteria from the issue curation:
 - Doc coverage: ``memo-review.md`` wires the self-check; the rubric
   snippet and ``voice_grounding.md`` cross-reference each other; the
   #475 rollout guards — 8 table-shaped reviewers wire the quote rule +
-  self-check, the 2 machine-summary ip reviewers carry the prose rule +
-  #496 deferral, and all 10 rubrics carry the pointer paragraph.
+  self-check, and all 10 rubrics carry the pointer paragraph. Issue
+  #496: the 2 machine-summary ip reviewers now wire the active
+  write-time ``--scoring _summary.md`` self-check (the #475 deferral
+  sentence is gone) and both ip rubrics describe the JSON ``dimensions``
+  block (not a markdown table).
+- Machine-summary scorecard (issue #496): ``parse_machine_summary_
+  dimensions`` extracts non-null scored dims from a ``_summary.md`` JSON
+  ``dimensions`` block (sibling ``rubric`` key ignored, ``null`` scores
+  skipped, per-dim ``weight`` read incl. provisional D9 ``/6``,
+  malformed/absent JSON → empty rows); ``check_summary_text`` /
+  ``check_version_dir`` route it through the SAME classifier; the
+  ``--scoring _summary.md`` CLI resolves ``spec.tex`` and preserves exit
+  codes 0/1/2; discovery routes machine-summary siblings via
+  ``_meta.json`` ``scorecard_kind``.
 """
 
 from __future__ import annotations
@@ -41,7 +53,10 @@ from anvil.lib.evidence_check import (
     MISSING_EVIDENCE,
     SEVERITY_MAJOR,
     SEVERITY_MINOR,
+    MACHINE_SUMMARY_KIND,
+    SummaryDimension,
     check_scoring_text,
+    check_summary_text,
     check_version_dir,
     classify_justification,
     discover_scoring_files,
@@ -49,6 +64,8 @@ from anvil.lib.evidence_check import (
     has_absence_marker,
     main,
     normalize,
+    parse_machine_summary_dimensions,
+    scorecard_kind_for,
     span_matches_body,
 )
 
@@ -784,11 +801,13 @@ TABLE_SHAPED_REVIEWERS = [
     ("essay", "essay-review.md", "<thread>.md", "6b"),
 ]
 
-# Machine-summary scorecards (Option A per the #475 curation): prose rule
-# + explicit deferral of the deterministic self-check to issue #496.
+# Machine-summary scorecards: issue #496 upgrades these from the #475
+# Option-A prose-only rule to the active deterministic write-time
+# --scoring _summary.md self-check, mirroring the table-shaped
+# reviewers. (skill, reviewer command, body filename, self-check step)
 MACHINE_SUMMARY_REVIEWERS = [
-    ("ip-uspto", "ip-uspto-review.md"),
-    ("ip-uspto-provisional", "ip-uspto-provisional-review.md"),
+    ("ip-uspto", "ip-uspto-review.md", "spec.tex", "9b"),
+    ("ip-uspto-provisional", "ip-uspto-provisional-review.md", "spec.tex", "9b"),
 ]
 
 ROLLOUT_RUBRIC_SKILLS = [
@@ -828,21 +847,43 @@ def test_review_doc_wires_the_self_check(
     assert "missing_evidence" in doc
 
 
-@pytest.mark.parametrize("skill,command", MACHINE_SUMMARY_REVIEWERS)
-def test_ip_review_doc_carries_prose_rule_and_deferral(
-    skill: str, command: str
+@pytest.mark.parametrize(
+    "skill,command,body,step", MACHINE_SUMMARY_REVIEWERS
+)
+def test_ip_review_doc_wires_the_self_check(
+    skill: str, command: str, body: str, step: str
 ) -> None:
     doc = (
         REPO_ROOT / f"anvil/skills/{skill}/commands/{command}"
     ).read_text(encoding="utf-8")
-    # Option A (#475 curation): prose rule binds; deterministic check
-    # deferred to the machine-summary parser follow-up.
+    # The prose quote rule still binds.
     assert "Quoted-evidence requirement (issue #464 / #475" in doc
-    assert "verbatim quote from `spec.tex`" in doc
+    assert f"verbatim quote from `{body}`" in doc
     assert "no instance of <X> found" in doc
-    assert "Deterministic self-check deferred to issue #496" in doc
-    # No write-time --scoring self-check is wired (deferred, not partial).
-    assert "**Validate quoted evidence" not in doc
+    assert "Elision with `...` / `…` is permitted" in doc
+    assert "ELISION_WINDOW_CHARS" in doc
+    # Issue #496: the deferral sentence is gone; the active write-time
+    # --scoring _summary.md self-check is now wired.
+    assert "Deterministic self-check deferred to issue #496" not in doc
+    assert f"{step}. **Validate quoted evidence" in doc
+    assert "anvil.lib.evidence_check" in doc
+    assert "--scoring" in doc
+    assert "_summary.md" in doc
+    assert "fabricated_evidence" in doc
+    assert "missing_evidence" in doc
+
+
+def test_ip_rubrics_describe_json_dimensions_not_table() -> None:
+    """Issue #496: the stale 'markdown table' scorecard prose is fixed."""
+    for skill in ("ip-uspto", "ip-uspto-provisional"):
+        doc = (
+            REPO_ROOT / f"anvil/skills/{skill}/rubric.md"
+        ).read_text(encoding="utf-8")
+        # The scorecard description is now the JSON dimensions block.
+        assert "JSON `dimensions` block" in doc
+        # The deferral wording is gone; the self-check is wired.
+        assert "is **deferred** for this skill" not in doc
+        assert "is **wired** for this skill" in doc
 
 
 @pytest.mark.parametrize("skill", ROLLOUT_RUBRIC_SKILLS)
@@ -855,3 +896,424 @@ def test_rollout_rubric_points_to_snippet_rule(skill: str) -> None:
     assert "evidence_check" in doc
     # No weight / threshold changes shipped with the pointer paragraph.
     assert "No weight or threshold changes" in doc
+
+
+# ---------------------------------------------------------------------------
+# Machine-summary JSON scorecard parser (issue #496)
+# ---------------------------------------------------------------------------
+
+
+# A spec.tex body whose passages the justifications below quote verbatim.
+SPEC_TEX = r"""\documentclass{anvil-uspto}
+\begin{document}
+\section{Detailed Description}
+The apparatus comprises a controller \refnum{10} that modulates the
+adaptive bias loop \refnum{20} in response to a sensed temperature.
+In one embodiment, the bias loop operates across a range of 5--80 GHz.
+The brief description of drawings lists every figure shown in the
+detailed description, and every reference numeral appears in at least
+one drawing.
+\end{document}
+"""
+
+
+def summary_md(
+    dimensions: dict,
+    *,
+    critic: str = "review",
+    rubric_total: int = 45,
+) -> str:
+    """Build a machine-summary ``_summary.md`` with a JSON dimensions block.
+
+    ``dimensions`` maps each dim key to ``None`` (un-owned) or a dict
+    carrying ``score`` / ``weight`` / ``justification`` — the exact
+    shape the two ip reviewers emit.
+    """
+    payload = {
+        "critic": critic,
+        "for_version": 1,
+        "rubric": {
+            "id": "anvil-ip-uspto-v2",
+            "total": rubric_total,
+            "advance_threshold": 39,
+            "dimensions": 9,
+        },
+        "dimensions": dimensions,
+        "critical_flag": False,
+    }
+    return (
+        "# Review summary\n\n```json\n"
+        + json.dumps(payload, indent=2)
+        + "\n```\n"
+    )
+
+
+def make_ip_version_dir(
+    tmp_path: Path, body: str = SPEC_TEX, slug: str = "acme-widget"
+) -> Path:
+    """Build an ip-uspto-shaped version dir: <slug>/<slug>.1/spec.tex."""
+    version_dir = tmp_path / slug / f"{slug}.1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "spec.tex").write_text(body, encoding="utf-8")
+    return version_dir
+
+
+# Justifications quoting SPEC_TEX verbatim / fabricated / by-absence.
+SPEC_MATCHING_JUST = (
+    'Detailed description covers it ("modulates the adaptive bias loop" '
+    "— ¶[0012])."
+)
+SPEC_FABRICATED_JUST = (
+    'Claims the spec teaches "a quantum entanglement coupler" but it '
+    "does not appear in spec.tex."
+)
+SPEC_ABSENCE_JUST = (
+    "no instance of orphan reference numeral found across spec and "
+    "drawings."
+)
+SPEC_MISSING_JUST = "Solid disclosure throughout, well organized."
+
+
+class TestParseMachineSummaryDimensions:
+    def test_parses_scored_dims_and_skips_null(self) -> None:
+        text = summary_md(
+            {
+                "claim_breadth": None,
+                "specification_completeness": {
+                    "weight": 5,
+                    "score": 4,
+                    "justification": SPEC_MATCHING_JUST,
+                },
+            }
+        )
+        rows = parse_machine_summary_dimensions(text)
+        by_name = {r.dimension: r for r in rows}
+        assert by_name["claim_breadth"].score is None
+        spec = by_name["specification_completeness"]
+        assert spec.score == 4
+        assert spec.weight == 5
+        assert spec.justification == SPEC_MATCHING_JUST
+
+    def test_sibling_rubric_key_is_ignored(self) -> None:
+        # The rubric block is a sibling key; only `dimensions` is read.
+        text = summary_md({"formal_compliance": {"score": 3, "justification": "x"}})
+        rows = parse_machine_summary_dimensions(text)
+        assert [r.dimension for r in rows] == ["formal_compliance"]
+
+    def test_provisional_d9_weight_six_read(self) -> None:
+        text = summary_md(
+            {
+                "claim_spec_correspondence": {
+                    "weight": 6,
+                    "score": 6,
+                    "justification": SPEC_ABSENCE_JUST,
+                }
+            }
+        )
+        rows = parse_machine_summary_dimensions(text)
+        assert rows[0].weight == 6
+        assert rows[0].score == 6
+
+    def test_weight_defaults_to_score_when_absent(self) -> None:
+        # No `weight` key: defaults to the score so a full-weight
+        # by-absence justification still clears rule 2.
+        text = summary_md(
+            {"drawing_text_correspondence": {"score": 5, "justification": SPEC_ABSENCE_JUST}}
+        )
+        rows = parse_machine_summary_dimensions(text)
+        assert rows[0].weight == 5
+
+    def test_null_score_dim_emits_skippable_row(self) -> None:
+        text = summary_md({"novelty": {"score": None, "justification": "n/a"}})
+        rows = parse_machine_summary_dimensions(text)
+        assert rows[0].score is None
+
+    def test_malformed_json_returns_empty(self) -> None:
+        text = "# Review\n\n```json\n{ not valid json ,,, }\n```\n"
+        assert parse_machine_summary_dimensions(text) == []
+
+    def test_absent_json_block_returns_empty(self) -> None:
+        text = "# Review\n\nNo fenced json block here at all.\n"
+        assert parse_machine_summary_dimensions(text) == []
+
+    def test_block_without_dimensions_key_returns_empty(self) -> None:
+        text = "# Review\n\n```json\n{ \"critic\": \"review\" }\n```\n"
+        assert parse_machine_summary_dimensions(text) == []
+
+    def test_first_dimensions_block_wins(self) -> None:
+        # A leading non-dimensions json block is skipped; the second
+        # (carrying `dimensions`) is parsed.
+        text = (
+            "# Review\n\n```json\n{ \"meta\": 1 }\n```\n\n"
+            + summary_md({"formal_compliance": {"score": 3, "justification": "x"}})
+        )
+        rows = parse_machine_summary_dimensions(text)
+        assert [r.dimension for r in rows] == ["formal_compliance"]
+
+    def test_bare_numeric_dim_value_tolerated(self) -> None:
+        text = summary_md({"formal_compliance": 3})
+        rows = parse_machine_summary_dimensions(text)
+        assert rows[0].score == 3
+        assert rows[0].justification is None
+
+    def test_float_score_narrowed_to_int(self) -> None:
+        text = summary_md(
+            {"formal_compliance": {"score": 4.0, "weight": 5, "justification": "x"}}
+        )
+        rows = parse_machine_summary_dimensions(text)
+        assert rows[0].score == 4
+
+
+class TestCheckSummaryText:
+    def test_matching_span_passes(self) -> None:
+        text = summary_md(
+            {
+                "specification_completeness": {
+                    "weight": 5,
+                    "score": 4,
+                    "justification": SPEC_MATCHING_JUST,
+                }
+            }
+        )
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 1
+        assert findings == []
+
+    def test_fabricated_span_is_major(self) -> None:
+        text = summary_md(
+            {
+                "specification_completeness": {
+                    "weight": 5,
+                    "score": 4,
+                    "justification": SPEC_FABRICATED_JUST,
+                }
+            }
+        )
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 1
+        assert findings[0].code == FABRICATED_EVIDENCE
+        assert findings[0].severity == SEVERITY_MAJOR
+
+    def test_no_span_is_minor_missing(self) -> None:
+        text = summary_md(
+            {
+                "formal_compliance": {
+                    "weight": 5,
+                    "score": 3,
+                    "justification": SPEC_MISSING_JUST,
+                }
+            }
+        )
+        findings, _ = check_summary_text(text, SPEC_TEX)
+        assert findings[0].code == MISSING_EVIDENCE
+        assert findings[0].severity == SEVERITY_MINOR
+
+    def test_full_weight_by_absence_passes(self) -> None:
+        text = summary_md(
+            {
+                "drawing_text_correspondence": {
+                    "weight": 5,
+                    "score": 5,
+                    "justification": SPEC_ABSENCE_JUST,
+                }
+            }
+        )
+        findings, _ = check_summary_text(text, SPEC_TEX)
+        assert findings == []
+
+    def test_provisional_d9_six_by_absence_passes(self) -> None:
+        # D9 /6: ceiling-by-absence requires score == weight == 6.
+        text = summary_md(
+            {
+                "claim_spec_correspondence": {
+                    "weight": 6,
+                    "score": 6,
+                    "justification": SPEC_ABSENCE_JUST,
+                }
+            }
+        )
+        findings, _ = check_summary_text(text, SPEC_TEX)
+        assert findings == []
+
+    def test_calibration_suffix_quote_alongside_match_passes(self) -> None:
+        # The carried-over #475 calibration risk: ip justifications quote
+        # rubric/claim language heavily. A non-matching rubric-prose
+        # quote ALONGSIDE one matching spec.tex quote must pass (rule 1).
+        just = (
+            'Meets the "sophisticated patent attorney would have no '
+            'substantive objection" calibration bar; the spec '
+            '"modulates the adaptive bias loop" (— ¶[0012]) is fully '
+            "described."
+        )
+        text = summary_md(
+            {
+                "specification_completeness": {
+                    "weight": 5,
+                    "score": 5,
+                    "justification": just,
+                }
+            }
+        )
+        findings, _ = check_summary_text(text, SPEC_TEX)
+        assert findings == []
+
+    def test_elision_span_across_nearby_passages_passes(self) -> None:
+        # Two ≥MIN_QUOTE_CHARS fragments, each verbatim in SPEC_TEX, in
+        # document order, within the proximity window.
+        just = (
+            'Disclosed: "The apparatus comprises a controller ... that '
+            'modulates the adaptive bias loop" (— ¶[0012]).'
+        )
+        text = summary_md(
+            {
+                "specification_completeness": {
+                    "weight": 5,
+                    "score": 4,
+                    "justification": just,
+                }
+            }
+        )
+        findings, _ = check_summary_text(text, SPEC_TEX)
+        assert findings == []
+
+    def test_null_scores_not_counted(self) -> None:
+        text = summary_md(
+            {
+                "claim_breadth": None,
+                "novelty": {"score": None, "justification": "n/a"},
+            }
+        )
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 0
+        assert findings == []
+
+
+def _write_meta(critic_dir: Path, kind: str) -> None:
+    (critic_dir / "_meta.json").write_text(
+        json.dumps({"critic": "review", "scorecard_kind": kind}),
+        encoding="utf-8",
+    )
+
+
+class TestMachineSummaryFilesystem:
+    def test_scoring_summary_single_file_mode(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        version_dir = make_ip_version_dir(tmp_path)
+        staging = version_dir.parent / f".{version_dir.name}.review.tmp"
+        staging.mkdir()
+        summary = staging / "_summary.md"
+        summary.write_text(
+            summary_md(
+                {
+                    "specification_completeness": {
+                        "weight": 5,
+                        "score": 4,
+                        "justification": SPEC_MATCHING_JUST,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc = main([str(version_dir), "--scoring", str(summary)])
+        assert rc == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["body_path"] == "spec.tex"
+        assert payload["dimensions_checked"] == 1
+        assert payload["pass"] is True
+
+    def test_scoring_summary_fabricated_exit_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        version_dir = make_ip_version_dir(tmp_path)
+        staging = version_dir.parent / f".{version_dir.name}.review.tmp"
+        staging.mkdir()
+        summary = staging / "_summary.md"
+        summary.write_text(
+            summary_md(
+                {
+                    "specification_completeness": {
+                        "weight": 5,
+                        "score": 4,
+                        "justification": SPEC_FABRICATED_JUST,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        rc = main([str(version_dir), "--scoring", str(summary)])
+        assert rc == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["findings"][0]["code"] == FABRICATED_EVIDENCE
+
+    def test_discovery_routes_machine_summary_via_meta(
+        self, tmp_path: Path
+    ) -> None:
+        version_dir = make_ip_version_dir(tmp_path)
+        review = version_dir.parent / f"{version_dir.name}.review"
+        review.mkdir()
+        (review / "_summary.md").write_text(
+            summary_md(
+                {
+                    "specification_completeness": {
+                        "weight": 5,
+                        "score": 4,
+                        "justification": SPEC_FABRICATED_JUST,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        _write_meta(review, MACHINE_SUMMARY_KIND)
+        result = check_version_dir(version_dir)
+        assert result.scoring_files == [str(review / "_summary.md")]
+        assert result.dimensions_checked == 1
+        assert result.findings[0].code == FABRICATED_EVIDENCE
+
+    def test_scorecard_kind_for_reads_meta(self, tmp_path: Path) -> None:
+        review = tmp_path / "x.1.review"
+        review.mkdir()
+        summary = review / "_summary.md"
+        summary.write_text("x", encoding="utf-8")
+        _write_meta(review, MACHINE_SUMMARY_KIND)
+        assert scorecard_kind_for(summary) == MACHINE_SUMMARY_KIND
+
+    def test_scorecard_kind_for_missing_meta_is_none(
+        self, tmp_path: Path
+    ) -> None:
+        review = tmp_path / "x.1.review"
+        review.mkdir()
+        summary = review / "_summary.md"
+        summary.write_text("x", encoding="utf-8")
+        assert scorecard_kind_for(summary) is None
+
+    def test_aggregator_critic_summary_chosen_over_table(
+        self, tmp_path: Path
+    ) -> None:
+        # A critic carrying BOTH files + machine-summary meta: only the
+        # _summary.md is checked (the scorecard of record).
+        version_dir = make_ip_version_dir(tmp_path)
+        review = version_dir.parent / f"{version_dir.name}.review"
+        review.mkdir()
+        (review / "_summary.md").write_text(
+            summary_md(
+                {
+                    "specification_completeness": {
+                        "weight": 5,
+                        "score": 4,
+                        "justification": SPEC_MATCHING_JUST,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (review / "scoring.md").write_text(
+            scoring_table([("Specification", 5, 4, FABRICATED_JUST)]),
+            encoding="utf-8",
+        )
+        _write_meta(review, MACHINE_SUMMARY_KIND)
+        result = check_version_dir(version_dir)
+        assert result.scoring_files == [str(review / "_summary.md")]
+        # The summary justification matches → clean; the table's
+        # fabricated quote is NOT checked.
+        assert result.passed()

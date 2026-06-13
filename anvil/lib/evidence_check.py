@@ -23,12 +23,29 @@ rule; anchors are judgment-scope and are NOT validated here.
 Deterministic subset (pure stdlib — no LLM, no new deps)
 --------------------------------------------------------
 
-1. **Table parsing** — reuses
-   ``anvil/lib/critics.py::parse_memo_scoring_table`` on the
-   ``| # | Dimension | Weight | Score | Justification |`` row shape.
+1. **Scorecard parsing** — two scorecard shapes feed the SAME
+   classifier:
+
+   - **Table (``human-verdict``)** — reuses
+     ``anvil/lib/critics.py::parse_memo_scoring_table`` on the
+     ``| # | Dimension | Weight | Score | Justification |`` row shape.
+   - **JSON ``dimensions`` block (``machine-summary``)** — the two ip
+     skills (``ip-uspto``, ``ip-uspto-provisional``) write a partial
+     scorecard as a fenced ``json`` block inside ``_summary.md`` whose
+     ``dimensions`` object maps each rubric dimension key to either
+     ``null`` (un-owned dim) or an object carrying ``score`` +
+     ``justification`` (+ optional ``weight``). Parsed by
+     :func:`parse_machine_summary_dimensions` (issue #496). The
+     classifier, normalization, span+elision matching, and the
+     by-absence marker are all scorecard-source-agnostic — only the
+     parser differs.
+
    Rows with a ``null`` / ``n/a`` / ``-`` score are skipped entirely:
    a critic that does not own a dimension (the partial-scorecard rule
-   in ``snippets/critics.md``) owes no evidence for it.
+   in ``snippets/critics.md``) owes no evidence for it. Dispatch is by
+   the sibling ``_meta.json`` ``scorecard_kind`` discriminator (NOT a
+   hardcoded skill name) so the routing generalizes to any future
+   machine-summary skill.
 
 2. **Quoted-span extraction** — text inside straight (``"…"``) or
    curly (``“…”``) double quotes within the justification cell.
@@ -107,10 +124,14 @@ CLI entry-point
 ``python -m anvil.lib.evidence_check <version_dir> [--scoring <path>]``
 
 Without ``--scoring``, discovers every critic-sibling
-``<version_dir>.<critic>/scoring.md`` next to the version dir (the
-critic-sibling glob per ``snippets/critics.md``); with ``--scoring``,
-checks exactly that one file (the reviewer's staging-dir self-check
-path). The body file is auto-detected inside the version dir:
+``<version_dir>.<critic>/scoring.md`` (table) and
+``<version_dir>.<critic>/_summary.md`` (machine-summary JSON — issue
+#496) next to the version dir (the critic-sibling glob per
+``snippets/critics.md``), routing each by its sibling ``_meta.json``
+``scorecard_kind``; with ``--scoring``, checks exactly that one file
+(the reviewer's staging-dir self-check path — a ``_summary.md`` path
+routes to the machine-summary parser, a ``scoring.md`` to the table
+parser). The body file is auto-detected inside the version dir:
 ``<slug>.md`` (the #295 slug-echo shape — memo, essay) first, then the
 per-skill fixed names in :data:`FIXED_BODY_NAMES` order: ``main.tex``
 (pub), ``report.md`` (report), ``deck.md`` (deck, slides),
@@ -499,6 +520,182 @@ def check_scoring_text(
 
 
 # ---------------------------------------------------------------------------
+# Machine-summary JSON scorecard parsing (issue #496)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SummaryDimension:
+    """One parsed dimension from a ``_summary.md`` JSON ``dimensions`` block.
+
+    Mirrors the fields :func:`classify_justification` consumes from a
+    table ``Score`` row: a ``dimension`` key, a ``score`` (``None`` for
+    un-owned dims), a ``weight``, and the ``justification`` string.
+    """
+
+    dimension: str
+    score: Optional[int]
+    weight: int
+    justification: Optional[str]
+
+
+# Matches a fenced ```json ... ``` block. Non-greedy body; the inner
+# ``dimensions`` object the ip reviewers emit lives inside the FIRST
+# such block (the rubric block + dimensions block + critical_flag are
+# all one JSON object). A `_summary.md` may carry prose + a fenced json
+# block; we scan every fenced json block and take the first that parses
+# to an object carrying a ``dimensions`` mapping.
+_JSON_FENCE_RE = re.compile(
+    r"```json\s*\n(?P<body>.*?)\n```",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _coerce_score(raw: object) -> Optional[int]:
+    """Coerce a parsed JSON score value to ``Optional[int]``.
+
+    ``null`` → ``None``; an int passes through; a float that is integral
+    (``4.0``) is narrowed; anything else (string ``"n/a"``, a non-
+    integral float) is treated as un-owned (``None``) — a defensive
+    read, never a crash.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, bool):  # bool is an int subclass — exclude it
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float) and raw.is_integer():
+        return int(raw)
+    return None
+
+
+def parse_machine_summary_dimensions(
+    summary_text: str,
+) -> List[SummaryDimension]:
+    """Parse the JSON ``dimensions`` block from a ``_summary.md``.
+
+    The two ip skills (``ip-uspto``, ``ip-uspto-provisional``) write a
+    fenced ```json``` block inside ``_summary.md`` carrying a
+    ``dimensions`` object: each key is a rubric dimension, mapping to
+    either ``null`` (un-owned dim) or an object with ``score`` +
+    ``justification`` (+ optional ``weight``). This parser:
+
+    - extracts every fenced ```json``` block and uses the first one
+      that parses to an object carrying a ``dimensions`` mapping
+      (tolerating a sibling ``rubric`` / ``critical_flag`` key — only
+      ``dimensions`` is read);
+    - emits one :class:`SummaryDimension` per dimension entry,
+      ``json.loads``-coercing the ``score`` and reading ``justification``
+      (a missing/``null`` justification becomes ``None``);
+    - reads the per-dim ``weight`` when present (provisional D9 is ``/6``;
+      most dims are ``/5``); when absent, defaults the weight to the
+      dim's own score so a full-score by-absence justification still
+      clears rule 2 — un-stamped weight never blocks the
+      ceiling-by-absence pass.
+
+    A ``null`` dimension value (un-owned dim) emits a row with
+    ``score=None`` (skipped by the caller, parallel to the table path's
+    ``null``-score rows). Malformed / absent JSON, or a block without a
+    ``dimensions`` mapping, returns an empty list — never raises.
+    """
+    rows: List[SummaryDimension] = []
+    for match in _JSON_FENCE_RE.finditer(summary_text):
+        try:
+            payload = json.loads(match.group("body"))
+        except (ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        dims = payload.get("dimensions")
+        if not isinstance(dims, dict):
+            continue
+        for name, entry in dims.items():
+            if entry is None:
+                rows.append(
+                    SummaryDimension(
+                        dimension=str(name),
+                        score=None,
+                        weight=0,
+                        justification=None,
+                    )
+                )
+                continue
+            if not isinstance(entry, dict):
+                # Tolerate a bare numeric value (``"6": 4``) — score with
+                # no justification, classified as missing_evidence.
+                score = _coerce_score(entry)
+                rows.append(
+                    SummaryDimension(
+                        dimension=str(name),
+                        score=score,
+                        weight=score if score is not None else 0,
+                        justification=None,
+                    )
+                )
+                continue
+            score = _coerce_score(entry.get("score"))
+            weight_raw = _coerce_score(entry.get("weight"))
+            # Un-stamped weight defaults to the score so a full-weight
+            # by-absence justification still clears rule 2.
+            weight = weight_raw if weight_raw is not None else (
+                score if score is not None else 0
+            )
+            justification = entry.get("justification")
+            if justification is not None and not isinstance(
+                justification, str
+            ):
+                justification = str(justification)
+            rows.append(
+                SummaryDimension(
+                    dimension=str(name),
+                    score=score,
+                    weight=weight,
+                    justification=justification,
+                )
+            )
+        return rows  # first dimensions-carrying block wins
+    return rows
+
+
+def check_summary_text(
+    summary_text: str,
+    body_text: str,
+    *,
+    scoring_path: str = "_summary.md",
+) -> Tuple[List[EvidenceFinding], int]:
+    """Run the quoted-evidence check over one ``_summary.md``'s text.
+
+    The machine-summary analog of :func:`check_scoring_text`: parses the
+    JSON ``dimensions`` block via
+    :func:`parse_machine_summary_dimensions` and feeds each non-null-
+    score dimension through the SAME :func:`classify_justification` flow
+    (the classifier, normalization, span+elision matching, and the
+    by-absence marker are scorecard-source-agnostic). Pure function of
+    the two texts (no filesystem). Returns ``(findings,
+    dimensions_checked)``.
+    """
+    normalized_body = normalize(body_text)
+    findings: List[EvidenceFinding] = []
+    checked = 0
+    for row in parse_machine_summary_dimensions(summary_text):
+        if row.score is None:
+            continue
+        checked += 1
+        finding = classify_justification(
+            dimension=row.dimension,
+            score=row.score,
+            weight=row.weight,
+            justification=row.justification,
+            normalized_body=normalized_body,
+            scoring_path=scoring_path,
+        )
+        if finding is not None:
+            findings.append(finding)
+    return findings, checked
+
+
+# ---------------------------------------------------------------------------
 # Filesystem entry points
 # ---------------------------------------------------------------------------
 
@@ -544,15 +741,83 @@ def _body_path(version_dir: Path) -> Path:
     )
 
 
-def discover_scoring_files(version_dir: Path) -> List[Path]:
-    """Discover critic-sibling ``scoring.md`` files for a version dir.
+MACHINE_SUMMARY_KIND = "machine-summary"
+"""``_meta.json`` ``scorecard_kind`` value routing to the summary parser."""
 
-    Matches ``<version_dir>.<critic>/scoring.md`` siblings (the
-    critic-sibling shape per ``snippets/critics.md``), sorted by path.
+_SUMMARY_FILENAME = "_summary.md"
+_SCORING_FILENAME = "scoring.md"
+
+
+def scorecard_kind_for(scoring_file: Path) -> Optional[str]:
+    """Read the ``scorecard_kind`` discriminator for a critic-sibling file.
+
+    Reads the sibling ``_meta.json`` next to ``scoring_file`` and returns
+    its ``scorecard_kind`` field (the discriminator contract in
+    ``anvil/lib/snippets/scorecard_kind.md``). Returns ``None`` when no
+    ``_meta.json`` exists or it lacks the field / is malformed — the
+    caller then falls back to filename-shape routing (a ``_summary.md``
+    is machine-summary; a ``scoring.md`` is the table path). Never
+    raises.
+    """
+    meta = scoring_file.parent / "_meta.json"
+    if not meta.is_file():
+        return None
+    try:
+        payload = json.loads(meta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    kind = payload.get("scorecard_kind")
+    return kind if isinstance(kind, str) else None
+
+
+def _is_machine_summary(scoring_file: Path) -> bool:
+    """``True`` when ``scoring_file`` should route to the summary parser.
+
+    Dispatch is by the sibling ``_meta.json`` ``scorecard_kind`` when it
+    is present and authoritative (issue #496 — NOT a hardcoded skill
+    name); otherwise it falls back to the filename shape (a
+    ``_summary.md`` is machine-summary, a ``scoring.md`` is the table).
+    The meta discriminator wins when present so a future machine-summary
+    skill that names its scorecard differently still routes correctly.
+    """
+    kind = scorecard_kind_for(scoring_file)
+    if kind is not None:
+        return kind == MACHINE_SUMMARY_KIND
+    return scoring_file.name == _SUMMARY_FILENAME
+
+
+def discover_scoring_files(version_dir: Path) -> List[Path]:
+    """Discover critic-sibling scorecard files for a version dir.
+
+    Matches ``<version_dir>.<critic>/scoring.md`` (the ``human-verdict``
+    table shape) AND ``<version_dir>.<critic>/_summary.md`` (the
+    ``machine-summary`` JSON shape — issue #496) siblings, sorted by
+    path. When a sibling carries BOTH files (an aggregator critic per
+    ``snippets/scorecard_kind.md``), only the one matching its
+    ``_meta.json`` ``scorecard_kind`` is checked — the other shape is
+    the secondary deliverable, not the scorecard of record.
     Leading-dot staging dirs (``.<name>.tmp/``) never match the glob.
     """
     version_dir = Path(version_dir)
-    return sorted(version_dir.parent.glob(f"{version_dir.name}.*/scoring.md"))
+    table = version_dir.parent.glob(f"{version_dir.name}.*/{_SCORING_FILENAME}")
+    summary = version_dir.parent.glob(
+        f"{version_dir.name}.*/{_SUMMARY_FILENAME}"
+    )
+    chosen: List[Path] = []
+    for path in sorted([*table, *summary]):
+        kind = scorecard_kind_for(path)
+        if kind == MACHINE_SUMMARY_KIND and path.name != _SUMMARY_FILENAME:
+            continue  # machine-summary critic: skip its table file
+        if (
+            kind is not None
+            and kind != MACHINE_SUMMARY_KIND
+            and path.name == _SUMMARY_FILENAME
+        ):
+            continue  # human-verdict critic: skip its summary file
+        chosen.append(path)
+    return chosen
 
 
 def check_version_dir(
@@ -595,7 +860,12 @@ def check_version_dir(
         scoring_files=[str(p) for p in scoring_files],
     )
     for path in scoring_files:
-        findings, checked = check_scoring_text(
+        checker = (
+            check_summary_text
+            if _is_machine_summary(path)
+            else check_scoring_text
+        )
+        findings, checked = checker(
             path.read_text(encoding="utf-8"),
             body_text,
             scoring_path=str(path),
@@ -636,9 +906,11 @@ def _build_cli_parser():
         metavar="PATH",
         default=None,
         help=(
-            "Check exactly this scoring.md instead of discovering "
-            "critic-sibling <version_dir>.*/scoring.md files (the "
-            "reviewer's staging-dir self-check path)."
+            "Check exactly this scoring.md (table) or _summary.md "
+            "(machine-summary JSON dimensions block) instead of "
+            "discovering critic-sibling files (the reviewer's "
+            "staging-dir self-check path). Routing is by filename shape "
+            "and the sibling _meta.json scorecard_kind."
         ),
     )
     return p
@@ -685,6 +957,11 @@ __all__ = [
     "span_matches_body",
     "classify_justification",
     "check_scoring_text",
+    "check_summary_text",
+    "parse_machine_summary_dimensions",
+    "SummaryDimension",
+    "MACHINE_SUMMARY_KIND",
+    "scorecard_kind_for",
     "discover_scoring_files",
     "check_version_dir",
     "main",
