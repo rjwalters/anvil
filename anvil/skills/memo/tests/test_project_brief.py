@@ -394,9 +394,29 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     brief.documents[0].artifact_type, ArtifactType(value)
                 )
 
+    def test_datasheet_artifact_type_round_trips(self) -> None:
+        """Issue #486: a validated BRIEF carrying ``artifact_type:
+        datasheet`` round-trips through strict validation to the
+        registered enum member — the carrier rubric-rebackport's
+        BRIEF-route inference (#484) was missing."""
+        fm = textwrap.dedent(
+            """\
+            project: parts
+            documents:
+              - slug: ax101-objdet
+                artifact_type: datasheet
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(
+            brief.documents[0].artifact_type, ArtifactType.DATASHEET
+        )
+        self.assertEqual(brief.documents[0].artifact_type.value, "datasheet")
+
     def test_pitch_deck_rejected_listing_all_registered_values(self) -> None:
         """The studio's informal 'pitch-deck' stays unregistered — the
-        closed-ended error lists all fourteen registered values so the
+        closed-ended error lists all sixteen registered values so the
         operator can self-correct."""
         fm = textwrap.dedent(
             """\
@@ -411,7 +431,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 15)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 16)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -440,6 +460,8 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.REPORT,
             ArtifactType.IP_USPTO,
             ArtifactType.IP_USPTO_PROVISIONAL,
+            ArtifactType.ESSAY,
+            ArtifactType.DATASHEET,
         ):
             self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
 
@@ -455,7 +477,11 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
         — same registry-gap shape, legal-artifact stakes); issue #460
         grew it with ``essay`` (the ``anvil:essay`` artifact class —
         short-form voice-grounded essays own their threads in a shared
-        project BRIEF)."""
+        project BRIEF); issue #486 grew it with ``datasheet`` (the
+        ``anvil:datasheet`` artifact class — shipped #418/#421 before
+        this registry pattern was consistently applied, backfilled so
+        rubric-rebackport's BRIEF-route inference has a validated
+        carrier)."""
         from project_brief import (  # noqa: PLC0415
             SKILL_IDENTITY_ARTIFACT_TYPES,
         )
@@ -472,6 +498,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.IP_USPTO,
                     ArtifactType.IP_USPTO_PROVISIONAL,
                     ArtifactType.ESSAY,
+                    ArtifactType.DATASHEET,
                 }
             ),
         )

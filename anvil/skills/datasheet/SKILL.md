@@ -164,6 +164,10 @@ LaTeX via the shipped `templates/anvil-datasheet.cls` class, compiled with **XeL
 - `signature_color` (hex, no `#`; default `1F4E7A`) — accent override.
 - `family` — the part-family name; siblings sharing the same `family` value in the project BRIEF are the dim 5 coherence set.
 
+## Project BRIEF artifact type
+
+`datasheet` is registered as a **skill-identity** `artifact_type` value in the shared project-BRIEF registry (`anvil/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES` / `SKILL_IDENTITY_ARTIFACT_TYPES`; issue #486, following the #386/#408/#432/#440/#460 pattern). In a shared project BRIEF, a `documents:` entry with `artifact_type: datasheet` declares that this skill owns the thread. It is NOT a memo subtype: it selects no memo rubric overlay, and memo commands fail loudly when pointed at a thread declaring it. Registering the value lets a validated BRIEF carry it through strict `load_project_brief_strict` validation, which is what `anvil:rubric-rebackport`'s BRIEF-route inference (#484) relies on to resolve an unstamped datasheet review to the `("datasheet", 44)` rubric row. The body filename is `datasheet.tex`, but inference is BRIEF-`artifact_type`-driven (BRIEF-route-only), matching the `ip-uspto-provisional` (`spec.tex`) precedent — `datasheet.tex` is deliberately NOT added to rubric-rebackport's `_BODY_FILENAME_TO_SKILL` rule-2 table.
+
 ## Progress tracking
 
 Each `<thread>.{N}/` directory contains `_progress.json` recording phase state per the canonical schema in `anvil/lib/snippets/progress.md` (read-merge-write, crash recovery, `for_version` on critic siblings). Validation is by file existence, not by flag.
