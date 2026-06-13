@@ -53,6 +53,8 @@ Scored through the thread's `status` knob:
 
 For each dimension, the reviewer assigns an integer between 0 and the dimension's weight, with a 1–3 sentence justification citing specific evidence in `datasheet.tex`. Calibration: full weight = a sophisticated customer's design engineer would have no substantive objection; ~75% = one defensible gap; ~50% = multiple gaps or one significant weakness; ~25% = present but inadequate; 0 = absent or incoherent.
 
+**Quoted evidence (issue #464 / #475).** Every justification follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `datasheet.tex` with a location anchor — `("the quoted span" — §2.1)` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The reviewer self-checks its `scoring.md` against the body via `anvil/lib/evidence_check.py` before the review sidecar lands (see `commands/datasheet-review.md` step 5b); a quote that does not appear verbatim in the body is fabricated evidence and the justification must be re-derived. No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
+
 ## Advance threshold
 
 - **≥39/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling).

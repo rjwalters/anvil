@@ -111,9 +111,15 @@ Without ``--scoring``, discovers every critic-sibling
 critic-sibling glob per ``snippets/critics.md``); with ``--scoring``,
 checks exactly that one file (the reviewer's staging-dir self-check
 path). The body file is auto-detected inside the version dir:
-``<slug>.md`` (the #295 slug-echo shape) first, then ``main.tex``
-(the pub shape) — the same resolution pattern as
-``numeric_consistency._body_path``.
+``<slug>.md`` (the #295 slug-echo shape — memo, essay) first, then the
+per-skill fixed names in :data:`FIXED_BODY_NAMES` order: ``main.tex``
+(pub), ``report.md`` (report), ``deck.md`` (deck, slides),
+``proposal.tex`` (proposal), ``installation.tex`` (installation),
+``datasheet.tex`` (datasheet), ``spec.tex`` (ip-uspto,
+ip-uspto-provisional) — issue #475. (``numeric_consistency._body_path``
+resolves only ``<slug>.md`` / ``main.tex``; that consumer set is
+separate and deliberately untouched.) ``.tex`` bodies match verbatim
+with the symmetric dash fold — no per-format normalization branch.
 
 Writes a JSON summary to stdout. Exit codes: ``0`` clean, ``1`` one or
 more findings, ``2`` invocation error (missing version dir, body file,
@@ -497,24 +503,44 @@ def check_scoring_text(
 # ---------------------------------------------------------------------------
 
 
+FIXED_BODY_NAMES: Tuple[str, ...] = (
+    "main.tex",       # pub
+    "report.md",      # report
+    "deck.md",        # deck, slides
+    "proposal.tex",   # proposal
+    "installation.tex",  # installation
+    "datasheet.tex",  # datasheet
+    "spec.tex",       # ip-uspto, ip-uspto-provisional
+)
+"""Per-skill fixed body filenames checked after the slug-echo shape.
+
+Issue #475 rollout: the verifier resolves the slug-echo ``<slug>.md``
+(memo, essay) first, then these fixed names in order. Order is
+load-bearing only for the pathological version dir carrying two body
+files — first hit wins.
+"""
+
+
 def _body_path(version_dir: Path) -> Path:
     """Locate the body file inside a version directory.
 
-    Detection order mirrors ``numeric_consistency._body_path``:
-    ``<slug>.md`` (the #295 slug-echo shape — the slug is the parent
-    dir name), then ``main.tex`` (the pub shape). Raises
-    ``FileNotFoundError`` when neither exists.
+    Detection order: ``<slug>.md`` (the #295 slug-echo shape — the
+    slug is the parent dir name) first, then each fixed name in
+    :data:`FIXED_BODY_NAMES` order (issue #475). Raises
+    ``FileNotFoundError`` listing the full chain when none exists.
     """
     slug_md = version_dir / f"{version_dir.parent.name}.md"
     if slug_md.is_file():
         return slug_md
-    main_tex = version_dir / "main.tex"
-    if main_tex.is_file():
-        return main_tex
+    for name in FIXED_BODY_NAMES:
+        candidate = version_dir / name
+        if candidate.is_file():
+            return candidate
+    fixed_chain = ", ".join(repr(n) for n in FIXED_BODY_NAMES)
     raise FileNotFoundError(
         f"evidence_check: no body file found in {version_dir!s} "
         f"(looked for {slug_md.name!r} per the #295 slug-echo convention, "
-        f"then 'main.tex')."
+        f"then {fixed_chain})."
     )
 
 
@@ -599,7 +625,11 @@ def _build_cli_parser():
     )
     p.add_argument(
         "version_dir",
-        help="Path to <thread>.{N}/ containing <thread>.md or main.tex.",
+        help=(
+            "Path to <thread>.{N}/ containing the body file: <slug>.md "
+            "(slug-echo) or one of main.tex, report.md, deck.md, "
+            "proposal.tex, installation.tex, datasheet.tex, spec.tex."
+        ),
     )
     p.add_argument(
         "--scoring",
@@ -643,6 +673,7 @@ __all__ = [
     "MIN_QUOTE_CHARS",
     "ELISION_WINDOW_CHARS",
     "FABRICATED_EVIDENCE",
+    "FIXED_BODY_NAMES",
     "MISSING_EVIDENCE",
     "SEVERITY_MAJOR",
     "SEVERITY_MINOR",

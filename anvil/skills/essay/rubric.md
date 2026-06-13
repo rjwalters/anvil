@@ -33,6 +33,8 @@ Calibration (stated for dim 2 at weight 7; scale proportionally for other weight
 - **1–2** — generic professional cadence with occasional authorial flickers.
 - **0** — indistinguishable from unprompted model output (this usually co-occurs with the generic-AI-cadence critical flag).
 
+**Quoted evidence (issue #464 / #475).** Every justification follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `<thread>.md` with a location anchor — `("the quoted span" — §2.1)` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The reviewer self-checks its `scoring.md` against the body via `anvil/lib/evidence_check.py` before the review sidecar lands (see `commands/essay-review.md` step 6b); a quote that does not appear verbatim in the body is fabricated evidence and the justification must be re-derived. No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
+
 ## Critical flags
 
 Any single flag → BLOCK, regardless of total score. The seven flags are ported from the surveyed consumer's blog-review step 4 (concepts ported, anvil-native wiring). Each flag's justification in `verdict.md` quotes the offending passage and the contract it violates.
