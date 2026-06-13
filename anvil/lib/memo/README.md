@@ -116,7 +116,7 @@ this precedence:
 | Tier | Path (consumer repo) | When to use |
 |---|---|---|
 | Per-theme (issue #322) | `<consumer>/.anvil/themes/<theme>/memo/<asset>` | **The durable override path.** Consumer-owned; the installer never overwrites files under `.anvil/themes/`. Use for one brand or many. |
-| Consumer single-tenant | `<consumer>/.anvil/anvil/lib/memo/<asset>` | In-place edit of the installed framework copy. **Overwritten on every re-install/upgrade** (the Stage 5 lib copy is unconditional — no hash tracking). Use only for throwaway experiments. |
+| Consumer single-tenant | `<consumer>/.anvil/anvil/lib/memo/<asset>` | In-place edit of the installed framework copy. **Hash-protected on upgrade** (issue #490): a hand-edited asset is skipped-with-warning and preserved unless you re-run with `--force` (the Stage 5 lib copy records a `lib_hash` baseline, mirroring the #152 skill-body matrix). Still secondary to the durable theme tier; framework code under `.anvil/anvil/lib/` always upgrades regardless. |
 | Framework default | shipped at `anvil/lib/memo/<asset>` (this directory) | Anvil's neutral baseline |
 
 `<asset>` is one of `styles.css`, `template.html`, `template.tex`.
@@ -126,13 +126,19 @@ project BRIEF surfaces the theme name via the `theme:` frontmatter
 key documented in `anvil/skills/memo/lib/project_brief.py`.
 
 The install script (`scripts/install-anvil.sh`) copies the framework
-defaults to `.anvil/anvil/lib/memo/` **unconditionally on every run**:
-the issue-#152 override-detection matrix guards skill bodies
-(`.anvil/skills/<name>/`) only, not the Stage 5 lib copy. In-place
-edits under `.anvil/anvil/lib/memo/` are therefore silently reverted
-by the next install/upgrade. For a durable override, use the theme
-tier: the installer scaffolds a consumer-owned starter theme at
-`.anvil/themes/starter/` on install (skip-if-exists, issue #471);
+defaults to `.anvil/anvil/lib/memo/` on every run, but since issue #490
+the Stage 5 lib copy carries the same override-detection discipline as
+the issue-#152 skill-body matrix (`.anvil/skills/<name>/`): the
+installer records a `lib_hash` baseline over the documented override
+assets (`styles.css`, `template.html`, `template.tex`) and, on
+re-install, **skips with a warning and preserves** any of those assets
+the consumer hand-edited — overwrite requires `--force`. The carve-out:
+the rest of the lib tree (the importable `anvil.lib.*` framework code,
+schema JSON, figures, marp config) and `anvil/__init__.py` always
+upgrade unconditionally, so editing an override asset can never pin
+stale framework code. For a durable, never-overwritten override, prefer
+the theme tier: the installer scaffolds a consumer-owned starter theme
+at `.anvil/themes/starter/` on install (skip-if-exists, issue #471);
 declare `theme: starter` in the project BRIEF to enable it, or copy
 it to a theme name of your own. When the consumer ships a custom
 `styles.css` via either tier, the `memo-render` command picks it up
