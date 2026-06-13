@@ -44,12 +44,28 @@ from typing import Dict, List, Optional, Tuple
 from .detect import (
     ANVIL_JSON_FILENAME,
     BRIEF_FILENAME,
+    COUNSEL_MEMO_FILENAME,
+    PROVISIONAL_BODY_FILENAME,
     ProjectInventory,
     Shape,
     ThreadInventory,
     _SKILL_FIXED_BODY_FILENAMES,
+    has_counsel_memo_companion,
+    has_native_provisional_body,
     inventory_project,
 )
+
+
+class PlanError(ValueError):
+    """Plan-time migration refusal (a ``ValueError``).
+
+    Raised BEFORE any mutation — planning is pure, so a refusal here
+    leaves the tree byte-identical (the two-phase abort contract shared
+    with :class:`enroll.EnrollError` / :class:`adopt_family.AdoptFamilyError`).
+    Introduced for issue #503: a bare thread whose newest version dir
+    carries ``counsel_memo.tex`` but no ``provisional.tex`` is a refusal
+    (a counsel memo is a finalize-output companion, not a fileable body).
+    """
 
 
 # Artifact-type inference from retained body filenames (issue #386).
@@ -818,6 +834,82 @@ def _infer_tex_artifact_type(text: str) -> Optional[str]:
     return None
 
 
+def _apply_native_provisional_inference(
+    plan: DocumentPlan,
+    thread: ThreadInventory,
+    observed: List[str],
+) -> None:
+    """Record a native ip-uspto-provisional thread (issue #503).
+
+    Called by :func:`_apply_bare_inference` when ``provisional.tex`` is
+    among the observed bodies. The recognition is FILENAME-driven, not
+    content-driven — no ``\\documentclass`` scan runs here (SKILL.md:160:
+    no provisional-vs-full inference). Like every bare inference the
+    value is TODO-marked (``inferred=True``) and surfaced as a plan note
+    plus an ``operator_todos`` checklist row — never a silent default.
+
+    Body handling mirrors the #382/#408 recorded-but-never-renamed
+    carve-out: ``provisional.tex`` is the body, recorded with a deferral
+    note (anvil's canonical body is ``spec.tex``, but renaming a
+    consumer's externally-compiled ``provisional.tex`` would break their
+    xelatex/build tooling). When ``counsel_memo.tex`` is also present it
+    is recorded as a PRESERVED COMPANION — never selected as the body,
+    never renamed.
+    """
+    if plan.brief_merge is None:
+        return
+
+    plan.brief_merge.artifact_type = "ip-uspto-provisional"
+    plan.brief_merge.inferred = True
+    plan.brief_merge.todo_comment = (
+        f"TODO(operator): confirm — recognized from "
+        f"{PROVISIONAL_BODY_FILENAME} body filename"
+    )
+    plan.notes.append(
+        f"{plan.slug}: artifact_type recognized as 'ip-uspto-provisional' "
+        f"from the {PROVISIONAL_BODY_FILENAME} body filename (FILENAME "
+        f"signal, not \\documentclass — anvil's provisional and full "
+        f"ip-uspto specs share \\documentclass{{anvil-uspto}}, so content "
+        f"cannot disambiguate them) — confirm in BRIEF (TODO marker "
+        f"emitted)."
+    )
+    plan.operator_todos.append(
+        f"`{plan.slug}`: confirm `artifact_type: ip-uspto-provisional` "
+        f"(recognized from {PROVISIONAL_BODY_FILENAME})."
+    )
+
+    # Body filename: recorded + deferred, never renamed (#382/#408
+    # carve-out — anvil's canonical body is `spec.tex`, but the
+    # consumer's `provisional.tex` is externally compiled).
+    plan.notes.append(
+        f"{plan.slug}: body filename {PROVISIONAL_BODY_FILENAME} recorded "
+        f"but NOT renamed (anvil's canonical provisional body is "
+        f"`spec.tex`; renaming a consumer's externally-compiled "
+        f"{PROVISIONAL_BODY_FILENAME} would break their xelatex/build "
+        f"tooling). Rename to `spec.tex` manually if desired."
+    )
+    plan.operator_todos.append(
+        f"`{plan.slug}`: body filename `{PROVISIONAL_BODY_FILENAME}` "
+        f"retained inside version dirs — rename to `spec.tex` manually "
+        f"only if no external tooling consumes the fixed name."
+    )
+
+    # Counsel-memo companion: recognized, recorded, never the body,
+    # never renamed.
+    if has_counsel_memo_companion(observed):
+        plan.notes.append(
+            f"{plan.slug}: {COUNSEL_MEMO_FILENAME} recognized as a "
+            f"PRESERVED COMPANION (a finalize-output counsel memo, never "
+            f"a version-dir body) — recorded and left in place, never "
+            f"selected as the body and never renamed."
+        )
+        plan.operator_todos.append(
+            f"`{plan.slug}`: {COUNSEL_MEMO_FILENAME} preserved as a "
+            f"companion alongside {PROVISIONAL_BODY_FILENAME} (not the "
+            f"body)."
+        )
+
+
 def _apply_bare_inference(plan: DocumentPlan, thread: ThreadInventory) -> None:
     """Infer the BRIEF artifact_type for a BARE thread (issue #408).
 
@@ -844,6 +936,34 @@ def _apply_bare_inference(plan: DocumentPlan, thread: ThreadInventory) -> None:
         return
 
     observed = sorted(set(thread.observed_body_files))
+
+    # Filename-first recognition of a native ip-uspto-provisional thread
+    # (issue #503). ``provisional.tex`` is a SAFE explicit signal:
+    # anvil's own provisional body is ``spec.tex`` with
+    # ``\documentclass{anvil-uspto}`` — the SAME class the full ip-uspto
+    # spec uses — so the ``\documentclass`` scan below cannot disambiguate
+    # a provisional from a full application (SKILL.md:160 forbids that
+    # inference). The operator's body FILENAME is the declaration, so we
+    # short-circuit content inference when it is present.
+    if has_native_provisional_body(observed):
+        _apply_native_provisional_inference(plan, thread, observed)
+        return
+
+    # Counsel-memo-only refusal (issue #503): a version dir carrying
+    # ``counsel_memo.tex`` but NO ``provisional.tex`` is not a fileable
+    # body — a counsel memo is a finalize-OUTPUT companion. Refuse before
+    # any mutation (planning is pure; nothing is touched).
+    if has_counsel_memo_companion(observed):
+        raise PlanError(
+            f"Thread `{thread.slug}` carries `{COUNSEL_MEMO_FILENAME}` "
+            f"but no `{PROVISIONAL_BODY_FILENAME}`. A counsel memo is a "
+            f"finalize-output companion (anvil writes it into "
+            f"`<thread>.counsel/`), not a fileable provisional body. "
+            f"Suggested fix: add the `{PROVISIONAL_BODY_FILENAME}` body "
+            f"this counsel memo accompanies, then re-run. Nothing was "
+            f"modified."
+        )
+
     if observed:
         # Read the newest version dir's observed body for content
         # heuristics (the latest version is the best evidence of what
@@ -1067,6 +1187,7 @@ __all__ = [
     "ContentRewrite",
     "DocumentPlan",
     "Plan",
+    "PlanError",
     "Rename",
     "build_plan",
 ]

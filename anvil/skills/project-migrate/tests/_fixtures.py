@@ -1217,12 +1217,162 @@ def _write_stub_payload(sidecar: Path, version_dir: str, tag: str) -> None:
     )
 
 
+# Provisional-spec body content. A native consumer's `provisional.tex`
+# uses `\documentclass{anvil-uspto}` — the SAME class anvil's full
+# ip-uspto spec (`spec.tex`) uses — which is exactly why a
+# `\documentclass` scan cannot disambiguate the two (issue #503).
+_PROVISIONAL_TEX = (
+    "\\documentclass{anvil-uspto}\n"
+    "\\begin{document}\n"
+    "Provisional specification draft.\n"
+    "\\end{document}\n"
+)
+# A counsel memo body (the COUNSEL-READY companion, #480). Content is
+# never inspected — it is recognized by filename only.
+_COUNSEL_MEMO_TEX = (
+    "\\documentclass{anvil-uspto}\n"
+    "\\begin{document}\n"
+    "Counsel filing memo (companion, never a body).\n"
+    "\\end{document}\n"
+)
+
+
+def build_bare_native_provisional(
+    root: Path,
+    project_name: str = "widget-sensor-provisional",
+    *,
+    slug: str = "widget-sensor",
+    with_counsel_memo: bool = False,
+    counsel_only: bool = False,
+) -> Path:
+    """Build a BARE native ip-uspto-provisional thread (issue #503).
+
+    A hand-rolled provisional with ZERO anvil config: ``<slug>.N/``
+    version dirs whose body is ``provisional.tex`` (NOT anvil's canonical
+    ``spec.tex``), no BRIEF.md, no ``.anvil.json``. Classifies
+    PRE_283_CLASSIC / ``is_bare``; the planner must FILENAME-recognize
+    ``provisional.tex`` → ``ip-uspto-provisional`` (never a
+    ``\\documentclass`` scan, which would mis-infer ``pub``).
+
+    Shape::
+
+      <project>/
+        <slug>.1/provisional.tex
+        <slug>.2/provisional.tex
+        [<slug>.2/counsel_memo.tex]    ← with_counsel_memo (companion)
+
+    ``with_counsel_memo`` adds a ``counsel_memo.tex`` companion alongside
+    the newest ``provisional.tex`` (recognized, never the body, never
+    renamed). ``counsel_only`` builds version dirs carrying ONLY
+    ``counsel_memo.tex`` (no ``provisional.tex``) — the counsel-only
+    refusal fixture.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    for n in (1, 2):
+        if counsel_only:
+            _write(
+                project_dir / f"{slug}.{n}" / "counsel_memo.tex",
+                _COUNSEL_MEMO_TEX,
+            )
+        else:
+            _write(
+                project_dir / f"{slug}.{n}" / "provisional.tex",
+                _PROVISIONAL_TEX,
+            )
+    if with_counsel_memo and not counsel_only:
+        _write(
+            project_dir / f"{slug}.2" / "counsel_memo.tex",
+            _COUNSEL_MEMO_TEX,
+        )
+    return project_dir
+
+
+def build_loose_provisional_file(
+    root: Path,
+    project_name: str = "ip-portfolio",
+    *,
+    loose_filename: str = "provisional.tex",
+) -> Path:
+    """Build a migrated project + one loose ``provisional.tex`` (#503).
+
+    Mirrors :func:`build_loose_file_in_existing_project` (the #406 enroll
+    fixture) but drops a loose ``provisional.tex`` (or
+    ``counsel_memo.tex`` when overridden) at the project root as the
+    enrollment target.
+
+    Returns the project root path.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    _write(project_dir / "BRIEF.md", ENROLL_OPERATOR_BRIEF)
+    for slug in ("zeta-memo", "alpha-memo"):
+        _write(
+            project_dir / slug / f"{slug}.1" / f"{slug}.md",
+            f"# {slug} v1\n\nBody.\n",
+        )
+    body = (
+        _COUNSEL_MEMO_TEX
+        if loose_filename == "counsel_memo.tex"
+        else _PROVISIONAL_TEX
+    )
+    _write(project_dir / loose_filename, body)
+    return project_dir
+
+
+def build_provisional_letter_family(
+    root: Path,
+    project_name: str = "agent-workspace",
+    *,
+    with_counsel_memo: bool = False,
+    counsel_only: bool = False,
+) -> Path:
+    """Build a letter-family with provisional bodies (issue #503).
+
+    A single ``{Project}.{Letter}.{N}`` family whose version-dir body is
+    ``provisional.tex``. Used by the ``--adopt-family`` counsel-memo
+    companion-preservation and counsel-only-refusal tests.
+
+    Shape::
+
+      <root>/<project_name>/
+        Brasidas.P.1/provisional.tex
+        Brasidas.P.2/provisional.tex
+        [Brasidas.P.2/counsel_memo.tex]   ← with_counsel_memo
+
+    ``counsel_only`` builds version dirs carrying ONLY
+    ``counsel_memo.tex`` (the refusal fixture). Returns the family dir
+    (== the project root in this mode).
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    for n in (1, 2):
+        if counsel_only:
+            _write(
+                project_dir / f"Brasidas.P.{n}" / "counsel_memo.tex",
+                _COUNSEL_MEMO_TEX,
+            )
+        else:
+            _write(
+                project_dir / f"Brasidas.P.{n}" / "provisional.tex",
+                _PROVISIONAL_TEX,
+            )
+    if with_counsel_memo and not counsel_only:
+        _write(
+            project_dir / "Brasidas.P.2" / "counsel_memo.tex",
+            _COUNSEL_MEMO_TEX,
+        )
+    return project_dir
+
+
 __all__ = [
     "DEFAULT_TAG_MAP",
     "ENROLL_OPERATOR_BRIEF",
     "FOREIGN_REVIEW_PROSE",
     "build_adopted_review_threads",
     "build_aldus_shaped_deck",
+    "build_bare_native_provisional",
     "build_bare_version_dir_threads",
     "build_bessemer_shaped",
     "build_fully_migrated",
@@ -1230,10 +1380,12 @@ __all__ = [
     "build_loose_file_batch",
     "build_loose_file_in_existing_project",
     "build_loose_file_no_project",
+    "build_loose_provisional_file",
     "build_mixed_memo_deck_proposal",
     "build_post_283_anvil_json",
     "build_post_283_with_operator_brief",
     "build_pre_283_classic",
+    "build_provisional_letter_family",
     "build_vn_report_dirs",
     "write_tag_map",
 ]

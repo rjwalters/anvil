@@ -21,7 +21,9 @@ and silently break the siblings.
 from anvil.lib.project_detect import (  # noqa: F401
     ANVIL_JSON_FILENAME,
     BRIEF_FILENAME,
+    COUNSEL_MEMO_FILENAME,
     MEMO_BODY_FILENAME,
+    PROVISIONAL_BODY_FILENAME,
     ProjectInventory,
     Shape,
     ThreadInventory,
@@ -44,6 +46,8 @@ from anvil.lib.project_detect import (  # noqa: F401
     _observed_retained_body_filenames,
     _project_brief_slugs,
     detect_shape,
+    has_counsel_memo_companion,
+    has_native_provisional_body,
     inventory_project,
 )
 
@@ -51,10 +55,14 @@ from anvil.lib.project_detect import (  # noqa: F401
 __all__ = [
     "ANVIL_JSON_FILENAME",
     "BRIEF_FILENAME",
+    "COUNSEL_MEMO_FILENAME",
     "MEMO_BODY_FILENAME",
+    "PROVISIONAL_BODY_FILENAME",
     "ProjectInventory",
     "Shape",
     "ThreadInventory",
     "detect_shape",
+    "has_counsel_memo_companion",
+    "has_native_provisional_body",
     "inventory_project",
 ]
