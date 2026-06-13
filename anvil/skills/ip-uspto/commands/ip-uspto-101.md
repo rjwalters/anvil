@@ -78,6 +78,7 @@ This critic runs the Alice/Mayo analysis on each independent claim and reports f
    - Any claim that fails Alice/Mayo Step 2 → set `flagged: true`.
    - A pure software claim reciting only generic computer components performing well-understood, routine, conventional activity → set `flagged: true`.
    - A claim that recites a mathematical formula without a specific practical application → set `flagged: true`.
+9b. **Quoted-evidence requirement (issue #464 / #475)**: the Dim 4 justification in the `_summary.md` scorecard (the dim this critic owns) MUST embed at least one **verbatim quote from `spec.tex`** (or the offending claim recitation for an Alice Step 1 / Step 2 call), wrapped in inline double quotes and followed by a location anchor — `("the quoted span" — claim 9 / ¶[0042])` — per `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1. A dim scored at **full weight** MAY substitute the by-absence marker `no instance of <X> found` (e.g., Dim 4 at 5/5 with "no instance of a claim reciting only generic computer components found") — absence of defects has no quotable span; below ceiling the quote requirement stands. The quote must be byte-verbatim — a paraphrase presented in quote marks is fabricated evidence, the defect class the step 10b self-check exists to catch. **Elision with `...` / `…` is permitted** (issue #478): a quote may skip intervening text with an ellipsis, provided each elided fragment is itself verbatim, ≥ `MIN_QUOTE_CHARS` normalized chars, in document order, and drawn from one nearby passage (within the verifier's `ELISION_WINDOW_CHARS` proximity window) — do NOT stitch fragments from distant sections into one quote. Em/en dashes may be typed as `--` / `---` (the verifier folds dash variants symmetrically).
 10. **Write `_summary.md`**:
 
     ```markdown
@@ -95,7 +96,7 @@ This critic runs the Alice/Mayo analysis on each independent claim and reports f
     | 1 | Claim breadth & dependency | 5 | null | n/a — see claims critic |
     | 2 | §112(a) written description | 5 | null | n/a — see s112 critic |
     | 3 | §112(b) definiteness | 5 | null | n/a — see s112 critic |
-    | 4 | §101 statutory subject matter | 5 | 3 | Claim 1 passes; claim 9 is on weak Step 2 footing (Enfish-style improvement asserted but spec evidence thin). |
+    | 4 | §101 statutory subject matter | 5 | 3 | Claim 1 passes; claim 9 is on weak Step 2 footing — the asserted improvement is "displaying the result on a display" (claim 9), well-understood routine conventional activity, with thin spec support. |
     | 5 | Novelty positioning | 5 | null | n/a — see priorart critic |
     | 6 | Specification completeness | 5 | null | n/a — see reviewer |
     | 7 | Drawing-text correspondence | 5 | null | n/a — see reviewer |
@@ -108,6 +109,10 @@ This critic runs the Alice/Mayo analysis on each independent claim and reports f
     2. ...
     ```
 
+10b. **Validate quoted evidence (deterministic, write-time self-check)** — issue #464 / #475:
+   - After the `_summary.md` write lands inside the staging dir, invoke `python -m anvil.lib.evidence_check <thread>.{N}/ --scoring <staging dir>/_summary.md` (or call `anvil.lib.evidence_check::check_version_dir(<thread>.{N}/, scoring=<staging dir>/_summary.md)` directly). The verifier extracts the quoted spans from the Dim 4 justification and checks each one against `spec.tex` (curly→straight quote folding, dash-variant folding `—`/`–`/`---`/`--`, whitespace collapse, markdown-emphasis stripping; case-sensitive substring match, with `...`/`…`-elided spans matched fragment-by-fragment in document order within the `ELISION_WINDOW_CHARS` proximity window — issue #478). Classification per justification: ≥1 span matching the body → pass; score at full weight + `no instance of <X> found` marker → pass (ceiling-by-absence); spans present but none matching → **major `fabricated_evidence` finding**; no spans at all → minor `missing_evidence` advisory. `null`-score (un-owned) dimensions are skipped, so this single-dim scorecard is checked cleanly. Anchors are NOT validated (judgment-free scope).
+   - **Findings are a write-time self-check failure — correct before the sidecar lands**: a `missing_evidence` finding means the critic adds the verbatim quote + anchor (or, at full weight, the by-absence marker) to the Dim 4 justification and re-runs the check. A `fabricated_evidence` finding is the hard case — the quoted span does not appear in `spec.tex`, so the critic MUST re-derive the Dim 4 justification from the actual body text (re-read the section, re-quote verbatim, and reconsider whether the score itself was grounded). The check is deterministic and cheaply re-runnable. The staged sidecar MUST NOT exit the context block while `fabricated_evidence` findings persist.
+   - **Advisory boundary**: this self-check governs this critic's OWN staging-dir `_summary.md` only. It does NOT gate the verdict (no new critical-flag category, no change to the aggregator's `advance`), does NOT write a sidecar, and is NEVER run retroactively against existing critic dirs — legacy siblings are immutable and the rule applies to NEW critic runs only.
 11. **Write `findings.md`** with one finding per analyzed claim. Format:
 
     ```markdown
