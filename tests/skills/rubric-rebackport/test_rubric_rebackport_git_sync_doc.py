@@ -32,6 +32,15 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _git_sync_section() -> str:
+    """Return the ``## Git sync`` section of the command file (heading to
+    EOF — the section is the file's final step by contract)."""
+    text = _read(COMMAND)
+    idx = text.find("## Git sync")
+    assert idx >= 0, "rubric-rebackport.md missing the Git sync section"
+    return text[idx:]
+
+
 def test_command_references_git_sync_snippet():
     assert "snippets/git_sync.md" in _read(COMMAND), (
         "rubric-rebackport.md MUST reference anvil/lib/snippets/git_sync.md "
@@ -69,6 +78,41 @@ def test_command_git_sync_is_apply_path_only():
     idx = text.find("## Git sync")
     assert idx >= 0, "rubric-rebackport.md missing the Git sync section"
     assert "`--apply`" in text[idx:]
+
+
+def test_command_uses_short_pointer_shared_contract():
+    """Issue #528/#537: the SHARED explanation compresses to the
+    canonical short pointer from ``git_sync.md`` §"Adoption step" — the
+    contract sentence and warn-and-continue clause present, the verbose
+    pre-#528 boilerplate gone."""
+    section = _git_sync_section()
+    assert "stage only the dirs this phase wrote" in section, (
+        "rubric-rebackport.md's git-sync step MUST carry the canonical "
+        "short-pointer shared-contract sentence"
+    )
+    assert "Git failures warn and continue" in section, (
+        "rubric-rebackport.md's git-sync step MUST keep the warn-and-continue "
+        "clause"
+    )
+    assert "emit a one-line warning and continue" not in section, (
+        "rubric-rebackport.md still carries the verbose pre-#528 failure prose"
+    )
+    assert "byte-identical to a pre-#426 install" not in section, (
+        "rubric-rebackport.md still carries the verbose pre-#528 default-off prose"
+    )
+
+
+def test_command_keeps_per_command_mechanics():
+    """Issue #528/#537: the per-command mechanics that the short pointer
+    CANNOT carry MUST stay inline — the staging target (which paths THIS
+    command commits) and the ordering anchor (when the hook fires)."""
+    section = _git_sync_section()
+    assert "Staging target" in section, (
+        "rubric-rebackport.md's git-sync step MUST keep an inline staging target"
+    )
+    assert "Ordering" in section, (
+        "rubric-rebackport.md's git-sync step MUST keep an inline ordering anchor"
+    )
 
 
 def test_skill_md_mentions_contract():
