@@ -35,6 +35,13 @@ Covers the acceptance criteria from the issue curation:
   ``--scoring _summary.md`` CLI resolves ``spec.tex`` and preserves exit
   codes 0/1/2; discovery routes machine-summary siblings via
   ``_meta.json`` ``scorecard_kind``.
+- Specialist rollout (issue #497): the 9 scored-justification specialist
+  critics (3 deck specialists + 6 ip/ip-provisional verifying critics)
+  wire the quote sub-bullet + the ``--scoring _summary.md`` write-time
+  self-check, mirroring the #475/#496 pattern; the ~22 structurally
+  exempt commands (``*-audit``, ``*-vision``, ``*-figure-content``,
+  ``*-perspective``, ``ip-uspto-adversary``, ``ip-uspto-fto``) stay
+  unwired — a negative guard locks that scope decision into the suite.
 """
 
 from __future__ import annotations
@@ -1317,3 +1324,84 @@ class TestMachineSummaryFilesystem:
         # The summary justification matches → clean; the table's
         # fabricated quote is NOT checked.
         assert result.passed()
+
+
+# ---------------------------------------------------------------------------
+# Doc coverage — issue #497 rollout to the scored specialist critics
+# ---------------------------------------------------------------------------
+
+
+# The 9 scored-justification specialist critics: the 3 scored deck
+# specialists + the 6 scored ip/ip-provisional verifying critics. Each
+# emits a machine-summary _summary.md scorecard (JSON dimensions block or
+# a markdown scoring table inside _summary.md) and owns ≥1 non-null
+# per-dimension justification, so the quoted-evidence contract fits.
+# (skill, command, body filename quoted in the rule, self-check step)
+SCORED_SPECIALIST_CRITICS = [
+    ("deck", "deck-narrative.md", "deck.md", "9b"),
+    ("deck", "deck-market.md", "deck.md", "8b"),
+    ("deck", "deck-design.md", "deck.md", "9b"),
+    ("ip-uspto", "ip-uspto-claims.md", "spec.tex", "13b"),
+    ("ip-uspto", "ip-uspto-112.md", "spec.tex", "14b"),
+    ("ip-uspto", "ip-uspto-101.md", "spec.tex", "10b"),
+    ("ip-uspto", "ip-uspto-prior-art.md", "spec.tex", "10b"),
+    ("ip-uspto-provisional", "ip-uspto-provisional-112.md", "spec.tex", "11b"),
+    (
+        "ip-uspto-provisional",
+        "ip-uspto-provisional-prior-art.md",
+        "spec.tex",
+        "9b",
+    ),
+]
+
+# Structurally exempt commands that MUST NOT carry the self-check wiring
+# (issue #497 curation scope decision): findings-only critics (all-null
+# scorecard), VLM critics (evidence is a decoded image, not a text
+# span), and audit commands (own no rubric dimension). A future
+# blanket-rollout PR must not silently mis-wire any of these.
+# (skill, command)
+EXEMPT_UNWIRED_COMMANDS = [
+    ("ip-uspto", "ip-uspto-adversary.md"),  # findings-only, all-null
+    ("ip-uspto", "ip-uspto-fto.md"),  # findings-only, all-null
+    ("deck", "deck-vision.md"),  # VLM — evidence is a decoded image
+    ("ip-uspto", "ip-uspto-audit.md"),  # auditor owns no dimension
+]
+
+
+@pytest.mark.parametrize("skill,command,body,step", SCORED_SPECIALIST_CRITICS)
+def test_specialist_critic_doc_wires_the_self_check(
+    skill: str, command: str, body: str, step: str
+) -> None:
+    doc = (
+        REPO_ROOT / f"anvil/skills/{skill}/commands/{command}"
+    ).read_text(encoding="utf-8")
+    # Edit 1: the quote sub-bullet in the scoring step.
+    assert "Quoted-evidence requirement (issue #464 / #475)" in doc
+    assert f"verbatim quote from `{body}`" in doc
+    assert "no instance of <X> found" in doc
+    assert "Elision with `...` / `…` is permitted" in doc
+    assert "ELISION_WINDOW_CHARS" in doc
+    # Edit 2: the write-time --scoring _summary.md self-check sub-step.
+    assert f"{step}. **Validate quoted evidence" in doc
+    assert "anvil.lib.evidence_check" in doc
+    assert "--scoring" in doc
+    assert "_summary.md" in doc
+    assert "fabricated_evidence" in doc
+    assert "missing_evidence" in doc
+
+
+@pytest.mark.parametrize("skill,command", EXEMPT_UNWIRED_COMMANDS)
+def test_exempt_critic_doc_stays_unwired(skill: str, command: str) -> None:
+    """Issue #497: the exempt families MUST NOT be spuriously wired.
+
+    Locks the scope decision into the suite — a future blanket rollout
+    can't silently force a body-quote contract onto a VLM critic, an
+    audit command, or a findings-only critic. The guard: no
+    ``**Validate quoted evidence`` self-check sub-step exists, and the
+    #475-shaped quote sub-bullet is absent.
+    """
+    doc = (
+        REPO_ROOT / f"anvil/skills/{skill}/commands/{command}"
+    ).read_text(encoding="utf-8")
+    assert "**Validate quoted evidence" not in doc
+    assert "Quoted-evidence requirement (issue #464 / #475)" not in doc

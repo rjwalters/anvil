@@ -67,6 +67,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    - Could a busy investor extract the ask in 90 seconds?
    - Are slides 18+ load-bearing? Could the same arc reach the ask in fewer slides?
    - Decks lose to bloat hardest of any skill — a 30-slide deck is fatal regardless of per-slide quality. Score against `rubric.md` dim 9.
+   - **Quoted-evidence requirement (issue #464 / #475)**: each scored dimension's `justification` string in the `_summary.md` JSON `dimensions` block (dims 1 / 7 / 9 — the dims this critic owns) MUST embed at least one **verbatim quote from `deck.md`**, wrapped in inline double quotes and followed by a location anchor — `("the quoted span" — Slide 4)` — per `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1. A dim scored at **full weight** MAY substitute the by-absence marker `no instance of <X> found` (e.g., dim 9 at 4/4 with "no instance of a padded sub-15-slide deck found") — absence of defects has no quotable span; below ceiling the quote requirement stands. The quote must be byte-verbatim from the deck body — a paraphrase presented in quote marks is fabricated evidence, the defect class the step 9b self-check exists to catch. **Elision with `...` / `…` is permitted** (issue #478): a quote may skip intervening text with an ellipsis, provided each elided fragment is itself verbatim, ≥ `MIN_QUOTE_CHARS` normalized chars, in document order, and drawn from one nearby passage (within the verifier's `ELISION_WINDOW_CHARS` proximity window) — do NOT stitch fragments from distant slides into one quote. Em/en dashes may be typed as `--` / `---` (the verifier folds dash variants symmetrically).
 8. **Identify additional findings**:
    - Missing logical bridges between slides (specific examples).
    - Slides that don't earn their place (could be cut without weakening the argument).
@@ -82,21 +83,25 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
      "critic": "narrative",
      "for_version": <N>,
      "dimensions": {
-       "1_narrative_arc":            { "score": 5, "weight": 6 },
+       "1_narrative_arc":            { "score": 5, "weight": 6, "justification": "Problem → Why-now bridge lands (\"AI agents are mature enough to act, not just suggest\" — Slide 3); ask follows the setup." },
        "2_problem_clarity":          null,
        "3_market_size_credibility":  null,
        "4_solution_differentiation": null,
        "5_traction_proof":           null,
        "6_team_credibility":         null,
-       "7_ask_specificity":          { "score": 4, "weight": 5 },
+       "7_ask_specificity":          { "score": 4, "weight": 5, "justification": "Round size present (\"Raising $3M\" — Slide 12) but no use-of-funds breakdown." },
        "8_design_polish":            null,
-       "9_rhetorical_economy":       { "score": 3, "weight": 4 }
+       "9_rhetorical_economy":       { "score": 3, "weight": 4, "justification": "Two slides restate the same traction claim (\"8 paying customers\" — Slide 8) without adding load." }
      },
      "critical_flag": false,
      "critical_flag_notes": []
    }
    ```
    ```
+9b. **Validate quoted evidence (deterministic, write-time self-check)** — issue #464 / #475:
+   - After the `_summary.md` write lands inside the staging dir, invoke `python -m anvil.lib.evidence_check <thread>.{N}/ --scoring <staging dir>/_summary.md` (or call `anvil.lib.evidence_check::check_version_dir(<thread>.{N}/, scoring=<staging dir>/_summary.md)` directly). Because the `--scoring` target is a `_summary.md`, the verifier routes to the machine-summary parser (`parse_machine_summary_dimensions`), which reads the JSON `dimensions` block, extracts the quoted spans from each scored dimension's `justification` string, and checks each one against `deck.md` (curly→straight quote folding, dash-variant folding `—`/`–`/`---`/`--`, whitespace collapse, markdown-emphasis stripping; case-sensitive substring match, with `...`/`…`-elided spans matched fragment-by-fragment in document order within the `ELISION_WINDOW_CHARS` proximity window — issue #478). Classification per justification: ≥1 span matching the body → pass; score at full weight + `no instance of <X> found` marker → pass (ceiling-by-absence); spans present but none matching → **major `fabricated_evidence` finding**; no spans at all → minor `missing_evidence` advisory. `null`-score (un-owned) dimensions are skipped, so a partial scorecard is checked cleanly. Anchors are NOT validated (judgment-free scope).
+   - **Findings are a write-time self-check failure — correct before the sidecar lands**: a `missing_evidence` finding means the critic adds the verbatim quote + anchor (or, at full weight, the by-absence marker) to that dimension's `justification` string and re-runs the check. A `fabricated_evidence` finding is the hard case — the quoted span does not appear in `deck.md`, so the critic MUST re-derive that dimension's justification from the actual deck body (re-read the slide, re-quote verbatim, and reconsider whether the score itself was grounded). The check is deterministic and cheaply re-runnable. The staged sidecar MUST NOT exit the context block while `fabricated_evidence` findings persist.
+   - **Advisory boundary**: this self-check governs this critic's OWN staging-dir `_summary.md` only. It does NOT gate the verdict (no new critical-flag category, no change to the aggregator's `advance`), does NOT write a sidecar, and is NEVER run retroactively against existing critic dirs — legacy siblings are immutable and the rule applies to NEW critic runs only.
 10. **Write `findings.md`**:
    ```
    ## Findings (narrative)
