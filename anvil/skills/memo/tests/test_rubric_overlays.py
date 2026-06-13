@@ -447,7 +447,8 @@ class TestConsumerOverlayTier(unittest.TestCase):
         even when a consumer overlay registry exists — the guard is
         keyed on the explicit SKILL_IDENTITY_ARTIFACT_TYPES set (`pub`
         joined under #408, `report` under #432, `ip-uspto` /
-        `ip-uspto-provisional` under #440 — memo overlay dispatch must
+        `ip-uspto-provisional` under #440, `essay` under #460,
+        `datasheet` under #486 — memo overlay dispatch must
         fail loudly on all of them)."""
         self._write_consumer_overlay("field-note")
         for value in (
@@ -458,6 +459,8 @@ class TestConsumerOverlayTier(unittest.TestCase):
             "report",
             "ip-uspto",
             "ip-uspto-provisional",
+            "essay",
+            "datasheet",
         ):
             with self.subTest(artifact_type=value):
                 slug = f"{value}-thread"

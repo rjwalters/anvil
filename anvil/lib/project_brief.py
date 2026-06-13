@@ -327,7 +327,12 @@ from anvil.lib.theme import find_consumer_root
 # ip-uspto-provisional added under #440 (letter-family adoption's
 # REQUIRED `--artifact-type` values — strict post-write BRIEF
 # validation would otherwise roll back every adopted write), and
-# essay added under #460 (the `anvil:essay` artifact class). Unknown
+# essay added under #460 (the `anvil:essay` artifact class), and
+# datasheet added under #486 (the `anvil:datasheet` artifact class —
+# shipped #418/#421 before this registry pattern was consistently
+# applied; backfilled so a validated BRIEF can carry the type and
+# rubric-rebackport's BRIEF-route inference reaches the datasheet
+# rubric row). Unknown
 # values are rejected with a clear error listing this set UNLESS a
 # consumer overlay JSON backs them (the #394 consumer extension tier —
 # see `discover_consumer_artifact_types` below).
@@ -360,6 +365,7 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "ip-uspto",
     "ip-uspto-provisional",
     "essay",
+    "datasheet",
 )
 
 
@@ -446,6 +452,15 @@ class ArtifactType(str, Enum):
         memo subtype — selects no memo rubric overlay. Registered per
         the #439/#457 precedent so a shared project BRIEF can declare
         which skill owns an essay thread.
+    DATASHEET
+        Skill-identity value (#486): an ``anvil:datasheet`` customer-facing
+        IC / component datasheet thread (LaTeX ``datasheet.tex`` body). Not
+        a memo subtype — selects no memo rubric overlay. The skill shipped
+        (#418/#421) before this registry pattern was consistently applied;
+        registered here so a validated BRIEF can carry
+        ``artifact_type: datasheet`` and rubric-rebackport's BRIEF-route
+        inference (#484) resolves an unstamped datasheet review to the
+        ``("datasheet", 44)`` KNOWN_RUBRICS row.
     """
 
     INVESTMENT_MEMO = "investment-memo"
@@ -463,6 +478,7 @@ class ArtifactType(str, Enum):
     IP_USPTO = "ip-uspto"
     IP_USPTO_PROVISIONAL = "ip-uspto-provisional"
     ESSAY = "essay"
+    DATASHEET = "datasheet"
 
 
 # The memo-scoped subset of the registry: values that select a memo
@@ -487,7 +503,8 @@ MEMO_ARTIFACT_TYPES: frozenset = frozenset(
 
 # The skill-identity subset of the registry (issue #386, made explicit
 # under #394; ``pub`` added under #408; ``report`` added under #432;
-# ``ip-uspto`` / ``ip-uspto-provisional`` added under #440):
+# ``ip-uspto`` / ``ip-uspto-provisional`` added under #440; ``essay``
+# added under #460; ``datasheet`` added under #486):
 # values that name which
 # NON-memo skill owns a thread in a
 # shared project BRIEF. Memo's overlay dispatch
@@ -507,6 +524,7 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.IP_USPTO,
         ArtifactType.IP_USPTO_PROVISIONAL,
         ArtifactType.ESSAY,
+        ArtifactType.DATASHEET,
     }
 )
 
