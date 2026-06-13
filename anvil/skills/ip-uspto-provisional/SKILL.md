@@ -46,13 +46,14 @@ A **provisional thread** is a single provisional application authored across one
   <thread>.1.review/              General reviewer sibling
   <thread>.1.s112/                §112(a) enablement-depth critic (the load-bearing critic)
   <thread>.1.priorart/            Prior-art positioning critic
-  <thread>.1.audit/               Final fact-check (audit phase; command is a tracked follow-up)
+  <thread>.1.audit/               Final fact-check sibling (ip-uspto-provisional-audit)
   <thread>.2/                     Revised version (after revise consumes ALL critic siblings)
   ...
-  <thread>.{N}/                   Terminal version, marked READY (then AUDITED once audit ships)
+  <thread>.{N}/                   Terminal version, marked READY (then AUDITED once audit lands)
+  <thread>.counsel/               COUNSEL-READY filing package (ip-uspto-provisional-finalize)
 ```
 
-There is **no `abstract.txt`** (a provisional requires no abstract), **no `inventorship.md` gate** (no per-claim attribution without required claims; an inventorship-lite pass is a tracked follow-up), and **no `<thread>.final/`** in Phase 1 (the provisional filing package — spec.pdf + drawings.pdf + cover-sheet placeholder + counsel memo — ships with the deferred COUNSEL-READY phase).
+There is **no `abstract.txt`** (a provisional requires no abstract) and **no `inventorship.md` gate** (no per-claim attribution without required claims; an inventorship-lite pass is a tracked follow-up). The terminal filing package is **`<thread>.counsel/`** (the COUNSEL-READY phase — spec.pdf + drawings.pdf + provisional SB/16 cover-sheet placeholder + `counsel_memo.md` + README + manifest; produced by `ip-uspto-provisional-finalize`), distinct from `anvil:ip-uspto`'s `<thread>.final/`.
 
 Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<tag>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
 
@@ -69,7 +70,7 @@ The drafter uses the same outline control surface as `anvil:ip-uspto` (see that 
 Per-thread state, derived from on-disk evidence (not flags):
 
 ```
-EMPTY → INTAKE_DONE → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED
+EMPTY → INTAKE_DONE → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED → COUNSEL-READY
 ```
 
 | State | Evidence |
@@ -81,12 +82,13 @@ EMPTY → INTAKE_DONE → DRAFTED → REVIEWED → REVISED → … → READY →
 | `REVISED` | A `<thread>.{N+1}/` exists after prior critic siblings at `<thread>.{N}` |
 | `READY` | Aggregate score from critic siblings ≥39/45 AND no critical flag at latest `N` |
 | `AUDITED` | `<thread>.{N}.audit/_summary.md` records `passed: true` alongside a `READY` version |
+| `COUNSEL-READY` | `<thread>.counsel/_progress.json` records `phases.finalize.state == done` (with `_manifest.json` present) — the assembled counsel filing package from an `AUDITED` version |
 
 Thresholds: **≥39/45 advances** (legal artifact → the high threshold band per `anvil/lib/snippets/rubric.md`). Any `s112` critical flag short-circuits regardless of total score — a provisional whose disclosure fails to enable a named inventive feature is not worth filing. Other critic critical flags follow the same short-circuit rule.
 
 Iteration cap: default `max_iterations: 5`, overridable via `<thread>/.anvil.json`. Exceeding the cap marks the thread `BLOCKED` (human review). Stable-score termination (`STALLED`) follows `anvil/lib/snippets/rubric.md` §"Termination resolution order".
 
-**Phase 1 scope note**: the `AUDITED` state is defined here so the state machine is stable across phases, but the `ip-uspto-provisional-audit` command is a tracked follow-up — until it ships, `READY` is the operative terminal state. The COUNSEL-READY terminal state (counsel-memo companion + filing package) is likewise deferred (issue #433 curation, "Deferred to follow-up issues").
+The `AUDITED` state is reached by `ip-uspto-provisional-audit` (the post-convergence fact-check on a `READY` version), and the terminal `COUNSEL-READY` state by `ip-uspto-provisional-finalize` (which assembles the `<thread>.counsel/` filing package from an `AUDITED` version). The finalizer's only gate is audit-passed — there is no inventorship-lock gate and no pre-flight gate (the provisional pre-flight is a tracked follow-up, issue #502).
 
 ## Command dispatch
 
@@ -98,6 +100,8 @@ Iteration cap: default `max_iterations: 5`, overridable via `<thread>/.anvil.jso
 | `ip-uspto-provisional-112 <thread>` | §112(a) enablement-depth critic | latest `<thread>.{N}/` | `<thread>.{N}.s112/` |
 | `ip-uspto-provisional-prior-art <thread>` | prior-art critic | latest `<thread>.{N}/` + `<thread>/prior-art/**` | `<thread>.{N}.priorart/` |
 | `ip-uspto-provisional-revise <thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.<tag>/` critic siblings | `<thread>.{N+1}/` with `_revision-log.md`, or a `READY` marker |
+| `ip-uspto-provisional-audit <thread>` | auditor | `READY` `<thread>.{N}/` + `<thread>/BRIEF.md` + `<thread>/prior-art/**` | `<thread>.{N}.audit/` (`_summary.md` records `passed`) |
+| `ip-uspto-provisional-finalize <thread>` | finalizer | `AUDITED` `<thread>.{N}/` + `<thread>.{N}.audit/_summary.md` + `<thread>/BRIEF.md` | `<thread>.counsel/` filing package (spec.pdf, drawings.pdf, SB/16 cover-sheet placeholder, `counsel_memo.md`, README, manifest) |
 
 **Intake**: there is no `ip-uspto-provisional-intake` command in Phase 1. The brief shape is identical to the non-provisional's; run **`ip-uspto-intake <thread>`** (from `anvil:ip-uspto`) to convert a raw inventor disclosure into `<thread>/BRIEF.md`, or hand-author one to the same shape. The orchestrator recommends exactly that for `EMPTY` threads.
 
@@ -181,7 +185,7 @@ Consumers extend via `.anvil/skills/ip-uspto-provisional/` in their own repo:
 
 ## Important caveats
 
-- **This skill does NOT file a provisional application.** It produces a filing-ready specification + drawings package precursor. Filing (cover sheet SB/16, fee, Patent Center submission) requires human + attorney action — and the counsel-memo / filing-package phase is a tracked follow-up.
+- **This skill does NOT file a provisional application.** `ip-uspto-provisional-finalize` assembles the COUNSEL-READY `<thread>.counsel/` package (spec.pdf + drawings.pdf + provisional SB/16 cover-sheet placeholder + `counsel_memo.md`), but actual filing (completing the SB/16, paying the flat basic filing fee, Patent Center submission) requires human + attorney action.
 - **This skill does NOT replace a licensed patent attorney.** It is a drafting and review aid.
 - **The prior-art critic does NOT do its own patent search.** Operator supplies prior art in `<thread>/prior-art/`.
 - **A provisional is not a placeholder for a thin disclosure.** The entire value of this skill is refusing to bless an under-enabled spec. If the rubric blocks on enablement depth, the correct fix is more disclosure from the inventors — not a lower bar.
@@ -189,4 +193,4 @@ Consumers extend via `.anvil/skills/ip-uspto-provisional/` in their own repo:
 
 ## Git sync hook (opt-in, off by default)
 
-Consumers running anvil under an external orchestrator (a sphere channel-agent, a Loom-style daemon) can opt in to a per-phase git commit hook so every lifecycle phase leaves the working tree clean: a repo-level `.anvil/config.json` with `git.commit_per_phase: true` (and optionally `git.push: true`) has each write-bearing ip-uspto-provisional command end its phase by staging only the dirs it wrote and committing as `anvil(ip-uspto-provisional/<phase>): <thread>.{N} [<state>]`. The full contract — knob shape, defaults-off rule, commit-message format, staging scope, warn-and-continue failure semantics, and ordering after the `_progress.json` `done` write and the #350 sidecar atomic rename — lives in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo). All 5 write-bearing ip-uspto-provisional commands adopt it; the read-only `ip-uspto-provisional` portfolio orchestrator is exempt by definition. When `.anvil/config.json` is absent or the knob is false, behavior is byte-identical to a pre-#426 install — the hook is **default off**.
+Consumers running anvil under an external orchestrator (a sphere channel-agent, a Loom-style daemon) can opt in to a per-phase git commit hook so every lifecycle phase leaves the working tree clean: a repo-level `.anvil/config.json` with `git.commit_per_phase: true` (and optionally `git.push: true`) has each write-bearing ip-uspto-provisional command end its phase by staging only the dirs it wrote and committing as `anvil(ip-uspto-provisional/<phase>): <thread>.{N} [<state>]`. The full contract — knob shape, defaults-off rule, commit-message format, staging scope, warn-and-continue failure semantics, and ordering after the `_progress.json` `done` write and the #350 sidecar atomic rename — lives in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo). All 7 write-bearing ip-uspto-provisional commands (draft, review, 112, prior-art, revise, audit, finalize) adopt it; the read-only `ip-uspto-provisional` portfolio orchestrator is exempt by definition. (The audit commits `<thread>.{N}` and the finalize commits the literal terminal `<thread>.counsel` package dir per `git_sync.md` §"Non-thread commit shapes".) When `.anvil/config.json` is absent or the knob is false, behavior is byte-identical to a pre-#426 install — the hook is **default off**.

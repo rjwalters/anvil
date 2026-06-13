@@ -20,14 +20,15 @@ A single command an operator (or orchestrating agent) runs to see the state of e
 
 ## Procedure
 
-1. Enumerate directories under cwd matching `<slug>`, `<slug>.{N}`, or `<slug>.{N}.<tag>` (`<tag>` ∈ {`review`, `s112`, `priorart`, `audit`, or consumer-added tags}).
+1. Enumerate directories under cwd matching `<slug>`, `<slug>.{N}`, `<slug>.{N}.<tag>` (`<tag>` ∈ {`review`, `s112`, `priorart`, `audit`, or consumer-added tags}), or the terminal `<slug>.counsel` filing-package dir.
 2. Group by slug. For each slug, identify:
    - Whether `<slug>/BRIEF.md` exists (intake done?).
    - The latest `N` for which `<slug>.{N}/` exists.
    - Which sibling critic dirs exist at that `N`, vs. the configured critic set (default `review + s112 + priorart`; override via `<slug>/.anvil.json` — `s112` may not be removed).
    - The aggregate score from the critic siblings' `_summary.md` files (mean of non-null per-dimension scores, summed — /45) if all configured critics are done.
    - Whether `<slug>.{N}/_revise-result.md` records `READY`.
-   - Whether `<slug>.{N}.audit/_summary.md` exists (audit done? — command is a tracked follow-up; consumers may have hand-run audits).
+   - Whether `<slug>.{N}.audit/_summary.md` exists and records `passed: true` (audit done — `ip-uspto-provisional-audit`).
+   - Whether `<slug>.counsel/` exists with `_progress.json.phases.finalize.state == done` and `_manifest.json` present (COUNSEL-READY — `ip-uspto-provisional-finalize`).
    - Iteration count and `max_iterations` from `<slug>.{N}/_progress.json` (or `<slug>/.anvil.json` override).
 3. Compute the state-machine position per thread using the table in `SKILL.md`.
 4. Recommend the next command per thread:
@@ -41,8 +42,10 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    | `REVIEWED` (aggregate <39 OR critical flag, AT iteration cap) | `BLOCKED — human review required` |
    | `REVIEWED` (aggregate ≥39, no critical flag) | `ip-uspto-provisional-revise <thread>` (writes the `READY` marker) |
    | `REVISED` | run the configured critics on the new version |
-   | `READY` | (operative terminal for Phase 1 — audit command is a tracked follow-up; counsel-memo / filing package likewise) |
-   | `AUDITED` | (terminal) |
+   | `READY` | `ip-uspto-provisional-audit <thread>` (post-convergence fact-check) |
+   | `AUDITED` (audit passed) | `ip-uspto-provisional-finalize <thread>` (assemble the `<thread>.counsel/` filing package) |
+   | `AUDITED` (audit FAILED — blockers) | `ip-uspto-provisional-revise <thread>` (address audit blockers, then re-run critics + re-audit) |
+   | `COUNSEL-READY` | (terminal — human counsel review + Patent Center provisional submission; plan the 12-month conversion thread) |
 
 5. Detect anomalies and surface them:
    - A `<slug>.{N}/_progress.json` phase stuck `in_progress` with the version dir older than 30 minutes — likely crashed; recommend resume per the command's crash-recovery contract.
