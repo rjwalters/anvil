@@ -12,7 +12,7 @@ The `ip-uspto-provisional` skill produces **provisional patent applications** ta
 
 That inversion drives everything in this skill. Where `anvil:ip-uspto` is claim-centric (flat-weighted rubric, dedicated `claims` and `s101` critics, claim-spec correspondence as dim 9), this skill is **enablement-depth-dominant**: the dominant risk in a provisional is a thin disclosure that *names* an inventive feature without *enabling* it — priority silently fails to attach, and the gap is discovered 12 months later during conversion, when it is too late to fix. The rubric (`anvil-ip-provisional-v1`, /45, ≥39 — see `rubric.md`) weights §112(a) enablement depth highest, and the `s112` critic is the load-bearing critic.
 
-**Relationship to `anvil:ip-uspto`** (per the skill-identity-is-artifact-identity convention — CLAUDE.md): the two are sibling skills sharing substrate through `anvil/lib/` (staged-sidecar atomicity, machine-summary scorecard kind, `_progress.json` conventions, critic discovery/aggregation) and through the ip-uspto skill's `assets/` (the `anvil-uspto.cls` LaTeX class and spec template are reused — see "Install coupling" below). The natural consumer flow is: **provisional thread → (≤12 months) → `anvil:ip-uspto` non-provisional conversion referencing it**. The conversion linkage (priority-claim text, 12-month deadline surfacing) is a tracked follow-up; in Phase 1 the connection is operational, not mechanical.
+**Relationship to `anvil:ip-uspto`** (per the skill-identity-is-artifact-identity convention — CLAUDE.md): the two are sibling skills sharing substrate through `anvil/lib/` (staged-sidecar atomicity, machine-summary scorecard kind, `_progress.json` conventions, critic discovery/aggregation) and through the ip-uspto skill's `assets/` (the `anvil-uspto.cls` LaTeX class and spec template are reused — see "Install coupling" below). The natural consumer flow is: **provisional thread → (≤12 months) → `anvil:ip-uspto` non-provisional conversion referencing it**. The conversion linkage is **mechanical** (issue #501): this finalizer writes an authoritative `<thread>/_filing.json` filing-record (the provisional FILING date + application number), and the `anvil:ip-uspto` consumer reads those into its BRIEF `converts_provisional` block to emit the §119(e) priority-claim text (spec cross-reference paragraph at draft + ADS domestic-priority data at finalize) and to surface the 12-month conversion deadline in its orchestrator. See "Conversion linkage (mechanical, issue #501)" below.
 
 ## Claims-optional posture (load-bearing)
 
@@ -165,6 +165,15 @@ confirmation marker) when the operator passes the REQUIRED
 a provisional and a full application (`ip-uspto`), so the choice is
 always explicit.
 
+## Conversion linkage (mechanical, issue #501)
+
+The provisional's reason to exist is the eventual `anvil:ip-uspto` non-provisional conversion under 35 U.S.C. §119(e). That linkage is **mechanical**, not manual:
+
+- **Producer side (this skill)**: `ip-uspto-provisional-finalize` writes `<thread>/_filing.json` — the authoritative, machine-readable filing-record `{ thread, artifact_type, filing_date, application_number, generated_at, from_version, note }`. At finalize the provisional has not yet been filed, so `filing_date` and `application_number` are **templated as `null`**; counsel fills them from the USPTO Filing Receipt after the provisional is filed (the finalizer never guesses a filing date — a guessed date silently corrupts the §119(e) clock). This replaces the prior "save these in the thread root" prose with a real file the consumer parses.
+- **Consumer side (`anvil:ip-uspto`)**: the non-provisional `<thread>/BRIEF.md` declares the linkage with a `converts_provisional` block (`thread` / `filing_date` / `application_number` / optional `portfolio_path`) whose `filing_date` is copied from this skill's `_filing.json`. From that block the ip-uspto skill emits the §119(e) priority-claim text (a "CROSS-REFERENCE TO RELATED APPLICATIONS" spec paragraph at draft + ADS domestic-priority data at finalize) and surfaces the `filing_date + 12 months` conversion deadline in its orchestrator (warn within 60 days / past).
+- **Fail loud**: a `converts_provisional` block present with a missing/empty `filing_date` is an error on the consumer side — never a silently blank priority claim. This is the same silent-priority-failure guard the enablement-depth rubric enforces, applied to the date plumbing.
+- **Out of scope** (split to a follow-up): the §112(a) disclosure-coverage check — whether the converted subject matter exceeds what the provisional enabled. That is a cross-spec critic pass, not date-and-boilerplate linkage.
+
 ## Install coupling
 
 This skill **reuses `anvil:ip-uspto`'s assets**: the `anvil-uspto.cls` LaTeX class and the `template-spec.tex.j2` spec scaffold at `anvil/skills/ip-uspto/assets/` (consumer repo: `.anvil/skills/ip-uspto/assets/`). The drafter copies `anvil-uspto.cls` into each version dir so versions compile standalone. Install the two skills together:
@@ -189,7 +198,7 @@ Consumers extend via `.anvil/skills/ip-uspto-provisional/` in their own repo:
 - **This skill does NOT replace a licensed patent attorney.** It is a drafting and review aid.
 - **The prior-art critic does NOT do its own patent search.** Operator supplies prior art in `<thread>/prior-art/`.
 - **A provisional is not a placeholder for a thin disclosure.** The entire value of this skill is refusing to bless an under-enabled spec. If the rubric blocks on enablement depth, the correct fix is more disclosure from the inventors — not a lower bar.
-- **The 12-month conversion clock starts at filing.** Phase 1 does not track it; the conversion-linkage follow-up will surface the deadline on the non-provisional side.
+- **The 12-month conversion clock starts at filing.** This finalizer records the FILING date in `<thread>/_filing.json`, and the `anvil:ip-uspto` non-provisional side surfaces the `filing_date + 12 months` deadline (warning within 60 days / past) — see "Conversion linkage (mechanical, issue #501)" above. The clock starts at the provisional's actual FILING date (filled by counsel into `_filing.json` from the USPTO Filing Receipt), NOT at finalize.
 
 ## Git sync hook (opt-in, off by default)
 

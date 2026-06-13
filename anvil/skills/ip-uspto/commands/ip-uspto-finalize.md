@@ -103,6 +103,16 @@ This is the terminal command. After `ip-uspto-finalize` succeeds, the package is
       - Small-entity / micro-entity status must be elected on the ADS.
     ```
 
+    **§119(e) domestic-priority injection (conversion linkage, issue #501):** when `<thread>/BRIEF.md` carries a `converts_provisional` block (see `ip-uspto-intake.md` §"`converts_provisional`"), REPLACE the `Domestic priority: [ATTORNEY TO COMPLETE if claiming benefit]` line above with the generated §119(e) benefit-claim data:
+
+    ```
+      Domestic priority: Claims benefit under 35 U.S.C. 119(e) of provisional
+        application No. <converts_provisional.application_number>, filed
+        <converts_provisional.filing_date>.
+    ```
+
+    This ADS slot carries the benefit-claim *data*; the spec itself already carries the matching "CROSS-REFERENCE TO RELATED APPLICATIONS" paragraph emitted at draft (`ip-uspto-draft.md` §5a). **Fail loud, never silent**: if `converts_provisional` is present but `filing_date` is missing/empty, exit finalize with a `BLOCKED` notice naming the missing field — never emit a `Domestic priority` line with a blank date (the silent-priority-failure risk the conversion linkage exists to prevent). When `converts_provisional` is ABSENT, leave the `Domestic priority` slot at its `[ATTORNEY TO COMPLETE if claiming benefit]` placeholder — byte-identical to the pre-#501 package.
+
 11. **Generate `fee-sheet-placeholder.txt`** with a claim-count-based fee estimate:
 
     ```
