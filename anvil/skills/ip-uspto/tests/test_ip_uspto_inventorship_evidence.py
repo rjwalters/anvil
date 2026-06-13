@@ -20,9 +20,13 @@ The module filename is deliberately distinct
 collection convention; like the sibling ``test_ip_uspto_adversary.py``
 this tests dir carries no ``__init__.py`` (``ip-uspto`` is not a valid
 Python package name — the unique-filename rule prevents the pytest
-collection collision). The lib lives in a hyphenated skill dir, so it is
+collection collision). The lib was **promoted to ``anvil/lib/``** in issue
+#516 (the provisional's inventorship-lite pass is its second consumer);
+these behavioral tests continue to run against the promoted location,
 loaded by file path via importlib under a unique module name (the
-project-migrate ``_skill_lib`` precedent).
+project-migrate ``_skill_lib`` precedent). The canonical ``anvil.lib``
+import path and the file-path-load identity are pinned by
+``tests/lib/test_inventorship_evidence_promotion.py``.
 """
 
 from __future__ import annotations
@@ -39,7 +43,12 @@ import pytest
 
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent
-_LIB_FILE = _SKILL_ROOT / "lib" / "inventorship_evidence.py"
+# ``inventorship_evidence.py`` was promoted to ``anvil/lib/`` in issue #516
+# (the provisional's inventorship-lite pass is its second consumer). The repo
+# root is three parents above the skill root (``ip-uspto/`` -> ``skills/`` ->
+# ``anvil/`` -> repo root).
+_REPO_ROOT = _SKILL_ROOT.parents[2]
+_LIB_FILE = _REPO_ROOT / "anvil" / "lib" / "inventorship_evidence.py"
 _MODULE_NAME = "ip_uspto_inventorship_evidence_lib"
 
 ALICE = ("Alice Author", "alice@example.com")

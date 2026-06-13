@@ -25,9 +25,14 @@ the base command's behavior is unchanged.
 Design contract (settled at #493 curation; do NOT re-litigate)
 --------------------------------------------------------------
 
-- **Skill-local placement** (mirrors v1's ``inventorship_evidence.py``):
-  do NOT promote to ``anvil/lib/`` yet; the second consumer #480 is the
-  promotion trigger.
+- **Skill-local placement**: this judgment-laden interview/synthesis
+  module stays under ``ip-uspto/lib/``; do NOT promote to ``anvil/lib/``
+  until a second skill consumes interview packets or ``--synthesize``
+  determination parsing. (Its evidence-mining sibling
+  ``inventorship_evidence.py`` WAS promoted to ``anvil/lib/`` in #516 once
+  the provisional's inventorship-lite pass became its second consumer;
+  this module is loaded by file path from the promoted location — see the
+  ``_load_evidence_lib`` helper below.)
 - **Adopt the native ``_lib/interview_packet.py`` API shape** where it
   carries over (so a future sphere migration round-trips), adapted to
   anvil's basis model (features under basis A, claim elements under basis
@@ -35,8 +40,8 @@ Design contract (settled at #493 curation; do NOT re-litigate)
   anvil's flat ``evidence.jsonl`` schema (``claim_element`` is a single
   string per row, not the native ``claim_elements`` list).
 - **Reuse v1's vendored helpers** (``is_vendored_path``,
-  ``vendored_prefixes`` / ``vendored-primary`` role) from
-  ``inventorship_evidence.py`` — never reimplement.
+  ``vendored_prefixes`` / ``vendored-primary`` role) from the promoted
+  ``anvil/lib/inventorship_evidence.py`` — never reimplement.
 - **Statutory prose copied verbatim** from the native module: it is legally
   derived. Sphere-specific PIIA/WSGR wording is generalized to neutral
   placeholder text (anvil ships to many consumers); the legal substance is
@@ -61,13 +66,21 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
-# v1 lib reuse — the skill dir is hyphenated, so load by file path under a
-# unique module name (the project-migrate ``_skill_lib`` precedent). We reuse
-# ``is_vendored_path`` rather than reimplementing the vendored-prefix logic.
+# v1 lib reuse — ``inventorship_evidence.py`` was promoted to ``anvil/lib/``
+# (issue #516) when the provisional's inventorship-lite pass became the
+# second consumer. The skill dir is hyphenated, so we load the promoted
+# module by file path under a unique module name (the project-migrate
+# ``_skill_lib`` precedent) rather than via a dotted ``anvil.lib`` package
+# import — this file is itself loaded by file path from the hyphenated skill
+# dir, so the ``anvil`` package is not guaranteed to be importable on
+# ``sys.path``. We reuse ``is_vendored_path`` rather than reimplementing the
+# vendored-prefix logic.
 # ---------------------------------------------------------------------------
 
 _LIB_DIR = Path(__file__).resolve().parent
-_EVIDENCE_FILE = _LIB_DIR / "inventorship_evidence.py"
+# ``anvil/skills/ip-uspto/lib/`` -> repo root is four parents up; the
+# promoted module lives at ``anvil/lib/inventorship_evidence.py``.
+_EVIDENCE_FILE = _LIB_DIR.parents[3] / "anvil" / "lib" / "inventorship_evidence.py"
 _EVIDENCE_MODULE_NAME = "_ip_uspto_inventorship_evidence_for_interview"
 
 

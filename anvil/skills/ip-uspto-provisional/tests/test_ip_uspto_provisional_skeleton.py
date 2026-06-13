@@ -100,6 +100,10 @@ class TestFilesExist(unittest.TestCase):
         # gracefully-degrading drawings VLM critic (pixels-side half of Dim 4).
         "commands/ip-uspto-provisional-figures.md",
         "commands/ip-uspto-provisional-vision.md",
+        # Issue #516 adds the advisory, non-gating inventorship-lite pass: an
+        # inventor-LIST consistency check (BRIEF <-> spec <-> SB/16 cover
+        # sheet), NOT a per-claim matrix and NOT a scoring critic.
+        "commands/ip-uspto-provisional-inventorship.md",
         "tests/test_ip_uspto_provisional_skeleton.py",
     ]
 
@@ -110,16 +114,23 @@ class TestFilesExist(unittest.TestCase):
                     (_SKILL_ROOT / rel).exists(), f"missing skill file: {rel}"
                 )
 
-    def test_deferred_phase2_commands_absent(self):
-        # The inventorship-lite pass (#516) remains a separate follow-up;
-        # its command file must NOT land in this pass. (figures/vision
-        # landed in #515 and are now part of the EXPECTED manifest.)
-        for stem in ("ip-uspto-provisional-inventorship",):
-            with self.subTest(command=stem):
-                self.assertFalse(
-                    (_SKILL_ROOT / "commands" / f"{stem}.md").exists(),
-                    f"{stem}.md is deferred follow-up scope (#516)",
-                )
+    def test_inventorship_lite_is_advisory_non_gating(self):
+        # The inventorship-lite pass (#516) is an advisory, non-gating
+        # inventor-LIST consistency check — NOT a scoring critic. It must NOT
+        # write a _review.json / rubric stamps and must NOT advance the state
+        # machine; it must restate the claims-optional discipline.
+        text = (
+            _SKILL_ROOT / "commands" / "ip-uspto-provisional-inventorship.md"
+        ).read_text(encoding="utf-8")
+        lower = text.lower()
+        self.assertIn("advisory", lower)
+        self.assertIn("never a finding", lower)
+        # It is a LIST check, not a per-claim matrix.
+        self.assertIn("list", lower)
+        # It must NOT advertise itself as a gate.
+        self.assertIn("non-gating", lower)
+        # Claims-optional discipline: absence is never a finding.
+        self.assertIn("claims-optional", lower)
 
 
 class TestSkillFrontmatter(unittest.TestCase):
@@ -175,6 +186,7 @@ class TestCommandFrontmatter(unittest.TestCase):
         "commands/ip-uspto-provisional-claims-seed.md": "ip-uspto-provisional-claims-seed",
         "commands/ip-uspto-provisional-figures.md": "ip-uspto-provisional-figures",
         "commands/ip-uspto-provisional-vision.md": "ip-uspto-provisional-vision",
+        "commands/ip-uspto-provisional-inventorship.md": "ip-uspto-provisional-inventorship",
     }
 
     def test_command_frontmatter(self):

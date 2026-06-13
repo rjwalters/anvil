@@ -28,9 +28,15 @@ Design contract (settled at #445 curation; do NOT re-litigate)
   and must classify on diff content, never commit message alone. Rows
   leave here as ``classification="unclassified"``.
 - **Consumer-agnostic inputs**: ``(repo_path, element->paths map)``. No
-  BRIEF/claims parsing in this module. ``anvil:ip-uspto-provisional``'s
-  deferred inventorship-lite (#480) is the intended second consumer;
-  promote to ``anvil/lib/`` only then (lib-promotion convention).
+  BRIEF/claims parsing in this module. Promoted to ``anvil/lib/`` (issue
+  #516) once ``anvil:ip-uspto-provisional``'s inventorship-lite pass became
+  the second consumer (lib-promotion convention). Both consumers invoke
+  this module by direct file path at
+  ``anvil/lib/inventorship_evidence.py`` (``.anvil/lib/...`` in an
+  installed consumer repo): ``anvil:ip-uspto``'s ``--evidence`` mode and
+  the provisional's ``ip-uspto-provisional-inventorship`` lite pass. The
+  ip-uspto skill's ``inventorship_interview.py`` also loads
+  ``is_vendored_path`` from this canonical location via ``importlib``.
 - **Native schemas adopted as-is** (so a future sphere migration
   round-trips): ``inventorship_map.json`` path roles
   (``primary`` / ``vendored-primary`` / ``diverged-copy`` / ``supporting``,
@@ -48,9 +54,13 @@ Design contract (settled at #445 curation; do NOT re-litigate)
   JSON to stdout; exit ``0`` = clean collection, ``1`` = findings
   (vendored/BLOCKED paths, stale map paths, no-history paths,
   suspected-vendored), ``2`` = invocation error (bad map, no git, not a
-  repo). The skill dir is hyphenated, so there is no dotted ``python -m``
-  path — invoke this file directly (project-migrate/project-share
-  precedent).
+  repo). Consumers invoke this file by direct path
+  (``python3 anvil/lib/inventorship_evidence.py``) — the calling skill
+  dirs are hyphenated, so command prose references the file path rather
+  than a dotted ``python -m`` path (project-migrate/project-share
+  precedent). The module is also importable as
+  ``anvil.lib.inventorship_evidence`` (the canonical import path tested in
+  ``tests/lib/test_inventorship_evidence_promotion.py``).
 """
 
 from __future__ import annotations
