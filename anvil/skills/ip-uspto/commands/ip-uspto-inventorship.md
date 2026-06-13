@@ -153,10 +153,10 @@ The map associates each matrix row key (feature IDs under basis A, claim element
 
 ### Step E2 — Deterministic mining (`inventorship_evidence.py`)
 
-Run the skill-local lib by direct file path (the skill dir is hyphenated, so there is no dotted `python -m` path; in an installed consumer repo the path is `.anvil/skills/ip-uspto/lib/inventorship_evidence.py`):
+Run the promoted shared lib by direct file path (`inventorship_evidence.py` was promoted to `anvil/lib/` in issue #516 once the provisional's inventorship-lite pass became its second consumer; the calling skill dir is hyphenated, so command prose references the file path rather than a dotted `python -m` path; in an installed consumer repo the path is `.anvil/lib/inventorship_evidence.py`):
 
 ```bash
-python3 anvil/skills/ip-uspto/lib/inventorship_evidence.py \
+python3 anvil/lib/inventorship_evidence.py \
   <thread>/inventorship-evidence/inventorship_map.json \
   --repo <repo_path> \
   --write-evidence <thread>/inventorship-evidence/evidence.jsonl
@@ -217,7 +217,7 @@ The candidate list is the **union** of: (1) named inventors from `BRIEF.md` fron
 
 ### Step I3 — Vendored detection (reuse the v1 helper)
 
-Reuse v1's `is_vendored_path` + `vendored-primary` / `vendored_prefixes` logic from `inventorship_evidence.py` (do NOT reimplement). When a candidate's mapped/evidence paths intersect a vendored path, the packet MUST include the upstream-conception prompt (the `VENDORED_CODE_PROMPT` constant): the in-repo history attributes the importer, not the upstream author, so the packet asks the candidate to confirm any upstream-conception involvement directly.
+Reuse v1's `is_vendored_path` + `vendored-primary` / `vendored_prefixes` logic from `anvil/lib/inventorship_evidence.py` (do NOT reimplement). When a candidate's mapped/evidence paths intersect a vendored path, the packet MUST include the upstream-conception prompt (the `VENDORED_CODE_PROMPT` constant): the in-repo history attributes the importer, not the upstream author, so the packet asks the candidate to confirm any upstream-conception involvement directly.
 
 ### Step I4 — Bot-author resolution
 
