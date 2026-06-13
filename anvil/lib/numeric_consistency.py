@@ -306,10 +306,30 @@ def _parse_value(raw: str) -> float:
     return float(raw.replace(",", ""))
 
 
-_SCALE = {"k": 1e3, "m": 1e6, "b": 1e9}
+_SCALE = {
+    "k": 1e3,
+    "m": 1e6,
+    "b": 1e9,
+    "t": 1e12,
+    "mn": 1e6,
+    "bn": 1e9,
+    "tn": 1e12,
+}
 
-# Currency: $2.3B / $1,200 / $42. Scale suffix optional.
-_CURRENCY_RE = re.compile(r"\$\s?(?P<num>\d[\d,]*(?:\.\d+)?)\s?(?P<scale>[KMBkmb])?\b")
+# Scale-suffix alternation shared by _CURRENCY_RE, _FRACTION_RES and
+# _PAIR_RES. Two-letter financial-journalism suffixes (bn=billion,
+# mn=million, tn=trillion) are listed FIRST so the longest match wins
+# over the single-letter b/m/t branch — otherwise "$5bn" would tokenize
+# as "$5b" and leave a stray "n". The captured suffix is lowercased
+# before the _SCALE lookup, so "Bn"/"Mn" casing is handled for free.
+# Keep this single source of truth mirrored across all five sites
+# (the #488 invariant).
+_SCALE_SUFFIX = r"(?:[KkMmBbTt]n|[KMBkmbTt])"
+
+# Currency: $2.3B / $1,200 / $42 / $5bn. Scale suffix optional.
+_CURRENCY_RE = re.compile(
+    r"\$\s?(?P<num>\d[\d,]*(?:\.\d+)?)\s?(?P<scale>" + _SCALE_SUFFIX + r")?\b"
+)
 # Percent: 42% / 42.5 % / LaTeX-escaped 42\%.
 _PERCENT_RE = re.compile(r"(?P<num>\d[\d,]*(?:\.\d+)?)\s?\\?%")
 # Multiplier: 8x / 8.5× (x must not start a longer word).
@@ -328,10 +348,10 @@ _LIST_MARKER_RE = re.compile(r"^\s*\d+\.\s", re.MULTILINE)
 _FRACTION_RES: Tuple[re.Pattern, ...] = (
     re.compile(
         r"(?<![\w.])(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
-        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)"
+        r"(?(ca)\s?(?P<sa>" + _SCALE_SUFFIX + r")?\b)"
         r"\s+(?:out\s+of|of)\s+(?:the\s+)?"
         r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
-        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)(?![\w%])"
+        r"(?(cb)\s?(?P<sb>" + _SCALE_SUFFIX + r")?\b)(?![\w%])"
     ),
     re.compile(r"(?<![\w.])(?P<a>\d[\d,]*)\s*/\s*(?P<b>\d[\d,]*)(?![\w%])"),
 )
@@ -346,21 +366,21 @@ _FRACTION_RES: Tuple[re.Pattern, ...] = (
 _PAIR_RES: Tuple[re.Pattern, ...] = (
     re.compile(
         r"\bfrom\s+(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
-        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)\s*[A-Za-z%]*\s+to\s+"
+        r"(?(ca)\s?(?P<sa>" + _SCALE_SUFFIX + r")?\b)\s*[A-Za-z%]*\s+to\s+"
         r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
-        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)"
+        r"(?(cb)\s?(?P<sb>" + _SCALE_SUFFIX + r")?\b)"
     ),
     re.compile(
         r"(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
-        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)\s*[A-Za-z%]*\s+(?:vs\.?|versus)\s+"
+        r"(?(ca)\s?(?P<sa>" + _SCALE_SUFFIX + r")?\b)\s*[A-Za-z%]*\s+(?:vs\.?|versus)\s+"
         r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
-        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)"
+        r"(?(cb)\s?(?P<sb>" + _SCALE_SUFFIX + r")?\b)"
     ),
     re.compile(
         r"(?P<ca>\$\s?)?(?P<a>\d[\d,]*(?:\.\d+)?)"
-        r"(?(ca)\s?(?P<sa>[KMBkmb])?\b)\s*[A-Za-z%]*\s*(?:→|->)\s*"
+        r"(?(ca)\s?(?P<sa>" + _SCALE_SUFFIX + r")?\b)\s*[A-Za-z%]*\s*(?:→|->)\s*"
         r"(?P<cb>\$\s?)?(?P<b>\d[\d,]*(?:\.\d+)?)"
-        r"(?(cb)\s?(?P<sb>[KMBkmb])?\b)"
+        r"(?(cb)\s?(?P<sb>" + _SCALE_SUFFIX + r")?\b)"
     ),
 )
 

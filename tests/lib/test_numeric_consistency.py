@@ -335,6 +335,70 @@ class TestScaleSuffixShapes:
         shapes = _extract_shapes(body, _paragraph_index(body), _FRACTION_RES)
         assert [(s.a, s.b) for s in shapes] == [(47.0, 94.0), (47.0, 94.0)]
 
+    # -- #491: two-letter financial suffixes (bn / mn / tn) --
+
+    def test_bn_currency_pair_true_negative(self) -> None:
+        # #491 repro: a CORRECT $5bn -> $3bn doc (40% reduction off the
+        # $5bn base) must emit zero findings. Before the two-letter
+        # suffix fix, "$5bn" failed the \b assertion and produced no
+        # shape, so this claim was silently un-checkable.
+        body = "Revenue fell from $5bn to $3bn, a 40% reduction.\n"
+        findings, _, _ = check_text(body)
+        assert findings == []
+
+    def test_bn_currency_pair_true_positive(self) -> None:
+        # An INCORRECT $5bn -> $3bn claim now fires, with billion-scaled
+        # operands surfaced in the message.
+        body = "Revenue fell from $5bn to $3bn, a 75% reduction.\n"
+        findings, _, _ = check_text(body)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.code == PERCENT_MISMATCH
+        assert "5000000000" in f.message and "3000000000" in f.message
+        # The checker reports the base-relative change closest to the
+        # asserted 75% — here (5-3)/3 = 66.7% off the $3bn base.
+        assert f.computed == pytest.approx(66.666666, abs=1e-3)
+
+    def test_mn_currency_pair_scaled(self) -> None:
+        # "$5mn vs $3mn" tokenizes the two-letter million suffix.
+        body = "It was $5mn vs $3mn for the rival bid.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(5e6, 3e6)]
+
+    def test_bn_casing_scaled(self) -> None:
+        # Mixed-case "Bn" is lowercased before the scale lookup.
+        body = "Spend grew from $1.2Bn to $3Bn this year.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(1.2e9, 3e9)]
+
+    def test_tn_currency_pair_scaled(self) -> None:
+        # Trillion suffix ("tn") scales too.
+        body = "Debt rose from $5tn to $3tn over the decade.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(5e12, 3e12)]
+
+    def test_bare_bn_suffix_not_scaled(self) -> None:
+        # Ambiguity guard: the two-letter suffix is still currency-gated,
+        # so a bare "5 bn" (no "$") is NEVER read as 5 billion.
+        body = "The herd grew from 5 bn to 3 bn animals.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(5.0, 3.0)]
+
+    def test_bn_currency_tokenizer(self) -> None:
+        # The currency tokenizer (not just shapes) recognizes "$5bn".
+        from anvil.lib.numeric_consistency import _extract_numbers
+
+        tokens = _extract_numbers("$5bn and $3mn raised.", [(0, 99, 0)])
+        scaled = [(t.value, t.kind) for t in tokens if t.kind == "currency"]
+        assert scaled == [(5e9, "currency"), (3e6, "currency")]
+
+    def test_single_letter_suffix_still_scaled(self) -> None:
+        # Regression guard: the existing single-letter b/m branch still
+        # wins when no "n" follows ("$5b" stays 5 billion).
+        body = "Revenue fell from $5b to $3b last year.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _PAIR_RES)
+        assert [(s.a, s.b) for s in shapes] == [(5e9, 3e9)]
+
 
 # ---------------------------------------------------------------------------
 # AC: advisory vs blocking severity wiring
