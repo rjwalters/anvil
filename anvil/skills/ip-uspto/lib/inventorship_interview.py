@@ -1011,6 +1011,889 @@ def build_packets(
     return out
 
 
+# ===========================================================================
+# Synthesis (v2 ``--synthesize``, issue #511)
+# ---------------------------------------------------------------------------
+# The judgment-laden half: parse *filled-in* interview packets back into
+# structured per-candidate responses, then classify per-element conception
+# claims into a determination FOR COUNSEL. Legal invariants (byte-identical
+# to v1/v2): synthesis proposes, the attorney attests. It NEVER reads or
+# writes the ``●`` matrix (``inventorship.md``), NEVER adds/removes named
+# inventors, NEVER adjudicates, and NEVER infers conception in the absence
+# of a candidate response (``unanswered`` / ``partial`` are surfaced, never
+# resolved).
+#
+# Parse/judgment split (rubric-rebackport precedent, settled at #511
+# curation): ``parse_packet`` extracts the *deterministic skeleton* (it is
+# the unit-testable contract against the frozen #493 ``render_packet`` shape).
+# Interpreting the raw free-text answers into the final
+# ``CandidateResponse.answers`` is LLM-in-command. The classification +
+# rollup below (``render_synthesis`` and the ``_identify_*`` / ``_summarize_*``
+# / ``_suggest_*`` / ``_open_questions`` helpers) is a pure function of the
+# structured ``CandidateResponse`` input — ported verbatim-adapted from the
+# native ``render_synthesis`` (anvil basis: elements under
+# ``inv_map["elements"]``, not native ``inv_map["claims"][].elements``).
+# ===========================================================================
+
+
+#: The placeholder line a respondent overwrites with their answer. An answer
+#: still equal to this sentinel (after the ``> `` blockquote marker) means
+#: the candidate did NOT fill it in.
+ANSWER_PLACEHOLDER = "_Your answer:_"
+
+#: The signature-block date line a respondent fills in. A trailing run of
+#: underscores (the unfilled template) means no date was typed.
+_SIGNATURE_DATE_RE = re.compile(r"^Date:\s*(.*)$")
+_CANDIDATE_HEADER_RE = re.compile(r"^\*\*Candidate:\*\*\s*(.+?)\s*$")
+_ELEMENT_HEADING_RE = re.compile(r"^###\s+Element\s+(.+?)\s*$")
+#: ``**Q1 (conception moment).**`` … captures the bare ``Q1`` key.
+_QUESTION_LABEL_RE = re.compile(r"^\*\*(Q[1-7])\b[^*]*\*\*")
+#: A run of 5+ underscores is the unfilled signature-date template.
+_BLANK_UNDERSCORES_RE = re.compile(r"^_{5,}$")
+
+
+@dataclass
+class ParsedPacket:
+    """The deterministic skeleton lifted from one filled-in packet.
+
+    This is the unit-testable contract against the frozen #493
+    ``render_packet`` shape. It carries the *raw* free-text answer strings —
+    interpreting them (``claimed-sole`` vs ``claimed-joint``? who did Q3
+    name?) is the LLM-in-command half and is NOT done here.
+
+    Fields:
+      - ``candidate``: display name from the ``**Candidate:**`` header.
+      - ``returned_date``: the typed signature-block date, or ``None`` when
+        the date line is blank (the unfilled template). ``None`` is the
+        ``unanswered`` signal downstream.
+      - ``answers``: ``{element_key -> {"Q1": raw, …, "Q7": raw}}`` — the
+        verbatim text the respondent wrote under each ``> _Your answer:_``
+        line (empty string when left at the placeholder).
+      - ``placeholder_unchanged``: ``{element_key -> {"Q1": bool, …}}`` —
+        ``True`` when that answer line was NOT filled (still the template
+        placeholder). A fully-unfilled template reports every flag ``True``.
+    """
+
+    candidate: str
+    returned_date: Optional[str]
+    answers: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    placeholder_unchanged: Dict[str, Dict[str, bool]] = field(
+        default_factory=dict
+    )
+
+
+def _strip_answer_line(line: str) -> Tuple[Optional[str], bool]:
+    """Parse a ``> …`` blockquote answer line.
+
+    Returns ``(answer_text, is_placeholder)``. ``answer_text`` is the text
+    after the ``> `` marker (stripped); ``is_placeholder`` is ``True`` when
+    that text is still the unfilled ``_Your answer:_`` sentinel (or empty).
+    Returns ``(None, False)`` for a line that is not a blockquote.
+    """
+    if not line.startswith(">"):
+        return None, False
+    body = line[1:].strip()
+    if body == ANSWER_PLACEHOLDER or body == "":
+        return "", True
+    # A respondent who typed after the sentinel (e.g.
+    # ``> _Your answer:_ around mid-Feb``) — strip the leading sentinel.
+    if body.startswith(ANSWER_PLACEHOLDER):
+        remainder = body[len(ANSWER_PLACEHOLDER):].strip()
+        return remainder, remainder == ""
+    return body, False
+
+
+def parse_packet(markdown: str) -> ParsedPacket:
+    """Deterministically lift the skeleton from a filled-in packet.
+
+    Walks a packet emitted by the frozen #493 ``render_packet`` shape and
+    extracts: (a) the candidate display name from the ``**Candidate:**``
+    header, (b) the returned date from the signature block (``None`` when
+    blank/unfilled), (c) per-``### Element <key>`` raw Q1–Q7 answer strings,
+    and (d) a per-answer ``placeholder_unchanged`` flag (the
+    ``> _Your answer:_`` line was not filled).
+
+    Round-trips a ``render_packet`` output without churn: an unfilled
+    template parses to every ``placeholder_unchanged=True`` and
+    ``returned_date=None``. This is a *deterministic* extraction; it never
+    interprets the answers (that is the command's LLM-in-command half).
+    """
+    candidate = ""
+    returned_date: Optional[str] = None
+    answers: Dict[str, Dict[str, str]] = {}
+    placeholder_unchanged: Dict[str, Dict[str, bool]] = {}
+
+    lines = markdown.splitlines()
+
+    current_element: Optional[str] = None
+    current_q: Optional[str] = None
+    in_signature = False
+
+    for raw_line in lines:
+        line = raw_line.rstrip()
+        stripped = line.strip()
+
+        # Candidate header (take the first occurrence).
+        if not candidate:
+            m = _CANDIDATE_HEADER_RE.match(stripped)
+            if m:
+                candidate = m.group(1).strip()
+                continue
+
+        # Signature block opens the date-capture window.
+        if stripped.startswith("## Signature block"):
+            in_signature = True
+            current_element = None
+            current_q = None
+            continue
+
+        # Element heading.
+        m = _ELEMENT_HEADING_RE.match(stripped)
+        if m and not in_signature:
+            current_element = m.group(1).strip()
+            current_q = None
+            answers.setdefault(current_element, {})
+            placeholder_unchanged.setdefault(current_element, {})
+            continue
+
+        # Question label inside an element.
+        if current_element is not None and not in_signature:
+            qm = _QUESTION_LABEL_RE.match(stripped)
+            if qm:
+                current_q = qm.group(1)
+                continue
+
+            # The blockquote answer line for the active question.
+            if current_q is not None and stripped.startswith(">"):
+                ans, is_placeholder = _strip_answer_line(stripped)
+                if ans is not None:
+                    answers[current_element][current_q] = ans
+                    placeholder_unchanged[current_element][current_q] = (
+                        is_placeholder
+                    )
+                    # Each Q-block has exactly one answer line; close it.
+                    current_q = None
+                continue
+
+        # Signature-block date capture.
+        if in_signature:
+            dm = _SIGNATURE_DATE_RE.match(stripped)
+            if dm:
+                value = dm.group(1).strip()
+                if value and not _BLANK_UNDERSCORES_RE.match(value):
+                    returned_date = value
+                continue
+
+    return ParsedPacket(
+        candidate=candidate,
+        returned_date=returned_date,
+        answers=answers,
+        placeholder_unchanged=placeholder_unchanged,
+    )
+
+
+@dataclass
+class CandidateResponse:
+    """One candidate's filled-in packet, interpreted into structured form.
+
+    Native shape (so a future sphere migration round-trips):
+      - ``candidate``: display name.
+      - ``returned_date``: typed signature date, or ``None`` == unanswered.
+      - ``answers``: ``{element_key -> {"Q1": "...", "Q3": "...", …}}`` —
+        the *interpreted* answers (the command normalizes raw ``parse_packet``
+        text into this; an element the candidate skipped is simply absent).
+      - ``notes``: free-form counsel notes (e.g. bot-director confirmation).
+    """
+
+    candidate: str
+    returned_date: Optional[str]
+    answers: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    notes: str = ""
+
+
+def _q1_indicates_no_claim(q1: str) -> bool:
+    """Q1 is a 'no, I didn't conceive this' answer."""
+    q1n = (q1 or "").strip().lower()
+    if not q1n:
+        return True
+    if q1n in ("none", "no", "n/a", "no one", "not me"):
+        return True
+    if q1n.startswith(
+        ("none ", "none—", "none–", "none -", "none.", "no ", "n/a ", "not me ")
+    ):
+        return True
+    if q1n.startswith("none"):
+        return True
+    return False
+
+
+def _q3_named_others(q3: str, candidate: str) -> List[str]:
+    """Named joint conceivers from Q3 (excluding the candidate + sentinels).
+
+    Filters obvious "no one" sentinels and generic non-names ("the team",
+    "everyone"); keeps capitalized person-name-shaped tokens, trimmed to the
+    first three words.
+    """
+    if not q3:
+        return []
+    q3n = q3.strip().lower()
+    if q3n in ("", "none", "n/a", "no one", "no", "nobody"):
+        return []
+    if q3n.startswith(("none", "n/a", "no one", "nobody")):
+        return []
+    pieces = [p.strip() for p in re.split(r"[,;]| and ", q3) if p.strip()]
+    out: List[str] = []
+    for p in pieces:
+        if not p:
+            continue
+        if p.lower() == candidate.lower():
+            continue
+        if p.lower().startswith(("none", "n/a", "no one", "nobody")):
+            continue
+        if p.lower() in (
+            "team",
+            "everyone",
+            "the team",
+            "various",
+            "the broader team",
+            "the whole team",
+        ):
+            continue
+        words = p.split()
+        if words and not (words[0][0].isupper() and words[0][0].isalpha()):
+            continue
+        out.append(" ".join(words[:3]).rstrip(".,;:"))
+    return out
+
+
+def _summarize_response_for_element(r: CandidateResponse, label: str) -> str:
+    """One §1 candidacy-table cell for a candidate × element."""
+    if not r.returned_date:
+        return "`unanswered`"
+    ans = r.answers.get(label)
+    if not ans:
+        # Returned the packet but skipped this element's Q-block.
+        return "`partial`"
+    q1 = (ans.get("Q1") or "").strip()
+    q3 = (ans.get("Q3") or "").strip()
+    if _q1_indicates_no_claim(q1):
+        return "`claimed-none`"
+    others = _q3_named_others(q3, r.candidate)
+    if others:
+        return f"`claimed-joint` (w/ {', '.join(others)})"
+    return "`claimed-sole`"
+
+
+def _identify_disputed_elements(
+    element_labels: List[str], responses: List[CandidateResponse]
+) -> Dict[str, dict]:
+    """``{label -> {status, per_candidate, resolution?}}`` for disputes.
+
+    Classifies each element into ``CONFLICTING`` (≥2 sole claimants),
+    ``MIXED`` (sole + joint to reconcile), or ``NAMED NON-RESPONDENT`` (a
+    joint claimant names a conceiver who returned no packet). v2 never
+    resolves these — counsel does.
+    """
+    disputes: Dict[str, dict] = {}
+    for label in element_labels:
+        sole_claimants: List[Tuple[str, str, str]] = []
+        joint_claimants: List[Tuple[str, str, str, List[str]]] = []
+        for r in responses:
+            if not r.returned_date:
+                continue
+            ans = r.answers.get(label)
+            if not ans:
+                continue
+            q1 = (ans.get("Q1") or "").strip()
+            q3 = (ans.get("Q3") or "").strip()
+            if _q1_indicates_no_claim(q1):
+                continue
+            others = _q3_named_others(q3, r.candidate)
+            if others:
+                joint_claimants.append((r.candidate, q1, q3, others))
+                continue
+            sole_claimants.append((r.candidate, q1, q3))
+
+        if len(sole_claimants) >= 2:
+            per_cand: Dict[str, dict] = {}
+            for cand, q1, q3 in sole_claimants:
+                per_cand[cand] = {
+                    "returned_date": next(
+                        (r.returned_date for r in responses if r.candidate == cand),
+                        None,
+                    ),
+                    "summary": f'claims sole conception. Q1: "{q1[:200]}"'
+                    + (f" Joint candidates named (Q3): {q3}" if q3 else ""),
+                }
+            disputes[label] = {
+                "status": (
+                    "**CONFLICTING** — two or more candidates claim sole "
+                    "conception"
+                ),
+                "per_candidate": per_cand,
+                "resolution": (
+                    "Counsel must interview and resolve. Both candidates' "
+                    "filed evidence is in scope."
+                ),
+            }
+        elif sole_claimants and joint_claimants:
+            per_cand = {}
+            for cand, q1, q3 in sole_claimants:
+                per_cand[cand] = {
+                    "returned_date": next(
+                        (r.returned_date for r in responses if r.candidate == cand),
+                        None,
+                    ),
+                    "summary": (
+                        f'claims sole conception. Q1: "{q1[:160]}"'
+                        + (f"  Q3: {q3}" if q3 else "")
+                    ),
+                }
+            for cand, q1, q3, others in joint_claimants:
+                per_cand[cand] = {
+                    "returned_date": next(
+                        (r.returned_date for r in responses if r.candidate == cand),
+                        None,
+                    ),
+                    "summary": (
+                        f"claims joint conception with {', '.join(others)}. "
+                        f'Q1: "{q1[:160]}"'
+                    ),
+                }
+            sole_names = {c for c, _, _ in sole_claimants}
+            mentions_sole = False
+            for _, _, _, others in joint_claimants:
+                for sn in sole_names:
+                    if any(
+                        sn.lower() in o.lower() or o.lower() in sn.lower()
+                        for o in others
+                    ):
+                        mentions_sole = True
+                        break
+            resolution = (
+                "PROBABLE-JOINT — sole and joint claims reconcile if read as "
+                "originator + extender. Counsel to confirm."
+                if mentions_sole
+                else "Counsel to interview both candidates."
+            )
+            disputes[label] = {
+                "status": "**MIXED** — sole + joint claims to reconcile",
+                "per_candidate": per_cand,
+                "resolution": resolution,
+            }
+        else:
+            respondent_names = {r.candidate for r in responses if r.returned_date}
+            named_non_respondent: List[Tuple[str, str, str, str]] = []
+            for cand, q1, q3, others in joint_claimants:
+                for o in others:
+                    if not any(
+                        o.lower() == rn.lower() or rn.lower() in o.lower()
+                        for rn in respondent_names
+                    ):
+                        named_non_respondent.append((cand, o, q1, q3))
+            if named_non_respondent:
+                per_cand = {}
+                for cand, missing, q1, q3 in named_non_respondent:
+                    per_cand[cand] = {
+                        "returned_date": next(
+                            (
+                                r.returned_date
+                                for r in responses
+                                if r.candidate == cand
+                            ),
+                            None,
+                        ),
+                        "summary": (
+                            f"claims joint conception, names **{missing}** "
+                            f'(no packet returned). Q1: "{q1[:160]}"'
+                        ),
+                    }
+                disputes[label] = {
+                    "status": (
+                        "**NAMED NON-RESPONDENT** — joint conceiver did not "
+                        "return a packet"
+                    ),
+                    "per_candidate": per_cand,
+                    "resolution": (
+                        "Counsel to follow up with the named non-respondent."
+                    ),
+                }
+    return disputes
+
+
+def _identify_convergent_elements(
+    element_labels: List[str], responses: List[CandidateResponse]
+) -> Dict[str, dict]:
+    """``{label -> {inventors: [...], type: 'sole' | 'joint'}}``.
+
+    An element is convergent when exactly one candidate claims sole
+    conception (and no other claims it), OR multiple candidates claim joint
+    conception with a consistent naming set.
+    """
+    convergent: Dict[str, dict] = {}
+    for label in element_labels:
+        claimants: List[Tuple[str, List[str]]] = []
+        for r in responses:
+            if not r.returned_date:
+                continue
+            ans = r.answers.get(label)
+            if not ans:
+                continue
+            q1 = (ans.get("Q1") or "").strip()
+            q3 = (ans.get("Q3") or "").strip()
+            if _q1_indicates_no_claim(q1):
+                continue
+            others = _q3_named_others(q3, r.candidate)
+            claimants.append((r.candidate, others))
+
+        if len(claimants) == 1:
+            cand, others = claimants[0]
+            if not others:
+                convergent[label] = {"inventors": [cand], "type": "sole"}
+        elif len(claimants) >= 2:
+            sets: List[set] = []
+            for cand, others in claimants:
+                norm_others: set = set()
+                for o in others:
+                    matched = False
+                    for r in responses:
+                        if r.candidate == cand:
+                            continue
+                        if (
+                            o.lower() == r.candidate.lower()
+                            or o.lower() in r.candidate.lower()
+                        ):
+                            norm_others.add(r.candidate)
+                            matched = True
+                            break
+                    if not matched:
+                        norm_others.add(o)
+                sets.append({cand} | norm_others)
+            if all(s == sets[0] for s in sets):
+                convergent[label] = {
+                    "inventors": sorted(sets[0]),
+                    "type": "joint",
+                }
+    return convergent
+
+
+def _suggest_inventors(
+    element_labels: List[str],
+    responses: List[CandidateResponse],
+    convergent: Dict[str, dict],
+    disputes: Dict[str, dict],
+) -> Dict[str, dict]:
+    """Roll the convergent map up into a per-candidate inventor list."""
+    out: Dict[str, dict] = {}
+    for label, info in convergent.items():
+        for inv in info["inventors"]:
+            slot = out.setdefault(inv, {"elements": [], "framing": ""})
+            slot["elements"].append(label)
+            slot["framing"] = (
+                "§116 joint inventor (multi-element coverage)"
+                if len(slot["elements"]) > 1 or info["type"] == "joint"
+                else "§115 sole-element inventor"
+            )
+    return out
+
+
+def _open_questions(
+    element_labels: List[str],
+    responses: List[CandidateResponse],
+    inv_map: dict,
+) -> List[str]:
+    """Counsel-follow-up items: non-respondents and unclaimed elements."""
+    out: List[str] = []
+    for r in responses:
+        if not r.returned_date:
+            out.append(
+                f"Candidate **{r.candidate}** did not return a packet — "
+                "re-issue and follow up before non-provisional drafting."
+            )
+    for label in element_labels:
+        any_claim = False
+        for r in responses:
+            if not r.returned_date:
+                continue
+            ans = r.answers.get(label)
+            if not ans:
+                continue
+            q1 = (ans.get("Q1") or "").strip()
+            if not _q1_indicates_no_claim(q1):
+                any_claim = True
+                break
+        if not any_claim:
+            out.append(
+                f"Element `{label}` is **unclaimed** — no responding "
+                "candidate claims conception. Counsel to follow up with "
+                "potential out-of-git conceivers (whiteboard sessions, "
+                "design docs)."
+            )
+    return out
+
+
+def _map_element_labels(inv_map: dict) -> List[str]:
+    """Element keys in declaration (map insertion) order — anvil basis.
+
+    Native keys elements under ``inv_map["claims"][].elements`` by ``label``;
+    anvil keys them at the top level under ``inv_map["elements"]``. The §1
+    table, §2 disputes, §3 convergence all key on the element *key* (e.g.
+    ``C1`` / ``1(b)(iv-v)``), which is also what ``parse_packet`` lifts from
+    the ``### Element <key>`` headings — so the two halves line up.
+    """
+    return [k for k, _ in map_elements(inv_map)]
+
+
+def render_synthesis(
+    filing: str,
+    thread: str,
+    generated_date: str,
+    inv_map: dict,
+    responses: List[CandidateResponse],
+    bot_resolutions: Optional[List[BotResolution]] = None,
+) -> str:
+    """Render ``synthesis.md`` — a determination FOR COUNSEL.
+
+    Seven sections: (1) candidacy table, (2) disputed elements
+    (CONFLICTING / MIXED / NAMED NON-RESPONDENT), (3) convergent inventor
+    list, (4) suggested inventor list (advisory-only), (5) open questions
+    for counsel, (6) bot-author resolution status, (7) partial-response
+    handling. Defaults to ``counsel-eyes-only`` (it aggregates every
+    candidate's packet). NEVER auto-fills the ``●`` matrix, never
+    adjudicates, never infers conception from a non-response.
+    """
+    bot_resolutions = bot_resolutions or []
+    element_labels = _map_element_labels(inv_map)
+
+    parts: List[str] = []
+    parts.append(f"# Inventorship Synthesis — {filing}")
+    parts.append("")
+    parts.append(f"**Filing reference:** `{thread}/`")
+    parts.append(f"**Date generated:** {generated_date}")
+    parts.append("**Skill:** ip-uspto-inventorship (synthesis mode, v2)")
+    parts.append("**Sensitivity:** `counsel-eyes-only` (aggregated packets)")
+    parts.append("")
+    parts.append("> **CONFIDENTIAL — ATTORNEY WORK PRODUCT.** This synthesis")
+    parts.append("> aggregates filled-in interview packets from candidate")
+    parts.append("> inventors. **This is not a §115 declaration** and not a")
+    parts.append("> §115 determination. Counsel uses it to draft the formal")
+    parts.append("> inventor declaration at filing / non-provisional")
+    parts.append("> conversion. The synthesis **never** writes the `●`")
+    parts.append("> inventorship matrix, never adds or removes named")
+    parts.append("> inventors, and never infers conception from an")
+    parts.append("> unanswered or partial response.")
+    parts.append("")
+    parts.append("---")
+    parts.append("")
+
+    # 1. Candidacy summary table
+    parts.append("## 1. Inventor candidacy summary")
+    parts.append("")
+    parts.append("Per-element rows × candidate columns. Cell values:")
+    parts.append("")
+    parts.append("- `claimed-sole` — candidate claims sole conception")
+    parts.append(
+        "- `claimed-joint` — candidate claims joint conception (named others)"
+    )
+    parts.append('- `claimed-none` — candidate explicitly answered "none"')
+    parts.append(
+        "- `unanswered` — candidate did not return a packet for this element"
+    )
+    parts.append(
+        "- `partial` — candidate returned the packet but skipped Q-blocks "
+        "for this element"
+    )
+    parts.append("")
+    candidates = [r.candidate for r in responses]
+    if candidates:
+        header = "| Element | " + " | ".join(candidates) + " |"
+        sep = "|---|" + "|".join(["---"] * len(candidates)) + "|"
+        parts.append(header)
+        parts.append(sep)
+        for label in element_labels:
+            row = [f"`{label}`"]
+            for r in responses:
+                row.append(_summarize_response_for_element(r, label))
+            parts.append("| " + " | ".join(row) + " |")
+    else:
+        parts.append("_No candidate packets to summarize._")
+    parts.append("")
+    parts.append("---")
+    parts.append("")
+
+    # 2. Disputed elements
+    parts.append("## 2. Disputed elements")
+    parts.append("")
+    disputes = _identify_disputed_elements(element_labels, responses)
+    if not disputes:
+        parts.append(
+            "_No disputed elements: every candidate's claim is internally "
+            "consistent_"
+        )
+        parts.append("_with every other candidate's._")
+    else:
+        for label, claims_summary in disputes.items():
+            parts.append(f"### Disputed: Element `{label}`")
+            parts.append("")
+            parts.append(f"**Status:** {claims_summary['status']}")
+            parts.append("")
+            for c, summary in claims_summary["per_candidate"].items():
+                parts.append(
+                    f"- **{c}** "
+                    f"({summary['returned_date'] or 'no return date'}): "
+                    f"{summary['summary']}"
+                )
+            if claims_summary.get("resolution"):
+                parts.append("")
+                parts.append(
+                    f"**Resolution status:** {claims_summary['resolution']}"
+                )
+            parts.append("")
+    parts.append("---")
+    parts.append("")
+
+    # 3. Convergent inventor list
+    parts.append("## 3. Convergent inventor list")
+    parts.append("")
+    convergent = _identify_convergent_elements(element_labels, responses)
+    if not convergent:
+        parts.append("_No fully-converged elements._")
+    else:
+        parts.append("| Element | Convergent inventor(s) | Sole / Joint |")
+        parts.append("|---|---|---|")
+        for label, info in convergent.items():
+            parts.append(
+                f"| `{label}` | {', '.join(info['inventors'])} | "
+                f"{info['type']} |"
+            )
+    parts.append("")
+    parts.append("---")
+    parts.append("")
+
+    # 4. Suggested inventor list (advisory-only)
+    parts.append("## 4. Suggested inventor list (for counsel review)")
+    parts.append("")
+    parts.append(
+        "> **Advisory only.** This is the candidate inventor list the "
+        "responses"
+    )
+    parts.append("> *support*. Counsel makes the final §115 determination.")
+    parts.append("")
+    suggested = _suggest_inventors(
+        element_labels, responses, convergent, disputes
+    )
+    if not suggested:
+        parts.append(
+            "_No suggested inventors — every element is `unanswered`, "
+            "`partial`, or disputed._"
+        )
+    else:
+        parts.append("| Candidate | Supporting element(s) | §116 framing |")
+        parts.append("|---|---|---|")
+        for cand, info in suggested.items():
+            els = ", ".join(f"`{e}`" for e in info["elements"])
+            parts.append(f"| {cand} | {els} | {info['framing']} |")
+    parts.append("")
+    parts.append("---")
+    parts.append("")
+
+    # 5. Open questions for counsel
+    parts.append("## 5. Open questions for counsel follow-up")
+    parts.append("")
+    opens = _open_questions(element_labels, responses, inv_map)
+    if not opens:
+        parts.append("_No open questions._")
+    else:
+        for q in opens:
+            parts.append(f"- {q}")
+    parts.append("")
+    parts.append("---")
+    parts.append("")
+
+    # 6. Bot-author resolution status
+    parts.append("## 6. Bot-author resolution status")
+    parts.append("")
+    if not bot_resolutions:
+        parts.append(
+            "_No CI/agent-bot-attributed commits in this filing's evidence._"
+        )
+    else:
+        parts.append(
+            "| Bot SHA | Element(s) | Provisional human director | "
+            "Resolution step | Confirmed? |"
+        )
+        parts.append("|---|---|---|---|---|")
+        for br in bot_resolutions:
+            els = (
+                ", ".join(f"`{e}`" for e in br.elements)
+                if br.elements
+                else "(none)"
+            )
+            human = br.resolved_human or "_UNRESOLVED_"
+            confirmed = "?"
+            for r in responses:
+                if br.resolved_human and r.candidate == br.resolved_human:
+                    notes = (r.notes or "").lower()
+                    if "confirmed-bot-director" in notes:
+                        confirmed = "yes"
+                    elif "declined-bot-director" in notes:
+                        confirmed = "no"
+                    elif r.returned_date:
+                        confirmed = "returned packet (see notes)"
+                    else:
+                        confirmed = "unanswered"
+            parts.append(
+                f"| `{br.sha[:10]}` | {els} | {human} | "
+                f"`{br.resolution_step}` | {confirmed} |"
+            )
+    parts.append("")
+    parts.append("---")
+    parts.append("")
+
+    # 7. Partial-response handling
+    parts.append("## 7. Partial-response handling")
+    parts.append("")
+    unanswered = [r.candidate for r in responses if not r.returned_date]
+    partial_elements: List[Tuple[str, str]] = []
+    for r in responses:
+        if not r.returned_date:
+            continue
+        for label in element_labels:
+            if label not in r.answers:
+                partial_elements.append((r.candidate, label))
+    if unanswered:
+        parts.append("**Candidates with no returned packet:**")
+        for c in unanswered:
+            parts.append(
+                f"- {c} — flagged `unanswered` in §1 table. Counsel to "
+                "follow up."
+            )
+        parts.append("")
+    if partial_elements:
+        parts.append("**Returned packets with skipped (partial) elements:**")
+        for cand, label in partial_elements:
+            parts.append(
+                f"- {cand} skipped element `{label}` — flagged `partial` in "
+                "§1 table. Counsel to follow up."
+            )
+        parts.append("")
+    if not unanswered and not partial_elements:
+        parts.append("_All candidates returned complete packets._")
+        parts.append("")
+    parts.append(
+        "**v2 does NOT infer conception in the absence of a candidate "
+        "response.** Every `unanswered` / `partial` element is surfaced "
+        "for counsel and is never resolved to a conceiver here."
+    )
+    parts.append("")
+    parts.append("---")
+    parts.append("")
+    parts.append(
+        "> **Reminder:** this synthesis is advisory. Counsel makes the "
+        "final"
+    )
+    parts.append(
+        "> 35 USC §115 determination at filing / non-provisional conversion "
+        "time."
+    )
+    return "\n".join(parts) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Synthesis orchestration (parse packets → responses → synthesis.md)
+# ---------------------------------------------------------------------------
+
+
+def response_from_parsed(parsed: ParsedPacket) -> CandidateResponse:
+    """Project a deterministic :class:`ParsedPacket` to a :class:`CandidateResponse`.
+
+    This is the **mechanical default** projection used by the CLI / end-to-end
+    path. It drops elements whose Q-block was left entirely at the template
+    placeholder (so a returned-but-skipped element is correctly absent →
+    ``partial`` downstream) and keeps the raw answer text otherwise. The
+    *interpretive* normalization of free-text answers (Q1 "around mid-Feb on
+    the whiteboard with Bob" → structured) stays LLM-in-command per the #511
+    parse/judgment split — the command can construct a richer
+    ``CandidateResponse`` and call ``render_synthesis`` directly. v2 never
+    infers conception here: an unfilled element simply does not appear.
+    """
+    answers: Dict[str, Dict[str, str]] = {}
+    for element_key, qmap in parsed.answers.items():
+        flags = parsed.placeholder_unchanged.get(element_key, {})
+        kept: Dict[str, str] = {}
+        for q, raw in qmap.items():
+            if flags.get(q, False):
+                continue  # placeholder unchanged → not an answer
+            if (raw or "").strip() == "":
+                continue
+            kept[q] = raw
+        if kept:
+            answers[element_key] = kept
+    return CandidateResponse(
+        candidate=parsed.candidate,
+        returned_date=parsed.returned_date,
+        answers=answers,
+    )
+
+
+def load_packets(interviews_dir: Path) -> List[Tuple[str, str]]:
+    """Return ``[(slug, markdown), ...]`` for every ``{slug}.md`` packet.
+
+    Sorted by slug for deterministic ordering. Missing / empty dir → ``[]``.
+    """
+    if not interviews_dir.is_dir():
+        return []
+    out: List[Tuple[str, str]] = []
+    for path in sorted(interviews_dir.glob("*.md")):
+        out.append((path.stem, path.read_text(encoding="utf-8")))
+    return out
+
+
+def build_synthesis(
+    *,
+    thread: str,
+    filing: str,
+    generated_date: str,
+    inv_map: dict,
+    evidence: List[dict],
+    interviews_dir: Path,
+    bot_config: Optional[BotConfig] = None,
+    triggering_issue_authors: Optional[Dict[str, str]] = None,
+    project_lead: Optional[str] = None,
+    sync_commit_authors: Optional[Dict[str, str]] = None,
+) -> Tuple[str, List[str]]:
+    """Parse packets in ``interviews_dir`` and render ``synthesis.md``.
+
+    Returns ``(synthesis_markdown, parsed_candidate_slugs)``. Uses the
+    mechanical :func:`response_from_parsed` projection; a command driving a
+    richer LLM interpretation calls :func:`render_synthesis` directly. The
+    ``●`` matrix (``inventorship.md``) is never read or written.
+    """
+    bot_config = bot_config or BotConfig()
+    bot_resolutions = resolve_bot_authors(
+        evidence,
+        triggering_issue_authors=triggering_issue_authors,
+        project_lead=project_lead,
+        sync_commit_authors=sync_commit_authors,
+        bot_config=bot_config,
+    )
+    responses: List[CandidateResponse] = []
+    slugs: List[str] = []
+    for packet_slug, body in load_packets(interviews_dir):
+        parsed = parse_packet(body)
+        responses.append(response_from_parsed(parsed))
+        slugs.append(packet_slug)
+    synthesis = render_synthesis(
+        filing=filing,
+        thread=thread,
+        generated_date=generated_date,
+        inv_map=inv_map,
+        responses=responses,
+        bot_resolutions=bot_resolutions,
+    )
+    return synthesis, slugs
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -1079,6 +1962,31 @@ def main(argv: Optional[List[str]] = None) -> int:
         choices=SENSITIVITY_LEVELS,
         help=f"Stored-template sensitivity (default {DEFAULT_SENSITIVITY}).",
     )
+    parser.add_argument(
+        "--synthesize",
+        action="store_true",
+        help=(
+            "Synthesis (v2) mode: parse filled-in interview packets from "
+            "--interviews-dir into a determination FOR COUNSEL written to "
+            "--synthesis-out. Never reads/writes the ● matrix; never "
+            "adjudicates; never infers conception from a non-response."
+        ),
+    )
+    parser.add_argument(
+        "--interviews-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Synthesis input: directory of filled {slug}.md interview "
+            "packets (default: <out-dir> when given)."
+        ),
+    )
+    parser.add_argument(
+        "--synthesis-out",
+        type=Path,
+        default=None,
+        help="Synthesis output path (writes synthesis.md when in --synthesize).",
+    )
     args = parser.parse_args(argv)
 
     # Graceful degradation: missing v1 artifacts → notice, clean exit 2,
@@ -1095,10 +2003,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "status": "no-v1-artifacts",
                     "missing": missing,
                     "notice": (
-                        "--interview consumes v1 evidence artifacts; run "
-                        "ip-uspto-inventorship <thread> --evidence first to "
-                        "mine inventorship_map.json + evidence.jsonl. No "
-                        "packets written; the matrix is untouched."
+                        "--interview / --synthesize consume v1 evidence "
+                        "artifacts; run ip-uspto-inventorship <thread> "
+                        "--evidence first to mine inventorship_map.json + "
+                        "evidence.jsonl. Nothing written; the matrix is "
+                        "untouched."
                     ),
                     "packets_written": 0,
                 },
@@ -1109,6 +2018,62 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     inv_map = load_inv_map(args.map_path)
     evidence = load_evidence(args.evidence_path)
+
+    # ----------------------------------------------------------------- #
+    # Synthesis (v2 --synthesize): parse filled packets → synthesis.md   #
+    # ----------------------------------------------------------------- #
+    if args.synthesize:
+        interviews_dir = args.interviews_dir or args.out_dir
+        if interviews_dir is None or not interviews_dir.is_dir() or not any(
+            interviews_dir.glob("*.md")
+        ):
+            print(
+                json.dumps(
+                    {
+                        "status": "no-packets",
+                        "interviews_dir": (
+                            str(interviews_dir) if interviews_dir else None
+                        ),
+                        "notice": (
+                            "--synthesize needs filled interview packets; run "
+                            "ip-uspto-inventorship <thread> --interview first "
+                            "to generate interviews/{slug}.md packets. No "
+                            "synthesis written; the matrix is untouched."
+                        ),
+                        "synthesis_written": False,
+                    },
+                    indent=2,
+                )
+            )
+            return 2
+
+        synthesis, slugs = build_synthesis(
+            thread=args.thread,
+            filing=args.filing or args.thread,
+            generated_date=_utc_today(),
+            inv_map=inv_map,
+            evidence=evidence,
+            interviews_dir=interviews_dir,
+        )
+        synthesis_out = (
+            args.synthesis_out
+            or (interviews_dir.parent / "synthesis.md")
+        )
+        synthesis_out.parent.mkdir(parents=True, exist_ok=True)
+        synthesis_out.write_text(synthesis, encoding="utf-8")
+        print(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "mode": "synthesize",
+                    "candidates": slugs,
+                    "synthesis_written": True,
+                    "synthesis_path": str(synthesis_out),
+                },
+                indent=2,
+            )
+        )
+        return 0
 
     brief_inventors: List[dict] = []
     for spec in args.inventor:
@@ -1184,5 +2149,14 @@ __all__ = [
     "load_inv_map",
     "load_evidence",
     "build_packets",
+    # Synthesis (v2 --synthesize, #511)
+    "ANSWER_PLACEHOLDER",
+    "ParsedPacket",
+    "parse_packet",
+    "CandidateResponse",
+    "render_synthesis",
+    "response_from_parsed",
+    "load_packets",
+    "build_synthesis",
     "main",
 ]
