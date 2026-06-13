@@ -1,6 +1,6 @@
 # Anvil - Repository Guide
 
-**Anvil Version**: 0.5.0
+**Anvil Version**: 0.6.0
 **Status**: canary-hardened; **15 skills shipped** (11 artifact-class skills + 2 bridge tools: `anvil:project-migrate`, `anvil:rubric-rebackport` + 1 packaging utility: `anvil:project-share` + 1 discovery utility: `anvil:project-scout`); artifact-class rubrics on /44 with dim 9 *Rhetorical economy* (the two ip skills on /45: ip-uspto with dim 9 *Claim-spec correspondence*, ip-uspto-provisional with enablement-depth-dominant weights and dim 9 *Conversion readiness*; essay with voice-dominant weights — dim 2 *Voice fidelity* at weight 7 — and a load-bearing dim 9); per-review version stamping (`rubric_id` / `rubric_total` / `advance_threshold`) shipped in v0.4.0; sidecar atomicity primitive (`anvil/lib/sidecar.py`) consumed by 45 critic-writing commands across all 11 artifact-class skills (plus terminal package assemblers such as `ip-uspto-provisional-finalize`). See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
