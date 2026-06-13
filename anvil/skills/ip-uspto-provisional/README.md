@@ -42,7 +42,17 @@ Shipped: skill skeleton, `anvil-ip-provisional-v1` rubric, orchestrator + draft/
 
 Shipped since (post-#433): counsel-memo companion + COUNSEL-READY terminal state and the filing package; the audit command (`AUDITED` reachable); mechanical non-provisional conversion linkage (priority-claim text, 12-month deadline surfacing); provisional pre-flight gate + opt-in claims-seed critic; provisional-shaped figures (`ip-uspto-provisional-figures`, deterministic stub-default + opt-in TikZ) and an opt-in, gracefully-degrading drawings VLM critic (`ip-uspto-provisional-vision`, the pixels-side half of rubric Dim 4 — issue #515); `anvil:project-migrate` enrollment of native provisional threads.
 
-Tracked follow-ups: inventorship-lite pass; snippet-promotion of prose duplicated with `anvil:ip-uspto`; the ip-uspto-provisional worked example.
+Shipped since (issue #530): a vendored worked example at
+`examples/acme-widget-prov/` — a synthesized, NON-CONFIDENTIAL provisional (a
+passively thermally-compensated piezoresistive pressure sensor) demonstrating the
+enablement-depth-first, claims-optional disclosure shape: a five-section
+`spec.tex` (`\documentclass{anvil-uspto}`, no abstract) that compiles standalone,
+an optional `claims.tex` claim-seed exercising dim 9, and a `machine-summary`
+`s112` critic sidecar (`acme-widget-prov.1.s112/`, NOT `.review/`) stamped against
+the `/45` `anvil-ip-provisional-v1` rubric. See
+`examples/expected-thread.1/README.md` for the structural contract.
+
+Tracked follow-ups: inventorship-lite pass; snippet-promotion of prose duplicated with `anvil:ip-uspto`.
 
 ## Important caveats
 
