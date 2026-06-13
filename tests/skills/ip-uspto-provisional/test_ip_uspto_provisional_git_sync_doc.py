@@ -31,6 +31,10 @@ WRITE_BEARING_COMMANDS = [
     "ip-uspto-provisional-revise.md",
     "ip-uspto-provisional-112.md",
     "ip-uspto-provisional-prior-art.md",
+    # Issue #502: the mechanical pre-flight gate and the opt-in claim-seed
+    # critic both write machine-summary siblings and adopt the hook.
+    "ip-uspto-provisional-pre-flight.md",
+    "ip-uspto-provisional-claims-seed.md",
 ]
 
 # Read-only / non-executable files that MUST NOT adopt the hook.
@@ -44,6 +48,8 @@ SIDECAR_COMMANDS = [
     "ip-uspto-provisional-review.md",
     "ip-uspto-provisional-112.md",
     "ip-uspto-provisional-prior-art.md",
+    "ip-uspto-provisional-pre-flight.md",
+    "ip-uspto-provisional-claims-seed.md",
 ]
 
 

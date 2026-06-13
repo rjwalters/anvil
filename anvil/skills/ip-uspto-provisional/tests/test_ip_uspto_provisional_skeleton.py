@@ -90,6 +90,11 @@ class TestFilesExist(unittest.TestCase):
         # filing package (READY -> AUDITED -> COUNSEL-READY).
         "commands/ip-uspto-provisional-audit.md",
         "commands/ip-uspto-provisional-finalize.md",
+        # Issue #502 closes the provisional's own review loop: a mechanical
+        # pre-flight gate (REVISED -> REVIEWED edge) and an opt-in
+        # claim-seed critic.
+        "commands/ip-uspto-provisional-pre-flight.md",
+        "commands/ip-uspto-provisional-claims-seed.md",
         "tests/test_ip_uspto_provisional_skeleton.py",
     ]
 
@@ -101,18 +106,15 @@ class TestFilesExist(unittest.TestCase):
                 )
 
     def test_deferred_phase2_commands_absent(self):
-        # Items 3-6 of the PR #444 deferral list remain separate follow-ups
-        # (#501-#504). Their command files must NOT land in this pass — a
-        # standalone pre-flight or figures command here would mean scope
-        # creep beyond the curated items 1+2 (audit + finalize).
-        for stem in (
-            "ip-uspto-provisional-pre-flight",
-            "ip-uspto-provisional-figures",
-        ):
+        # The figures/vision adaptation remains a separate follow-up (#515),
+        # as does the inventorship-lite pass (#516). Their command files
+        # must NOT land in this pass — pre-flight + claims-seed (#502) are
+        # the only two new commands in scope.
+        for stem in ("ip-uspto-provisional-figures",):
             with self.subTest(command=stem):
                 self.assertFalse(
                     (_SKILL_ROOT / "commands" / f"{stem}.md").exists(),
-                    f"{stem}.md is deferred follow-up scope (#502)",
+                    f"{stem}.md is deferred follow-up scope (#515)",
                 )
 
 
@@ -165,6 +167,8 @@ class TestCommandFrontmatter(unittest.TestCase):
         "commands/ip-uspto-provisional-revise.md": "ip-uspto-provisional-revise",
         "commands/ip-uspto-provisional-audit.md": "ip-uspto-provisional-audit",
         "commands/ip-uspto-provisional-finalize.md": "ip-uspto-provisional-finalize",
+        "commands/ip-uspto-provisional-pre-flight.md": "ip-uspto-provisional-pre-flight",
+        "commands/ip-uspto-provisional-claims-seed.md": "ip-uspto-provisional-claims-seed",
     }
 
     def test_command_frontmatter(self):
@@ -180,6 +184,9 @@ class TestCommandFrontmatter(unittest.TestCase):
         "commands/ip-uspto-provisional-review.md",
         "commands/ip-uspto-provisional-112.md",
         "commands/ip-uspto-provisional-prior-art.md",
+        # Issue #502 machine-summary siblings the reviser also consumes.
+        "commands/ip-uspto-provisional-pre-flight.md",
+        "commands/ip-uspto-provisional-claims-seed.md",
     )
 
     def test_critic_commands_stamp_rubric_version(self):
@@ -342,6 +349,166 @@ class TestFinalizeCommand(unittest.TestCase):
         )
 
 
+class TestPreFlightCommand(unittest.TestCase):
+    """ip-uspto-provisional-pre-flight (#502) — provisional-adapted gate."""
+
+    def setUp(self):
+        self.text = _read("commands/ip-uspto-provisional-pre-flight.md")
+        self.lowered = self.text.lower()
+
+    def test_frontmatter_role_preflight(self):
+        fm = _parse_frontmatter(self.text)
+        self.assertEqual(fm.get("name"), "ip-uspto-provisional-pre-flight")
+        self.assertIn("**Role**: pre-flight checker", self.text)
+
+    def test_gates_revised_to_reviewed_edge(self):
+        self.assertIn("REVISED → REVIEWED", self.text)
+        self.assertIn("PRE_FLIGHT_FAILED", self.text)
+
+    def test_dropped_and_neutered_checks(self):
+        # Abstract / claim-numbering / claim-count / 1.77(b) are dropped or
+        # neutered for the provisional shape; multiple-dependent neutered.
+        self.assertIn("DROPPED", self.text)
+        self.assertIn("NEUTERED", self.text)
+        self.assertIn("1.77(b)", self.text)
+        # No abstract check is ever run.
+        self.assertIn("no `abstract.txt`", self.text)
+
+    def test_replaced_section_check_uses_five_required_ids(self):
+        # 1.77(b) replaced with the provisional's own required-section set.
+        for sect in (
+            "`field`",
+            "`background`",
+            "`summary`",
+            "`brief-description-of-drawings`",
+            "`detailed-description`",
+        ):
+            with self.subTest(section=sect):
+                self.assertIn(sect, self.text)
+        # claim-seed is optional; absence never a finding.
+        self.assertIn("claim-seed", self.lowered)
+        self.assertIn("never a finding", self.lowered)
+
+    def test_kept_checks_present(self):
+        self.assertIn("paragraph numbering", self.lowered)
+        self.assertIn("reference numeral coherence", self.lowered)
+        self.assertIn("documentclass", self.lowered)
+        # Render-gate kept with page_cap=None and the placeholder patterns.
+        self.assertIn("compile_and_gate", self.text)
+        self.assertIn("page_cap=None", self.text)
+        self.assertIn(r"\refnum{??}", self.text)
+        self.assertIn(r"\anvilpara{}", self.text)
+
+    def test_added_s112_stub_scan_is_advisory_minor(self):
+        self.assertIn("enablement-stub scan", self.lowered)
+        self.assertIn("advisory", self.lowered)
+        self.assertIn("minor", self.lowered)
+        # Advisory to s112, never a blocker.
+        self.assertIn("advisory: s112", self.text)
+
+    def test_graceful_degrade_on_missing_pdflatex(self):
+        # pdflatex absent -> minor, not blocker; pre-flight still passes.
+        self.assertIn("unavailable", self.lowered)
+        self.assertIn("not a blocker", self.lowered)
+        self.assertIn("still PASSES on CI", self.text)
+
+    def test_machine_summary_and_stamping(self):
+        self.assertIn("machine-summary", self.text)
+        self.assertIn(RUBRIC_ID, self.text)
+        self.assertIn("rubric_total: 45", self.text)
+        self.assertIn("advance_threshold: 39", self.text)
+
+    def test_atomicity_and_gate_json(self):
+        self.assertIn("staged_sidecar", self.text)
+        self.assertIn("cleanup_one_staging", self.text)
+        self.assertIn(".preflight.tmp", self.text)
+        self.assertIn("_gate.json", self.text)
+
+    def test_git_sync_token(self):
+        self.assertIn(
+            "anvil(ip-uspto-provisional/pre-flight): <thread>.{N}", self.text
+        )
+
+
+class TestClaimsSeedCommand(unittest.TestCase):
+    """ip-uspto-provisional-claims-seed (#502) — opt-in claim-seed critic."""
+
+    def setUp(self):
+        self.text = _read("commands/ip-uspto-provisional-claims-seed.md")
+        self.lowered = self.text.lower()
+
+    def test_frontmatter_role_claimseed(self):
+        fm = _parse_frontmatter(self.text)
+        self.assertEqual(fm.get("name"), "ip-uspto-provisional-claims-seed")
+        self.assertIn("**Role**: claim-seed critic", self.text)
+
+    def test_absence_is_never_a_finding(self):
+        # The single most important behavioral rule.
+        self.assertIn("never a finding", self.lowered)
+        self.assertIn("never a deduction", self.lowered)
+        self.assertIn("never a critical flag", self.lowered)
+        # Absence path: dim 9 null, no finding.
+        self.assertIn("null", self.lowered)
+        self.assertIn("removing a seed never raises the score", self.lowered)
+
+    def test_opt_in_not_default_set(self):
+        self.assertIn("opt-in", self.lowered)
+        self.assertIn("not in the default", self.lowered)
+        # The reviser must not refuse to advance when absent.
+        self.assertIn("must not refuse to advance", self.lowered)
+        # Recognized tag + .anvil.json wiring.
+        self.assertIn("claimseed", self.text)
+        self.assertIn(".anvil.json", self.text)
+
+    def test_major_cap_and_disclosure_routing(self):
+        # Seed defects cap at major except disclosure-gap -> s112/dims 1-3.
+        self.assertIn("major", self.lowered)
+        self.assertIn("route: s112", self.text)
+        self.assertIn("dims: 1-3", self.text)
+        self.assertIn("do not double-flag", self.lowered)
+
+    def test_dim9_positive_evidence_ceiling_discipline(self):
+        self.assertIn("conversion readiness", self.lowered)
+        self.assertIn("raises the reachable", self.lowered)
+        # Must not drive dim 9 below the spec-alone score.
+        self.assertIn("never down", self.lowered)
+
+    def test_never_a_critical_flag_gatekeeper(self):
+        self.assertIn("never sets a critical flag", self.lowered)
+        self.assertIn("flagged", self.lowered)
+        # s112 is the only disclosure gatekeeper.
+        self.assertIn("s112", self.text)
+
+    def test_machine_summary_and_stamping(self):
+        self.assertIn("machine-summary", self.text)
+        self.assertIn(RUBRIC_ID, self.text)
+        self.assertIn("rubric_total: 45", self.text)
+        self.assertIn("advance_threshold: 39", self.text)
+
+    def test_atomicity(self):
+        self.assertIn("staged_sidecar", self.text)
+        self.assertIn("cleanup_one_staging", self.text)
+        self.assertIn(".claimseed.tmp", self.text)
+
+    def test_git_sync_token(self):
+        self.assertIn(
+            "anvil(ip-uspto-provisional/claims-seed): <thread>.{N}", self.text
+        )
+
+
+class TestReviseReferencesPreFlight(unittest.TestCase):
+    """revise.md:83 now reflects the pre-flight gate exists (#502)."""
+
+    def test_revise_no_longer_says_no_pre_flight(self):
+        text = _read("commands/ip-uspto-provisional-revise.md")
+        # The stale "no pre-flight gate in Phase 1" sentence is gone.
+        self.assertNotIn("There is no pre-flight gate in Phase 1", text)
+        self.assertNotIn("no pre-flight gate in Phase 1", text)
+        # The gate is now wired into the convergence loop.
+        self.assertIn("ip-uspto-provisional-pre-flight", text)
+        self.assertIn("PRE_FLIGHT_FAILED", text)
+
+
 class TestSkillCommandDispatch(unittest.TestCase):
     """SKILL.md dispatch table + orchestrator recognize the new commands."""
 
@@ -349,6 +516,35 @@ class TestSkillCommandDispatch(unittest.TestCase):
         text = _read("SKILL.md")
         self.assertIn("`ip-uspto-provisional-audit <thread>`", text)
         self.assertIn("`ip-uspto-provisional-finalize <thread>`", text)
+
+    def test_skill_dispatch_rows_preflight_and_claimseed(self):
+        text = _read("SKILL.md")
+        self.assertIn("`ip-uspto-provisional-pre-flight <thread>`", text)
+        self.assertIn("`ip-uspto-provisional-claims-seed <thread>`", text)
+
+    def test_skill_line91_pre_flight_gate_exists(self):
+        text = _read("SKILL.md")
+        # The stale "no pre-flight gate ... tracked follow-up" sentence gone.
+        self.assertNotIn(
+            "no pre-flight gate (the provisional pre-flight is a tracked "
+            "follow-up, issue #502)",
+            text,
+        )
+        self.assertIn("mechanical pre-flight gate", text)
+        self.assertIn("REVISED → REVIEWED", text)
+
+    def test_skill_line108_claim_seed_critic_exists(self):
+        text = _read("SKILL.md")
+        # The stale "claim-seed critic is a tracked follow-up" sentence gone.
+        self.assertNotIn(
+            "The claim-seed critic is a tracked follow-up.", text
+        )
+        self.assertIn("ip-uspto-provisional-claims-seed", text)
+
+    def test_skill_multicritic_opt_in_claimseed_tag(self):
+        text = _read("SKILL.md")
+        self.assertIn("claimseed", text)
+        self.assertIn("NOT in the default set", text)
 
     def test_skill_counsel_state_row(self):
         text = _read("SKILL.md")

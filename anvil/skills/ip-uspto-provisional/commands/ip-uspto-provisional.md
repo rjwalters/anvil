@@ -20,7 +20,7 @@ A single command an operator (or orchestrating agent) runs to see the state of e
 
 ## Procedure
 
-1. Enumerate directories under cwd matching `<slug>`, `<slug>.{N}`, `<slug>.{N}.<tag>` (`<tag>` ∈ {`review`, `s112`, `priorart`, `audit`, or consumer-added tags}), or the terminal `<slug>.counsel` filing-package dir.
+1. Enumerate directories under cwd matching `<slug>`, `<slug>.{N}`, `<slug>.{N}.<tag>` (`<tag>` ∈ {`review`, `s112`, `priorart`, `preflight`, `claimseed`, `audit`, or consumer-added tags}), or the terminal `<slug>.counsel` filing-package dir.
 2. Group by slug. For each slug, identify:
    - Whether `<slug>/BRIEF.md` exists (intake done?).
    - The latest `N` for which `<slug>.{N}/` exists.
@@ -41,7 +41,9 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    | `REVIEWED` (aggregate <39 OR critical flag, under iteration cap) | `ip-uspto-provisional-revise <thread>` |
    | `REVIEWED` (aggregate <39 OR critical flag, AT iteration cap) | `BLOCKED — human review required` |
    | `REVIEWED` (aggregate ≥39, no critical flag) | `ip-uspto-provisional-revise <thread>` (writes the `READY` marker) |
-   | `REVISED` | run the configured critics on the new version |
+   | `REVISED` (pre-flight not yet run) | `ip-uspto-provisional-pre-flight <thread>` (mechanical gate on the `REVISED → REVIEWED` edge) |
+   | `REVISED` (pre-flight PASSED) | run the configured critics on the new version (plus the opt-in `claimseed` when a seed is present) |
+   | `REVISED` (pre-flight FAILED) | `ip-uspto-provisional-revise <thread>` (address pre-flight blockers; report `PRE_FLIGHT_FAILED`) |
    | `READY` | `ip-uspto-provisional-audit <thread>` (post-convergence fact-check) |
    | `AUDITED` (audit passed) | `ip-uspto-provisional-finalize <thread>` (assemble the `<thread>.counsel/` filing package) |
    | `AUDITED` (audit FAILED — blockers) | `ip-uspto-provisional-revise <thread>` (address audit blockers, then re-run critics + re-audit) |
