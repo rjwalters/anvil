@@ -85,6 +85,11 @@ class TestFilesExist(unittest.TestCase):
         "commands/ip-uspto-provisional-112.md",
         "commands/ip-uspto-provisional-prior-art.md",
         "commands/ip-uspto-provisional-revise.md",
+        # Issue #480 completes the skill's own lifecycle: audit makes the
+        # AUDITED state reachable, finalize assembles the COUNSEL-READY
+        # filing package (READY -> AUDITED -> COUNSEL-READY).
+        "commands/ip-uspto-provisional-audit.md",
+        "commands/ip-uspto-provisional-finalize.md",
         "tests/test_ip_uspto_provisional_skeleton.py",
     ]
 
@@ -96,21 +101,18 @@ class TestFilesExist(unittest.TestCase):
                 )
 
     def test_deferred_phase2_commands_absent(self):
-        # Phase 1 deliberately ships ONLY the convergence loop. The audit /
-        # finalize / pre-flight / figures / counsel-memo commands are
-        # tracked follow-ups (issue #433 curation) — their accidental
-        # presence here would mean scope creep landed un-reviewed.
+        # Items 3-6 of the PR #444 deferral list remain separate follow-ups
+        # (#501-#504). Their command files must NOT land in this pass — a
+        # standalone pre-flight or figures command here would mean scope
+        # creep beyond the curated items 1+2 (audit + finalize).
         for stem in (
-            "ip-uspto-provisional-audit",
-            "ip-uspto-provisional-finalize",
             "ip-uspto-provisional-pre-flight",
             "ip-uspto-provisional-figures",
-            "ip-uspto-provisional-counsel-memo",
         ):
             with self.subTest(command=stem):
                 self.assertFalse(
                     (_SKILL_ROOT / "commands" / f"{stem}.md").exists(),
-                    f"{stem}.md is deferred Phase 2+ scope",
+                    f"{stem}.md is deferred follow-up scope (#502)",
                 )
 
 
@@ -139,14 +141,16 @@ class TestSkillFrontmatter(unittest.TestCase):
         self.assertIn("claims-optional", text)
         self.assertIn("never a finding", text)
 
-    def test_state_machine_through_audited(self):
-        # State machine is defined through AUDITED even though the audit
-        # command itself is a Phase 2 follow-up.
+    def test_state_machine_through_counsel_ready(self):
+        # Issue #480 completes the lifecycle: READY -> AUDITED ->
+        # COUNSEL-READY are all reachable terminal states with shipped
+        # commands.
         text = _read("SKILL.md")
         self.assertIn("AUDITED", text)
         self.assertIn("READY", text)
-        # COUNSEL-READY is explicitly deferred, not silently absent.
         self.assertIn("COUNSEL-READY", text)
+        # The state-machine arrow now reaches the terminal COUNSEL-READY.
+        self.assertIn("READY → AUDITED → COUNSEL-READY", text)
 
 
 class TestCommandFrontmatter(unittest.TestCase):
@@ -159,6 +163,8 @@ class TestCommandFrontmatter(unittest.TestCase):
         "commands/ip-uspto-provisional-112.md": "ip-uspto-provisional-112",
         "commands/ip-uspto-provisional-prior-art.md": "ip-uspto-provisional-prior-art",
         "commands/ip-uspto-provisional-revise.md": "ip-uspto-provisional-revise",
+        "commands/ip-uspto-provisional-audit.md": "ip-uspto-provisional-audit",
+        "commands/ip-uspto-provisional-finalize.md": "ip-uspto-provisional-finalize",
     }
 
     def test_command_frontmatter(self):
@@ -203,6 +209,161 @@ class TestCommandFrontmatter(unittest.TestCase):
         # The class is reused from the ip-uspto sibling's assets.
         self.assertIn("anvil-uspto.cls", text)
         self.assertIn("anvil/skills/ip-uspto/assets", text)
+
+
+class TestAuditCommand(unittest.TestCase):
+    """ip-uspto-provisional-audit (item 2) — provisional-adapted audit."""
+
+    def setUp(self):
+        self.text = _read("commands/ip-uspto-provisional-audit.md")
+
+    def test_frontmatter_role_auditor(self):
+        fm = _parse_frontmatter(self.text)
+        self.assertEqual(fm.get("name"), "ip-uspto-provisional-audit")
+        self.assertIn("**Role**: auditor", self.text)
+
+    def test_discovers_on_ready_not_ready_for_audit(self):
+        # The load-bearing discovery-marker delta: the provisional reviser
+        # writes header READY, not ip-uspto's READY_FOR_AUDIT.
+        self.assertIn("READY", self.text)
+        self.assertIn("NOT `READY_FOR_AUDIT`", self.text)
+
+    def test_stamps_rubric_version_fields(self):
+        self.assertIn(RUBRIC_ID, self.text)
+        self.assertIn("rubric_total: 45", self.text)
+        self.assertIn("advance_threshold: 39", self.text)
+
+    def test_staged_sidecar_atomicity(self):
+        self.assertIn("staged_sidecar", self.text)
+        self.assertIn("cleanup_one_staging", self.text)
+        self.assertIn("machine-summary", self.text)
+
+    def test_summary_records_passed(self):
+        # The finalizer gate reads this boolean.
+        self.assertIn("passed: <true|false>", self.text)
+
+    def test_claim_and_abstract_checks_dropped_or_softened(self):
+        lowered = self.text.lower()
+        # No abstract-correctness CHECK heading (a "### Check N — Abstract
+        # correctness" numbered check, as ip-uspto carries). The doc may
+        # still NAME the dropped check in prose ("the abstract-correctness
+        # check is dropped").
+        self.assertNotIn("— abstract correctness", lowered)
+        self.assertIn("no abstract", lowered)
+        # Claim-seed is CONDITIONAL and caps at major.
+        self.assertIn("conditional", lowered)
+        self.assertIn("claim-seed", lowered)
+        self.assertIn("major", lowered)
+        # The absence of a claim-seed is never a finding.
+        self.assertIn("never a finding", lowered)
+        # No inventorship-matrix currency CHECK heading carries over.
+        self.assertNotIn("— inventorship matrix currency", lowered)
+
+    def test_carryover_checks_present(self):
+        lowered = self.text.lower()
+        self.assertIn("inventor name consistency", lowered)
+        self.assertIn("reference numeral coherence", lowered)
+        self.assertIn("background admissions", lowered)
+        self.assertIn("date and citation", lowered)
+
+
+class TestFinalizeCommand(unittest.TestCase):
+    """ip-uspto-provisional-finalize (item 1) — COUNSEL-READY package."""
+
+    def setUp(self):
+        self.text = _read("commands/ip-uspto-provisional-finalize.md")
+
+    def test_frontmatter_role_finalizer(self):
+        fm = _parse_frontmatter(self.text)
+        self.assertEqual(fm.get("name"), "ip-uspto-provisional-finalize")
+        self.assertIn("**Role**: finalizer", self.text)
+
+    def test_terminal_dir_and_state(self):
+        # Distinct from ip-uspto's <thread>.final/ / FINALIZED.
+        self.assertIn("<thread>.counsel/", self.text)
+        self.assertIn("COUNSEL-READY", self.text)
+
+    def test_discovers_audited_version(self):
+        self.assertIn("passed: true", self.text)
+        self.assertIn(".audit/_summary.md", self.text)
+
+    def test_gate_is_audit_only(self):
+        # NO inventorship-lock gate, NO pre-flight gate.
+        self.assertIn("audit passed ONLY", self.text)
+        lowered = self.text.lower()
+        self.assertIn("no inventorship-lock gate", lowered)
+        self.assertIn("no pre-flight gate", lowered)
+
+    def test_provisional_package_shape(self):
+        # New artifact: counsel_memo.md. Provisional SB/16 cover sheet.
+        self.assertIn("counsel_memo.md", self.text)
+        self.assertIn("cover-sheet-placeholder.txt", self.text)
+        self.assertIn("SB/16", self.text)
+        # NOT the ADS / SB/14.
+        self.assertIn("NOT", self.text)
+
+    def test_no_abstract_no_inventorship_attestation(self):
+        # The provisional package omits both — and the doc says so loudly.
+        # It must NOT add them to the assembled package's required-files
+        # set, but it DOES name them in the comparison table to mark them
+        # excluded. Assert the explicit "NO abstract.txt" / no-inventorship
+        # exclusion language is present, and that neither appears in the
+        # _manifest.json artifact-row examples.
+        self.assertIn("NO abstract.txt", self.text)
+        manifest_block = self.text[
+            self.text.index('"artifacts": [') : self.text.index(
+                '"claim_seed_present"'
+            )
+        ]
+        self.assertNotIn("abstract.txt", manifest_block)
+        self.assertNotIn("inventorship-attestation", manifest_block)
+
+    def test_claims_tex_conditional(self):
+        # claims.tex copied IFF a claim-seed exists.
+        self.assertIn("claims.tex", self.text)
+        self.assertIn("IFF", self.text)
+
+    def test_flat_provisional_fee_not_claim_math(self):
+        lowered = self.text.lower()
+        self.assertIn("flat", lowered)
+        # No excess-claims math in the cover sheet.
+        self.assertIn("no excess-claims fee", lowered)
+
+    def test_staged_sidecar_atomicity(self):
+        self.assertIn("staged_sidecar", self.text)
+        self.assertIn("cleanup_one_staging", self.text)
+        self.assertIn(".counsel.tmp", self.text)
+
+    def test_git_sync_terminal_token(self):
+        self.assertIn(
+            "anvil(ip-uspto-provisional/finalize): <thread>.counsel "
+            "[COUNSEL-READY]",
+            self.text,
+        )
+
+
+class TestSkillCommandDispatch(unittest.TestCase):
+    """SKILL.md dispatch table + orchestrator recognize the new commands."""
+
+    def test_skill_dispatch_rows(self):
+        text = _read("SKILL.md")
+        self.assertIn("`ip-uspto-provisional-audit <thread>`", text)
+        self.assertIn("`ip-uspto-provisional-finalize <thread>`", text)
+
+    def test_skill_counsel_state_row(self):
+        text = _read("SKILL.md")
+        self.assertIn("`COUNSEL-READY`", text)
+        # The deferral caveat ("tracked follow-up" for audit/counsel) is gone.
+        self.assertNotIn(
+            "the `ip-uspto-provisional-audit` command is a tracked follow-up",
+            text,
+        )
+
+    def test_orchestrator_recommends_new_commands(self):
+        text = _read("commands/ip-uspto-provisional.md")
+        self.assertIn("ip-uspto-provisional-audit <thread>", text)
+        self.assertIn("ip-uspto-provisional-finalize <thread>", text)
+        self.assertIn("COUNSEL-READY", text)
 
 
 class TestRubric(unittest.TestCase):
