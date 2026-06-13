@@ -96,7 +96,7 @@ Suggested calibration:
 - **1** — gravely deficient; this dimension alone may sink the application.
 - **0** — absent or actively misleading.
 
-**Quoted evidence (issue #464 / #475).** Every scored dimension's justification string follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `spec.tex` with a location anchor — `("the quoted span" — ¶[0042])` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The deterministic `anvil/lib/evidence_check.py` self-check is **deferred** for this skill (issue #496) — the scorecard is a `scorecard_kind: machine-summary` JSON `dimensions` block in `_summary.md`, not the 5-column `scoring.md` table the verifier parses — so the rule binds as prose discipline on the justification strings (see `commands/ip-uspto-review.md` step 4b). No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
+**Quoted evidence (issue #464 / #475).** Every scored dimension's justification string follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `spec.tex` with a location anchor — `("the quoted span" — ¶[0042])` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The deterministic `anvil/lib/evidence_check.py` self-check is **wired** for this skill (issue #496): the verifier now parses the `scorecard_kind: machine-summary` JSON `dimensions` block in `_summary.md` (not just the 5-column `scoring.md` table) and feeds each scored dimension's justification through the same classifier, so the reviewer runs the write-time `--scoring` self-check (see `commands/ip-uspto-review.md` step 9b). No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
 
 ## Advance threshold
 
@@ -133,7 +133,7 @@ The critic writes a `_summary.md` at the top of its sibling dir with:
 1. **Critic tag**: e.g., `s101`, `s112`, `claims`, `priorart`, `review`.
 2. **Critical flag**: `flagged: true` or `flagged: false`.
 3. **Critical flag justification** (if flagged): one paragraph per flag.
-4. **Per-dimension scorecard**: a markdown table with columns `# | Dimension | Weight | Score | Justification`. Critics leave non-owned dimensions as score `null` and justification `n/a`.
+4. **Per-dimension scorecard**: a JSON `dimensions` block inside a fenced ` ```json ` block (the `scorecard_kind: machine-summary` shape — see `commands/ip-uspto-review.md` step 9 and `anvil/lib/snippets/scorecard_kind.md`), NOT a markdown table. Each dimension key maps to either `null` (un-owned dim — `n/a`, scored by another critic) or an object carrying `score`, `weight`, and a `justification` string. The whole object also carries the sibling `rubric` block and `critical_flag`. The deterministic quoted-evidence verifier (`anvil/lib/evidence_check.py`, issue #496) parses this `dimensions` block.
 5. **Top 3 revision priorities** (if any score <4 or any flag set): the highest-leverage changes the reviser should focus on.
 
 The detail (per-finding location, severity, suggested fix) lives in `findings.md`.
