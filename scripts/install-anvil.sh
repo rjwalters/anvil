@@ -350,6 +350,43 @@ dir_hash() {
     | awk '{print $1}'
 }
 
+# Documented consumer-override targets under the lib tree (issue #490). These
+# are the asset files the memo README sanctions editing in place
+# (`anvil/lib/<skill>/<asset>`). The Stage 5 override-detection / skip-with-
+# warning discipline protects ONLY these files; every other file under
+# anvil/lib/ — the importable framework code, __init__.py, schema JSON,
+# figures, marp config — always upgrades unconditionally so the `anvil.lib.*`
+# mirror is never left stale (the carve-out the curator flagged as critical).
+#
+# Paths are relative to the lib root (anvil/lib/ in source, .anvil/anvil/lib/
+# at the destination). Confirmed against `anvil/lib/*/` asset files at
+# implementation time: only the memo skill ships consumer-override assets.
+# Adding a new skill-asset override tier means adding its files here.
+LIB_OVERRIDE_TARGETS=(
+  "memo/styles.css"
+  "memo/template.html"
+  "memo/template.tex"
+)
+
+# Compute a stable content hash over ONLY the lib override-target files
+# (LIB_OVERRIDE_TARGETS) that exist under the given lib root. Mirrors
+# `dir_hash`'s two-pass shasum pipeline but restricts the file set to the
+# documented override surface, so the recorded baseline doesn't churn when
+# unrelated framework code (or a newly-added schema file) moves upstream.
+# Emits "" when the lib root is absent or none of the targets exist.
+lib_override_hash() {
+  local root="$1" t existing=()
+  [[ -d "$root" ]] || { echo ""; return; }
+  for t in "${LIB_OVERRIDE_TARGETS[@]}"; do
+    [[ -f "$root/$t" ]] && existing+=("$t")
+  done
+  [[ ${#existing[@]} -gt 0 ]] || { echo ""; return; }
+  ( cd "$root" && printf '%s\0' "${existing[@]}" | LC_ALL=C sort -z \
+    | xargs -0 shasum -a 256 ) \
+    | shasum -a 256 \
+    | awk '{print $1}'
+}
+
 # Read a recorded skill hash from an existing manifest. Returns the empty
 # string if the manifest, the `skill_hashes` block, or the requested skill
 # entry is absent (which is the "legacy install, no recorded hash" case the
@@ -400,6 +437,28 @@ read_recorded_hash() {
     || true
 }
 
+# Read the recorded top-level `lib_hash` scalar from an existing manifest.
+# Returns the empty string if the manifest or the `lib_hash` field is absent
+# (the "legacy install, no recorded lib hash" case the Stage 5 decision matrix
+# falls back to skip-with-warning for). Issue #490 — extends the #152
+# hash-tracked upgrade discipline to the Stage 5 lib override-target tier.
+#
+# Pure-bash grep/sed (no jq dependency), mirroring `read_recorded_hash`. The
+# schema is hand-emitted by `write_manifest` as a single top-level field:
+#   "lib_hash": "abc123..."
+# We flatten newlines first so the parse is independent of one-line vs.
+# pretty-printed JSON. `|| true` guards the no-match branch so a legacy
+# manifest (no `lib_hash` key) returns "" rather than tripping `pipefail`.
+read_recorded_lib_hash() {
+  local manifest="$1"
+  [[ -f "$manifest" ]] || { echo ""; return; }
+  tr '\n' ' ' < "$manifest" \
+    | grep -oE '"lib_hash"[[:space:]]*:[[:space:]]*"[a-f0-9]+"' \
+    | head -n1 \
+    | sed -E 's/.*"lib_hash"[[:space:]]*:[[:space:]]*"([a-f0-9]+)".*/\1/' \
+    || true
+}
+
 # Copy a directory tree's CONTENTS (not the wrapper dir) into dest, creating
 # dest if needed. `cp -R src/. dest` copies contents while preserving the dest
 # directory itself. All paths are passed as bash positional args (no shell
@@ -426,6 +485,36 @@ copy_file_with_parents() {
   mkdir -p "$(dirname "$dst")"
   cp "$src" "$dst"
   chmod 0644 "$dst"
+}
+
+# Copy the lib tree from source, then restore (preserve) the consumer-modified
+# override-target files from the destination (issue #490). Used by the Stage 5
+# skip path: framework code under the lib tree must still upgrade (so the
+# importable `anvil.lib.*` mirror never goes stale — the carve-out), but the
+# documented override assets the consumer hand-edited (LIB_OVERRIDE_TARGETS)
+# are preserved across the upgrade. We snapshot the dst override files to a
+# temp dir BEFORE clobbering, recopy the whole tree from source, then restore
+# the snapshots over the freshly-copied source assets.
+copy_lib_preserving_overrides() {
+  local src="$1" dst="$2" t stash
+  stash="$(mktemp -d)"
+  # Snapshot any existing dst override files (some may not exist yet).
+  for t in "${LIB_OVERRIDE_TARGETS[@]}"; do
+    if [[ -f "$dst/$t" ]]; then
+      mkdir -p "$stash/$(dirname "$t")"
+      cp "$dst/$t" "$stash/$t"
+    fi
+  done
+  # Upgrade the whole tree from source (framework code always advances).
+  mkdir -p "$dst" && cp -R "$src/." "$dst/"
+  # Restore the consumer's override assets over the source defaults.
+  for t in "${LIB_OVERRIDE_TARGETS[@]}"; do
+    if [[ -f "$stash/$t" ]]; then
+      mkdir -p "$dst/$(dirname "$t")"
+      cp "$stash/$t" "$dst/$t"
+    fi
+  done
+  rm -rf "$stash"
 }
 
 # Write the thin Claude registration shim for a skill. Called from both the
@@ -488,11 +577,23 @@ write_guide() {
 # whether `anvil_source` still exists on disk. This closes the canary
 # failure mode where a fresh consumer machine couldn't run anvil because
 # the install-time `anvil_source` path was machine-specific.
+#
+# `lib_hash` (issue #490) records the as-installed hash of the Stage 5 lib
+# *override-target* files (the documented consumer-override assets under
+# `anvil/lib/<skill>/` — styles.css / template.html / template.tex). It is a
+# single scalar (parallel to `skill_hashes` but not per-skill) because the
+# protected surface is a small, fixed glob, not a per-skill tree. On
+# re-install, Stage 5 compares the current override-target hash against this
+# baseline to tell apart "consumer hand-edited an override asset" (preserve,
+# skip-with-warning unless --force) from "source moved forward" (auto-upgrade).
+# The rest of the lib tree (importable framework code + __init__.py) always
+# upgrades regardless of this hash — the carve-out that keeps `anvil.lib.*`
+# from ever going stale.
 write_manifest() {
   local target_dir="$1" manifest_path="$2"
   local anvil_version="$3" anvil_source="$4" install_date="$5"
   local installed_json="$6" skipped_json="$7" hashes_json="$8"
-  local layout_version="${9:-2}"
+  local layout_version="${9:-2}" lib_hash="${10:-}"
   mkdir -p "$target_dir/.anvil"
   cat > "$manifest_path" <<MANIFEST_EOF
 {
@@ -502,7 +603,8 @@ write_manifest() {
   "layout_version": $layout_version,
   "installed_skills": $installed_json,
   "skipped_overrides": $skipped_json,
-  "skill_hashes": $hashes_json
+  "skill_hashes": $hashes_json,
+  "lib_hash": "$lib_hash"
 }
 MANIFEST_EOF
 }
@@ -595,6 +697,15 @@ PYPROJECT_EOF
 # Track override decisions for the manifest.
 SKIPPED_OVERRIDES=()
 INSTALLED_SKILLS=()
+# Issue #490: as-installed hash of the lib override-target files, recorded
+# under the manifest's top-level `lib_hash`. Set by Stage 5. Empty until Stage
+# 5 runs; Stage 9 writes whatever value Stage 5 computed (fresh/auto-upgrade/
+# overwrite all record the new source hash; a consumer-modified skip carries
+# the prior recorded hash forward so the next install can still detect drift).
+LIB_HASH=""
+# Whether Stage 5 preserved consumer-modified lib override assets (skip path).
+# Surfaced in the Stage 11 summary, mirroring SKIPPED_OVERRIDES for skills.
+SKIPPED_LIB=false
 # Per-skill "as-installed" content hashes. Keys are skill names, values are
 # hex digests from `dir_hash`. Recorded under `skill_hashes` in the manifest
 # so a subsequent re-install can tell apart "consumer modified the install"
@@ -638,15 +749,112 @@ MANIFEST="$TARGET/.anvil/install-metadata.json"
 #
 # The `anvil/__init__.py` source file is copied through as part of the
 # tree (it's the namespace anchor that makes `import anvil` succeed).
+#
+# Override-detection decision matrix (issue #490) — applies ONLY to the
+# documented lib override-target assets (LIB_OVERRIDE_TARGETS, e.g.
+# memo/styles.css). Mirrors the Stage 7 skill-body matrix but on a small fixed
+# glob, recorded as a single top-level `lib_hash` scalar in the manifest:
+#
+#   Destination state                          Action
+#   ────────────────────────────────────────── ───────────────────────────────
+#   DST_LIB does not exist                     Fresh install. Copy tree.
+#                                              Record lib_hash.
+#   Override assets identical to source        Recopy idempotently. Record
+#                                              lib_hash.
+#   --force passed                             Overwrite unconditionally
+#                                              (warn). Record lib_hash.
+#   Override assets differ, recorded lib_hash
+#     matches current override hash            Auto-upgrade (consumer hasn't
+#                                              modified). Copy tree. Record
+#                                              new lib_hash.
+#   Override assets differ, NO recorded
+#     lib_hash (legacy manifest)               Skip-with-warning: upgrade
+#                                              framework code, PRESERVE the
+#                                              override assets. Require --force
+#                                              to overwrite. One-time cost.
+#   Override assets differ, recorded lib_hash
+#     present and != current                   Consumer-modified. Upgrade
+#                                              framework code, PRESERVE the
+#                                              override assets. Require --force.
+#
+# CARVE-OUT (critical, issue #490): in EVERY branch above — including the two
+# skip branches — the rest of the lib tree (importable framework code, the
+# schema JSON, figures, marp config) and `anvil/__init__.py` are upgraded
+# unconditionally. Only the LIB_OVERRIDE_TARGETS files are ever preserved. A
+# consumer can never pin stale framework code by editing an override asset:
+# the importable `anvil.lib.*` mirror always advances.
 info "Stage 5: copy framework code (anvil/lib -> .anvil/anvil/lib)"
 SRC_LIB="$ANVIL_ROOT/anvil/lib"
 DST_ANVIL_PKG="$TARGET/.anvil/anvil"
 DST_LIB="$DST_ANVIL_PKG/lib"
 SRC_ANVIL_INIT="$ANVIL_ROOT/anvil/__init__.py"
 if [[ -d "$SRC_LIB" ]]; then
+  # Decide the lib override verdict. We compute hashes even under --dry-run
+  # because the comparison is read-only; the verdict is woven into the action
+  # label so the dry-run preview is honest (issue #81).
+  lib_verdict="install fresh"
+  lib_copy_fn=copy_tree
+  if [[ ! -d "$DST_LIB" ]]; then
+    lib_verdict="install fresh"
+  elif dirs_identical "$SRC_LIB" "$DST_LIB"; then
+    note "framework lib already installed and unchanged (refreshing safely)"
+    lib_verdict="recopy (identical to source)"
+  elif [[ "$FORCE" == true ]]; then
+    warn "overwriting consumer-modified lib override file(s) in .anvil/anvil/lib (--force)"
+    lib_verdict="overwrite (--force)"
+  else
+    recorded_lib_hash="$(read_recorded_lib_hash "$MANIFEST")"
+    current_lib_override_hash="$(lib_override_hash "$DST_LIB")"
+    src_lib_override_hash="$(lib_override_hash "$SRC_LIB")"
+    if [[ "$current_lib_override_hash" == "$src_lib_override_hash" ]]; then
+      # The override assets themselves are untouched relative to source — the
+      # tree differs only in framework code. Plain upgrade, record new hash.
+      note "framework lib override assets unchanged vs source; upgrading framework code"
+      lib_verdict="auto-upgrade (override assets match source)"
+    elif [[ -n "$recorded_lib_hash" && "$recorded_lib_hash" == "$current_lib_override_hash" ]]; then
+      # Override assets differ from source, but match the as-installed
+      # baseline → consumer never touched them; source moved forward. Safe.
+      note "framework lib is unmodified-since-install (recorded lib_hash matches); auto-upgrading from source"
+      lib_verdict="auto-upgrade (unmodified-since-install)"
+    elif [[ -z "$recorded_lib_hash" ]]; then
+      # Legacy manifest (no lib_hash). Fall back to conservative skip: upgrade
+      # framework code but preserve the override assets. One-time --force cost.
+      warn "skipped: consumer-modified .anvil/anvil/lib override asset(s) (legacy install, no recorded lib_hash; re-run with --force to overwrite — framework code still upgrades, override assets preserved)"
+      lib_verdict="skip override assets (legacy install, no recorded hash)"
+      lib_copy_fn=copy_lib_preserving_overrides
+      SKIPPED_LIB=true
+    else
+      # Recorded hash exists and differs → consumer modified an override asset.
+      warn "skipped: consumer-modified .anvil/anvil/lib override asset(s) (re-run with --force to overwrite — framework code still upgrades, override assets preserved)"
+      lib_verdict="skip override assets (consumer-modified)"
+      lib_copy_fn=copy_lib_preserving_overrides
+      SKIPPED_LIB=true
+    fi
+  fi
+
   # Copy contents (cp -R src/. dest preserves contents, not the wrapper dir).
-  do_action "install $DST_LIB from $SRC_LIB" copy_tree "$SRC_LIB" "$DST_LIB"
+  # The copy fn is either copy_tree (framework + assets advance) or
+  # copy_lib_preserving_overrides (framework advances, override assets kept).
+  do_action "install $DST_LIB from $SRC_LIB [$lib_verdict]" "$lib_copy_fn" "$SRC_LIB" "$DST_LIB"
+
+  # Record the lib_hash for the manifest. On a skip we carry the prior recorded
+  # hash forward (so a future install still detects the modification); when
+  # there is no prior hash (legacy/fresh skip) we fall back to the now-
+  # preserved dst override hash so the entry is non-empty. On every non-skip
+  # branch we record the source override hash (== the now-installed dst).
+  if [[ "$SKIPPED_LIB" == true ]]; then
+    prior_lib_hash="$(read_recorded_lib_hash "$MANIFEST")"
+    if [[ -n "$prior_lib_hash" ]]; then
+      LIB_HASH="$prior_lib_hash"
+    else
+      LIB_HASH="$(lib_override_hash "$DST_LIB")"
+    fi
+  else
+    LIB_HASH="$(lib_override_hash "$SRC_LIB")"
+  fi
+
   # Copy the anvil package's top-level __init__.py so `import anvil` resolves.
+  # ALWAYS unconditional (the namespace anchor must never go stale — carve-out).
   # The skills/ subpackage __init__.py is written in Stage 7 alongside the
   # per-skill lib copies (avoids creating empty skills/ until at least one
   # skill is installed; the source `anvil/skills/__init__.py` is the file
@@ -1124,7 +1332,7 @@ HASHES_JSON="$(json_object_from_skill_hashes)"
 
 do_action "write $MANIFEST" \
   write_manifest "$TARGET" "$MANIFEST" "$ANVIL_VERSION" "$ANVIL_ROOT" "$INSTALL_DATE" \
-                 "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON" "2"
+                 "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON" "2" "$LIB_HASH"
 
 # ----- Stage 10: renderer dependency check ----------------------------------
 # Report which renderer binaries are present so a fresh install does not claim
@@ -1181,10 +1389,12 @@ if [[ "$DRY_RUN" == true ]]; then
   # lying "installed skills:" framing (issue #81).
   echo "  would install:       ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
   echo "  would skip:          ${SKIPPED_OVERRIDES[*]:-(none)}"
+  echo "  would skip lib:      $([[ "$SKIPPED_LIB" == true ]] && echo "override assets preserved (framework code upgrades)" || echo "(none)")"
   echo "  would target:        $TARGET/.anvil"
 else
   echo "  installed skills:    ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
   echo "  skipped overrides:   ${SKIPPED_OVERRIDES[*]:-(none)}"
+  echo "  skipped lib:         $([[ "$SKIPPED_LIB" == true ]] && echo "override assets preserved (framework code upgrades)" || echo "(none)")"
   echo "  target:              $TARGET/.anvil"
 fi
 echo "  renderer deps:       $([[ "$DEPS_MISSING" -eq 0 ]] && echo "all present" || echo "$DEPS_MISSING missing -- re-run with --check-deps for detail")"

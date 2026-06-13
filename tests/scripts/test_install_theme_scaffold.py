@@ -336,15 +336,16 @@ def test_hint_absent_when_memo_not_selected(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_memo_readme_no_longer_claims_in_place_edits_survive() -> None:
-    """The override table must not claim in-place lib edits survive upgrades.
+def test_memo_readme_documents_lib_hash_protection() -> None:
+    """The override table must document the #490 hash-protected upgrade path.
 
-    Pre-#471 the README said the installer "respects in-place modifications
-    under the standard ``--force`` discipline (see #163)" for the lib copy.
-    That was inaccurate: Stage 5 copies ``anvil/lib`` unconditionally with
-    no hash tracking (the #152 matrix guards skill bodies only). The README
-    must document the clobber and point at the theme tier as the durable
-    path.
+    Pre-#471 the README claimed the installer "respects in-place modifications"
+    for the lib copy (inaccurate — Stage 5 copied unconditionally). #471 then
+    documented the silent clobber. #490 closes the gap: Stage 5 now records a
+    ``lib_hash`` baseline and skips-with-warning (preserving) consumer-modified
+    override assets unless ``--force``, with a carve-out that always upgrades
+    framework code. The README must document the new protection AND still point
+    at the theme tier as the durable path.
     """
 
     readme = (REPO_ROOT / "anvil" / "lib" / "memo" / "README.md").read_text(
@@ -353,11 +354,21 @@ def test_memo_readme_no_longer_claims_in_place_edits_survive() -> None:
 
     assert "respects in-place modifications" not in readme, (
         "anvil/lib/memo/README.md still claims the installer respects "
-        "in-place lib modifications — Stage 5's copy is unconditional"
+        "in-place lib modifications under the old (pre-#471) wording"
     )
-    assert "Overwritten on every re-install" in readme, (
-        "anvil/lib/memo/README.md must document that the in-place tier is "
-        "overwritten on every re-install/upgrade"
+    # #490: the in-place tier is no longer silently overwritten — it's
+    # hash-protected (skip-with-warning unless --force).
+    assert "Overwritten on every re-install" not in readme, (
+        "anvil/lib/memo/README.md still claims the in-place tier is silently "
+        "overwritten — #490 makes it hash-protected (skip-with-warning)"
+    )
+    assert "lib_hash" in readme, (
+        "anvil/lib/memo/README.md must document the #490 lib_hash override "
+        "protection for the in-place tier"
+    )
+    assert "--force" in readme, (
+        "anvil/lib/memo/README.md must document that --force is required to "
+        "overwrite a hand-edited override asset"
     )
     assert ".anvil/themes/starter/" in readme, (
         "anvil/lib/memo/README.md must point at the scaffolded starter "
