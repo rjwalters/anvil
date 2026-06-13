@@ -1195,6 +1195,100 @@ class TestCheckSummaryText:
         assert findings == []
 
 
+def summary_md_table(
+    rows: List[Tuple[str, int, object, str]],
+    *,
+    rubric_total: int = 45,
+) -> str:
+    """Build a table-shaped machine-summary ``_summary.md``.
+
+    Mirrors the shape the ip ``_summary.md`` scorecards actually carry
+    (issue #536): a JSON *rubric metadata* block (NO ``dimensions``
+    object) followed by the ``| # | Dimension | Weight | Score |
+    Justification |`` markdown table. ``rows`` are
+    ``(dim, weight, score, just)`` tuples — pass ``"null"`` for an
+    un-owned dim's score.
+    """
+    rubric = {
+        "id": "anvil-ip-provisional-v1",
+        "total": rubric_total,
+        "advance_threshold": 39,
+        "dimensions": 9,
+        "prior_rubric_id": None,
+    }
+    return (
+        "# s112 critic summary\n\n## Rubric block\n\n```json\n"
+        + json.dumps(rubric, indent=2)
+        + "\n```\n\n## Scorecard\n\n"
+        + scoring_table(rows)
+    )
+
+
+class TestMachineSummaryTableFallback:
+    """The table-shaped machine-summary scorecard is checked (issue #536).
+
+    The ip commands/examples emit the scored dims in a markdown TABLE,
+    not a fenced-JSON ``dimensions`` block. ``check_summary_text`` must
+    fall back to the table parser so the write-time self-check is
+    non-vacuous (``dimensions_checked > 0``) in real ip reviews.
+    """
+
+    def test_table_only_summary_is_checked_genuine_quotes(self) -> None:
+        # No JSON dimensions block — only the rubric metadata + table.
+        text = summary_md_table(
+            [
+                ("Specification completeness", 5, 4, SPEC_MATCHING_JUST),
+                ("Drawings sufficiency", 5, "null", "n/a — see review"),
+            ]
+        )
+        # Sanity: the JSON path finds nothing to check here.
+        assert parse_machine_summary_dimensions(text) == []
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 1  # one owned dim; the null row is skipped
+        assert findings == []
+
+    def test_table_fallback_catches_fabricated_quote(self) -> None:
+        # Proves the fallback runs a LIVE check, not just a row count.
+        text = summary_md_table(
+            [("Specification completeness", 5, 4, SPEC_FABRICATED_JUST)]
+        )
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 1
+        assert len(findings) == 1
+        assert findings[0].code == FABRICATED_EVIDENCE
+        assert findings[0].severity == SEVERITY_MAJOR
+
+    def test_multiple_owned_dims_all_checked(self) -> None:
+        text = summary_md_table(
+            [
+                ("Specification completeness", 5, 4, SPEC_MATCHING_JUST),
+                ("Drawing-text correspondence", 5, 5, SPEC_ABSENCE_JUST),
+                ("Prior-art positioning", 4, "null", "n/a — see priorart"),
+                ("Conversion readiness", 6, 4, SPEC_FABRICATED_JUST),
+            ]
+        )
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 3  # two genuine + one fabricated; null skipped
+        assert len(findings) == 1
+        assert findings[0].code == FABRICATED_EVIDENCE
+
+    def test_json_path_still_preferred_when_present(self) -> None:
+        # A summary carrying a real JSON dimensions block uses it (the
+        # fallback only fires when JSON yields no checkable rows).
+        text = summary_md(
+            {
+                "specification_completeness": {
+                    "weight": 5,
+                    "score": 4,
+                    "justification": SPEC_FABRICATED_JUST,
+                }
+            }
+        )
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 1
+        assert findings[0].code == FABRICATED_EVIDENCE
+
+
 def _write_meta(critic_dir: Path, kind: str) -> None:
     (critic_dir / "_meta.json").write_text(
         json.dumps({"critic": "review", "scorecard_kind": kind}),
