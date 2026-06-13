@@ -135,4 +135,11 @@ This command does NOT write a `_progress.json` — intake operates on the thread
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after `<thread>/BRIEF.md` is written (this command writes no `_progress.json` — the well-formed brief itself is the state signal), stage ONLY `<thread>/BRIEF.md`, staged explicitly by path (a thread-level file per the snippet's staging rules), commit as `anvil(ip-uspto/intake): <thread> [INTAKE_DONE]` (a thread-level command with no version dir — the version token is the bare thread slug per `git_sync.md` §Commit-message shape → "Non-thread commit shapes"), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the intake still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after `<thread>/BRIEF.md` is written (this command writes no `_progress.json` — the well-formed brief itself is the state signal).
+- **Staging target**: ONLY `<thread>/BRIEF.md`, staged explicitly by path (a thread-level file per the snippet's staging rules).
+- **Commit**: `anvil(ip-uspto/intake): <thread> [INTAKE_DONE]` — a thread-level command with no version dir, so the version token is the bare thread slug per `git_sync.md` §Non-thread commit shapes.
+

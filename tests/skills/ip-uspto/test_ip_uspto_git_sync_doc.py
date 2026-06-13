@@ -9,6 +9,16 @@ final step can't silently drift out of a command file in a later edit.
 Per the per-skill test filename convention (#58 — distinct filenames
 across skills, ``__init__.py`` chains in every test dir), this file is
 named ``test_ip_uspto_git_sync_doc.py``.
+
+Issue #537 (Group A of the cross-skill rollout, mirroring the #528 memo
+pilot) trimmed the verbose ~5-sentence inline git-sync paragraph down to
+the canonical short pointer (``git_sync.md`` §"Adoption step") plus a
+"This phase's specifics" block that keeps the load-bearing per-command
+mechanics inline: the staging target, the ordering anchor, the state
+bracket, and the ``anvil(ip-uspto/<phase>):`` commit token. The two
+pilot assertions below pin BOTH halves — the compressed shared contract
+AND the retained per-command mechanics — so a future edit can neither
+re-bloat the shared prose nor drop a load-bearing per-command specific.
 """
 
 from __future__ import annotations
@@ -22,9 +32,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 COMMANDS = REPO_ROOT / "anvil" / "skills" / "ip-uspto" / "commands"
 SKILL_MD = REPO_ROOT / "anvil" / "skills" / "ip-uspto" / "SKILL.md"
 
-# The 15 write-bearing ip-uspto commands per the issue #436 curation
-# inventory. The portfolio orchestrator (ip-uspto.md) is read-only and
-# exempt by definition.
+# The 16 write-bearing ip-uspto commands per the issue #436 curation
+# inventory plus ip-uspto-fto (added in #446). The portfolio orchestrator
+# (ip-uspto.md) is read-only and exempt by definition.
 WRITE_BEARING_COMMANDS = [
     "ip-uspto-intake.md",
     "ip-uspto-inventorship.md",
@@ -39,6 +49,7 @@ WRITE_BEARING_COMMANDS = [
     "ip-uspto-112.md",
     "ip-uspto-prior-art.md",
     "ip-uspto-adversary.md",
+    "ip-uspto-fto.md",
     "ip-uspto-pre-flight.md",
     "ip-uspto-finalize.md",
 ]
@@ -58,6 +69,7 @@ SIDECAR_COMMANDS = [
     "ip-uspto-112.md",
     "ip-uspto-prior-art.md",
     "ip-uspto-adversary.md",
+    "ip-uspto-fto.md",
     "ip-uspto-pre-flight.md",
     "ip-uspto-vision.md",
     "ip-uspto-finalize.md",
@@ -66,6 +78,15 @@ SIDECAR_COMMANDS = [
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _git_sync_section(command: str) -> str:
+    """Return the ``## Git sync`` section of a command file (heading to
+    EOF — the section is the file's final step by contract)."""
+    text = _read(COMMANDS / command)
+    idx = text.find("## Git sync")
+    assert idx >= 0, f"{command} missing the Git sync section"
+    return text[idx:]
 
 
 @pytest.mark.parametrize("command", WRITE_BEARING_COMMANDS)
@@ -123,6 +144,45 @@ def test_skill_md_mentions_contract():
     assert "git_sync.md" in text
     assert "commit_per_phase" in text
     assert ".anvil/config.json" in text
+
+
+@pytest.mark.parametrize("command", WRITE_BEARING_COMMANDS)
+def test_command_uses_short_pointer_shared_contract(command: str):
+    """Issue #537: the SHARED explanation compresses to the canonical
+    short pointer from ``git_sync.md`` §"Adoption step" — the contract
+    sentence ("stage only the dirs this phase wrote") and the
+    warn-and-continue clause are present, while the old verbose
+    boilerplate ("emit a one-line warning", "byte-identical to a
+    pre-#426 install") is gone."""
+    section = _git_sync_section(command)
+    assert "stage only the dirs this phase wrote" in section, (
+        f"{command}'s git-sync step MUST carry the canonical short-pointer "
+        f"shared-contract sentence"
+    )
+    assert "Git failures warn and continue" in section, (
+        f"{command}'s git-sync step MUST keep the warn-and-continue clause"
+    )
+    # The verbose pre-#537 prose must NOT re-bloat the section.
+    assert "emit a one-line warning and continue" not in section, (
+        f"{command} still carries the verbose pre-#537 failure prose"
+    )
+    assert "byte-identical to a pre-#426 install" not in section, (
+        f"{command} still carries the verbose pre-#537 default-off prose"
+    )
+
+
+@pytest.mark.parametrize("command", WRITE_BEARING_COMMANDS)
+def test_command_keeps_per_command_mechanics(command: str):
+    """Issue #537: the per-command mechanics that the short pointer
+    CANNOT carry MUST stay inline — the staging target (which dir THIS
+    command commits) and the ordering anchor (when the hook fires)."""
+    section = _git_sync_section(command)
+    assert "Staging target" in section, (
+        f"{command}'s git-sync step MUST keep an inline staging target"
+    )
+    assert "Ordering" in section, (
+        f"{command}'s git-sync step MUST keep an inline ordering anchor"
+    )
 
 
 @pytest.mark.parametrize("command", SIDECAR_COMMANDS)

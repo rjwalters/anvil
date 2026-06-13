@@ -282,4 +282,11 @@ The `anvil-uspto.cls` LaTeX class and spec scaffold are reused from `anvil:ip-us
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the staged-sidecar atomic rename (issues #350, #376) lands the complete `<thread>.counsel/` package dir, stage ONLY the `<thread>.counsel/` package dir, commit as `anvil(ip-uspto-provisional/finalize): <thread>.counsel [COUNSEL-READY]` (a terminal package dir, not a `<thread>.{N}` version — the version token is the literal `<thread>.counsel` per `git_sync.md` §Non-thread commit shapes → "Terminal package dirs"), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the finalize still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after the staged-sidecar atomic rename (issues #350, #376) lands the complete `<thread>.counsel/` package dir — so only the complete package is ever committed.
+- **Staging target**: ONLY the `<thread>.counsel/` package dir.
+- **Commit**: `anvil(ip-uspto-provisional/finalize): <thread>.counsel [COUNSEL-READY]` — a terminal package dir, not a `<thread>.{N}` version, so the version token is the literal `<thread>.counsel` per `git_sync.md` §Non-thread commit shapes.
+
