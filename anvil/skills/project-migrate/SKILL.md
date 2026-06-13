@@ -145,6 +145,7 @@ hand-rolled unstamped review content stays invisible-but-intact to
 | `/anvil:project-migrate --adopt-vn <dir>` | **vN report-dir adoption** (issue #432 Phase 1): adopt a foreign `v{N}/` family (+ `v{N}.review/` siblings) into `<project>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Optional `--slug <slug>`, `--artifact-type <type>`. |
 | `/anvil:project-migrate --adopt-family <dir> --tag-map <file> --artifact-type <type>` | **Letter-family adoption** (issue #440 — Phase 2 of #432): adopt foreign `{Project}.{Letter}.{N}` families (+ foreign-tagged critic siblings, mapped declaratively) into `<dir>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Slugs are derived (no `--slug`); `--artifact-type` is REQUIRED. |
 | `/anvil:project-migrate --adopt-review <dir>` | **Foreign `review.md` stub conversion** (issue #454 — Phase 3a of #432): on an already-adopted tree, convert each `<slug>.{N}.<tag>/` critic sibling holding only a single-file prose `review.md` into a recognizable-but-explicitly-**unscored** `_review.json` stub (+ `_meta.json` foreign-provenance marker), preserving `review.md` byte-identical. **NO LLM, NO synthesized scores.** Dry-run by default; `--apply` executes. |
+| `/anvil:project-migrate --adopt-review <dir> --rescore` | **Operator-driven LLM rescore of stubs** (issue #507 — Phase 3b of #432): on a tree carrying Phase-3a stubs, resolve each stub's target anvil rubric and (with the operator/LLM step in the slash-command runtime supplying per-dimension scores) turn the unscored stub into a real scored `_review.json` (`unscored: false`), stamping `rubric_id` / `rubric_total` / `advance_threshold` + `rescored_from: foreign-adopted` lineage; `review.md` byte-identical. Unresolvable stubs are SKIPPED, never guessed. Dry-run by default; `--apply` (operator-gated) executes. |
 
 See `commands/project-migrate.md` for the operator-facing contract.
 
@@ -297,11 +298,45 @@ stub passes `_has_recognizable_review` and feeds `aggregate`, contributing
 **zero dimensions** — it never corrupts a real co-sibling's total or flips
 its verdict (regression-locked in the discovery test).
 
-**Phase 3b (deferred, separate issue): optional operator-driven LLM
-rescore.** Turning a stub into a real scored review is an LLM-judgment
-problem (closer to `rubric-rebackport --rescore`'s per-review stamping
-territory) and is explicitly out of scope for Phase 3a. This skill mode
-never attempts it.
+## Phase 3b: operator-driven LLM rescore (`--adopt-review --rescore`, issue #507)
+
+Phase 3b turns a Phase-3a **unscored stub** into a **real scored review**.
+It is an opt-in `--rescore` modifier on `--adopt-review`, **NOT** a
+`rubric-rebackport` extension — three code-grounded reasons (issue #507
+curation): (1) rubric-rebackport's detector only matches `.review`
+siblings, not the `.enablement` / `.s101` / `.fto` critic tags foreign
+stubs live on; (2) its `--rescore` requires a prior anvil score (to record
+a prior→new delta) a never-scored stub lacks; (3) the stub already carries
+its own `source: foreign-adopted` input marker at the project-migrate seam
+that wrote it.
+
+The scoring itself is an **operator-driven LLM step that stays in the
+slash-command runtime** (the exact precedent in
+`anvil/skills/rubric-rebackport/lib/rescore.py`: "the actual LLM call
+belongs in the consumer's slash-command runtime, not in this Python
+library"). The Python here is a thin **planner + marker-flip +
+atomic-write** harness:
+
+- **Plan** (`build_rescore_plan`): scan for sidecars carrying a Phase-3a
+  stub (`_review.json` `unscored: true` + `_meta.json`
+  `source: foreign-adopted`); resolve each stub's target anvil rubric
+  (BRIEF `documents:` block → body-filename fallback). A stub whose rubric
+  cannot be resolved is **SKIPPED with an operator-visible note — never
+  guessed** (the honesty guard).
+- **Operator/LLM hand-off**: the runtime reads the verbatim `review.md` +
+  resolved rubric and produces per-dimension scores (an
+  `adopt_review.ScoredReviewInput`).
+- **Write back** (`apply_rescore_plan`, `--apply` only): per-sidecar
+  atomic via `staged_sidecar` (reusing Phase 3a's staged/backup/swap so
+  `review.md` stays byte-identical). Replaces `_review.json` with a scored
+  `Review` (`unscored: false`; `total` / `threshold` / `verdict` derived
+  from the supplied scores), and updates `_meta.json` to flip
+  `unscored: false`, add `rescored_from: foreign-adopted` (retaining
+  `origin_filename`), and stamp the v0.4.0 per-review rubric fields
+  `rubric_id` / `rubric_total` / `advance_threshold`. A target with no
+  supplied score is left as an honest stub — the harness NEVER fabricates
+  scores. The `--apply` operator gate is binding: `--rescore` never runs
+  silently as part of `--adopt-review` / `--adopt-family`.
 
 ## Atomicity & rollback
 

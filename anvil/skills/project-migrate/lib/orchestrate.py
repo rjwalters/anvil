@@ -45,7 +45,9 @@ from .adopt_family import AdoptFamilyError, build_adopt_family_plan
 from .adopt_review import (
     AdoptReviewError,
     apply_adopt_review_plan,
+    apply_rescore_plan,
     build_adopt_review_plan,
+    build_rescore_plan,
 )
 from .adopt_vn import AdoptVnError, build_adopt_vn_plan
 from .enroll import EnrollError, build_enroll_plan
@@ -1146,6 +1148,8 @@ def run_adopt_review(
     directory: Path,
     *,
     apply: bool = False,
+    rescore: bool = False,
+    scored_reviews: Optional[dict] = None,
 ) -> AdoptReviewRunResult:
     """Execute the single-file ``review.md`` stub-conversion flow (#454).
 
@@ -1158,6 +1162,23 @@ def run_adopt_review(
     honest unscored-foreign stub ``_review.json`` + a ``_meta.json``
     provenance marker beside the verbatim-preserved ``review.md``.
 
+    Phase 3b: operator-driven LLM rescore (``rescore=True``, issue #507)
+    -------------------------------------------------------------------
+
+    When ``rescore=True``, the mode instead PLANS which Phase-3a stubs to
+    turn into real scored reviews — resolving each stub's target rubric
+    (BRIEF ``documents:`` → body-filename fallback; unresolvable stubs are
+    SKIPPED, never guessed). The scoring itself is an operator-driven LLM
+    step that lives in the slash-command runtime (precedent:
+    ``rubric-rebackport/lib/rescore.py``); the runtime reads each stub's
+    verbatim ``review.md`` + resolved rubric, produces per-dimension
+    scores, and hands them back as ``scored_reviews`` (a
+    ``{sidecar_name: ScoredReviewInput}`` map). ``apply=True`` then writes
+    the scored reviews per-sidecar atomically (flip ``unscored`` to
+    ``False``, stamp the rubric fields, record lineage). A target with no
+    supplied score is left as an honest stub. Dry-run (``apply=False``)
+    lists what WOULD be rescored and never mutates.
+
     Parameters
     ----------
     directory
@@ -1165,8 +1186,15 @@ def run_adopt_review(
         names are already canonical (post ``--adopt-family`` /
         ``--adopt-vn``).
     apply
-        When True, execute the conversions (per-sidecar atomic, verbatim-
-        preserving, via ``anvil/lib/sidecar.py::staged_sidecar``).
+        When True, execute the conversions / rescores (per-sidecar atomic,
+        verbatim-preserving, via ``anvil/lib/sidecar.py::staged_sidecar``).
+    rescore
+        When True, run the Phase-3b rescore planner/applier instead of the
+        Phase-3a stub conversion.
+    scored_reviews
+        Only consulted when ``rescore=True`` and ``apply=True``: a
+        ``{sidecar_name: ScoredReviewInput}`` map from the operator/LLM
+        step. Targets absent from the map are left as honest stubs.
 
     Raises
     ------
@@ -1174,6 +1202,12 @@ def run_adopt_review(
         When ``directory`` does not exist or is not a directory.
     """
     directory = Path(directory).resolve()
+
+    if rescore:
+        return _run_rescore(
+            directory, apply=apply, scored_reviews=scored_reviews or {}
+        )
+
     plan = build_adopt_review_plan(directory)
 
     result = AdoptReviewRunResult(directory=directory, plan=plan)
@@ -1188,6 +1222,114 @@ def run_adopt_review(
     apply_result = apply_adopt_review_plan(plan)
     result.apply_result = apply_result
     report += "\n" + _format_adopt_review_apply(apply_result)
+    result.success = apply_result.ok
+    result.report = report
+    return result
+
+
+def _format_rescore_report(plan, directory: Path) -> str:
+    """Format a rescore plan as a markdown report (read-only)."""
+    lines: List[str] = []
+    lines.append(
+        f"# Foreign stub → operator-LLM rescore: {directory.name}"
+    )
+    lines.append("")
+    lines.append(f"**Adopted tree**: `{directory}`")
+    lines.append(
+        "**Mode**: Phase 3b — operator-driven LLM rescore of unscored "
+        "foreign stubs (the LLM scoring step runs in the slash-command "
+        "runtime; this plan resolves each stub's target rubric)"
+    )
+    lines.append(f"**Rescorable stubs in plan**: {len(plan.targets)}")
+    lines.append("")
+    lines.append("## Plan")
+    lines.append("")
+
+    if not plan.targets:
+        lines.append(
+            "No resolvable foreign stub found — nothing to rescore. "
+            "Re-running `--adopt-review --rescore` on a tree whose stubs "
+            "are already rescored (or which has no Phase-3a stub) is a "
+            "no-op."
+        )
+        lines.append("")
+    else:
+        for target in plan.targets:
+            try:
+                rel = target.sidecar_dir.relative_to(directory)
+            except ValueError:
+                rel = target.sidecar_dir
+            lines.append(f"### `{rel}/`")
+            lines.append("")
+            lines.append(
+                f"- Resolved skill: `{target.skill}` "
+                f"(via {target.skill_source})"
+            )
+            lines.append(
+                f"- Target rubric: `{target.rubric.id}` "
+                f"(total {target.rubric.total}, advance "
+                f"{target.rubric.advance_threshold})"
+            )
+            lines.append(
+                f"- Operator/LLM step: score `{target.review_filename}` "
+                f"against `{target.rubric.id}`; write scored "
+                f"`_review.json` (unscored → false) + stamp "
+                f"`rubric_id`/`rubric_total`/`advance_threshold` in "
+                f"`_meta.json` (`rescored_from: foreign-adopted`)"
+            )
+            lines.append("")
+
+    if plan.skipped:
+        lines.append("## Skipped (left as honest stubs / untouched)")
+        lines.append("")
+        for name, reason in plan.skipped:
+            lines.append(f"- `{name}/` — {reason}")
+        lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
+def _format_rescore_apply(apply_result) -> str:
+    """Format the rescore apply outcome (appended to the plan report)."""
+    lines: List[str] = []
+    lines.append("## Apply")
+    lines.append("")
+    lines.append(
+        f"- Rescored: {len(apply_result.rescored)} sidecar(s) "
+        f"({', '.join(apply_result.rescored) or '(none)'})"
+    )
+    if apply_result.skipped_no_input:
+        lines.append(
+            f"- Left as honest stubs (no operator score supplied): "
+            f"{len(apply_result.skipped_no_input)} sidecar(s) "
+            f"({', '.join(apply_result.skipped_no_input)})"
+        )
+    if apply_result.failed:
+        lines.append(f"- **Failed**: {len(apply_result.failed)} sidecar(s):")
+        for name, err in apply_result.failed:
+            lines.append(f"  - `{name}`: {err}")
+    lines.append("")
+    lines.append(f"**Overall**: {'PASS' if apply_result.ok else 'FAIL'}")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def _run_rescore(
+    directory: Path, *, apply: bool, scored_reviews: dict
+) -> AdoptReviewRunResult:
+    """Drive the Phase-3b rescore flow (planner + optional apply)."""
+    plan = build_rescore_plan(directory)
+    result = AdoptReviewRunResult(directory=directory, plan=plan)
+    report = _format_rescore_report(plan, directory)
+
+    if plan.is_noop or not apply:
+        result.report = report
+        result.success = True
+        return result
+
+    apply_result = apply_rescore_plan(plan, scored_reviews)
+    result.apply_result = apply_result
+    report += "\n" + _format_rescore_apply(apply_result)
     result.success = apply_result.ok
     result.report = report
     return result

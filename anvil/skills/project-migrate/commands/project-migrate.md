@@ -26,6 +26,8 @@ post-#295 / post-#296 model.
 
 /anvil:project-migrate --adopt-review <dir>           # dry-run review.md stub conversion
     [--apply]
+/anvil:project-migrate --adopt-review <dir> --rescore # dry-run operator-LLM rescore of stubs
+    [--apply]
 ```
 
 `<project-dir>` is the project root: the directory that holds (or will hold)
@@ -69,6 +71,16 @@ marker), preserving `review.md` byte-identical. **NO LLM call, NO
 synthesized scores.** Conversion runs through
 `orchestrate.run_adopt_review(...)` (dry-run by default) — see §9
 below.
+
+`--adopt-review <dir> --rescore` selects **operator-driven LLM rescore
+mode** (issue #507 — Phase 3b of #432): on a tree carrying Phase-3a
+stubs, it resolves each stub's target anvil rubric and (with the
+operator/LLM step supplying per-dimension scores in the slash-command
+runtime) turns the unscored stub into a real scored `_review.json`,
+flipping `unscored` to `false` and stamping `rubric_id` / `rubric_total`
+/ `advance_threshold`. Runs through `orchestrate.run_adopt_review(...,
+rescore=True)` (dry-run by default; `--apply` required to mutate) — see
+§9b below.
 
 ### 1. Detect current shape
 
@@ -381,9 +393,9 @@ Hard errors (plan-time, pre-mutation — the whole batch aborts):
   plain `project-migrate` on it first.
 
 Single-file `review.md` → recognizable-review-payload conversion is
-**Phase 3a** (`--adopt-review`, issue #454 — see §9). An optional
+**Phase 3a** (`--adopt-review`, issue #454 — see §9). The optional
 operator-driven LLM rescore (turning a stub into a real scored review)
-is **Phase 3b**, deferred to a separate issue.
+is **Phase 3b** (`--adopt-review --rescore`, issue #507 — see §9b).
 
 ### 9. Foreign `review.md` stub-conversion mode (`--adopt-review`, issue #454 — Phase 3a of #432)
 
@@ -436,10 +448,77 @@ in this skill. Steps:
    **zero dimensions** — it never corrupts a real co-sibling's total or
    flips its verdict.
 
-**Phase 3b (deferred, separate issue)**: an optional operator-driven LLM
-rescore that turns a stub into a real scored review — an LLM-judgment
-problem (closer to `rubric-rebackport --rescore`'s territory). This mode
-NEVER attempts it.
+### 9b. Operator-driven LLM rescore of stubs (`--adopt-review --rescore`, issue #507 — Phase 3b of #432)
+
+```
+/anvil:project-migrate --adopt-review agents/agent-workspace --rescore
+/anvil:project-migrate --adopt-review agents/agent-workspace --rescore --apply
+```
+
+Phase 3b turns a Phase-3a **unscored stub** into a **real scored review**.
+It is an opt-in `--rescore` modifier on `--adopt-review` — **NOT** a
+`rubric-rebackport` extension (rubric-rebackport's detector only matches
+`.review` siblings, not the `.enablement` / `.s101` / `.fto` critic tags
+foreign stubs live on, and its `--rescore` requires a prior anvil score a
+stub never had). Call `orchestrate.run_adopt_review(directory,
+rescore=True, apply=..., scored_reviews=...)`. **Dry-run by default**; the
+operator gate is binding — a rescore NEVER runs silently. Steps:
+
+1. **Plan** (`run_adopt_review(directory, rescore=True)`): scan the
+   adopted tree for sidecars carrying a Phase-3a stub — `_review.json`
+   with `unscored: true` AND `_meta.json` `source: foreign-adopted` (the
+   dual marker Phase 3a stamped at the project-migrate seam). For each
+   stub, **resolve the target anvil rubric**: BRIEF `documents:` block
+   (`artifact_type` → skill) first, sibling version-dir body filename
+   (`memo.md`, `ip-uspto.md`, …) as fallback. A stub whose rubric cannot
+   be resolved is **SKIPPED with an operator-visible note — never
+   guessed** (the honesty guard, mirroring `rubric-rebackport`'s
+   `inferred_skill is None` → skip discipline).
+
+2. **Operator/LLM hand-off (in the slash-command runtime, NOT Python).**
+   For each planned target, read the verbatim `review.md` prose + the
+   resolved rubric (`rubric_id`, the per-dimension dimensions and weights
+   from the skill's `rubric.md`) and produce per-dimension scores,
+   optional findings, and optional critical flags. This is the
+   judgment-laden step; it stays in the consumer's runtime — the exact
+   precedent in `anvil/skills/rubric-rebackport/lib/rescore.py` ("the
+   actual LLM call belongs in the consumer's slash-command runtime, not
+   in this Python library"). Package each result as an
+   `adopt_review.ScoredReviewInput(sidecar_name, scores, findings,
+   critical_flags)` and assemble a `{sidecar_name: ScoredReviewInput}`
+   map.
+
+3. **Apply** (`--rescore --apply` only): call
+   `run_adopt_review(directory, rescore=True, apply=True,
+   scored_reviews=<map>)`. For each target with a supplied score, the
+   harness writes the scored review **per-sidecar atomically** via
+   `anvil/lib/sidecar.py::staged_sidecar` (reusing Phase 3a's
+   staged/backup/swap pattern), so `review.md` stays **byte-identical**.
+   Each write:
+   - replaces `_review.json` with a **scored** `Review`: populated
+     `scores` / `findings` / `critical_flags`, `total` = sum of non-null
+     scores, `threshold` = the rubric's `advance_threshold`, `verdict`
+     derived (`BLOCK` if any critical flag; else `ADVANCE` if `total >=
+     threshold`; else `REVISE`), `rubric` = the resolved `rubric_id`, and
+     **`unscored: false`** (the #454 schema contract REQUIRES non-empty
+     `scores` before this flag flips — the harness refuses an empty
+     scorecard);
+   - updates `_meta.json` to record lineage: flips `unscored: false`, adds
+     `rescored_from: foreign-adopted` (retaining `source: foreign-adopted`
+     + `origin_filename`), and stamps the v0.4.0 per-review rubric fields
+     `rubric_id` / `rubric_total` / `advance_threshold`.
+   A target with **no** supplied score is left as an honest stub
+   (recorded in the report) — the harness NEVER fabricates scores.
+
+4. **Atomicity + idempotence**: on any mid-write failure the original stub
+   is restored byte-identical (still `unscored: true`). Re-running
+   `--rescore` on a fully-rescored tree finds no `unscored: true` stub and
+   is a successful no-op. Running on a tree with no Phase-3a stub yields
+   an empty plan, not an error.
+
+The operator gate is binding: `--rescore` is NEVER auto-run as part of
+`--adopt-review` / `--adopt-family`; it requires the explicit `--rescore`
+flag (and `--apply` to mutate).
 
 ## Output
 
