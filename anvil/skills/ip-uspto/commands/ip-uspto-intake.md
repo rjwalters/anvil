@@ -85,6 +85,7 @@ When this non-provisional thread is the **conversion** of an earlier `anvil:ip-u
 - **`ip-uspto-draft`** emits a §119(e) "CROSS-REFERENCE TO RELATED APPLICATIONS" paragraph into `spec.tex`.
 - **`ip-uspto-finalize`** fills the ADS domestic-priority slot with the generated §119(e) benefit-claim text.
 - **`ip-uspto`** (orchestrator) computes and surfaces the 12-month §119(e) conversion deadline (`filing_date + 12 months`).
+- **`ip-uspto-112`** (s112 critic, issue #517) runs a §112(a) **conversion disclosure-coverage** check: it re-runs its per-claim-limitation support sweep with the *provisional* `spec.tex` (resolved via `thread` + optional `portfolio_path` at highest-`N`) as the baseline, flagging possible new-matter / unsupported converted claim subject matter FOR COUNSEL. Dormant when this block is absent.
 
 Field semantics:
 
