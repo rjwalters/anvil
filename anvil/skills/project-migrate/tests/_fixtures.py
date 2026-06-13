@@ -1054,9 +1054,174 @@ def build_letter_family_threads(
     return project_dir
 
 
+# Verbatim prose body every foreign single-file `review.md` carries in the
+# adopted-review fixture (issue #454). Kept as a module constant so the
+# apply/dry-run tests can assert byte-identical preservation against it.
+FOREIGN_REVIEW_PROSE = (
+    "# Enablement review\n\n"
+    "Hand-rolled reviewer notes that were NEVER scored on any anvil "
+    "rubric.\n\n"
+    "- The disclosure is thorough but the claim scope is broad.\n"
+    "- No per-dimension table, no Total: X/Y, no advance: true|false.\n"
+)
+
+
+def build_adopted_review_threads(
+    root: Path,
+    project_name: str = "agent-workspace",
+    *,
+    with_real_sibling: bool = False,
+    pre_converted: bool = False,
+) -> Path:
+    """Build a POST-adoption tree with foreign `review.md`-only sidecars.
+
+    The Phase-3a (`--adopt-review`, issue #454) input shape: an already-
+    adopted tree (canonical `<slug>/<slug>.{N}/` version dirs with
+    `<slug>.{N}.<tag>` critic siblings) whose siblings still hold only a
+    single-file prose `review.md` — they fail
+    `critics._has_recognizable_review` and stay invisible to
+    `discover_critics` until converted.
+
+    Shape (two adopted threads)::
+
+      <root>/<project_name>/
+        brasidas-c/
+          brasidas-c.5/spec.md
+          brasidas-c.5.review/review.md          ← review.md-only sidecar
+          brasidas-c.7/spec.md
+          brasidas-c.7.enablement/review.md      ← review.md-only sidecar
+          brasidas-c.7.s101/review.md            ← review.md-only sidecar
+        brasidas-a/
+          brasidas-a.2/spec.md
+          brasidas-a.2.review/review.md          ← review.md-only sidecar
+
+    ``with_real_sibling=True`` adds a co-sibling `brasidas-c.7.audit/`
+    that already carries a canonical `_review.json` WITH real scores (so
+    the load-bearing zero-dimension-tolerance test can aggregate a stub
+    alongside a genuinely-scored critic on the SAME version dir).
+
+    ``pre_converted=True`` drops a stub `_review.json` + `_meta.json` into
+    EVERY foreign sidecar up front (the idempotence fixture: a re-run
+    must find nothing to convert).
+
+    Returns the project root (== the adopted-tree dir passed to
+    `--adopt-review`).
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    threads = {
+        "brasidas-c": {
+            5: ("review",),
+            7: ("enablement", "s101"),
+        },
+        "brasidas-a": {
+            2: ("review",),
+        },
+    }
+    for slug, versions in threads.items():
+        for n, tags in versions.items():
+            _write(
+                project_dir / slug / f"{slug}.{n}" / "spec.md",
+                f"# {slug} v{n}\n\nHand-rolled ip draft v{n}.\n",
+            )
+            for tag in tags:
+                sidecar = project_dir / slug / f"{slug}.{n}.{tag}"
+                _write(sidecar / "review.md", FOREIGN_REVIEW_PROSE)
+                if pre_converted:
+                    _write_stub_payload(sidecar, f"{slug}.{n}", tag)
+
+    if with_real_sibling:
+        # A genuinely-scored co-sibling on brasidas-c.7 (alongside the
+        # foreign .enablement / .s101 stubs). Real per-dimension scores +
+        # a real total/threshold/verdict — the aggregate of [stub, this]
+        # must reflect THIS critic's numbers untouched.
+        real = project_dir / "brasidas-c" / "brasidas-c.7.audit"
+        _write(
+            real / "_review.json",
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "kind": "judgment",
+                    "version_dir": "brasidas-c.7",
+                    "critic_id": "audit",
+                    "scores": [
+                        {
+                            "dimension": "enablement",
+                            "score": 8,
+                            "max": 10,
+                            "critical": False,
+                        },
+                        {
+                            "dimension": "clarity",
+                            "score": 7,
+                            "max": 10,
+                            "critical": False,
+                        },
+                    ],
+                    "findings": [],
+                    "critical_flags": [],
+                    "total": 15,
+                    "threshold": 14,
+                    "verdict": "ADVANCE",
+                },
+                indent=2,
+            )
+            + "\n",
+        )
+
+    return project_dir
+
+
+def _write_stub_payload(sidecar: Path, version_dir: str, tag: str) -> None:
+    """Drop a Phase-3a stub `_review.json` + `_meta.json` into ``sidecar``.
+
+    Mirrors what `adopt_review.apply_adopt_review_plan` writes, so the
+    idempotence fixture presents an already-converted sidecar.
+    """
+    _write(
+        sidecar / "_review.json",
+        json.dumps(
+            {
+                "schema_version": "1",
+                "kind": "judgment",
+                "version_dir": version_dir,
+                "critic_id": tag,
+                "model": None,
+                "rubric": None,
+                "scores": [],
+                "findings": [],
+                "critical_flags": [],
+                "total": None,
+                "threshold": None,
+                "verdict": None,
+                "rendered_artifact": None,
+                "unscored": True,
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+    _write(
+        sidecar / "_meta.json",
+        json.dumps(
+            {
+                "source": "foreign-adopted",
+                "unscored": True,
+                "origin_filename": "review.md",
+                "adopted_by": "anvil:project-migrate#454",
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+
+
 __all__ = [
     "DEFAULT_TAG_MAP",
     "ENROLL_OPERATOR_BRIEF",
+    "FOREIGN_REVIEW_PROSE",
+    "build_adopted_review_threads",
     "build_aldus_shaped_deck",
     "build_bare_version_dir_threads",
     "build_bessemer_shaped",
