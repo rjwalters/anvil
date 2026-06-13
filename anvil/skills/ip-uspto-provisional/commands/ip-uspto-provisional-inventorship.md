@@ -96,4 +96,11 @@ The report is regenerated on each run (it is a read-only snapshot of the current
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this command per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): stage ONLY this command's own outputs (`<thread>/inventorship-lite.md` and, with `--evidence`, `<thread>/inventorship-evidence/`), commit as `anvil(ip-uspto-provisional/inventorship): <thread> [advisory]`, and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the advisory report on disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after this command's own outputs are written.
+- **Staging target**: ONLY this command's own outputs (`<thread>/inventorship-lite.md` and, with `--evidence`, `<thread>/inventorship-evidence/`), staged explicitly by path.
+- **Commit**: `anvil(ip-uspto-provisional/inventorship): <thread> [advisory]` — a thread-level advisory command with no version dir, so the version token is the bare thread slug per `git_sync.md` §Non-thread commit shapes.
+
