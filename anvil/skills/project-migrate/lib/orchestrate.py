@@ -42,6 +42,11 @@ from .detect import (
     _classify,
 )
 from .adopt_family import AdoptFamilyError, build_adopt_family_plan
+from .adopt_review import (
+    AdoptReviewError,
+    apply_adopt_review_plan,
+    build_adopt_review_plan,
+)
 from .adopt_vn import AdoptVnError, build_adopt_vn_plan
 from .enroll import EnrollError, build_enroll_plan
 from .plan import (
@@ -1020,13 +1025,184 @@ def run_adopt_family(
     return result
 
 
+# ---------------------------------------------------------------------------
+# Single-file review.md → stub conversion (issue #454 — Phase 3a of #432)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AdoptReviewRunResult:
+    """Typed summary of a :func:`run_adopt_review` invocation.
+
+    A separate result type from :class:`RunResult`: this mode produces no
+    ``Plan`` / BRIEF / shape — it is a pure critic-sibling content
+    conversion on an already-adopted tree.
+
+    Attributes
+    ----------
+    directory
+        The adopted-tree root.
+    plan
+        The (possibly empty) :class:`adopt_review.AdoptReviewPlan`.
+    apply_result
+        Apply outcome; ``None`` for dry-run.
+    report
+        The markdown report.
+    success
+        True iff the run completed without errors. Dry-run is always a
+        success (planning never mutates); apply is a success when every
+        planned conversion lands.
+    """
+
+    directory: Path
+    plan: object
+    apply_result: object = None
+    report: str = ""
+    success: bool = False
+
+
+def _format_adopt_review_report(plan, directory: Path) -> str:
+    """Format a stub-conversion plan as a markdown report.
+
+    Read-only — the formatter never touches disk. Lists every planned
+    conversion (the new ``_review.json`` + ``_meta.json`` and the
+    PRESERVED ``review.md``) plus skipped sidecars (already recognizable
+    or no ``review.md`` payload).
+    """
+    lines: List[str] = []
+    lines.append(f"# Foreign review.md → stub conversion: {directory.name}")
+    lines.append("")
+    lines.append(f"**Adopted tree**: `{directory}`")
+    lines.append(
+        "**Mode**: Phase 3a — honest unscored-foreign STUB conversion "
+        "(NO LLM, NO synthesized scores)"
+    )
+    lines.append(f"**Conversions in plan**: {len(plan.conversions)}")
+    lines.append("")
+    lines.append("## Plan")
+    lines.append("")
+
+    if not plan.conversions:
+        lines.append(
+            "No `review.md`-only critic sidecars found — nothing to "
+            "convert. Re-running `--adopt-review` on a tree whose sidecars "
+            "already carry `_review.json` is a no-op."
+        )
+        lines.append("")
+    else:
+        for conv in plan.conversions:
+            try:
+                rel = conv.sidecar_dir.relative_to(directory)
+            except ValueError:
+                rel = conv.sidecar_dir
+            lines.append(f"### `{rel}/`")
+            lines.append("")
+            lines.append(
+                f"- Write stub `_review.json` "
+                f"(version_dir=`{conv.version_dir}`, "
+                f"critic_id=`{conv.critic_id}`, unscored — empty scores, "
+                f"null total/threshold/verdict)"
+            )
+            lines.append(
+                "- Write `_meta.json` foreign-provenance marker "
+                "(`source: foreign-adopted`, `unscored: true`)"
+            )
+            lines.append(
+                f"- Preserve `{conv.review_filename}` byte-identical "
+                f"(never renamed, never mutated)"
+            )
+            lines.append("")
+
+    if plan.skipped:
+        lines.append("## Skipped (left untouched)")
+        lines.append("")
+        for name, reason in plan.skipped:
+            lines.append(f"- `{name}/` — {reason}")
+        lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
+def _format_adopt_review_apply(apply_result) -> str:
+    """Format the apply outcome (appended to the plan report)."""
+    lines: List[str] = []
+    lines.append("## Apply")
+    lines.append("")
+    lines.append(
+        f"- Converted: {len(apply_result.converted)} sidecar(s) "
+        f"({', '.join(apply_result.converted) or '(none)'})"
+    )
+    if apply_result.failed:
+        lines.append(f"- **Failed**: {len(apply_result.failed)} sidecar(s):")
+        for name, err in apply_result.failed:
+            lines.append(f"  - `{name}`: {err}")
+    lines.append("")
+    lines.append(f"**Overall**: {'PASS' if apply_result.ok else 'FAIL'}")
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def run_adopt_review(
+    directory: Path,
+    *,
+    apply: bool = False,
+) -> AdoptReviewRunResult:
+    """Execute the single-file ``review.md`` stub-conversion flow (#454).
+
+    Phase 3a of the #432 adoption arc. ``apply=False`` (the universal
+    default in this skill) is a dry-run — scan + plan + report, zero
+    mutations. A tree with no ``review.md``-only sidecar is a successful
+    no-op even under ``--apply`` (idempotence).
+
+    NO LLM call anywhere; NO score synthesis. Each conversion writes an
+    honest unscored-foreign stub ``_review.json`` + a ``_meta.json``
+    provenance marker beside the verbatim-preserved ``review.md``.
+
+    Parameters
+    ----------
+    directory
+        An adopted-tree root (project root or a single thread root) whose
+        names are already canonical (post ``--adopt-family`` /
+        ``--adopt-vn``).
+    apply
+        When True, execute the conversions (per-sidecar atomic, verbatim-
+        preserving, via ``anvil/lib/sidecar.py::staged_sidecar``).
+
+    Raises
+    ------
+    AdoptReviewError
+        When ``directory`` does not exist or is not a directory.
+    """
+    directory = Path(directory).resolve()
+    plan = build_adopt_review_plan(directory)
+
+    result = AdoptReviewRunResult(directory=directory, plan=plan)
+    report = _format_adopt_review_report(plan, directory)
+
+    if plan.is_noop or not apply:
+        # No conversions, or dry-run: zero mutations.
+        result.report = report
+        result.success = True
+        return result
+
+    apply_result = apply_adopt_review_plan(plan)
+    result.apply_result = apply_result
+    report += "\n" + _format_adopt_review_apply(apply_result)
+    result.success = apply_result.ok
+    result.report = report
+    return result
+
+
 __all__ = [
     "AdoptFamilyError",
+    "AdoptReviewError",
+    "AdoptReviewRunResult",
     "AdoptVnError",
     "EnrollError",
     "RunResult",
     "run",
     "run_adopt_family",
+    "run_adopt_review",
     "run_adopt_vn",
     "run_enroll",
 ]
