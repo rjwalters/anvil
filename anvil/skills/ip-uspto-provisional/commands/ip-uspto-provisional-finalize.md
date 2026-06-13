@@ -7,7 +7,7 @@ description: Finalize command for the ip-uspto-provisional skill. Assembles the 
 
 **Role**: finalizer.
 **Reads**: AUDITED `<thread>.{N}/` + `<thread>.{N}.audit/_summary.md` (must record `passed: true`) + `<thread>/BRIEF.md`.
-**Writes**: `<thread>.counsel/` with the assembled counsel filing package + `_manifest.json` + `_progress.json`.
+**Writes**: `<thread>.counsel/` with the assembled counsel filing package + `_manifest.json` + `_progress.json`; AND `<thread>/_filing.json` — the authoritative, machine-readable provisional filing-record (conversion linkage, issue #501).
 
 This is the terminal command of the provisional lifecycle. After `ip-uspto-provisional-finalize` succeeds the thread is **COUNSEL-READY**: the package is ready for human attorney/counsel review and provisional filing via USPTO Patent Center.
 
@@ -145,7 +145,10 @@ The `anvil-uspto.cls` LaTeX class and spec scaffold are reused from `anvil:ip-us
    The 12-month conversion window under 35 U.S.C. 119(e) starts at the provisional FILING date
    (NOT at this finalize). Plan an `anvil:ip-uspto` non-provisional conversion thread well inside
    that window. The conversion claims the provisional's filing date only for subject matter this
-   provisional supports at §112(a) depth — see the enablement posture above.
+   provisional supports at §112(a) depth — see the enablement posture above. Once filed, record the
+   filing date + application number in this thread's `_filing.json`; the `anvil:ip-uspto` conversion
+   thread copies them into its BRIEF `converts_provisional` block, which drives the §119(e)
+   priority-claim text and the 12-month deadline surfaced in the ip-uspto orchestrator.
 
    ## Claim-seed pointer
    <If a claim-seed (claims.tex) is present: "A claim-seed is included (claims.tex) as a
@@ -183,8 +186,11 @@ The `anvil-uspto.cls` LaTeX class and spec scaffold are reused from `anvil:ip-us
     3. Counsel verifies the current USPTO provisional filing fee and entity status.
     4. Counsel submits via USPTO Patent Center: spec.pdf + drawings.pdf + SB/16 cover sheet + flat filing fee.
        A provisional requires NO claims, NO oath/declaration, NO ADS.
-    5. Patent Center issues a Provisional Application Number and Filing Receipt; save these in the thread root —
-       the FILING date starts the 12-month conversion clock.
+    5. Patent Center issues a Provisional Application Number and Filing Receipt. Record both in the thread-root
+       `_filing.json` (written by this finalizer with `filing_date` / `application_number` templated as `null`):
+       fill in the real `filing_date` and `application_number` from the receipt. The FILING date starts the
+       12-month §119(e) conversion clock, and the `anvil:ip-uspto` conversion thread reads these two values into
+       its BRIEF `converts_provisional` block.
 
     ## Warnings
 
@@ -219,7 +225,24 @@ The `anvil-uspto.cls` LaTeX class and spec scaffold are reused from `anvil:ip-us
 
     When a claim-seed exists, add its row and set `"claim_seed_present": true`. Note there are **no** `abstract.txt` or `inventorship-attestation.md` rows — the provisional package has neither.
 12. **Update `_progress.json`** inside the staging dir: `phases.finalize.state = done`, `phases.finalize.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest (the base set, plus `claims.tex` only when a claim-seed exists, plus `_progress.json`) exists in the staging dir, then atomically renames `.<thread>.counsel.tmp/` → `<thread>.counsel/`. The final-named dir only ever exists in **complete** form — a partial counsel package can never reach a human attorney.
-13. **Report**: e.g., `Finalized acme-widget-prov.counsel/ from acme-widget-prov.3/ (COUNSEL-READY). 5 artifacts, 0 warnings, no claim-seed. Next: human counsel review + Patent Center provisional submission.`
+13. **Write the authoritative filing-record `<thread>/_filing.json`** (conversion linkage, issue #501) AFTER the package atomic-rename lands. This is the structured, machine-readable producer copy of the data the eventual `anvil:ip-uspto` non-provisional conversion reads into its BRIEF `converts_provisional` block — replacing the prior "save these in the thread root" prose instruction (step 5 of the README) with a real file the consumer can parse:
+
+    ```json
+    {
+      "thread": "<slug>",
+      "artifact_type": "ip-uspto-provisional",
+      "filing_date": null,
+      "application_number": null,
+      "generated_at": "<ISO>",
+      "from_version": <N>,
+      "note": "Provisional 35 U.S.C. 111(b) filing record. filing_date and application_number are TEMPLATED as null — counsel MUST fill them from the USPTO Filing Receipt after the provisional is actually filed via Patent Center. The filing_date starts the 12-month §119(e) conversion clock; the anvil:ip-uspto conversion thread copies these two values into its BRIEF converts_provisional block."
+    }
+    ```
+
+    - **Templated, not invented.** At finalize the provisional has NOT yet been filed (filing is the human + Patent Center action that follows counsel review), so `filing_date` and `application_number` are written as `null` placeholders. Counsel fills them from the Filing Receipt. **The finalizer never guesses a filing date** — a guessed date would silently corrupt the §119(e) clock the conversion relies on.
+    - **Idempotence**: if `<thread>/_filing.json` already exists with a non-null `filing_date` (counsel has filed and recorded the receipt), do NOT overwrite it — preserve the human-entered values; re-finalize only refreshes `generated_at`/`from_version` if the operator explicitly re-runs. A fresh finalize on a thread with no `_filing.json` writes the null-templated record.
+    - This file lives in the thread root (`<thread>/`), NOT inside the atomic `<thread>.counsel/` package — it is a long-lived thread record the consumer reads, decoupled from the immutable package.
+14. **Report**: e.g., `Finalized acme-widget-prov.counsel/ from acme-widget-prov.3/ (COUNSEL-READY). 5 artifacts, 0 warnings, no claim-seed. Wrote acme-widget-prov/_filing.json (filing_date pending counsel). Next: human counsel review + Patent Center provisional submission.`
 
 ## Failure handling
 

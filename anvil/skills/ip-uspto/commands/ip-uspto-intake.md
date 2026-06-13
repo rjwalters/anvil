@@ -43,6 +43,14 @@ inventors:
 priority_date_target: <YYYY-MM-DD or "asap">
 field_of_use: <one-line technical field>
 intake_date: <ISO date>
+# OPTIONAL — present ONLY when this non-provisional converts an earlier provisional
+# (anvil:ip-uspto-provisional). When absent, the draft/finalize commands emit NO
+# priority text and behavior is byte-identical to a thread that claims no benefit.
+converts_provisional:
+  thread: <provisional-slug>             # required when the block is present
+  filing_date: <YYYY-MM-DD>              # the provisional FILING date (starts the §119(e) 12-month clock)
+  application_number: "63/XXX,XXX"       # USPTO provisional app no. (placeholder OK until filed)
+  portfolio_path: <relative-or-abs path> # OPTIONAL — only for a cross-portfolio provisional
 ---
 
 ## 1. Problem statement
@@ -69,6 +77,23 @@ Adjacent ideas the inventor has but is NOT claiming. Critical for scope discipli
 ## 8. Open questions for inventor
 Questions the intake could not answer from the supplied disclosure and that the human attorney must resolve with the inventor before final filing. These do NOT block draft — they block finalize.
 ```
+
+### `converts_provisional` (optional conversion-linkage block)
+
+When this non-provisional thread is the **conversion** of an earlier `anvil:ip-uspto-provisional` filing (the natural provisional → ≤12-month → non-provisional flow), declare the linkage with the optional `converts_provisional` frontmatter block shown above. This block is structured filing data (date math + §119(e) boilerplate generation), NOT body-prose citation — it is the declaration surface the downstream commands read:
+
+- **`ip-uspto-draft`** emits a §119(e) "CROSS-REFERENCE TO RELATED APPLICATIONS" paragraph into `spec.tex`.
+- **`ip-uspto-finalize`** fills the ADS domestic-priority slot with the generated §119(e) benefit-claim text.
+- **`ip-uspto`** (orchestrator) computes and surfaces the 12-month §119(e) conversion deadline (`filing_date + 12 months`).
+
+Field semantics:
+
+- `thread` — the provisional thread slug. **Required** whenever the block is present.
+- `filing_date` — the provisional's USPTO FILING date (`YYYY-MM-DD`). This starts the §119(e) clock. **Must not be blank when the block is present** — a present-but-empty `filing_date` is an error, never silently rendered as blank priority text (the silent-priority-failure risk this whole skill family exists to prevent). The authoritative producer copy lives in the provisional thread's `_filing.json` (written by `ip-uspto-provisional-finalize`); this BRIEF key is the consumer copy. When both exist and disagree, the BRIEF key is the operator-asserted value the consumer uses, but the intake agent SHOULD flag the mismatch in `## 8. Open questions for inventor`.
+- `application_number` — the USPTO provisional application number (`63/XXX,XXX`). A placeholder is acceptable until the provisional's filing receipt is in hand; the downstream text carries it verbatim.
+- `portfolio_path` — **optional**, set ONLY when the provisional lives in a different portfolio directory than this non-provisional. `cross_thread_refs.py` is portfolio-root-relative and does NOT resolve cross-portfolio references, so this path is the cross-portfolio escape hatch. When the provisional is same-portfolio, omit `portfolio_path`; the linkage may then be existence-checked by resolving the provisional thread dir, but that check is optional, not the declaration. Intake does not write, read, or require any `.latest` symlink for this — the BRIEF key is the sole declaration surface.
+
+**Absent block = no change.** When `converts_provisional` is absent (the common case — most non-provisionals claim no domestic benefit), draft emits no cross-reference paragraph and finalize leaves the ADS `Domestic priority` slot at its `[ATTORNEY TO COMPLETE if claiming benefit]` placeholder — byte-identical to the pre-#501 behavior.
 
 ## Procedure
 
