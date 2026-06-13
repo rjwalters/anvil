@@ -133,4 +133,10 @@ Litsearch outputs (`notes.md` + `candidates.bib`) are a domain-specific scorecar
 
 ## Git sync (opt-in, off by default)
 
-If the consumer repo carries `.anvil/config.json` with `git.commit_per_phase: true`, end this phase per the per-phase git commit/sync hook documented in `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): after the litsearch sibling's `_progress.json` records `litsearch.state = done`, stage ONLY this command's own `<thread>.0.litsearch/` (pre-draft) or `<thread>.{N}.litsearch/` (re-run) sibling — never sibling critics' dirs, commit as `anvil(pub/litsearch): <thread>.{N} [<state>]` (`<thread>.0` on the pre-draft run; the bracket carries the thread's current derived state per SKILL.md §State machine — litsearch is a sibling critic and does not gate the state machine), and push when `git.push` is also `true`. Git failures (not a git repo, commit failure, offline push) emit a one-line warning and continue — the litsearch still reports success; artifact-on-disk is the source of truth. When `.anvil/config.json` is absent or `git.commit_per_phase` is false/absent, skip this step entirely — behavior is byte-identical to a pre-#426 install (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+
+This phase's specifics:
+
+- **Ordering**: after the litsearch sibling's `_progress.json` records `litsearch.state = done` (the litsearch sibling is written directly, not via a staged-sidecar rename).
+- **Staging target**: ONLY this command's own `<thread>.0.litsearch/` (pre-draft) or `<thread>.{N}.litsearch/` (re-run) sibling — never sibling critics' dirs.
+- **Commit**: `anvil(pub/litsearch): <thread>.{N} [<state>]` (`<thread>.0` on the pre-draft run; the bracket carries the thread's current derived state per SKILL.md §State machine — litsearch is a sibling critic and does not gate the state machine).

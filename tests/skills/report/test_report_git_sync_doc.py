@@ -63,6 +63,15 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _git_sync_section(command: str) -> str:
+    """Return the ``## Git sync`` section of a command file (heading to
+    EOF — the section is the file's final step by contract)."""
+    text = _read(COMMANDS / command)
+    idx = text.find("## Git sync")
+    assert idx >= 0, f"{command} missing the Git sync section"
+    return text[idx:]
+
+
 @pytest.mark.parametrize("command", WRITE_BEARING_COMMANDS)
 def test_command_references_git_sync_snippet(command: str):
     """Every write-bearing report command MUST reference the snippet."""
@@ -100,6 +109,46 @@ def test_command_git_sync_uses_structured_message_shape(command: str):
     assert "anvil(report/" in text, (
         f"{command}'s git-sync step MUST use the anvil(report/<phase>): "
         f"commit-message shape"
+    )
+
+
+@pytest.mark.parametrize("command", WRITE_BEARING_COMMANDS)
+def test_command_uses_short_pointer_shared_contract(command: str):
+    """Issue #537 (mirrors the #528 memo pilot): the SHARED explanation
+    compresses to the canonical short pointer from ``git_sync.md``
+    §"Adoption step" — the contract sentence ("stage only the dirs this
+    phase wrote") and the warn-and-continue clause are present, while the
+    old verbose boilerplate ("emit a one-line warning", "byte-identical
+    to a pre-#426 install") is gone."""
+    section = _git_sync_section(command)
+    assert "stage only the dirs this phase wrote" in section, (
+        f"{command}'s git-sync step MUST carry the canonical short-pointer "
+        f"shared-contract sentence"
+    )
+    assert "Git failures warn and continue" in section, (
+        f"{command}'s git-sync step MUST keep the warn-and-continue clause"
+    )
+    # The verbose pre-#537 prose must NOT re-bloat the section.
+    assert "emit a one-line warning and continue" not in section, (
+        f"{command} still carries the verbose pre-#537 failure prose"
+    )
+    assert "byte-identical to a pre-#426 install" not in section, (
+        f"{command} still carries the verbose pre-#537 default-off prose"
+    )
+
+
+@pytest.mark.parametrize("command", WRITE_BEARING_COMMANDS)
+def test_command_keeps_per_command_mechanics(command: str):
+    """Issue #537 (mirrors the #528 memo pilot): the per-command
+    mechanics that the short pointer CANNOT carry MUST stay inline — the
+    staging target (which dir THIS command commits) and the ordering
+    anchor (when the hook fires)."""
+    section = _git_sync_section(command)
+    assert "Staging target" in section, (
+        f"{command}'s git-sync step MUST keep an inline staging target"
+    )
+    assert "Ordering" in section, (
+        f"{command}'s git-sync step MUST keep an inline ordering anchor"
     )
 
 
