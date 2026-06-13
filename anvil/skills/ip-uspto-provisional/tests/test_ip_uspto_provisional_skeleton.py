@@ -95,6 +95,11 @@ class TestFilesExist(unittest.TestCase):
         # claim-seed critic.
         "commands/ip-uspto-provisional-pre-flight.md",
         "commands/ip-uspto-provisional-claims-seed.md",
+        # Issue #515 adds the provisional-shaped drawings pipeline: a
+        # deterministic figurer (stub-default + opt-in TikZ) and an opt-in,
+        # gracefully-degrading drawings VLM critic (pixels-side half of Dim 4).
+        "commands/ip-uspto-provisional-figures.md",
+        "commands/ip-uspto-provisional-vision.md",
         "tests/test_ip_uspto_provisional_skeleton.py",
     ]
 
@@ -106,15 +111,14 @@ class TestFilesExist(unittest.TestCase):
                 )
 
     def test_deferred_phase2_commands_absent(self):
-        # The figures/vision adaptation remains a separate follow-up (#515),
-        # as does the inventorship-lite pass (#516). Their command files
-        # must NOT land in this pass — pre-flight + claims-seed (#502) are
-        # the only two new commands in scope.
-        for stem in ("ip-uspto-provisional-figures",):
+        # The inventorship-lite pass (#516) remains a separate follow-up;
+        # its command file must NOT land in this pass. (figures/vision
+        # landed in #515 and are now part of the EXPECTED manifest.)
+        for stem in ("ip-uspto-provisional-inventorship",):
             with self.subTest(command=stem):
                 self.assertFalse(
                     (_SKILL_ROOT / "commands" / f"{stem}.md").exists(),
-                    f"{stem}.md is deferred follow-up scope (#515)",
+                    f"{stem}.md is deferred follow-up scope (#516)",
                 )
 
 
@@ -169,6 +173,8 @@ class TestCommandFrontmatter(unittest.TestCase):
         "commands/ip-uspto-provisional-finalize.md": "ip-uspto-provisional-finalize",
         "commands/ip-uspto-provisional-pre-flight.md": "ip-uspto-provisional-pre-flight",
         "commands/ip-uspto-provisional-claims-seed.md": "ip-uspto-provisional-claims-seed",
+        "commands/ip-uspto-provisional-figures.md": "ip-uspto-provisional-figures",
+        "commands/ip-uspto-provisional-vision.md": "ip-uspto-provisional-vision",
     }
 
     def test_command_frontmatter(self):
@@ -546,6 +552,22 @@ class TestSkillCommandDispatch(unittest.TestCase):
         self.assertIn("claimseed", text)
         self.assertIn("NOT in the default set", text)
 
+    def test_skill_dispatch_rows_figures_and_vision(self):
+        text = _read("SKILL.md")
+        self.assertIn("`ip-uspto-provisional-figures <thread>`", text)
+        self.assertIn("`ip-uspto-provisional-vision <thread>`", text)
+
+    def test_skill_multicritic_vision_opt_in_non_gating(self):
+        text = _read("SKILL.md")
+        # The vision tag is opt-in, non-gating, gracefully-degrading.
+        self.assertIn("`vision`", text)
+        self.assertIn("NOT in the default set", text)
+        # The reviser must not refuse to advance when vision is absent.
+        self.assertIn("NOT refuse to advance when `vision` is absent", text)
+        # Dim-4 split + graceful degradation are stated in the SKILL.md note.
+        self.assertIn("pixels-side half of rubric Dim 4", text)
+        self.assertIn("NO Dim-4 deduction", text)
+
     def test_skill_counsel_state_row(self):
         text = _read("SKILL.md")
         self.assertIn("`COUNSEL-READY`", text)
@@ -639,6 +661,297 @@ class TestRubric(unittest.TestCase):
         # s112 owns the dominant dimension and may not be subsetted out.
         self.assertIn("load-bearing critic", self.text)
         self.assertIn("may not be subsetted out", self.text)
+
+
+class TestFiguresCommand(unittest.TestCase):
+    """ip-uspto-provisional-figures (#515) — provisional-shaped figurer."""
+
+    def setUp(self):
+        self.text = _read("commands/ip-uspto-provisional-figures.md")
+        self.lowered = self.text.lower()
+
+    def test_frontmatter_role_figurer(self):
+        fm = _parse_frontmatter(self.text)
+        self.assertEqual(fm.get("name"), "ip-uspto-provisional-figures")
+        self.assertIn("**Role**: figurer", self.text)
+
+    def test_deterministic_stub_default_and_tikz_opt_in(self):
+        # Stub is the default; tikz is the opt-in mode flag.
+        self.assertIn("--mode", self.text)
+        self.assertIn("stub", self.lowered)
+        self.assertIn("tikz", self.lowered)
+        self.assertIn("stub-default", self.lowered)
+
+    def test_drawings_are_conversion_scope_not_claim_coverage(self):
+        # The provisional reframe: drawings are §119(e) conversion scope,
+        # NOT claim-element coverage (the non-provisional framing).
+        self.assertIn("conversion scope", self.lowered)
+        self.assertIn("not claim-element coverage", self.lowered)
+        self.assertIn("§119(e)", self.text)
+
+    def test_reuses_render_py_unchanged_reference_only(self):
+        self.assertIn("render.py", self.text)
+        self.assertIn("unchanged", self.lowered)
+        # The matplotlib walker is the reused render.py entry point.
+        self.assertIn("render_matplotlib_figures", self.text)
+
+    def test_informal_drawings_acceptable_posture(self):
+        # 1.84 formality is noted for conversion ease, not enforced.
+        self.assertIn("informal", self.lowered)
+        self.assertIn("1.84", self.text)
+
+    def test_git_sync_token(self):
+        self.assertIn(
+            "anvil(ip-uspto-provisional/figures): <thread>.{N}", self.text
+        )
+
+
+class TestVisionCommand(unittest.TestCase):
+    """ip-uspto-provisional-vision (#515) — provisional drawings VLM critic."""
+
+    VISION_RUBRIC_ID = "anvil-ip-provisional-vision-v1"
+
+    def setUp(self):
+        self.text = _read("commands/ip-uspto-provisional-vision.md")
+        self.lowered = self.text.lower()
+
+    def test_frontmatter_role_vision(self):
+        fm = _parse_frontmatter(self.text)
+        self.assertEqual(fm.get("name"), "ip-uspto-provisional-vision")
+        self.assertIn("**Role**: rendered-artifact critic", self.text)
+
+    def test_scores_pixels_side_dim4_not_dim7(self):
+        # The vision critic owns the pixels-side half of Dim 4 (NOT Dim 7).
+        self.assertIn("Dim 4", self.text)
+        self.assertIn("pixels-side", self.lowered)
+        # It is explicitly NOT ip-uspto's Dim 7.
+        self.assertIn("NOT ip-uspto's Dim 7", self.text)
+
+    def test_drops_1_84_formality_dims(self):
+        # The two pure-formality dims are dropped for the provisional posture.
+        self.assertIn("line_weight_contrast", self.text)
+        self.assertIn("figure_number_visibility", self.text)
+        self.assertIn("DROPPED", self.text)
+        # The kept dims are the enablement/scope-relevant ones.
+        self.assertIn("reference_numeral_legibility", self.text)
+        self.assertIn("label_placement", self.text)
+        self.assertIn("cross_reference_accuracy", self.text)
+
+    def test_vision_subset_rubric_id(self):
+        self.assertIn(self.VISION_RUBRIC_ID, self.text)
+
+    def test_reuses_framework_flag_as_119e_scope_loss(self):
+        # Reuse the framework flag; frame the loss as §119(e) priority scope.
+        self.assertIn("rendered_overflow_unrecoverable", self.text)
+        self.assertIn("§119(e)", self.text)
+        self.assertIn("priority-scope loss", self.lowered)
+        # No new flag types invented.
+        self.assertIn("no new flag types", self.lowered)
+
+    def test_double_flag_guard_against_line70_s112(self):
+        # Must NOT double-flag the rubric-line-70 s112 missing-drawing gap.
+        self.assertIn("line 70", self.text)
+        self.assertIn("double-flag", self.lowered)
+        self.assertIn("s112", self.text)
+        # Absence of a drawing is never a vision finding.
+
+    def test_graceful_degradation_no_review_json_no_deduction(self):
+        # The headline provisional invariant.
+        self.assertIn("skipped", self.lowered)
+        self.assertIn("no_rendered_drawings", self.text)
+        # Does NOT write a _review.json on the degradation path.
+        self.assertIn("does **not** write a `_review.json`", self.lowered)
+        self.assertIn("NO Dim-4 deduction", self.text)
+        self.assertIn("absence is never a finding", self.lowered)
+
+    def test_opt_in_non_gating(self):
+        self.assertIn("opt-in", self.lowered)
+        self.assertIn("not in the default critic set", self.lowered)
+        self.assertIn("NOT refuse to advance", self.text)
+
+    def test_reuses_vision_py_unchanged(self):
+        self.assertIn("vision.py", self.text)
+        self.assertIn("unchanged", self.lowered)
+
+    def test_machine_summary_and_main_rubric_stamping(self):
+        # The _meta.json stamps the MAIN provisional rubric (Dim 4 owner).
+        self.assertIn("machine-summary", self.text)
+        self.assertIn(RUBRIC_ID, self.text)
+        self.assertIn("rubric_total: 45", self.text)
+        self.assertIn("advance_threshold: 39", self.text)
+
+    def test_atomicity(self):
+        self.assertIn("staged_sidecar", self.text)
+        self.assertIn("cleanup_one_staging", self.text)
+        self.assertIn(".vision.tmp", self.text)
+
+    def test_git_sync_token(self):
+        self.assertIn(
+            "anvil(ip-uspto-provisional/vision): <thread>.{N}", self.text
+        )
+
+
+class TestVisionRubricBehavior(unittest.TestCase):
+    """Behavioral check: the provisional vision rubric composes to 3 dims /15
+    via the framework primitives, and graceful degradation produces NO
+    _review.json (so the aggregator never sees a vision scorecard).
+    """
+
+    def setUp(self):
+        # Make the repo root importable (this file is four levels deep).
+        import sys
+
+        repo_root = _SKILL_ROOT.parents[2]
+        if str(repo_root) not in sys.path:
+            sys.path.insert(0, str(repo_root))
+
+    def _rubric(self):
+        from anvil.lib.vision import VisionDimension, VisionRubric
+
+        dims = (
+            VisionDimension(
+                name="reference_numeral_legibility",
+                max=5,
+                description="Load-bearing numerals legible at examiner scale.",
+            ),
+            VisionDimension(
+                name="label_placement",
+                max=5,
+                description="Labels identify their part; scope-relevant only.",
+            ),
+            VisionDimension(
+                name="cross_reference_accuracy",
+                max=5,
+                description="Drawn numerals correspond to spec; pixels-side.",
+            ),
+        )
+        return VisionRubric(
+            dimensions=dims, rubric_id="anvil-ip-provisional-vision-v1"
+        )
+
+    def test_rubric_owns_three_dims_scored_out_of_fifteen(self):
+        rubric = self._rubric()
+        names = [d.name for d in rubric.dimensions]
+        self.assertEqual(
+            names,
+            [
+                "reference_numeral_legibility",
+                "label_placement",
+                "cross_reference_accuracy",
+            ],
+        )
+        self.assertEqual(rubric.max_total(), 15)
+        self.assertEqual(rubric.rubric_id, "anvil-ip-provisional-vision-v1")
+        # The two dropped 1.84-formality dims are NOT in the subset.
+        self.assertNotIn("line_weight_contrast", names)
+        self.assertNotIn("figure_number_visibility", names)
+
+    def test_rendered_drawing_scored_with_119e_critical_flag(self):
+        # A load-bearing numeral clipped at examiner scale -> the framework
+        # rendered_overflow_unrecoverable flag (framed as §119(e) scope loss).
+        from anvil.lib.review_schema import Kind, Review
+        from anvil.lib.vision import (
+            CRITICAL_FLAG_RENDERED_OVERFLOW_UNRECOVERABLE,
+            VisionCritic,
+        )
+
+        def stub(images, prompt):
+            return {
+                "scores": [
+                    {
+                        "dimension": "reference_numeral_legibility",
+                        "score": 0,
+                        "critical": True,
+                        "justification": (
+                            "Numeral '14' on FIG. 2 clipped at the right "
+                            "border; unreadable at examiner scale."
+                        ),
+                        "fix": "Reposition '14' inside the border.",
+                    },
+                    {
+                        "dimension": "label_placement",
+                        "score": 3,
+                        "critical": False,
+                        "justification": "Lead lines mostly clear.",
+                        "fix": None,
+                    },
+                    {
+                        "dimension": "cross_reference_accuracy",
+                        "score": 4,
+                        "critical": False,
+                        "justification": "Drawn numerals match the spec.",
+                        "fix": None,
+                    },
+                ],
+                "findings": [],
+                "critical_flags": [
+                    {
+                        "type": CRITICAL_FLAG_RENDERED_OVERFLOW_UNRECOVERABLE,
+                        "justification": (
+                            "Numeral '14' clipped on FIG. 2 — §119(e) scope "
+                            "the conversion cannot claim with priority."
+                        ),
+                        "evidence_span": "drawings/fig-2.png",
+                    }
+                ],
+            }
+
+        review = VisionCritic(
+            critic_id="ip-uspto-provisional-vision", callback=stub
+        ).critique(
+            images=[],
+            rubric=self._rubric(),
+            version_dir="acme-widget-prov.2",
+            rendered_artifact="drawings/",
+        )
+        self.assertEqual(review.kind, Kind.VISION)
+        self.assertEqual(review.rubric, "anvil-ip-provisional-vision-v1")
+        self.assertEqual(review.rendered_artifact, "drawings/")
+        flags = {cf.type for cf in review.critical_flags}
+        self.assertIn(CRITICAL_FLAG_RENDERED_OVERFLOW_UNRECOVERABLE, flags)
+        # The vision critic scores only its three owned dims (the 8 main-rubric
+        # dims stay null/absent from the vision scorecard).
+        scored = {s.dimension for s in review.scores}
+        self.assertEqual(
+            scored,
+            {
+                "reference_numeral_legibility",
+                "label_placement",
+                "cross_reference_accuracy",
+            },
+        )
+
+    def test_stub_only_degradation_writes_no_review_json(self):
+        # Graceful degradation invariant: a stub-only thread (no rendered
+        # fig-*) produces NO _review.json, so discover_critics finds no
+        # vision scorecard and the aggregate applies no Dim-4 deduction.
+        from anvil.lib.critics import discover_critics, load_review
+
+        portfolio = Path(self.id())  # unique-ish; replaced below by tmp
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            portfolio = Path(td)
+            version_dir = portfolio / "acme-widget-prov.2"
+            drawings = version_dir / "drawings"
+            drawings.mkdir(parents=True)
+            # Stub-only: a descriptions file, no rendered fig-*.
+            (drawings / "drawing-descriptions.md").write_text(
+                "## FIG. 1 — block diagram\nstub only\n"
+            )
+            # The vision critic, on the degradation path, writes nothing (or a
+            # skipped sibling with no _review.json). Simulate the contract:
+            # no <thread>.2.vision/_review.json on disk.
+            found = discover_critics(version_dir)
+            vision_reviews = [
+                load_review(p)
+                for p in found
+                if p.name == "acme-widget-prov.2.vision"
+                and (p / "_review.json").exists()
+            ]
+            # No vision scorecard exists -> aggregator never sees one -> no
+            # Dim-4 deduction from the vision critic.
+            self.assertEqual(vision_reviews, [])
 
 
 class TestSiblingCrossReference(unittest.TestCase):

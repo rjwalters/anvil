@@ -40,7 +40,9 @@ USPTO **provisional** patent application drafting skill — the claims-optional,
 
 Shipped: skill skeleton, `anvil-ip-provisional-v1` rubric, orchestrator + draft/review/112/prior-art/revise convergence loop.
 
-Tracked follow-ups (per the issue #433 curation): counsel-memo companion + COUNSEL-READY terminal state and the filing package; the audit command (`AUDITED` state is defined but not yet reachable via shipped commands); non-provisional conversion linkage (priority-claim text, 12-month deadline surfacing); provisional pre-flight, figures/vision adaptation, inventorship-lite, claims-seed critic; `anvil:project-migrate` enrollment of native provisional threads; snippet-promotion of prose duplicated with `anvil:ip-uspto`.
+Shipped since (post-#433): counsel-memo companion + COUNSEL-READY terminal state and the filing package; the audit command (`AUDITED` reachable); mechanical non-provisional conversion linkage (priority-claim text, 12-month deadline surfacing); provisional pre-flight gate + opt-in claims-seed critic; provisional-shaped figures (`ip-uspto-provisional-figures`, deterministic stub-default + opt-in TikZ) and an opt-in, gracefully-degrading drawings VLM critic (`ip-uspto-provisional-vision`, the pixels-side half of rubric Dim 4 — issue #515); `anvil:project-migrate` enrollment of native provisional threads.
+
+Tracked follow-ups: inventorship-lite pass; snippet-promotion of prose duplicated with `anvil:ip-uspto`; the ip-uspto-provisional worked example.
 
 ## Important caveats
 
