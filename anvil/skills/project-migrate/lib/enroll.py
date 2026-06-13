@@ -52,6 +52,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .apply import _detect_git_repo
 from .detect import (
     BRIEF_FILENAME,
+    COUNSEL_MEMO_FILENAME,
+    PROVISIONAL_BODY_FILENAME,
     Shape,
     _VERSION_DIR_RE,
     _extract_frontmatter,
@@ -250,6 +252,15 @@ def _validate_input_file(file: Path) -> None:
             f"Cannot enroll {file}: `{file.name}` is a project / "
             f"infrastructure marker, not a document body."
         )
+    if file.name == COUNSEL_MEMO_FILENAME:
+        raise EnrollError(
+            f"Cannot enroll {file}: `{COUNSEL_MEMO_FILENAME}` is a "
+            f"finalize-output counsel memo (a companion to a provisional "
+            f"body, written into `<thread>.counsel/`), not a fileable "
+            f"document body. Suggested fix: enroll the "
+            f"`{PROVISIONAL_BODY_FILENAME}` body this counsel memo "
+            f"accompanies instead."
+        )
     if file.suffix not in _ENROLLABLE_SUFFIXES:
         raise EnrollError(
             f"Cannot enroll {file}: only "
@@ -394,11 +405,21 @@ def _infer_artifact_type_for_file(
     Inference is ALWAYS paired with a TODO marker (never the migrate
     path's silent default):
 
+    - filename ``provisional.tex`` → ``ip-uspto-provisional`` (issue
+      #503 — FILENAME-driven, never ``\\documentclass`` content: anvil's
+      provisional and full ip-uspto specs share
+      ``\\documentclass{anvil-uspto}``, so content cannot disambiguate
+      them; SKILL.md:160 forbids that inference).
     - ``.md`` → ``investment-memo`` (memo-class default).
     - ``.tex`` with ``\\documentclass{anvil-proposal}`` → ``proposal``;
       any other ``\\documentclass`` → ``pub``; no ``\\documentclass``
       → memo-class default.
     """
+    if file.name == PROVISIONAL_BODY_FILENAME:
+        return "ip-uspto-provisional", (
+            f"TODO(operator): confirm — recognized from "
+            f"{PROVISIONAL_BODY_FILENAME} body filename"
+        )
     if file.suffix == ".tex":
         inferred = _infer_tex_artifact_type(_read_text_lenient(file))
         if inferred is not None:
