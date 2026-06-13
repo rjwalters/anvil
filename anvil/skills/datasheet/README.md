@@ -19,7 +19,9 @@ Customer-facing IC / component datasheets — the spec-bearing document a custom
 | `templates/BRIEF.md.example` | Reference brief shape (frontmatter + prose). |
 | `lib/pinmap_check.py` | Mechanical pin-map integrity checker (`% anvil-pinmap-begin/end` markers; every pin assigned exactly once). |
 | `lib/buswidth_check.py` | Mechanical bus-width sanity checker (`% anvil-bus:` markers; `2^W` must cover the claimed set). |
-| `tests/` | Structural skeleton test + checker unit tests + template/class compile smoke test (skips without `xelatex`). |
+| `examples/ax101-family/` | Vendored worked example: the dual-SKU **AX101** edge-AI family (object-detection `ax101-objdet` thread realized in-tree, `ax101-ocr` sibling declared) with a real stamped `.review/` + `.audit/` critic sidecar. |
+| `examples/expected-thread.1/README.md` | Structural-properties reference for a drafted thread (NOT a golden file). |
+| `tests/` | Structural skeleton test + checker unit tests + template/class compile smoke test (skips without `xelatex`) + the example-BRIEF strict-parse guard. |
 
 ## Reference skills
 
@@ -35,10 +37,35 @@ Customer-facing IC / component datasheets — the spec-bearing document a custom
 4. **Measured-vs-projected provenance** — `\est{}`/`\simval{}`/`\meas{}` macros + the `status` knob; bare pre-silicon values presented as final are critical flag 4.
 5. **Shared-die SKU coherence** — the audit reads sibling SKU threads' latest sheets in the same project and compares the shared-die spec blocks; divergence is critical flag 5.
 
+## Canonical worked instance
+
+The grounding example is the **AX101** edge-AI inference family — a single base die
+packaged into two preliminary SKUs (`AX101-OD` object detection, `AX101-OCR` text
+recognition) that share one fabrication, die, QFN48 package, absolute-maximum table,
+and DC characteristics block, differing only in the configured network and the
+performance it delivers. The object-detection SKU is fully realized in-tree at
+`examples/ax101-family/ax101-objdet/ax101-objdet.1/datasheet.tex` (XeLaTeX,
+`\documentclass{anvil-datasheet}`, two-column first page, fresh-page Performance +
+Pin Configuration, a complete QFN48 pin-map between the `% anvil-pinmap-begin/end`
+markers, and an `% anvil-bus:` marker for the 7-bit ROI index — both mechanical
+checkers pass) with `anvil-datasheet.cls` copied alongside so the version dir
+compiles standalone. It ships **real stamped critic siblings** —
+`ax101-objdet.1.review/` (40/44, advance: true) and `ax101-objdet.1.audit/`
+(pass: true) — each carrying `rubric_id: anvil-datasheet-v1` / `rubric_total: 44`
+/ `advance_threshold: 39` in `_meta.json`. This is a deliberate superset of the
+`anvil:proposal` exemplar, which describes but does not vendor its critic siblings;
+vendoring a real sidecar lets `tests/test_datasheet_example_brief_parses.py` assert
+the stamping contract against an on-disk file. Because the project `BRIEF.md`
+declares both SKUs of `family: AX101`, rubric dim 5 (family / SKU coherence) and
+`datasheet-audit` step 9 (sibling shared-die cross-read) are active. The structural
+contract a drafted thread should satisfy is documented in
+`examples/expected-thread.1/README.md` (illustrative, not a golden file). All
+content is synthesized and NON-CONFIDENTIAL — not a real part.
+
 ## Out of scope (v1)
 
 - **Mechanical spec-diff checker** for the revision-history gate (v1 is auditor judgment over a real diff) — natural Phase-2 follow-on.
 - **Automated byte-diff of marked shared blocks** across sibling SKU threads (v1 is documented audit judgment) — Phase-3 follow-up.
-- **Worked example thread** — the canary's cleaned-up reference sheets, sanitized, can land as a follow-up (issue #418 notes the artifacts are available).
+- **Realized `ax101-ocr` sibling sheet** — only the object-detection SKU is vendored; the OCR SKU is declared in the project BRIEF so dim 5 / audit step 9 are active, but its `datasheet.tex` is a tracked follow-up (the cross-read currently runs against the OD sheet's explicit shared-vs-per-SKU partition).
 - **PDF text extraction** for spec-bundle PDFs (presence-only in v1, per issue #167).
 - **No `anvil/lib/` changes.** The skill consumes `render_gate.py`, `sidecar.py`, `critics.py`, `latest_resolution.py`, and the snippets contracts as-is; critic siblings keep `scorecard_kind: "human-verdict"` with the v0.4.0 `rubric_id`/`rubric_total`/`advance_threshold` stamping.
