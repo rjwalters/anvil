@@ -96,6 +96,8 @@ Suggested calibration:
 - **1** — gravely deficient; this dimension alone may sink the application.
 - **0** — absent or actively misleading.
 
+**Quoted evidence (issue #464 / #475).** Every scored dimension's justification string follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `spec.tex` with a location anchor — `("the quoted span" — ¶[0042])` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The deterministic `anvil/lib/evidence_check.py` self-check is **deferred** for this skill (issue #496) — the scorecard is a `scorecard_kind: machine-summary` JSON `dimensions` block in `_summary.md`, not the 5-column `scoring.md` table the verifier parses — so the rule binds as prose discipline on the justification strings (see `commands/ip-uspto-review.md` step 4b). No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
+
 ## Advance threshold
 
 - **Aggregate ≥39/45** AND no unresolved critical flag → advance to `READY` (then `AUDITED`, then `FINALIZED`).

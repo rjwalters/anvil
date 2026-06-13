@@ -11,12 +11,18 @@ Covers the acceptance criteria from the issue curation:
   no spans → minor ``missing_evidence`` advisory — including the
   calibration-suffix case (a non-matching rubric-prose quote alongside
   one matching body quote → pass).
-- Body resolution: ``<thread>.md`` and ``main.tex`` variants; missing
-  body → exit 2.
+- Body resolution: ``<thread>.md`` slug-echo (with precedence over the
+  fixed names) and every fixed name in ``FIXED_BODY_NAMES`` —
+  ``main.tex``, ``report.md``, ``deck.md``, ``proposal.tex``,
+  ``installation.tex``, ``datasheet.tex``, ``spec.tex`` (issue #475);
+  missing body → exit 2 with the full chain in the message.
 - CLI: version-dir critic-sibling discovery, ``--scoring`` single-file
   mode, exit codes 0/1/2, JSON output shape.
 - Doc coverage: ``memo-review.md`` wires the self-check; the rubric
-  snippet and ``voice_grounding.md`` cross-reference each other.
+  snippet and ``voice_grounding.md`` cross-reference each other; the
+  #475 rollout guards — 8 table-shaped reviewers wire the quote rule +
+  self-check, the 2 machine-summary ip reviewers carry the prose rule +
+  #496 deferral, and all 10 rubrics carry the pointer paragraph.
 """
 
 from __future__ import annotations
@@ -30,6 +36,7 @@ import pytest
 from anvil.lib.evidence_check import (
     ELISION_WINDOW_CHARS,
     FABRICATED_EVIDENCE,
+    FIXED_BODY_NAMES,
     MIN_QUOTE_CHARS,
     MISSING_EVIDENCE,
     SEVERITY_MAJOR,
@@ -539,11 +546,73 @@ class TestBodyResolution:
         assert result.body_path == "main.tex"
         assert result.passed()
 
+    @pytest.mark.parametrize("body_name", FIXED_BODY_NAMES)
+    def test_fixed_body_names_resolve(
+        self, tmp_path: Path, body_name: str
+    ) -> None:
+        # Issue #475: report.md / deck.md / proposal.tex /
+        # installation.tex / datasheet.tex / spec.tex join main.tex in
+        # the fixed-name detection chain.
+        version_dir = tmp_path / "thread" / "thread.1"
+        version_dir.mkdir(parents=True)
+        (version_dir / body_name).write_text(
+            "The retrofit market is underserved by incumbents chasing "
+            "greenfield deployments.\n",
+            encoding="utf-8",
+        )
+        review = version_dir.parent / "thread.1.review"
+        review.mkdir()
+        (review / "scoring.md").write_text(
+            scoring_table(
+                [
+                    (
+                        "Evidence quality",
+                        6,
+                        4,
+                        '"retrofit market is underserved by incumbents" '
+                        "(— §2).",
+                    )
+                ]
+            ),
+            encoding="utf-8",
+        )
+        result = check_version_dir(version_dir)
+        assert result.body_path == body_name
+        assert result.passed()
+
+    def test_slug_echo_wins_over_fixed_names(self, tmp_path: Path) -> None:
+        # Slug-echo (#295) resolves FIRST even when a fixed name is also
+        # present in the version dir.
+        version_dir = tmp_path / "acme" / "acme.1"
+        version_dir.mkdir(parents=True)
+        (version_dir / "acme.md").write_text(
+            "slug-echo body wins the detection chain\n", encoding="utf-8"
+        )
+        (version_dir / "report.md").write_text(
+            "fixed-name body must not be selected\n", encoding="utf-8"
+        )
+        result = check_version_dir(version_dir)
+        assert result.body_path == "acme.md"
+
     def test_missing_body_raises(self, tmp_path: Path) -> None:
         version_dir = tmp_path / "empty" / "empty.1"
         version_dir.mkdir(parents=True)
         with pytest.raises(FileNotFoundError):
             check_version_dir(version_dir)
+
+    def test_missing_body_error_lists_full_chain(
+        self, tmp_path: Path
+    ) -> None:
+        # Issue #475 AC: the exit-code-2 message lists the full
+        # detection chain (slug-echo + every fixed name).
+        version_dir = tmp_path / "empty" / "empty.1"
+        version_dir.mkdir(parents=True)
+        with pytest.raises(FileNotFoundError) as excinfo:
+            check_version_dir(version_dir)
+        message = str(excinfo.value)
+        assert "empty.md" in message
+        for name in FIXED_BODY_NAMES:
+            assert name in message
 
     def test_missing_version_dir_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
@@ -696,3 +765,93 @@ def test_memo_rubric_points_to_snippet_rule() -> None:
     ).read_text(encoding="utf-8")
     assert "evidence_check" in doc
     assert "Quoted evidence" in doc
+
+
+# ---------------------------------------------------------------------------
+# Doc coverage — issue #475 rollout to the remaining main reviewers
+# ---------------------------------------------------------------------------
+
+
+# (skill, reviewer command, body filename quoted in the rule, self-check step)
+TABLE_SHAPED_REVIEWERS = [
+    ("pub", "pub-review.md", "main.tex", "5b"),
+    ("report", "report-review.md", "report.md", "5b"),
+    ("deck", "deck-review.md", "deck.md", "8b"),
+    ("slides", "slides-review.md", "deck.md", "7b"),
+    ("proposal", "proposal-review.md", "proposal.tex", "5b"),
+    ("installation", "installation-review.md", "installation.tex", "5b"),
+    ("datasheet", "datasheet-review.md", "datasheet.tex", "5b"),
+    ("essay", "essay-review.md", "<thread>.md", "6b"),
+]
+
+# Machine-summary scorecards (Option A per the #475 curation): prose rule
+# + explicit deferral of the deterministic self-check to issue #496.
+MACHINE_SUMMARY_REVIEWERS = [
+    ("ip-uspto", "ip-uspto-review.md"),
+    ("ip-uspto-provisional", "ip-uspto-provisional-review.md"),
+]
+
+ROLLOUT_RUBRIC_SKILLS = [
+    "pub",
+    "report",
+    "deck",
+    "slides",
+    "proposal",
+    "installation",
+    "datasheet",
+    "ip-uspto",
+    "ip-uspto-provisional",
+    "essay",
+]
+
+
+@pytest.mark.parametrize(
+    "skill,command,body,step", TABLE_SHAPED_REVIEWERS
+)
+def test_review_doc_wires_the_self_check(
+    skill: str, command: str, body: str, step: str
+) -> None:
+    doc = (
+        REPO_ROOT / f"anvil/skills/{skill}/commands/{command}"
+    ).read_text(encoding="utf-8")
+    # Edit 1: the quote sub-bullet in the scoring step.
+    assert "Quoted-evidence requirement (issue #464 / #475)" in doc
+    assert f"verbatim quote from `{body}`" in doc
+    assert "no instance of <X> found" in doc
+    assert "Elision with `...` / `…` is permitted" in doc
+    assert "ELISION_WINDOW_CHARS" in doc
+    # Edit 2: the write-time self-check sub-step.
+    assert f"{step}. **Validate quoted evidence" in doc
+    assert "anvil.lib.evidence_check" in doc
+    assert "--scoring" in doc
+    assert "fabricated_evidence" in doc
+    assert "missing_evidence" in doc
+
+
+@pytest.mark.parametrize("skill,command", MACHINE_SUMMARY_REVIEWERS)
+def test_ip_review_doc_carries_prose_rule_and_deferral(
+    skill: str, command: str
+) -> None:
+    doc = (
+        REPO_ROOT / f"anvil/skills/{skill}/commands/{command}"
+    ).read_text(encoding="utf-8")
+    # Option A (#475 curation): prose rule binds; deterministic check
+    # deferred to the machine-summary parser follow-up.
+    assert "Quoted-evidence requirement (issue #464 / #475" in doc
+    assert "verbatim quote from `spec.tex`" in doc
+    assert "no instance of <X> found" in doc
+    assert "Deterministic self-check deferred to issue #496" in doc
+    # No write-time --scoring self-check is wired (deferred, not partial).
+    assert "**Validate quoted evidence" not in doc
+
+
+@pytest.mark.parametrize("skill", ROLLOUT_RUBRIC_SKILLS)
+def test_rollout_rubric_points_to_snippet_rule(skill: str) -> None:
+    doc = (
+        REPO_ROOT / f"anvil/skills/{skill}/rubric.md"
+    ).read_text(encoding="utf-8")
+    assert "Quoted evidence (issue #464 / #475)" in doc
+    assert 'Dimension scoring guidance" rule' in doc
+    assert "evidence_check" in doc
+    # No weight / threshold changes shipped with the pointer paragraph.
+    assert "No weight or threshold changes" in doc

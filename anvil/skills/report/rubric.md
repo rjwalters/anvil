@@ -53,6 +53,8 @@ Suggested calibration:
 
 For a customer-facing report, the ≥39 threshold means the report has at most ~11% of points missing — roughly equivalent to "one major weakness across the nine dimensions, or two minor weaknesses." This is a deliberately tight tolerance for material that will be delivered externally. The proportional bump from ≥35/40 → ≥39/44 preserves the customer-facing tier relative to the memo tier (≥35/44).
 
+**Quoted evidence (issue #464 / #475).** Every justification follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `report.md` with a location anchor — `("the quoted span" — §2.1)` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The reviewer self-checks its `scoring.md` against the body via `anvil/lib/evidence_check.py` before the review sidecar lands (see `commands/report-review.md` step 5b); a quote that does not appear verbatim in the body is fabricated evidence and the justification must be re-derived. No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
+
 ## Advance threshold
 
 - **≥39/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling). This skill's terminal pre-promotion state is `AUDITED` (which for this skill means both `.review/` advance AND `.audit/` pass).
