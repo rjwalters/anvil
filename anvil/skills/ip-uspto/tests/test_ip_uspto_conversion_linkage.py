@@ -220,8 +220,8 @@ def test_provisional_skill_documents_conversion_contract():
 
 def test_provisional_skill_region_discipline_preserves_502_lines():
     # Region discipline (issue #501 vs #502): this issue owns the conversion
-    # section; #502 owns the pre-flight (line ~91) and claim-seed critic
-    # (line ~108) follow-up sentences. Assert those #502-owned markers survive.
+    # section; #502 owns the pre-flight gate and claim-seed critic sections.
+    # Assert those #502-shipped markers survive the #501 conversion edits.
     text = _read(_PROVISIONAL / "SKILL.md")
-    assert "provisional pre-flight is a tracked follow-up" in text
-    assert "claim-seed critic is a tracked follow-up" in text
+    assert "ip-uspto-provisional-pre-flight" in text
+    assert "ip-uspto-provisional-claims-seed" in text
