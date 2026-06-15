@@ -80,6 +80,19 @@ def overfull_dirty_log() -> Path:
 
 
 @pytest.fixture
+def overfull_sphere_canary_log() -> Path:
+    """Sphere-canary regression fixture (issue #572).
+
+    Mirrors the filed-provisional defect's exact shape: 12 ``Overfull
+    \\hbox`` + 1 ``Overfull \\vbox``, worst case 83.6pt. The legal
+    artifact reached FILING-READY because no audit/finalize-time render
+    gate ran; this fixture exists so future threshold drift cannot
+    silently re-open the hole.
+    """
+    return FIXTURES / "overfull_sphere_canary.txt"
+
+
+@pytest.fixture
 def compile_failure_log() -> Path:
     return FIXTURES / "compile_failure.txt"
 
@@ -205,6 +218,61 @@ def test_overfull_line_span_extraction(
     )
     hbox = next(b for b in r.overfull_boxes if b["kind"] == "hbox")
     assert hbox["line"] == 42
+
+
+def test_overfull_sphere_canary_shape(
+    empty_pdf, fake_pdfinfo_3pages_path, overfull_sphere_canary_log
+):
+    """Sphere-canary regression fixture: 12 hbox + 1 vbox, worst 83.6pt.
+
+    This is the exact defect shape that reached a filed provisional
+    (issue #572): the entire review pipeline was text-content-based and
+    never inspected the LaTeX log. The gate, given the canary's compile
+    log, MUST flag the defect — at the framework default 5.0pt threshold
+    (12 of 13 hits survive; the 4.21pt hit is cosmetic) AND at the
+    tightened ip-skill 2.0pt threshold (all 13 hits survive). Both must
+    produce ``passed=False`` and the ``render_gate_overfull_boxes``
+    critical flag the audit + finalize backstop relies on.
+    """
+    # At the framework default 5.0pt threshold, the 4.21pt hit is
+    # cosmetic and the other 12 fire.
+    r_default = gate(
+        empty_pdf,
+        log_path=overfull_sphere_canary_log,
+        page_cap=None,
+        overfull_threshold_pt=5.0,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+    )
+    assert len(r_default.overfull_boxes) == 12
+    assert r_default.passed is False
+    assert DIM_OVERFULL in r_default.failed_gates
+    # Worst-case amount is the canary's 83.6pt.
+    max_amount = max(b["amount_pt"] for b in r_default.overfull_boxes)
+    assert max_amount == pytest.approx(83.6)
+    assert max_amount >= 80.0
+    # Both hbox and vbox kinds present (12 hbox + 1 vbox total — the
+    # vbox is 18.7pt, well above the 5.0pt threshold).
+    kinds = {b["kind"] for b in r_default.overfull_boxes}
+    assert kinds == {"hbox", "vbox"}
+    # The critical flag is the load-bearing signal the audit + finalize
+    # backstop reads — verify the typed Review carries it.
+    rev = r_default.to_review(version_dir="canary.1", critic_id="render-gate")
+    flag_types = {cf.type for cf in rev.critical_flags}
+    assert f"render_gate_{DIM_OVERFULL}" in flag_types
+
+    # At the tightened ip-skill 2.0pt threshold (the legal-artifact
+    # calibration from issue #572's curated scope), ALL 13 canary hits
+    # fire — the 4.21pt hit is no longer cosmetic.
+    r_ip = gate(
+        empty_pdf,
+        log_path=overfull_sphere_canary_log,
+        page_cap=None,
+        overfull_threshold_pt=2.0,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+    )
+    assert len(r_ip.overfull_boxes) == 13
+    assert r_ip.passed is False
+    assert DIM_OVERFULL in r_ip.failed_gates
 
 
 # -----------------------------------------------------------------------------
