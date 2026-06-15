@@ -45,21 +45,25 @@ voice:
 
 Every sub-key is optional; the block itself is optional.
 
-**Starter templates ship for the two ship-now doc kinds** (issue #576):
-`anvil/templates/voice/STYLE_GUIDE.template.md` and
-`anvil/templates/voice/VOCABULARY.template.md` are generalized,
+**Starter templates ship for all three authored doc kinds** (issues
+#576, #578): `anvil/templates/voice/STYLE_GUIDE.template.md`,
+`anvil/templates/voice/VOCABULARY.template.md`, and
+`anvil/templates/voice/VALUES.template.md` are generalized,
 de-personalized starting points (schema, not content — every
-author-specific example is a marked `<!-- replace me -->` placeholder). A
-consumer adopting voice grounding does not start from a blank page:
+author-specific example, stance, anti-stance, and standing claim is a
+marked `<!-- replace me -->` placeholder; no real author beliefs ship).
+A consumer adopting voice grounding does not start from a blank page:
 `scripts/install-anvil.sh` scaffolds them to the consumer root as
-`STYLE_GUIDE.md` / `VOCABULARY.md` (per-file skip-if-exists, never
-clobbering an existing grounding doc) when a voice-consuming skill
-(`essay` / `memo`) is selected. See `anvil/templates/voice/README.md`.
-The **private/`.gitignored` grounding model is a first-class posture**
-(issue #577) — see "## Private grounding" below. `VALUES.md` (issue
-#578, the canonical private candidate) and the optional vocab reminder
-CLI tool (issue #579) are tracked separately and deliberately not
-shipped as templates here.
+`STYLE_GUIDE.md` / `VOCABULARY.md` / `VALUES.local.md` (per-file
+skip-if-exists, never clobbering an existing grounding doc) when a
+voice-consuming skill (`essay` / `memo`) is selected. **`VALUES.md` is
+private by default** (issue #578): it carries first-person stances /
+anti-stances / standing, so it scaffolds to a gitignored
+`VALUES.local.md` (the `*.local.md` path #577 ships) rather than a
+committed `VALUES.md` — a gitignored declared doc resolves and grounds
+identically to a committed one (see "## Private grounding" below). See
+`anvil/templates/voice/README.md`. The optional vocab reminder CLI tool
+(issue #579) is tracked separately and not shipped as a template here.
 
 **`rhetoric_rules` is the asymmetric fifth sub-key** (issue #468): a
 path to a consumer **JSON rule file** consumed by the render gate's

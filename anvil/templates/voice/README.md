@@ -22,7 +22,7 @@ drafter / reviewer / reviser contracts).
 
 | Doc | Role | Shipped here? |
 |-----|------|---------------|
-| **values** | Who the author is — stances, anti-stances, standing, named failure modes | No — deferred to issue #578 (needs schema + the privacy story) |
+| **values** | Who the author is — stances, anti-stances, standing, named failure modes | **Yes** — `VALUES.template.md` (private by default — scaffolds to `VALUES.local.md`) |
 | **style_guide** | How the author sounds — register, cadence, sentence-shape rules | **Yes** — `STYLE_GUIDE.template.md` |
 | **vocabulary** | What the author would never say — AI-tell guidance, frequency discipline (judgment side) | **Yes** — `VOCABULARY.template.md` |
 | **corpus** | Proof — published exemplars a reviewer quotes as voice ground truth | No template — see the corpus convention below |
@@ -33,14 +33,23 @@ drafter / reviewer / reviser contracts).
 |------|---------|---------|
 | `STYLE_GUIDE.template.md` | `STYLE_GUIDE.md` | 10 sections (voice/tone, structure, word choice, sentence rhythm, paragraph style, figurative language, openings/closings, authenticity checks, anti-tropes table, style philosophy) + the generalizable craft rules: em-dash discipline, thesis-statement-chain avoidance, telegraphic/staccato avoidance, the self-flattering-adjective AI-tell, the "X is not just Y, it is Z" anti-trope |
 | `VOCABULARY.template.md` | `VOCABULARY.md` | the "reminder tool, not injection tool" philosophy, the precision-over-novelty test, the gloss pattern, the red-flags list, and the word-category framing (judgment side only — deterministic screening is the rhetoric lint's job) |
+| `VALUES.template.md` | `VALUES.local.md` (**private**) | the six proven sections — Audience (+ a one-line register test), Stances (each pinned to a corpus exemplar), Anti-stances (drift tells, cross-linked to the rhetoric lint), Standing (firsthand vs. reference-level + the "would your audience call you on this?" check), Voice signatures (the reviser preserves these), and cross-dimensional Failure modes (cross-linked to the example-coherence / numeric-consistency gates). Ships **schema, not content** — every stance/anti-stance/standing slot is a `<!-- replace me -->` placeholder; no real author beliefs ship |
+
+### Private by default: `VALUES.local.md`
+
+`VALUES.template.md` is the one template that carries **first-person
+stances, anti-stances, and standing** — the half of voice grounding most
+authors do NOT want committed into a shared or public repo. It therefore
+scaffolds **private by default**: the installer copies it to
+`VALUES.local.md` (not a committed `VALUES.md`), and the `*.local.md`
+.gitignore line the scaffolder already adds (issue #577) keeps it out of
+commits automatically. Its header shows the private wiring
+(`values: VALUES.local.md`). A gitignored declared doc resolves and
+grounds drafting/review identically to a committed one — see
+"Private grounding" below.
 
 ### Not scaffolded here (by design)
 
-- **`VALUES.md`** — deferred to issue #578. It needs schema treatment, so
-  it is not a ship-now *template*. The **privacy mechanism it depends on
-  ships now** (issue #577; see "Private grounding" below): #578's
-  `VALUES.md` template simply declares a `VALUES.local.md` (or
-  `.voice/VALUES.md`) using the already-shipped private path.
 - **The `vocab` reminder CLI tool** — deferred to issue #579. The
   vocabulary template references such a tool as an *optional, additive*
   note; it does not depend on one.
@@ -90,16 +99,18 @@ never fires for a fresh adopter.
 ## Scaffolding into a consumer
 
 `scripts/install-anvil.sh` scaffolds these templates to the **consumer
-root** as `STYLE_GUIDE.md` / `VOCABULARY.md` (stripping the `.template`
-infix) when a voice-consuming skill (`essay` or `memo`) is among the
-selected skills. The stage:
+root** as `STYLE_GUIDE.md` / `VOCABULARY.md` / `VALUES.local.md`
+(stripping the `.template` infix; the values doc keeps a `.local.md`
+suffix so it stays private — see below) when a voice-consuming skill
+(`essay` or `memo`) is among the selected skills. The stage:
 
 - is **idempotent** — running the installer twice never errors and never
   produces a second copy;
-- **never clobbers** an existing grounding doc — if `STYLE_GUIDE.md` (or
-  `VOCABULARY.md`) already exists at the consumer root, the installer
-  warns and skips that file, **per file** (a custom `STYLE_GUIDE.md`
-  does not block `VOCABULARY.md` from scaffolding);
+- **never clobbers** an existing grounding doc — if `STYLE_GUIDE.md`,
+  `VOCABULARY.md`, or `VALUES.local.md` already exists at the consumer
+  root, the installer warns and skips that file, **per file** (a custom
+  `STYLE_GUIDE.md` does not block `VOCABULARY.md` or `VALUES.local.md`
+  from scaffolding);
 - is **`--dry-run` aware** — it reports the would-scaffold action and
   writes nothing;
 - does **not** auto-edit your `BRIEF.md`. The installer prints the exact
