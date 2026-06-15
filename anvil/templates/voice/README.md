@@ -48,11 +48,31 @@ commits automatically. Its header shows the private wiring
 grounds drafting/review identically to a committed one — see
 "Private grounding" below.
 
+### The `vocab` reminder tool (shipped: issue #579)
+
+Anvil ships a small **precision-vocabulary reminder** at
+`anvil/lib/vocab_reminder.py` (`python -m anvil.lib.vocab_reminder
+[count]`) — the *generative-reminder* complement to the judgment-side
+`VOCABULARY.md` doc. It surfaces a random sample of precision words while
+you draft; it is a **reminder, not an injector** — it never edits a
+draft, and a word earns its place only when it clicks with a concept you
+are already expressing (precision over novelty, 0–2 per 1000). The
+`VOCABULARY.template.md` "## The Tool" section documents how to run it
+and restates the discipline; the template does **not** depend on it.
+
+Source order for the word list:
+
+1. **Your own list** — a sibling `*.words.txt` next to the doc declared
+   as `voice.vocabulary` (e.g. `VOCABULARY.words.txt` beside
+   `VOCABULARY.md`). This is where the real value lives: drop a larger
+   list (the rjwalters.info source ships ~3,800 words) and the tool
+   prefers it. No schema change — it is a filename convention.
+2. **The anvil default** — a small curated set
+   (`anvil/templates/voice/vocab.words.txt`, ~150 words) so the tool
+   works out of the box.
+
 ### Not scaffolded here (by design)
 
-- **The `vocab` reminder CLI tool** — deferred to issue #579. The
-  vocabulary template references such a tool as an *optional, additive*
-  note; it does not depend on one.
 - **A corpus** — there is nothing to scaffold. The `corpus` sub-key is a
   glob over your own published exemplars (e.g. `writing-corpus/**/*.md`);
   point it at real published work once you have some.
