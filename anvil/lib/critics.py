@@ -234,6 +234,14 @@ _MEMO_TOTAL = re.compile(
 _MEMO_DECISION = re.compile(
     r"\*?\*?Decision\*?\*?:\s*`?advance:\s*(true|false)`?", re.IGNORECASE
 )
+# NO-GO verdict line (issue #559) — surfaced when a memo-review writes the
+# NO-GO shape into verdict.md (see memo SKILL.md §"NO-GO terminal state").
+# Recognizes either ``**Verdict**: NO-GO`` or ``Verdict: NO-GO`` (with or
+# without bold markers), matched case-insensitively. The dash variant
+# matches both ``NO-GO`` (canonical) and ``NO_GO`` (defensive).
+_MEMO_NO_GO_VERDICT = re.compile(
+    r"\*?\*?Verdict\*?\*?:\s*`?NO[-_]GO`?", re.IGNORECASE
+)
 
 
 def _adapt_memo_legacy(critic_dir: Path) -> Review:
@@ -245,13 +253,19 @@ def _adapt_memo_legacy(critic_dir: Path) -> Review:
     total, threshold = parse_memo_verdict_total(verdict_md)
     advance = parse_memo_verdict_decision(verdict_md)
     critical_flags = _parse_memo_critical_flags(verdict_md)
+    no_go = bool(_MEMO_NO_GO_VERDICT.search(verdict_md))
 
     scores = parse_memo_scoring_table(scoring_md)
     findings = _parse_memo_comments(comments_md)
 
     # Derive verdict using the canonical decision rule, but defer to the
     # parsed "advance" hint when the rule would require info we don't have.
-    if critical_flags:
+    # NO-GO (issue #559) takes precedence over every other path: the prose
+    # ``**Verdict**: NO-GO`` line is the load-bearing signal that the
+    # evaluator concluded the thesis itself fails.
+    if no_go:
+        verdict = Verdict.NO_GO
+    elif critical_flags:
         verdict = Verdict.BLOCK
     elif total is not None and threshold is not None:
         verdict = Verdict.ADVANCE if total >= threshold else Verdict.REVISE
@@ -301,6 +315,45 @@ def parse_memo_verdict_decision(text: str) -> Optional[bool]:
     if not m:
         return None
     return m.group(1).lower() == "true"
+
+
+def parse_memo_verdict_no_go(text: str) -> bool:
+    """Return True when ``verdict.md`` prose carries a ``**Verdict**: NO-GO`` line.
+
+    Public per issue #559 — consumed by the ``memo-revise`` pre-check at
+    `anvil/skills/memo/commands/memo-revise.md` step 4 to refuse to run
+    against a NO-GO terminal thread, and by the orchestrator's state
+    derivation to surface the NO-GO state. The terminal-sink semantics
+    are documented at `anvil/skills/memo/SKILL.md` §"NO-GO terminal state".
+    """
+    return bool(_MEMO_NO_GO_VERDICT.search(text))
+
+
+def parse_memo_verdict_kill_rationale(text: str) -> Optional[str]:
+    """Extract the kill-rationale paragraph from a NO-GO ``verdict.md``.
+
+    The NO-GO ``verdict.md`` shape (see memo SKILL.md §"NO-GO terminal
+    state") carries a ``## Kill rationale`` heading followed by a
+    one-paragraph rationale. This function returns the rationale text
+    when both the ``Verdict: NO-GO`` line AND the heading are present;
+    ``None`` otherwise. Used by ``memo-revise`` to surface the rationale
+    in the refusal message.
+    """
+    if not parse_memo_verdict_no_go(text):
+        return None
+    # Find the heading and capture text up to the next heading (or EOF).
+    heading_re = re.compile(
+        r"^#+\s*Kill\s+rationale\s*$", re.IGNORECASE | re.MULTILINE
+    )
+    m = heading_re.search(text)
+    if not m:
+        return None
+    rest = text[m.end():]
+    # Stop at the next heading.
+    next_heading = re.search(r"^#+\s+\S", rest, re.MULTILINE)
+    body = rest[: next_heading.start()] if next_heading else rest
+    body = body.strip()
+    return body or None
 
 
 def _parse_memo_critical_flags(text: str) -> List[CriticalFlag]:
@@ -675,6 +728,7 @@ def aggregate(reviews: List[Review]) -> AggregatedReview:
         threshold=threshold,
         any_critical=bool(critical_flags)
         or any(s.critical for s in aggregated_scores),
+        critical_flags=critical_flags,
     )
 
     return AggregatedReview(
@@ -785,7 +839,12 @@ def compute_verdict(
     )
 
     if history is None:
-        return _compute_verdict_impl(agg.total, eff_threshold, any_critical)
+        return _compute_verdict_impl(
+            agg.total,
+            eff_threshold,
+            any_critical,
+            critical_flags=agg.critical_flags,
+        )
 
     if iteration is None or max_iterations is None:
         raise ValueError(
@@ -805,13 +864,27 @@ def compute_verdict(
         max_iterations=max_iterations,
         window=window,
         lookback=lookback,
+        critical_flags=list(agg.critical_flags),
     )
     return verdict
 
 
 def _compute_verdict_impl(
-    total: int, threshold: int, any_critical: bool
+    total: int,
+    threshold: int,
+    any_critical: bool,
+    critical_flags: Optional[List[CriticalFlag]] = None,
 ) -> Verdict:
+    # NO-GO short-circuits everything else (issue #559) when a no_go-typed
+    # critical flag is present. The typed list is the canonical input; the
+    # any_critical bool stays for byte-identical backwards-compat with
+    # pre-#559 callers (which never pass a no_go flag).
+    if critical_flags:
+        # Lazy import — avoid hard dep when the typed list isn't passed.
+        from anvil.lib.convergence import _has_no_go_flag
+
+        if _has_no_go_flag(critical_flags):
+            return Verdict.NO_GO
     if any_critical:
         return Verdict.BLOCK
     if total >= threshold:
@@ -829,6 +902,8 @@ __all__ = [
     "parse_memo_scoring_table",
     "parse_memo_verdict_total",
     "parse_memo_verdict_decision",
+    "parse_memo_verdict_no_go",
+    "parse_memo_verdict_kill_rationale",
     "aggregate",
     "compute_verdict",
 ]

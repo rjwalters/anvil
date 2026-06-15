@@ -232,7 +232,8 @@ Per-thread state, derived from on-disk evidence (not flags):
 
 ```
 EMPTY → DRAFTED → REVIEWED → REVISED → … → READY
-        ↑                                  ↘ AUDITED  (optional, via auditor critic sibling)
+        ↑                 ↘ NO-GO (terminal; operator override required — issue #559)
+        |                                  ↘ AUDITED  (optional, via auditor critic sibling)
         (optional .0.perspective/ may exist before DRAFTED; it does not gate the machine)
 ```
 
@@ -245,11 +246,65 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` |
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag |
+| `NO-GO` | Latest `<thread>.{N}.review/verdict.md` records `**Verdict**: NO-GO` AND no `<thread>.{N+1}/` exists. Terminal sink — the evaluator concluded the *thesis itself* fails (issue #559). Resurrection requires `memo-revise <thread> --override-no-go "<rationale>"` and produces `<thread>.{N+1}/` with `metadata.no_go_overridden = true`. |
 | `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version |
 
-Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short-circuits regardless of total — block until addressed. **Red-team critical flags** (issue #560 — `redteam_survives` and `redteam_unengaged` emitted by the optional `<thread>.{N}.redteam/` adversarial critic on load-bearing objections that the memo does not defeat) participate in this standard `advance` aggregation via the existing pathway — `anvil/lib/critics.py::aggregate` unions them into the verdict's critical-flag list exactly like every other load-bearing back-check critical flag. No new state-machine transition is introduced by the red-team critic; the dedicated `NO-GO` terminal state is owned by issue #559 (Wave 3).
+Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short-circuits regardless of total — block until addressed. **Red-team critical flags** (issue #560 — `redteam_survives` and `redteam_unengaged` emitted by the optional `<thread>.{N}.redteam/` adversarial critic on load-bearing objections that the memo does not defeat) participate in this standard `advance` aggregation via the existing pathway — `anvil/lib/critics.py::aggregate` unions them into the verdict's critical-flag list exactly like every other load-bearing back-check critical flag. A load-bearing `SURVIVES` (or `UNENGAGED`) finding at iteration `max_iterations - 1` or later promotes to a `no_go` critical flag at memo-review step 7 and routes to the **NO-GO** terminal state instead of `BLOCK`/`REVISE` (issue #559) — see §"NO-GO terminal state" below.
 
 **Plan siblings do NOT advance state.** A `<thread>.{N+1}.plan/` directory (written by `memo-revise <thread> --plan` — see §"Operator-confirmable change-set preview" below) is a critic-sibling-shaped artifact, NOT a version dir. Its presence does NOT advance the thread to `REVISED`: the state stays `REVIEWED` until `memo-revise <thread> --apply` writes the matching `<thread>.{N+1}/<thread>.md` body file. The state-machine derivation table above continues to use `<thread>.{N+1}/` presence as the `REVISED` evidence; plan siblings are invisible to it. This preserves the existing immutability contract (a half-built version dir without a body markdown file is never `REVISED`) and keeps the two-phase flow audit-trailable on disk.
+
+### NO-GO terminal state
+
+The memo skill ships a **thesis-failure terminal sink** alongside `READY` (issue #559). A `<thread>.{N}.review/verdict.md` carrying `**Verdict**: NO-GO` records that the evaluator concluded the *thesis itself* fails — not that the prose has a defect. NO-GO is structurally distinct from `STALLED` (score plateau — recoverable via operator escalation) and from `BLOCKED` (iteration-cap exhaustion — recoverable via per-document cap override): it represents an evaluator-declared structural failure of the thesis that no further revision against the existing evidence can fix. The terminal sink exists because without it every path leads toward shipping — a megaphone with no kill-switch.
+
+**Emission paths.** A `no_go` critical flag is emitted at `memo-review` step 7 via the `_classify_no_go_eligibility(aggregated_flags, iteration, max_iterations)` policy. The policy is conservative in v0 — canary will tune. Initial v0 trigger conditions:
+
+1. A `redteam_survives` flag from the red-team critic sibling (`<thread>.{N}.redteam/_review.json`; issue #560 / PR #573) on a **load-bearing** objection AND `iteration >= max_iterations - 1` (the iteration budget is about to be exhausted against an unrebutted structural objection).
+2. A `Strongman: NOT_ADDRESSED (load-bearing)` flag (issue #330) AND `iteration >= max_iterations - 1`.
+3. A `Summary-detail consistency: CONTRADICTED` flag (issue #245) on a load-bearing thesis claim AND `iteration >= max_iterations - 1`.
+
+Lower-tier flags (typos, dim 9 bloat, unverified cites) NEVER promote to `no_go`. The bar is: **an evaluator has identified a defect that re-revision against the existing evidence cannot fix.** This is the Path A composition with PR #573 documented in issue #559's curator enhancement: the red-team critic continues to emit `redteam_survives` / `redteam_unengaged` unchanged; the memo-review step 7 promotion logic concentrates the NO-GO escalation policy in one place.
+
+**`verdict.md` shape.** A NO-GO `verdict.md` is structurally distinct from the standard `Total: X/Y` + `Decision: advance: true|false` shape:
+
+```markdown
+# NO-GO — terminal
+
+**Verdict**: NO-GO
+**Iteration**: <N>
+**Triggering flag**: <type, e.g. redteam_survives | no_go (direct) | strongman_load_bearing>
+**Source critic**: <critic_id, e.g. memo-redteam, memo-review>
+
+## Kill rationale
+
+<one-paragraph verbatim from the triggering critical flag's justification field>
+
+## Evidence
+
+- <evidence_span(s) from the triggering flag, when present>
+
+## Operator override
+
+To resurrect this thread, run `memo-revise <thread> --override-no-go "<reason>"`.
+The override writes a new version dir with `metadata.no_go_overridden = true`
+and `metadata.no_go_override_reason = "<verbatim>"`. The NO-GO verdict.md is
+preserved as a permanent record of the kill recommendation.
+```
+
+The `parse_memo_verdict_no_go` and `parse_memo_verdict_kill_rationale` helpers in `anvil/lib/critics.py` extract the NO-GO verdict line and the kill rationale paragraph from this prose shape; the legacy `_adapt_memo_legacy` in the same module recognizes the `**Verdict**: NO-GO` line and emits `Verdict.NO_GO` when reading a NO-GO `verdict.md` through the prose-triple adapter.
+
+**`_progress.json` audit trail.** At NO-GO emission time, `memo-review` writes:
+
+- `termination_reason: "NO_GO"` (top-level) — the highest-priority termination value per `anvil/lib/snippets/progress.md` §"`termination_reason`".
+- `metadata.kill_rationale: "<verbatim>"` — the one-paragraph kill rationale extracted from the triggering `no_go` critical flag's `justification` field. Preserved on every subsequent shallow merge.
+
+**Operator override semantics.** NO-GO is a **recommendation, not a hard lock**. Three override paths:
+
+1. **Resurrect with `memo-revise <thread> --override-no-go "<reason>"`** — operator explicitly disagrees with the kill recommendation. Writes a new `<thread>.{N+1}/` with `metadata.no_go_overridden = true` and `metadata.no_go_override_reason = "<verbatim>"`. The next `memo-review` pass judges the resurrected version on its own merits; NO-GO does NOT auto-re-emit unless the underlying triggering flag re-fires. The override is **per-version**: a thread that resurrects and then re-earns a `no_go` flag on the resurrected version is in NO-GO again.
+2. **Address the underlying flag** — operator brings new evidence into `refs/` that the red-team critic didn't have access to (a fresh customer interview, a regulatory ruling). The next `memo-redteam` pass re-evaluates and may not re-emit SURVIVES. The operator runs `memo-revise --override-no-go "new evidence: <description>"` to land the new version; the next `memo-review` cycle judges fresh.
+3. **Kill the thread** — operator accepts the recommendation. No action required; the thread sits in NO-GO terminal state as a durable "we evaluated this and stopped" record, distinct from a half-abandoned thread.
+
+The operator override is intentionally **friction-ful** (required verbatim rationale, no `--polish` analog that silently bypasses) because NO-GO exists precisely to make killing easy and resurrecting hard — the inverse of the default lifecycle's bias. The reviser's verdict pre-check at `memo-revise` step 4 refuses to proceed against a NO-GO `verdict.md` unless `--override-no-go "<reason>"` is passed; the rationale surface is the same shape as the `--polish "<reason>"` shape (non-empty, whitespace-rejected).
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Consumer overrides land via the **per-document iteration-cap paired override** on the project BRIEF (issue #349 — `BriefDocument.max_iterations` + `BriefDocument.iteration_cap_rationale`); see "Per-document override contract" below for the full spec. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 

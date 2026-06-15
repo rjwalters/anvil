@@ -68,12 +68,25 @@ class Verdict(str, Enum):
     - ``STALLED``: reserved for #27 — stable-score termination when
       successive revisions stop improving. v1 does not produce this value;
       the value is reserved so #27 does not need a schema bump.
+    - ``NO_GO``: reserved for #559 — thesis-failure terminal sink. Set
+      when a critical flag of type ``"no_go"`` is present (typically
+      promoted from a load-bearing red-team ``SURVIVES`` / ``UNENGAGED``
+      finding, an unaddressed load-bearing strongman objection, or a
+      contradicted thesis-level claim). NO-GO is a *thesis-level*
+      verdict — the evaluation concludes the idea fails, not that the
+      prose has a defect. It short-circuits the revise loop (the loop's
+      job is no longer "raise the score") and requires an explicit
+      operator override to resurrect. Additive optional enum value;
+      legacy consumers tolerate via pydantic strict-mode and the
+      ``schema_version`` stays at ``"1"`` (additive optional enum values
+      do not require a bump per the module-top docstring §6).
     """
 
     ADVANCE = "ADVANCE"
     REVISE = "REVISE"
     BLOCK = "BLOCK"
     STALLED = "STALLED"
+    NO_GO = "NO_GO"
 
 
 class Kind(str, Enum):
@@ -469,8 +482,12 @@ class AggregatedReview(BaseModel):
     verdict: Verdict = Field(
         ...,
         description=(
-            "Final verdict. BLOCK if any critical flag; else ADVANCE if "
-            "total >= threshold; else REVISE. STALLED is reserved for #27."
+            "Final verdict. NO_GO if any critical flag of type 'no_go' is "
+            "present (issue #559 — thesis-failure terminal sink, highest "
+            "priority); else BLOCK if any other critical flag; else "
+            "ADVANCE if total >= threshold; else REVISE. STALLED is "
+            "reserved for #27 (convergence-time stable-score plateau, "
+            "lowest priority)."
         ),
     )
 

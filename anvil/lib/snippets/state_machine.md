@@ -9,6 +9,7 @@ how skills hook into them without forking.
 
 ```
 EMPTY → DRAFTED → REVIEWED → REVISED → … → READY
+                          ↘ NO-GO (terminal — issue #559; operator override required)
                                           ↘ AUDITED (optional, auditor sibling)
 ```
 
@@ -19,13 +20,21 @@ EMPTY → DRAFTED → REVIEWED → REVISED → … → READY
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` (or `_summary.md`) exists for the latest `N`. |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/`. |
 | `READY` | Latest review records `advance: true` AND no unresolved critical flag. |
+| `NO-GO` | Latest `<thread>.{N}.review/verdict.md` records `**Verdict**: NO-GO` AND no `<thread>.{N+1}/` exists. Terminal sink — the evaluator concluded the *thesis itself* fails (issue #559). Operator override required to resurrect: `memo-revise <thread> --override-no-go "<rationale>"` writes `<thread>.{N+1}/` with `metadata.no_go_overridden = true`. |
 | `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version (when supported). |
 
 `READY` is terminal for skills that ship without a mandatory audit phase
 (memo, deck). `AUDITED` is terminal for skills where audit is mandatory
 (pub, slides, report, ip-uspto). Some skills add further terminal states
 past `AUDITED` (report → `CUSTOMER-READY`; ip-uspto → `FINALIZED`); see
-Extension Points below.
+Extension Points below. `NO-GO` is the thesis-failure terminal sink
+shared across skills that opt in (memo is the first canary; other
+skills are deferred until a second canary instance). NO-GO is
+distinct from `BLOCKED` (iteration-cap exhaustion — recoverable via
+per-document cap override) and from `STALLED` (score plateau —
+recoverable via operator escalation): it represents an evaluator-
+declared structural failure of the thesis that no further revision
+against the existing evidence can fix.
 
 ### Review vs audit: the principled split
 
@@ -57,6 +66,57 @@ cap marks the thread `BLOCKED` and requires human review.
 
 The cap is configurable per-thread by writing
 `{ "max_iterations": <N> }` to `<thread>/.anvil.json` in the thread root.
+
+### Highest-priority terminal verdict: `NO-GO` (#559)
+
+In addition to the primary terminators (`THRESHOLD_MET`, `CRITICAL_FLAG`,
+`MAX_ITERATIONS`), the convergence loop can halt with `verdict: NO-GO`
+when a critical flag of type `"no_go"` is present in the aggregated
+review. NO-GO is a **thesis-level** verdict — the evaluator has concluded
+that the idea itself fails, not that the prose has a defect. It
+short-circuits the revise loop (the loop's job is no longer "raise the
+score") and requires an explicit operator override to resurrect.
+
+`NO-GO` is the **highest-priority** terminator — it is resolved BEFORE
+`CRITICAL_FLAG`, `THRESHOLD_MET`, `MAX_ITERATIONS`, and `STALLED`. A
+`no_go`-typed critical flag is a stronger signal than a generic critical
+flag (which forces `advance: false` and routes to revise on the
+expectation that a re-revision against the same evidence can fix the
+defect); the `no_go` flag declares that no re-revision against the
+existing evidence can fix the underlying issue.
+
+The `no_go` flag is emitted by the skill's review command via the
+"N parallel critics, one reviser" aggregation pathway. Typical trigger
+conditions (memo-skill v0 — other skills opt in per their own canary
+signals):
+
+- A red-team critic's `redteam_survives` finding on a **load-bearing**
+  objection at iteration `max_iterations - 1` or later (i.e., the
+  iteration budget is about to be exhausted against an unrebutted
+  structural objection — issue #573 composition).
+- A `Strongman: NOT_ADDRESSED (load-bearing)` finding at iteration
+  `max_iterations - 1` or later.
+- A `Summary-detail consistency: CONTRADICTED` finding on the memo's
+  thesis claim at iteration `max_iterations - 1` or later.
+
+Lower-tier flags (typos, dim 9 bloat, unverified cites) NEVER promote
+to `no_go`. The bar is "an evaluator has identified a defect that
+re-revision against the existing evidence cannot fix."
+
+The terminal verdict (when one fires) is recorded in the top-level
+`termination_reason` field as `"NO_GO"`; the verbatim flag
+`justification` is preserved in `metadata.kill_rationale` per
+`progress.md` §"`metadata.kill_rationale`". A first-class `verdict.md`
+artifact carries the same kill rationale in operator-facing markdown
+shape — see the skill's own command spec (e.g., `memo-review.md` step 10)
+for the canonical NO-GO `verdict.md` format.
+
+**Operator override semantics.** NO-GO is a **recommendation, not a
+hard lock**. The override path (e.g., `memo-revise <thread>
+--override-no-go "<reason>"`) is intentionally friction-ful: it
+requires a verbatim non-empty rationale. The override is **per-version**:
+a thread that resurrects from NO-GO and then re-earns a `no_go` flag on
+the resurrected version is in NO-GO again.
 
 ### Secondary terminal verdict: `STALLED` (#27)
 
@@ -164,8 +224,9 @@ EMPTY
             └→ REVIEWED  ⇄  REVISED (loop until convergence)
                  ↘
                   └→ READY
-                       └→ AUDITED (optional or mandatory per skill)
-                            └→ (skill-specific terminal, optional: CUSTOMER-READY, FINALIZED, HANDOUT_GENERATED, ...)
+                  │    └→ AUDITED (optional or mandatory per skill)
+                  │         └→ (skill-specific terminal, optional: CUSTOMER-READY, FINALIZED, HANDOUT_GENERATED, ...)
+                  └→ NO-GO (issue #559 — thesis-failure terminal; opt-in per skill; operator override required)
        └→ BLOCKED (if iteration cap exceeded)
 ```
 
