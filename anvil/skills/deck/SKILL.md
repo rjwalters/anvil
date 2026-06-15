@@ -1,6 +1,6 @@
 ---
 name: deck
-description: Draft, review, and revise pitch decks (fundraising and business pitches) using the standard anvil lifecycle plus deck-specific brief intake and three parallel critics (narrative, market, design).
+description: Draft, review, and revise pitch decks (fundraising and business pitches) using the standard anvil lifecycle plus deck-specific brief intake and four parallel critics (narrative, market, design, economics).
 domain: deck
 type: skill
 user-invocable: false
@@ -109,13 +109,13 @@ Per-slide Marp directives (`<!-- _class: ... -->`, `<!-- _style: ... -->`) are s
 
 Deck is the **reference implementation** for the layered scorecard pattern documented in `anvil/lib/snippets/scorecard_kind.md`:
 
-- **Specialist critics** (`deck-narrative`, `deck-market`, `deck-design`) emit the `machine-summary` shape: `_summary.md` + `findings.md` + `_meta.json` (with `scorecard_kind: machine-summary`). Each critic fills only the rubric dimensions it owns; other dimensions remain `null`.
+- **Specialist critics** (`deck-narrative`, `deck-market`, `deck-design`, `deck-economics`) emit the `machine-summary` shape: `_summary.md` + `findings.md` + `_meta.json` (with `scorecard_kind: machine-summary`). Each critic fills only the rubric dimensions it owns; other dimensions remain `null`.
 - **Aggregator critic** (`deck-review`) emits BOTH shapes layered: the `human-verdict` shape (`verdict.md` + `scoring.md` + `comments.md`) AND the `machine-summary` shape (`_summary.md` + `findings.md`). The primary scorecard kind is `human-verdict` (the aggregated narrative `verdict.md` is the deliverable); the machine-summary layer lets downstream cross-skill machinery aggregate alongside other machine-summary critics if needed.
 
 Every critic sibling under `<thread>.{N}.<tag>/` therefore declares its primary kind in `_meta.json` per `anvil/lib/snippets/scorecard_kind.md`. The specialist schema:
 
 ```
-<thread>.{N}.<tag>/                                    # for deck-narrative, deck-market, deck-design
+<thread>.{N}.<tag>/                                    # for deck-narrative, deck-market, deck-design, deck-economics
   _summary.md         10-dim partial scorecard (critic fills only owned dimensions; others = null) + critical flag
   findings.md         Itemized findings: severity (blocker/major/minor/nit), slide ref, rationale, suggested fix
   _meta.json          { "critic": "<tag>", "role": "deck-<tag>.md", "started": <ISO>, "finished": <ISO>, "model": "<id>", "scorecard_kind": "machine-summary" }
@@ -128,14 +128,14 @@ The aggregator schema (both layers present):
   verdict.md          Aggregated decision + total /49 + critical flags (primary deliverable)
   scoring.md          Per-dimension scorecard with justifications
   comments.md         Slide-level comments
-  _summary.md         10-dim partial scorecard (review owns dims 2, 5, 6, 10; specialists fill others when aggregated)
+  _summary.md         10-dim partial scorecard (review owns dims 2, 5, 6, with dim 10 as fallback when deck-economics is skipped; specialists fill others when aggregated)
   findings.md         Itemized findings owned by the general reviewer
   _meta.json          { ..., "scorecard_kind": "human-verdict" }   # primary intent
 ```
 
 Specialists fill only their owned rubric dimensions; the aggregator reads the specialists' `_summary.md` files and combines per-dimension scores as the **mean of non-null critic scores**. The critical flag in the aggregated scorecard is the **logical OR** of all critic critical flags. See `anvil/lib/snippets/critics.md` for the canonical discovery and aggregation rules.
 
-**Default critic set for deck**: `review + narrative + market + design`. An operator can subset (e.g., skip `design` while content is still in flux); the reviser handles missing siblings gracefully.
+**Default critic set for deck**: `review + narrative + market + design + economics`. An operator can subset (e.g., skip `design` while content is still in flux); the reviser handles missing siblings gracefully.
 
 **Discovery glob** (used by the reviser): `<thread>.{N}.*/` minus the bare `<thread>.{N}/`.
 
@@ -149,7 +149,7 @@ EMPTY → BRIEF_DONE → DRAFTED → REVIEWED → REVISED → … → READY → 
                      (optional .0.perspective/ may exist before DRAFTED; it does not gate the machine)
 ```
 
-The perspective sibling is intentionally allowed at `.0.perspective/` (before the first drafted version) AND at `.{N}.perspective/` (after a reviewer or `deck-market` cross-check critic points out a market-substrate gap). Both follow the same "N parallel critics, one reviser" rule: when present at `<thread>.{N}.perspective/`, the next `deck-revise` pass consumes it alongside `.review/`, `.narrative/`, `.market/`, `.design/`, and `.audit/`. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence of a perspective sibling does NOT block draft / review / revise — a deck thread with no perspective sibling proceeds normally. The deck-skill default critic set MUST NOT list `perspective` as required; it is opt-in input, not required output. See `commands/deck-perspective.md` for the command spec.
+The perspective sibling is intentionally allowed at `.0.perspective/` (before the first drafted version) AND at `.{N}.perspective/` (after a reviewer or `deck-market` cross-check critic points out a market-substrate gap). Both follow the same "N parallel critics, one reviser" rule: when present at `<thread>.{N}.perspective/`, the next `deck-revise` pass consumes it alongside `.review/`, `.narrative/`, `.market/`, `.design/`, `.economics/`, and `.audit/`. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence of a perspective sibling does NOT block draft / review / revise — a deck thread with no perspective sibling proceeds normally. The deck-skill default critic set MUST NOT list `perspective` as required; it is opt-in input, not required output. See `commands/deck-perspective.md` for the command spec.
 
 | State | Evidence |
 |---|---|
@@ -203,6 +203,7 @@ No upper bound is enforced — if an operator sets `max_iterations: 99` with a r
 | `deck-narrative <thread>` | narrative critic | latest `<thread>.{N}/deck.md` (full read, in order) | `<thread>.{N}.narrative/` (owns dims 1, 7, 9) |
 | `deck-market <thread>` | market critic | latest `<thread>.{N}/deck.md` + market exhibits + any `figures/src/*.csv` | `<thread>.{N}.market/` (owns dims 3, 4) |
 | `deck-design <thread>` | design critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.design/` (owns dim 8, source-side density) |
+| `deck-economics <thread>` | business-model / unit-economics critic | latest `<thread>.{N}/deck.md` + business-model / pricing / unit-economics / financials slides + any `figures/src/*.csv` + optional `<thread>.{M}.perspective/candidates.md` | `<thread>.{N}.economics/` (owns dim 10) |
 | `deck-vision <thread>` | vision critic | latest `<thread>.{N}/deck.pdf` (renders if missing) → per-slide PNGs | `<thread>.{N}.vision/` (owns dim 8 rendered-side density + vision rubric v1–v6); produces canonical `_review.json` per #26 with `kind=vision`. See `commands/deck-vision.md` and `anvil/lib/vision.py`. |
 | `deck-revise <thread>` | reviser | latest `<thread>.{N}/` + ALL `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `_revision-log.md` |
 | `deck-audit <thread>` | auditor | latest `<thread>.{N}/`, `<thread>/BRIEF.md`, `<thread>/refs/**` | `<thread>.{N}.audit/` |
@@ -215,11 +216,12 @@ The portfolio orchestrator is the user-facing entry point for status; the lifecy
 
 **Brief intake** (`deck-brief`) — Recommended one-shot pre-draft phase. Pitch decks fail catastrophically when the drafter hallucinates traction or invents market numbers. The intake converts a founder's raw input (often a transcript, a website, a memo, a back-of-napkin) into a structured brief covering: stage, round target, problem statement, current product status, real traction numbers (revenue / users / LOIs / pilots / design partners), named team with verified bios, target investor profile, named competitors, prior raises with terms. **The drafter is forbidden from inventing numbers not in the brief.**
 
-**Three parallel critics** (`deck-narrative`, `deck-market`, `deck-design`) — These run alongside the general `deck-review`. Each fills only the rubric dimensions it owns; others remain null. The reviser aggregates per-dimension as the mean of non-null critic scores.
+**Four parallel critics** (`deck-narrative`, `deck-market`, `deck-design`, `deck-economics`) — These run alongside the general `deck-review`. Each fills only the rubric dimensions it owns; others remain null. The reviser aggregates per-dimension as the mean of non-null critic scores.
 
 - `deck-narrative` evaluates the deck as a single story (problem → solution → why now → why us → ask), not slide-by-slide. Owns dims 1 (Narrative arc), 7 (Ask specificity). Flags missing logical bridges, slides out of order, ask that doesn't follow from setup, "why now" missing or unconvincing, slide count off (target 10–15).
 - `deck-market` evaluates TAM/SAM/SOM math, comparable transactions, competitor positioning. Owns dims 3 (Market size credibility), 4 (Solution differentiation). Verifies arithmetic; checks bottom-up vs top-down framing; flags top-down-only sizing as a near-automatic disqualifier.
 - `deck-design` evaluates visual/typographic quality: slide density (≤6 bullets, ≤30 words per content slide), chart legibility, consistent palette/typography, image quality. Owns dim 8 (Design polish). **Renders the deck to per-slide PNGs first** and critiques against rendered output, not source — a markdown-source-only design critic can't see actual visual hierarchy.
+- `deck-economics` conducts an adversarial economic-diligence pass on the business-model slide. Owns dim 10 (Business-model & unit-economics credibility). Reads the model / pricing / unit-economics / financials slides and any `figures/src/*.csv` source data; scores against the four-pillar charter (counterparty acceptance of price/rev-share; CAC + sales cycle + payback; contribution margin at scale; sensitivity to load-bearing assumption such as attach rate). Recommends `economics-recompute.md` for independent contribution-margin / payback / sensitivity arithmetic. Substrate-backed scoring (post-#557): perspective candidates for comparable pricing / margin / rev-share lift dim 10 ceilings when cited.
 
 **Audit** (`deck-audit`) — Sharper than the generic auditor: (a) every cited statistic resolves to a source in the brief or refs, (b) every claimed customer/partner/investor logo is attested, (c) every traction number matches the brief, (d) team bios match the brief. Critical-flag eligible (any unattested claim triggers a fabrication flag).
 

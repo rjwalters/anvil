@@ -22,7 +22,7 @@ A single command an operator (or orchestrating agent) runs to see the state of e
 
 ## Procedure
 
-1. Enumerate `<slug>/` thread directories under cwd (the project root). Then, **within each thread root**, enumerate the nested `<slug>.{N}` and `<slug>.{N}.<critic>` directories (where `<critic>` ∈ {`review`, `narrative`, `market`, `design`, `audit`, ...}). Version dirs and critic siblings live INSIDE the thread root, not as siblings of `<slug>/` at the project root — flat-shape leftovers at the project root are pre-#382 residue; recommend `anvil:project-migrate`.
+1. Enumerate `<slug>/` thread directories under cwd (the project root). Then, **within each thread root**, enumerate the nested `<slug>.{N}` and `<slug>.{N}.<critic>` directories (where `<critic>` ∈ {`review`, `narrative`, `market`, `design`, `economics`, `audit`, ...}). Version dirs and critic siblings live INSIDE the thread root, not as siblings of `<slug>/` at the project root — flat-shape leftovers at the project root are pre-#382 residue; recommend `anvil:project-migrate`.
 2. For each thread root `<slug>/`, identify:
    - Whether `<slug>/BRIEF.md` exists.
    - The latest `N` for which `<slug>.{N}/deck.md` exists within the thread root.
@@ -37,8 +37,8 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    |---|---|
    | `EMPTY` | `deck-brief <thread>` (or hand-write `<thread>/BRIEF.md`) |
    | `BRIEF_DONE` | `deck-draft <thread>` |
-   | `DRAFTED` | `deck-figures <thread>` (renders PDF) → `deck-review` + `deck-narrative` + `deck-market` + `deck-design` (in parallel) |
-   | `DRAFTED` (figures done, no review yet) | `deck-review <thread>` + `deck-narrative` + `deck-market` + `deck-design` (in parallel) |
+   | `DRAFTED` | `deck-figures <thread>` (renders PDF) → `deck-review` + `deck-narrative` + `deck-market` + `deck-design` + `deck-economics` (in parallel) |
+   | `DRAFTED` (figures done, no review yet) | `deck-review <thread>` + `deck-narrative` + `deck-market` + `deck-design` + `deck-economics` (in parallel) |
    | `REVIEWED` (some critics missing) | run the missing critic(s) |
    | `REVIEWED` (all critics done, advance=false, under iteration cap) | `deck-revise <thread>` |
    | `REVIEWED` (advance=false, AT iteration cap) | `BLOCKED — human review required` |
@@ -76,4 +76,4 @@ Follow the table with:
 
 - This command does **not** write to disk. Safe to run repeatedly.
 - Portfolio orchestrator is the recommended user-facing entry point. The lifecycle commands can be invoked directly by an orchestrating agent or by a human operator running them in sequence.
-- The four critic commands (`deck-review`, `deck-narrative`, `deck-market`, `deck-design`) are designed to run in parallel — they read the same input dir and write to disjoint sibling output dirs. An orchestrating agent should fan them out concurrently when state is `DRAFTED` with `deck.pdf` present.
+- The five critic commands (`deck-review`, `deck-narrative`, `deck-market`, `deck-design`, `deck-economics`) are designed to run in parallel — they read the same input dir and write to disjoint sibling output dirs. An orchestrating agent should fan them out concurrently when state is `DRAFTED` with `deck.pdf` present.

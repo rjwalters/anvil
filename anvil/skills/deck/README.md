@@ -15,6 +15,7 @@ Pitch decks — fundraising rounds (pre-seed through growth), partnership pitche
 | `commands/deck-narrative.md` | Narrative-arc critic. Owns dims 1, 7. Reads end-to-end as one argument. |
 | `commands/deck-market.md` | Market/TAM/competitor critic. Owns dims 3, 4. Verifies arithmetic. |
 | `commands/deck-design.md` | Visual critic. Owns dim 8. Critiques the rendered PDF. |
+| `commands/deck-economics.md` | Business-model / unit-economics critic (adversarial economic-diligence pass). Owns dim 10. |
 | `commands/deck-revise.md` | Reviser. Aggregates ALL critic siblings → next version + revision log. |
 | `commands/deck-audit.md` | Fact/number/citation auditor. Critical-flag eligible. |
 | `commands/deck-figures.md` | Mermaid + matplotlib renderer. Also renders `deck.pdf`. |
@@ -32,7 +33,7 @@ Pitch decks — fundraising rounds (pre-seed through growth), partnership pitche
 |---|---|---|
 | **Artifact** | Pitch deck (fundraising / business pitch with an ask) | Conference talk slides (research / community talks) |
 | **Optimized for** | Persuasion + ask | Pedagogy + technical clarity |
-| **Critics** | `review + narrative + market + design` | (see issue #7) |
+| **Critics** | `review + narrative + market + design + economics` | (see issue #7) |
 | **Rubric weight bias** | Narrative arc + ask + market = 16/49 | (see issue #7) |
 | **Threshold** | ≥43/49 (customer-facing) | (see issue #7) |
 | **Source format** | Marp markdown | Marp markdown (shared renderer pin) |
@@ -57,7 +58,7 @@ Every critic sibling under `<thread>.{N}.<tag>/` contains the same files. The re
 - Aggregated critical flag = logical OR of all critic critical flags.
 - Missing critic siblings are tolerated (operator can skip critics) — the reviser notes gaps in the next version's `_revision-log.md`. A deck cannot reach `READY` with any dimension still `null`.
 
-The default critic set is `review + narrative + market + design`. Subset to `review + narrative` early when content is still in flux (design critique is wasted on a half-drafted deck).
+The default critic set is `review + narrative + market + design + economics`. Subset to `review + narrative` early when content is still in flux (design critique is wasted on a half-drafted deck).
 
 ## State machine
 
@@ -88,4 +89,4 @@ Source is Marp markdown. The framework-level renderer pin (`CLAUDE.md` Conventio
 
 ## Lifecycle in one paragraph
 
-Operator (or orchestrating agent) starts with `<thread>/refs/` (raw founder input). Runs `deck-brief <thread>` → produces `<thread>/BRIEF.md`. Runs `deck-draft <thread>` → produces `<thread>.1/deck.md` + `speaker-notes.md` + initial `figures/`. Runs `deck-review`, `deck-narrative`, `deck-market`, `deck-design` in parallel → four critic siblings at `.1`. Runs `deck-figures <thread>` → renders `deck.pdf` (required for `deck-design` to evaluate). Runs `deck-revise <thread>` → consumes all four critic siblings, produces `<thread>.2/` with `_revision-log.md`. Loops review → revise until the aggregated score ≥43/49 AND no critical flag → thread state is `READY`. Optionally runs `deck-audit` for a final fact-check pass → `AUDITED`. PDF in the `READY` version is the canonical investor-facing deliverable.
+Operator (or orchestrating agent) starts with `<thread>/refs/` (raw founder input). Runs `deck-brief <thread>` → produces `<thread>/BRIEF.md`. Runs `deck-draft <thread>` → produces `<thread>.1/deck.md` + `speaker-notes.md` + initial `figures/`. Runs `deck-review`, `deck-narrative`, `deck-market`, `deck-design`, `deck-economics` in parallel → five critic siblings at `.1`. Runs `deck-figures <thread>` → renders `deck.pdf` (required for `deck-design` to evaluate). Runs `deck-revise <thread>` → consumes all five critic siblings, produces `<thread>.2/` with `_revision-log.md`. Loops review → revise until the aggregated score ≥43/49 AND no critical flag → thread state is `READY`. Optionally runs `deck-audit` for a final fact-check pass → `AUDITED`. PDF in the `READY` version is the canonical investor-facing deliverable.
