@@ -144,17 +144,20 @@ Specialists fill only their owned rubric dimensions; the aggregator reads the sp
 Per-thread state, derived from on-disk evidence (not flags):
 
 ```
-EMPTY → BRIEF_DONE → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED
+EMPTY → BRIEF_DONE → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED
                      ↑
-                     (optional .0.perspective/ may exist before DRAFTED; it does not gate the machine)
+                     (optional .0.perspective/ may exist before OUTLINED / DRAFTED; it does not gate the machine)
 ```
 
 The perspective sibling is intentionally allowed at `.0.perspective/` (before the first drafted version) AND at `.{N}.perspective/` (after a reviewer or `deck-market` cross-check critic points out a market-substrate gap). Both follow the same "N parallel critics, one reviser" rule: when present at `<thread>.{N}.perspective/`, the next `deck-revise` pass consumes it alongside `.review/`, `.narrative/`, `.market/`, `.design/`, `.economics/`, and `.audit/`. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence of a perspective sibling does NOT block draft / review / revise — a deck thread with no perspective sibling proceeds normally. The deck-skill default critic set MUST NOT list `perspective` as required; it is opt-in input, not required output. See `commands/deck-perspective.md` for the command spec.
 
+**The outline sibling (`<thread>.0.outline/`) is similarly non-gating.** Its presence advances the state machine through `OUTLINED` before `DRAFTED`; its absence does NOT block drafting. A deck thread with no `<thread>.0.outline/` proceeds directly from `BRIEF_DONE` to `DRAFTED` — `deck-draft` operates from the brief alone — but the narrative critic (`deck-narrative`) will likely flag the resulting topic-bucket order under Dim 1 (Narrative arc), which is the operator's signal that the outline gate should have been run. The drafter's outline skip-check (see `commands/deck-draft.md` step 5 + `commands/deck-outline.md` §"Skippability") allows a brief that already carries a structured outline section (`## Outline` / `## Narrative spine` / `## Beats` / `## Slide-by-slide`, ≥3 lines of content) to satisfy the gate without running `deck-outline`. The outline sibling is **read-only once written** — locked before any slide prose is drafted; the reviser never modifies it. See `commands/deck-outline.md` for the command spec. The outline lives at `<thread>/<thread>.0.outline/` — sibling-shaped (read-only critic-style directory feeding the drafter), but indexed as `.0` because no `<thread>/<thread>.0/` version exists. **Reader-guidance invariant**: orchestrators, anomaly detectors, and any other consumer MUST treat the absence of `<thread>.0/` as expected when `<thread>.0.outline/` exists, NOT as a version-number gap; consult `_progress.json.for_version` (which records `0` for the outline) to disambiguate sibling-vs-version semantics.
+
 | State | Evidence |
 |---|---|
 | `EMPTY` | No `<thread>.{N}/` directories exist; no `<thread>/BRIEF.md` |
-| `BRIEF_DONE` | `<thread>/BRIEF.md` exists (either hand-written or produced by `deck-brief`) and no `<thread>.{N}/` with `deck.md` exists yet |
+| `BRIEF_DONE` | `<thread>/BRIEF.md` exists (either hand-written or produced by `deck-brief`) and no `<thread>.{N}/` with `deck.md` exists yet AND no `<thread>.0.outline/outline.md` exists yet |
+| `OUTLINED` | `<thread>.0.outline/outline.md` exists with `_progress.json.outline.state == done`; no `<thread>.1/` yet |
 | `DRAFTED` | Latest `<thread>.{N}/deck.md` exists with `_progress.json.draft.state == done`; no sibling review at the same `N` |
 | `REVIEWED` | At least `<thread>.{N}.review/verdict.md` exists for the latest `N` (other critics may also be present) |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` (and any other critic siblings) |
@@ -198,8 +201,9 @@ No upper bound is enforced — if an operator sets `max_iterations: 99` with a r
 |---|---|---|---|
 | `deck` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state + recommends next command per thread) |
 | `deck-brief <thread>` | intake | `<thread>/refs/**` (transcripts, websites, founder input) | `<thread>/BRIEF.md` (and/or `<thread>/<thread>.0/BRIEF.md` — the intake version dir is nested under the thread root per the artifact contract) |
+| `deck-outline <thread>` | outliner (pre-draft narrative spine, optional) | `<thread>/BRIEF.md`, `<thread>/refs/**`, optional `<thread>.0.perspective/` | `<thread>.0.outline/outline.md` (read-only once written; non-gating per "outline sibling" paragraph above) |
 | `deck-perspective <thread>` | external-substrate critic (optional, read-only) | `<thread>/BRIEF.md`, `<thread>/refs/**`; for re-run, also latest `<thread>.{N}/deck.md` and `.review/` / `.market/` market-substrate findings | `<thread>.0.perspective/` (initial) or `<thread>.{N}.perspective/` (re-run); both non-gating |
-| `deck-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs/**`, `<thread>/assets/**`, AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also latest `<thread>.{N}/` + all `<thread>.{N}.*/` siblings (revise path is preferred via `deck-revise`) | `<thread>.{N+1}/deck.md` + `speaker-notes.md` + `figures/` + `_progress.json` |
+| `deck-draft <thread>` | drafter | `<thread>/BRIEF.md`, `<thread>/refs/**`, `<thread>/assets/**`, AND any `<thread>.0.outline/` sibling (load-bearing spine if present), AND any `<thread>.0.perspective/` sibling (optional load-bearing context if present); for revisions, also latest `<thread>.{N}/` + all `<thread>.{N}.*/` siblings (revise path is preferred via `deck-revise`) | `<thread>.{N+1}/deck.md` + `speaker-notes.md` + `figures/` + `_progress.json` |
 | `deck-review <thread>` | general reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (uniform critic schema; also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
 | `deck-narrative <thread>` | narrative critic | latest `<thread>.{N}/deck.md` (full read, in order) | `<thread>.{N}.narrative/` (owns dims 1, 7, 9) |
 | `deck-market <thread>` | market critic | latest `<thread>.{N}/deck.md` + market exhibits + any `figures/src/*.csv` | `<thread>.{N}.market/` (owns dims 3, 4) |
@@ -216,6 +220,8 @@ The portfolio orchestrator is the user-facing entry point for status; the lifecy
 ## Skill-specific phases
 
 **Brief intake** (`deck-brief`) — Recommended one-shot pre-draft phase. Pitch decks fail catastrophically when the drafter hallucinates traction or invents market numbers. The intake converts a founder's raw input (often a transcript, a website, a memo, a back-of-napkin) into a structured brief covering: stage, round target, problem statement, current product status, real traction numbers (revenue / users / LOIs / pilots / design partners), named team with verified bios, target investor profile, named competitors, prior raises with terms. **The drafter is forbidden from inventing numbers not in the brief.**
+
+**Outline** (`deck-outline`) — Optional pre-draft narrative-spine phase. Drafting directly from a brief produces **topic-bucket order**: a slide for each section the brief mentions, in the order the brief mentions them. The narrative critic flags topic-bucket decks under Dim 1 (Narrative arc), but flagging a 12-slide deck after drafting is the wrong leverage point. `deck-outline` writes a read-only narrative spine at `<thread>.0.outline/outline.md` carrying **(a) one driving argument** and **(b) per-slide beat + claim assignment** before any slide gets drafted. Slides that don't advance a beat get cut at outline time. The drafter consumes `outline.md` as load-bearing spine when present; absence is non-gating but is the signal that the deck is likely to land as topic-bucket order. Skippable when `BRIEF.md` already carries a structured outline section (headings `## Outline` / `## Narrative spine` / `## Beats` / `## Slide-by-slide`, ≥3 lines of content). The outline sibling is **read-only once written** and is never modified by the reviser; if the reviser's restructure reveals the outline itself was wrong, the operator deletes `<thread>.0.outline/` and re-runs `deck-outline` manually. See `commands/deck-outline.md`.
 
 **Four parallel critics** (`deck-narrative`, `deck-market`, `deck-design`, `deck-economics`) — These run alongside the general `deck-review`. Each fills only the rubric dimensions it owns; others remain null. The reviser aggregates per-dimension as the mean of non-null critic scores.
 
