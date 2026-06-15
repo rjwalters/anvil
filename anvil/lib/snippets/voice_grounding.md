@@ -62,8 +62,15 @@ anti-stances / standing, so it scaffolds to a gitignored
 `VALUES.local.md` (the `*.local.md` path #577 ships) rather than a
 committed `VALUES.md` — a gitignored declared doc resolves and grounds
 identically to a committed one (see "## Private grounding" below). See
-`anvil/templates/voice/README.md`. The optional vocab reminder CLI tool
-(issue #579) is tracked separately and not shipped as a template here.
+`anvil/templates/voice/README.md`. The optional **vocab reminder tool**
+(issue #579) ships at `anvil/lib/vocab_reminder.py` (`python -m
+anvil.lib.vocab_reminder [count]`) — the generative-reminder complement
+to the judgment-side `VOCABULARY.md`. It is a *reminder, not an
+injector*: it surfaces precision-word candidates for a human to consider,
+never auto-applies them, and the drafter MUST NOT mechanically substitute
+sampled words (see the essay drafter's step-3 reminder note). It draws
+from a sibling `*.words.txt` next to the declared `voice.vocabulary` doc
+when present, else a small anvil default.
 
 **`rhetoric_rules` is the asymmetric fifth sub-key** (issue #468): a
 path to a consumer **JSON rule file** consumed by the render gate's

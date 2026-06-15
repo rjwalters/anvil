@@ -33,18 +33,29 @@ AI-generated text tends toward "newspaper English" — safe, predictable word ch
 
 ## The Tool
 
-This doc is guidance, not automation. Some authors pair it with a small
-"reminder" tool that surfaces a random sample of words they know but
-might not reach for while reviewing a draft. That tool is **optional and
-additive** — this guidance stands on its own without it.
+This doc is guidance, not automation. Anvil ships a small **reminder**
+tool that surfaces a random sample of words you know but might not reach
+for while reviewing a draft. That tool is **optional and additive** —
+this guidance stands on its own without it.
+
+```bash
+python -m anvil.lib.vocab_reminder        # surface ~20 random reminder words
+python -m anvil.lib.vocab_reminder 30     # surface 30 for more options
+```
+
+It draws from a sibling `*.words.txt` next to this doc when one exists
+(e.g. `VOCABULARY.words.txt` beside `VOCABULARY.md` — drop your own
+larger list there), else from a small anvil-shipped default.
+
+**It is a reminder, not an injector.** It surfaces candidates; it never
+edits your draft. Apply a word ONLY when it clicks with a concept you are
+already expressing — precision over novelty, 0–2 per 1000, and revert if
+a simpler word loses nothing. The judgment-side tests below are what
+matter; the tool only nudges you to remember a word you already know.
 
 <!--
-  replace me (optional): if you wire a reminder tool, document how to run
-  it here, e.g.:
-
-      <your-command>        # surface ~20 random reminder words
-      <your-command> 30     # surface 30 for more options
-
+  replace me (optional): if you point the tool at your own word list,
+  note its path here, e.g. "reminder words live in VOCABULARY.words.txt".
   Do NOT make the rest of this doc depend on the tool. The judgment-side
   tests below are what matter.
 -->
