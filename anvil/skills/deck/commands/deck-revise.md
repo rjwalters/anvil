@@ -119,7 +119,7 @@ For the decision:
     ```markdown
     # Revision log — acme-seed.1 → acme-seed.2
 
-    Aggregated verdict from .1 critics: 35.5/44, advance=false, 1 critical flag (market-math error).
+    Aggregated verdict from .1 critics: 38.5/49, advance=false, 1 critical flag (market-math error).
 
     ## Critical flags addressed
 
@@ -193,7 +193,7 @@ The cycle continues until:
 When step 3's iteration cap check fires (`N + 1 > effective_max_iterations`), the reviser exits without writing `<thread>.{N+1}/` and prints a BLOCKED notice to stdout. The notice MUST include the discoverability pointer at the **moment the operator needs it** — the canary friction was "I didn't know the override existed at PARK time." Required lines:
 
 1. **State line**: `BLOCKED — <thread>.{N} hit the iteration cap (max_iterations=<N>). Human review required.`
-2. **Trajectory line** (when verdict data is available): brief summary of per-iteration totals and the latest critical-flag state, e.g. `Trajectory: v1=30/44, v2=33/44, v3=35/44, v4=38/44 (advance=false, 0 critical); gap to advance threshold ≥39.` This frames the operator's decision: well-conditioned (monotonic improvement, named small gap) → consider override; ill-conditioned (oscillating, persistent critical flag) → the cap is doing its job, take it to the founder.
+2. **Trajectory line** (when verdict data is available): brief summary of per-iteration totals and the latest critical-flag state, e.g. `Trajectory: v1=33/49, v2=36/49, v3=39/49, v4=42/49 (advance=false, 0 critical); gap to advance threshold ≥43.` This frames the operator's decision: well-conditioned (monotonic improvement, named small gap) → consider override; ill-conditioned (oscillating, persistent critical flag) → the cap is doing its job, take it to the founder.
 3. **Override pointer** (REQUIRED when no override is currently set, i.e. `metadata.iteration_cap_rationale == null`): `Override available — see anvil/skills/deck/SKILL.md §State machine ("Per-thread override contract"). Required keys in <thread>/.anvil.json: max_iterations (int ≥ 4) AND iteration_cap_rationale (non-empty string explaining why this thread deserves more passes). Without both keys the override silently falls back to the default cap of 4.`
 4. **Override-already-set surfacing** (when `metadata.iteration_cap_rationale != null`): print the rationale (full text, not truncated) so the operator sees the audit trail of *why* this thread was elevated and is hitting the elevated cap. Follow with: `This thread is already at its elevated cap. Raising further requires re-evaluating the rationale; see SKILL.md §State machine.`
 5. **Malformed-override warning** (when `<thread>/.anvil.json` declares `max_iterations` but the validation in step 3 fell back to default 4): print the warning line, e.g. `WARNING: <thread>/.anvil.json declares max_iterations=6 but iteration_cap_rationale is missing/empty — the override was ignored and the default cap of 4 applied. Add a non-empty iteration_cap_rationale to activate the override.`

@@ -17,7 +17,7 @@ This critic evaluates the deck as a **single story** rather than slide-by-slide.
 - **7 — Ask specificity** (weight 5) — round size, use of funds, runway-to-milestone are concrete and follow from the setup.
 - **9 — Rhetorical economy** (weight 4) — could a busy investor extract the ask in 90 seconds; are slides 18+ load-bearing; could the same arc reach the ask in fewer slides.
 
-Total ownership: 15/44 (the highest-leverage 15 points in the rubric).
+Total ownership: 15/49 (the highest-leverage 15 points in the rubric; post-#550 the rubric pool widened to /49 with dim 10 *Business-model & unit-economics credibility* owned by `deck-review` as fallback — see `rubric.md`).
 
 Other rubric dimensions are scored by other critics and remain `null` in this critic's `_summary.md`.
 

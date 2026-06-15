@@ -7,7 +7,7 @@ Pitch decks — fundraising rounds (pre-seed through growth), partnership pitche
 | File | What it is |
 |---|---|
 | `SKILL.md` | Frontmatter + skill prompt. Read this first. |
-| `rubric.md` | 9-dimension /44 scorecard. ≥39 advances. Four critical-flag conditions. |
+| `rubric.md` | 10-dimension /49 scorecard. ≥43 advances. Four critical-flag conditions. |
 | `commands/deck.md` | Portfolio orchestrator. Run from a portfolio dir to see thread state. |
 | `commands/deck-brief.md` | Intake. Founder raw input → structured `BRIEF.md`. No-fabrication contract. |
 | `commands/deck-draft.md` | Drafter. Brief → Marp markdown source + speaker notes. |
@@ -33,8 +33,8 @@ Pitch decks — fundraising rounds (pre-seed through growth), partnership pitche
 | **Artifact** | Pitch deck (fundraising / business pitch with an ask) | Conference talk slides (research / community talks) |
 | **Optimized for** | Persuasion + ask | Pedagogy + technical clarity |
 | **Critics** | `review + narrative + market + design` | (see issue #7) |
-| **Rubric weight bias** | Narrative arc + ask + market = 16/44 | (see issue #7) |
-| **Threshold** | ≥39/44 (customer-facing) | (see issue #7) |
+| **Rubric weight bias** | Narrative arc + ask + market = 16/49 | (see issue #7) |
+| **Threshold** | ≥43/49 (customer-facing) | (see issue #7) |
 | **Source format** | Marp markdown | Marp markdown (shared renderer pin) |
 | **Asset policy** | Hybrid: Mermaid + matplotlib shipped; logos/photos consumer-provided; no generative imagery in v0 | (see issue #7) |
 
@@ -88,4 +88,4 @@ Source is Marp markdown. The framework-level renderer pin (`CLAUDE.md` Conventio
 
 ## Lifecycle in one paragraph
 
-Operator (or orchestrating agent) starts with `<thread>/refs/` (raw founder input). Runs `deck-brief <thread>` → produces `<thread>/BRIEF.md`. Runs `deck-draft <thread>` → produces `<thread>.1/deck.md` + `speaker-notes.md` + initial `figures/`. Runs `deck-review`, `deck-narrative`, `deck-market`, `deck-design` in parallel → four critic siblings at `.1`. Runs `deck-figures <thread>` → renders `deck.pdf` (required for `deck-design` to evaluate). Runs `deck-revise <thread>` → consumes all four critic siblings, produces `<thread>.2/` with `_revision-log.md`. Loops review → revise until the aggregated score ≥39/44 AND no critical flag → thread state is `READY`. Optionally runs `deck-audit` for a final fact-check pass → `AUDITED`. PDF in the `READY` version is the canonical investor-facing deliverable.
+Operator (or orchestrating agent) starts with `<thread>/refs/` (raw founder input). Runs `deck-brief <thread>` → produces `<thread>/BRIEF.md`. Runs `deck-draft <thread>` → produces `<thread>.1/deck.md` + `speaker-notes.md` + initial `figures/`. Runs `deck-review`, `deck-narrative`, `deck-market`, `deck-design` in parallel → four critic siblings at `.1`. Runs `deck-figures <thread>` → renders `deck.pdf` (required for `deck-design` to evaluate). Runs `deck-revise <thread>` → consumes all four critic siblings, produces `<thread>.2/` with `_revision-log.md`. Loops review → revise until the aggregated score ≥43/49 AND no critical flag → thread state is `READY`. Optionally runs `deck-audit` for a final fact-check pass → `AUDITED`. PDF in the `READY` version is the canonical investor-facing deliverable.

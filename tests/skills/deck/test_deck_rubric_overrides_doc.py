@@ -6,9 +6,9 @@ Pins that:
 - ``deck-review.md`` documents the loader step (``load_rubric_overrides_
   for_slug`` against the project-level BRIEF), the promoted suffix helper
   at ``anvil/lib/rubric_overrides_suffix.py``, the waiver-normalized
-  verdict math (exact-fraction ``39 x (44 - waived_weight) / 44``), the
-  verbatim-rationale surfacing in ``verdict.md``, the nominal ``_meta.json``
-  stamping, and the critical-flags-are-not-waivable boundary.
+  verdict math (exact-fraction ``43 x (49 - waived_weight) / 49`` post-#550),
+  the verbatim-rationale surfacing in ``verdict.md``, the nominal
+  ``_meta.json`` stamping, and the critical-flags-are-not-waivable boundary.
 - ``rubric.md`` carries the "Per-thread rubric overrides" section with
   both key families and the normalization contract.
 
@@ -67,9 +67,11 @@ def test_deck_review_documents_waiver_normalization_math() -> None:
     body = _read(DECK_REVIEW_MD)
     assert "dim_N_waiver" in body
     # The exact-fraction normalization contract against the CURRENT
-    # /44, >=39 rubric (NOT the issue body's legacy 35/40 figures).
-    assert "39 × (44 − waived_weight) / 44" in body
-    assert "390/11" in body
+    # /49, >=43 rubric (post-#550; was /44, >=39 post-#357; was
+    # /40, >=35 pre-#357).
+    assert "43 × (49 − waived_weight) / 49" in body
+    # Worked example: dim 6 (weight 4) waived: 43 × 45/49 = 1935/49.
+    assert "1935/49" in body
     assert "normalized_advance_threshold" in body
     assert "meets_normalized_threshold" in body
     assert "do NOT round" in body or "never a rounded" in body
@@ -92,9 +94,9 @@ def test_deck_review_critical_flags_not_waivable() -> None:
 def test_deck_review_meta_stamping_stays_nominal() -> None:
     body = _read(DECK_REVIEW_MD)
     assert "stamping stays NOMINAL" in body
-    # Stamped values are unchanged by waivers.
-    assert "rubric_total: 44" in body or '"rubric_total": 44' in body
-    assert "advance_threshold: 39" in body or '"advance_threshold": 39' in body
+    # Stamped values are unchanged by waivers (post-#550: /49, ≥43).
+    assert "rubric_total: 49" in body or '"rubric_total": 49' in body
+    assert "advance_threshold: 43" in body or '"advance_threshold": 43' in body
 
 
 def test_deck_review_verdict_quotes_waiver_rationale_verbatim() -> None:
@@ -150,8 +152,9 @@ def test_rubric_documents_rationale_mandatory_and_conflict() -> None:
 
 def test_rubric_documents_normalization_and_flag_boundary() -> None:
     body = _read(DECK_RUBRIC_MD)
-    assert "39 × (44 − waived_weight) / 44" in body
-    assert "390/11" in body
+    assert "43 × (49 − waived_weight) / 49" in body
+    # Worked example: dim 6 (weight 4) waived: 43 × 45/49 = 1935/49.
+    assert "1935/49" in body
     assert "Critical flags are NOT waivable" in body
     assert "stamping stays nominal" in body
 

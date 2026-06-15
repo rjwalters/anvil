@@ -442,11 +442,14 @@ def test_rubric_preserves_existing_critical_flags_section():
 
 
 def test_rubric_preserves_dimensions_table():
-    """The 9-dim /44 rubric table MUST remain — the refs back-check is
+    """The 10-dim /49 rubric table MUST remain — the refs back-check is
     a sibling subsection, not a replacement.
 
     Post-#357 the deck rubric migrated from /40 (8 dims, ≥35) to /44
     (9 dims, ≥39) with dim 9 *Rhetorical economy* at weight 4.
+    Post-#550 it migrated from /44 (9 dims, ≥39) to /49 (10 dims, ≥43)
+    with dim 10 *Business-model & unit-economics credibility* at
+    weight 5.
     """
     body = _read(RUBRIC_MD)
     assert "Narrative arc" in body, "rubric.md MUST preserve dim 1"
