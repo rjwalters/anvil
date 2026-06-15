@@ -96,6 +96,14 @@ For the decision:
    - For each dimension scoring <50% of weight after aggregation: list the specific changes needed to lift the score (drawn from the relevant critic's findings).
    - **Conflict resolution**: when critics disagree (e.g., reviewer says "more risks", narrative says "fewer slides"), explicitly pick a synthesis. Document the conflict and the resolution in `_revision-log.md`.
    - **Preserve high-scoring sections**: any dimension scoring ≥75% of weight in the prior iteration must remain at ≥75% in the revised iteration. Track regressions in `_revision-log.md`.
+7b. **Consult the load-bearing economic-substance subset of parity findings BEFORE bulk-dismissing `only_in_memo`** — issue #553:
+   - Read `<thread>.{N}.review/_summary.md`'s `lint.deck_memo_parity.only_in_memo_economic` list (the same list also surfaces under `findings.md` § "Parity-lint findings (deck↔memo, optional)" → "Economic substance dropped from deck (load-bearing subset)"). When the lint skipped or no memo sibling exists, this list is empty and the step is inactive.
+   - **Why this step exists**: thin-deck-vs-rich-memo is the expected steady state for most threads — decks are legitimately terser than memos — and the broader `lint.deck_memo_parity.only_in_memo` set will frequently fire on prose tokens (acronyms, dates, percentages in regulatory-background) that are correctly dropped from the deck. The natural reviser response to the broader set is "accept the divergence, document if needed, move on." That response is **correct** for the broader set and **wrong** for the economic subset: each `only_in_memo_economic` token is a load-bearing economic number the memo carried (an attach rate, contribution-margin figure, pricing point, ARR/MRR / unit-economics claim) that the deck dropped. The canary failure shape (Docent, 2026-06-12) was the operator bulk-dismissing all `only_in_memo` warnings as "thin deck, by design" and missing a `$/seat` contribution-margin figure hidden in the noise.
+   - **Framing for the reviser**: for each token in `only_in_memo_economic`, ask **"the memo carried this economic substance; was the drop from the deck deliberate?"** — NOT the broader-set framing of "drift, reconcile or accept." Three resolutions:
+     - **Port it (preferred default for true economic substance).** Add the claim into `<thread>.{N+1}/deck.md` on whichever business-model / unit-economics slide carries the load-bearing assumption. Record the resolution under `_revision-log.md` § "Parity-lint resolutions (economic subset)" as `Resolution: ported — added <token> to Slide N (<slide title>)`. Do NOT inflate the deck to carry the *entire* memo prose — port the token + 1-2 sentences of context so the deck remains terse but the economic claim is present.
+     - **Deliberate omission (requires justification).** When the drop is intentional (e.g., the deck targets a different audience that does not need the unit-economics detail; the memo carries an in-progress assumption the deck deliberately omits), add `<!-- anvil-lint-disable: deck_memo_parity -->` on the memo line carrying the token AND record under `_revision-log.md` § "Parity-lint resolutions (economic subset)" as `Resolution: deliberate omission — <one-line reason>`. The escape-hatch directive on the **memo** line (not the deck line) silences both the broader `only_in_memo` finding and the `only_in_memo_economic` finding on the next iteration.
+     - **Decline (rare).** When the token is in the economic subset but on review is actually not load-bearing (e.g., a percentage in a footnote that the classifier promoted via proximity to a vocab term that does not apply to that specific number), record under `_revision-log.md` § "Parity-lint resolutions (economic subset)" as `Resolution: declined — false positive; <one-line reason>`. The next iteration will re-fire the warning; if it persists, the operator can suppress with the escape-hatch directive.
+   - **Do NOT silently treat the economic subset the same as the broader set.** The bulk-dismiss response is the canary failure mode this step exists to prevent. Even when the resolution is `deliberate omission`, the reviser MUST visit each token in the subset and emit a per-token entry in the revision log.
 8. **Produce revised `deck.md`** at `<thread>.{N+1}/deck.md`:
    - Address each planned change.
    - **Preserve the no-fabrication contract**: every number / name / asset on a slide must continue to trace to `<thread>/BRIEF.md`. The reviser is allowed to drop content but not invent.
@@ -160,6 +168,21 @@ For the decision:
 
     - `deck-design` critic was not run on this iteration (figures/ updated, deck.pdf needs re-render). Operator should run `deck-figures` then `deck-design` on .2 before next aggregate.
     - Founder follow-up needed: advisor public-listing permission for Slide 10.
+
+    ## Parity-lint resolutions (economic subset)
+
+    One row per token in
+    `<thread>.{N}.review/_summary.md`'s
+    `lint.deck_memo_parity.only_in_memo_economic` list (issue #553). The
+    reviser MUST visit each token in this subset before bulk-dismissing
+    the broader `only_in_memo` set — see step 7b for the framing
+    contract. ONLY present when the economic subset is non-empty (no
+    subsection on a clean revision or a thread without a memo sibling).
+
+    | Token | Memo line | Resolution |
+    |---|---|---|
+    | $2.50 | memo line 12 | ported — added "$2.50 contribution margin per seat" to Slide 9 (Business model). |
+    | 8% | memo line 14 | deliberate omission — added `<!-- anvil-lint-disable: deck_memo_parity -->` on memo line 14; the deck deliberately omits the per-segment attach-rate breakdown for narrative density. |
 
     ## Stale token findings
 
