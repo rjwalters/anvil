@@ -36,12 +36,11 @@ drafter / reviewer / reviser contracts).
 
 ### Not scaffolded here (by design)
 
-- **`VALUES.md`** — deferred to issue #578. It needs schema treatment and
-  the privacy story (some values content is sensitive), so it is not a
-  ship-now template.
-- **Private / `.gitignored` grounding** — deferred to issue #577. The
-  scaffold path here writes *committed* templates only; it builds no
-  auto-gitignore or git-sync machinery.
+- **`VALUES.md`** — deferred to issue #578. It needs schema treatment, so
+  it is not a ship-now *template*. The **privacy mechanism it depends on
+  ships now** (issue #577; see "Private grounding" below): #578's
+  `VALUES.md` template simply declares a `VALUES.local.md` (or
+  `.voice/VALUES.md`) using the already-shipped private path.
 - **The `vocab` reminder CLI tool** — deferred to issue #579. The
   vocabulary template references such a tool as an *optional, additive*
   note; it does not depend on one.
@@ -105,10 +104,57 @@ selected skills. The stage:
   writes nothing;
 - does **not** auto-edit your `BRIEF.md`. The installer prints the exact
   `voice:` YAML snippet to paste, so the wiring stays explicit and a
-  hand-authored BRIEF is never rewritten.
+  hand-authored BRIEF is never rewritten;
+- **protects the private-grounding paths** (issue #577) by appending the
+  `*.local.md` and `/.voice/` patterns to your `.gitignore` idempotently
+  (it never duplicates an existing entry and never rewrites unrelated
+  lines). See "Private grounding" below.
 
 Zero-to-active path for a fresh adopter:
 
 1. Run the installer (with `essay` or `memo` selected).
 2. Paste the printed `voice:` snippet into your project `BRIEF.md`.
 3. Fill in the `<!-- replace me -->` placeholders in the scaffolded docs.
+
+## Private grounding (`.gitignored` personal docs)
+
+The personal layer of voice grounding — `VALUES.md`-class stances,
+anti-stances, and standing — is exactly the content many authors do NOT
+want committed into a shared or public repo. Anvil makes private
+grounding a **first-class, protected posture** (issue #577). The full
+contract lives in `anvil/lib/snippets/voice_grounding.md` §"Private
+grounding"; the practical summary:
+
+- **It just works because resolution ignores git status.** A
+  `.gitignored` declared doc resolves and activates the voice tier
+  *identically* to a committed one — same load order, same grounding,
+  same `major` finding if it is declared-but-missing. There is no
+  separate private code path.
+- **Convention.** The documented default is the **`*.local.md` suffix**
+  (e.g. `VALUES.local.md`); a gitignored **`.voice/` locus** (e.g.
+  `.voice/VALUES.md`) is the supported alternative. Pick one per repo.
+- **Declare it like any other doc:**
+
+  ```yaml
+  voice:
+    style_guide: STYLE_GUIDE.md      # committed — team-shared register
+    values: VALUES.local.md          # private  — gitignored, never committed
+  ```
+
+- **What private guarantees:** the doc grounds drafting/review like any
+  other; the installer gitignores its path; anvil's git-sync hook never
+  stages or commits it.
+- **What private does NOT guarantee:** it is **not encryption**, it does
+  **not** stop a human's `git add -f` or a non-anvil tool, and it does
+  **not** stop the doc's *influence* from showing up in committed prose
+  (that is the point — the voice is grounded, the source stays private).
+
+### Layering: deferred
+
+A committed base + private overlay (e.g. `VALUES.md` committed +
+`VALUES.local.md` gitignored, merged or last-wins) is **deliberately
+deferred** to a follow-up (epic #575). Anvil ships the
+**single-private-doc model first** — it solves the canary's stated need
+(a private `VALUES.md`), avoids multiplying the resolver's
+one-entry-per-kind surface, and the `*.local.md` convention leaves the
+door open to add layering later without a breaking change.

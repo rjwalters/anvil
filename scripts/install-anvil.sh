@@ -501,6 +501,54 @@ copy_file_with_parents() {
   chmod 0644 "$dst"
 }
 
+# Append a single pattern to a .gitignore file idempotently (issue #577).
+#
+# Used by the private voice-grounding scaffold (Stage 7.9) to protect a
+# gitignored grounding doc (e.g. VALUES.local.md) from accidental commit. This
+# is the first installer-side .gitignore *writer* (project-share only ever
+# *suggests*); kept as a reusable helper so sibling #578 can consume it.
+#
+# Contract:
+#   * Idempotent: scans existing non-comment lines; if one already covers the
+#     pattern (exact match after trimming, or a broader pattern equal to it),
+#     it appends nothing and returns. Never duplicates an entry.
+#   * Never rewrites or reorders existing lines — it only appends.
+#   * Creates the .gitignore if absent, with a leading section comment.
+#   * Ensures the file ends with a newline before appending (no line-joining).
+#
+# Args: $1 = path to .gitignore, $2 = pattern to ensure present.
+gitignore_covers() {
+  # Mirror project-share/lib/apply.py::_gitignore_covers minus the dir-only
+  # candidates: here the pattern is matched verbatim against trimmed lines.
+  local line="$1" pat="$2"
+  [[ "$line" == "$pat" ]]
+}
+
+append_to_gitignore_idempotent() {
+  local gitignore="$1" pattern="$2"
+  if [[ -f "$gitignore" ]]; then
+    # Already covered? Scan non-comment, non-blank lines for an exact match.
+    local raw line
+    while IFS= read -r raw || [[ -n "$raw" ]]; do
+      line="${raw#"${raw%%[![:space:]]*}"}"   # ltrim
+      line="${line%"${line##*[![:space:]]}"}"  # rtrim
+      [[ -z "$line" || "$line" == \#* ]] && continue
+      if gitignore_covers "$line" "$pattern"; then
+        return 0  # already ignored — no-op
+      fi
+    done < "$gitignore"
+    # Ensure a trailing newline so we never join onto an existing line.
+    [[ -n "$(tail -c1 "$gitignore" 2>/dev/null)" ]] && printf '\n' >> "$gitignore"
+    printf '%s\n' "$pattern" >> "$gitignore"
+  else
+    {
+      printf '# Anvil private voice-grounding docs (issue #577) — kept local.\n'
+      printf '%s\n' "$pattern"
+    } > "$gitignore"
+    chmod 0644 "$gitignore"
+  fi
+}
+
 # Copy the lib tree from source, then restore (preserve) the consumer-modified
 # override-target files from the destination (issue #490). Used by the Stage 5
 # skip path: framework code under the lib tree must still upgrade (so the
@@ -1238,9 +1286,19 @@ fi
 #     (issue #81 honesty discipline).
 #
 # Reuses the existing `voice:` grammar (anvil/lib/project_brief.py::VoiceDocs /
-# resolve_voice_docs) — no new declaration mechanism. VALUES.md (#578), the
-# private/.gitignored grounding model (#577), and the vocab CLI tool (#579) are
-# deliberately out of scope here.
+# resolve_voice_docs) — no new declaration mechanism.
+#
+# Private voice-grounding protection (issue #577): the personal layer of voice
+# grounding (VALUES.md-class stances) is the half a consumer often will NOT want
+# committed. Anvil makes private grounding a designed posture — the documented
+# convention is the `*.local.md` suffix (default) or a `.voice/` locus
+# (alternative). resolve_voice_docs resolves a gitignored declared doc
+# identically to a committed one (it never consults git status), so the only
+# work is to PROTECT the private path from accidental commit. This stage appends
+# those patterns to the consumer's .gitignore idempotently
+# (append_to_gitignore_idempotent above) so a private VALUES.local.md never gets
+# committed by mistake. VALUES.md's own template/schema is #578, a downstream
+# consumer of this already-shipped private path.
 info "Stage 7.9: scaffold starter voice-grounding docs (anvil/templates/voice -> consumer root)"
 SRC_VOICE_DIR="$ANVIL_ROOT/anvil/templates/voice"
 VOICE_SKILL_SELECTED=false
@@ -1267,6 +1325,36 @@ else
       do_action "scaffold voice-grounding doc at $voice_dst_name (consumer-owned; tune the <!-- replace me --> placeholders)" \
         copy_file_with_parents "$voice_src" "$voice_dst"
       [[ "$DRY_RUN" == true ]] || { ok "$voice_dst_name scaffolded"; VOICE_SCAFFOLDED_ANY=true; }
+    fi
+  done
+
+  # Protect the private voice-grounding paths (issue #577). The documented
+  # convention is `*.local.md` (default) and a `.voice/` locus (alternative);
+  # we gitignore BOTH patterns so a consumer adopting EITHER is covered, and a
+  # private VALUES.local.md (or .voice/VALUES.md) is never committed by
+  # accident. Idempotent (re-install never duplicates) and never rewrites
+  # unrelated lines (append_to_gitignore_idempotent). This is a DISTINCT
+  # do_action from the file copy so --dry-run output and skip-notes read
+  # clearly. The append covers both new and pre-existing .gitignore files.
+  VOICE_GITIGNORE="$TARGET/.gitignore"
+  for voice_pattern in "*.local.md" "/.voice/"; do
+    # Determine whether the pattern is already covered, so the note reads
+    # honestly under both --dry-run and a real re-run.
+    voice_pat_covered=false
+    if [[ -f "$VOICE_GITIGNORE" ]]; then
+      while IFS= read -r voice_raw || [[ -n "$voice_raw" ]]; do
+        voice_line="${voice_raw#"${voice_raw%%[![:space:]]*}"}"
+        voice_line="${voice_line%"${voice_line##*[![:space:]]}"}"
+        [[ -z "$voice_line" || "$voice_line" == \#* ]] && continue
+        if [[ "$voice_line" == "$voice_pattern" ]]; then voice_pat_covered=true; break; fi
+      done < "$VOICE_GITIGNORE"
+    fi
+    if [[ "$voice_pat_covered" == true ]]; then
+      note ".gitignore already ignores '$voice_pattern' (private voice grounding) — skipping append"
+    else
+      do_action "append '$voice_pattern' to .gitignore (protect private voice-grounding docs from commit)" \
+        append_to_gitignore_idempotent "$VOICE_GITIGNORE" "$voice_pattern"
+      [[ "$DRY_RUN" == true ]] || ok "'$voice_pattern' added to .gitignore (private voice grounding stays local)"
     fi
   done
 fi
@@ -1542,6 +1630,16 @@ else
     echo "               vocabulary: VOCABULARY.md"
     echo "         An existing STYLE_GUIDE.md / VOCABULARY.md is never overwritten (per-file"
     echo "         skip). See anvil/templates/voice/README.md for the four-doc taxonomy."
+    echo ""
+    echo "         Private grounding (issue #577): personal VALUES.md-class stances you do"
+    echo "         NOT want committed go in a gitignored doc — the documented convention is"
+    echo "         a '*.local.md' suffix (e.g. VALUES.local.md) or a '.voice/' locus. Both"
+    echo "         patterns were added to your .gitignore, and anvil's git-sync hook never"
+    echo "         commits them. A gitignored doc resolves identically to a committed one;"
+    echo "         declare it in the same voice: block, e.g.:"
+    echo "               values: VALUES.local.md   # private — resolves, never committed"
+    echo "         NOTE: this is not encryption and does not stop 'git add -f' — it keeps"
+    echo "         the private source out of anvil's own commits, not out of every tool."
   fi
   if [[ "$DEPS_MISSING" -gt 0 ]]; then
     warn "install complete, but $DEPS_MISSING renderer dependenc$([[ "$DEPS_MISSING" -eq 1 ]] && echo y || echo ies) missing (see above) -- deck/slides rendering will be impaired until installed"
