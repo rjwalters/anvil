@@ -48,6 +48,13 @@ This is the terminal command. After `ip-uspto-finalize` succeeds, the package is
 ### Pre-flight gates (must all pass before producing the package)
 
 4. **Audit gate**: `<thread>.{N}.audit/_summary.md` records `passed: true`. (Verified in step 1.)
+4b. **Audit-time render-gate backstop** (issue #572):
+    - Read `<thread>.{N}.audit/_gate.json` (the `GateResult.to_json()` payload from `ip-uspto-audit.md` Check 11).
+    - If the file is missing (legacy pre-#572 audit sibling), emit a `BLOCKED` notice naming the pre-#572 audit: "audit sibling predates the render-gate backstop (issue #572); re-run `ip-uspto-audit <thread>` to refresh."
+    - If `_gate.json` records `pass: false` AND `overfull_boxes` is non-empty, exit with a `BLOCKED` notice that enumerates each overfull box's pt-overflow + source-line span. Example: `BLOCKED: audit-time render-gate found 2 overfull box(es) on <thread>.{N}/spec.tex: Overfull \hbox 83.6pt at L412--L418; Overfull \vbox 18.7pt at L647. The provisional canary (issue #572) reached FILING-READY with this exact defect shape; the backstop refuses to assemble <thread>.final/ until the overfulls are revised away. Run ip-uspto-revise <thread>.`
+    - If `_gate.json` records `pass: false` but the failure was a non-overfull dimension (compile, placeholders), the audit's own pass/fail rule already short-circuited at step 4 — this branch is defensive and should not normally fire. Still, emit a `BLOCKED` notice naming the failed dimensions and the audit's findings.md for context.
+    - If `_gate.json` records `pass: true` (the common case — the audit's Check 11 either ran cleanly or degraded gracefully on engine-unavailable), proceed.
+    - **No new compile here**. The audit already compiled and recorded the result. The finalize gate is a read of the audit's _gate.json, not a re-compile — the audit sibling is read-only, and any new defect introduced AFTER the audit must trigger a new audit cycle (a new revise creates a new version, the audit is re-run on it, and finalize reads the fresh _gate.json). This matches the "audit sibling is the integrity record" discipline.
 5. **Inventorship matrix gate**:
    - `<thread>/inventorship.md` exists.
    - Frontmatter `matrix_locked: true`.

@@ -1,0 +1,61 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024)
+entering extended mode
+(./spec.tex
+LaTeX2e <2024-06-01> patch level 1
+Document Class: anvil-uspto 2025-01-01 v1.0 USPTO patent application
+(./anvil-uspto.cls)
+(/usr/local/texlive/2024/texmf-dist/tex/latex/base/article.cls)
+[1]
+Overfull \hbox (4.21pt too wide) in paragraph at lines 142--144
+[]\OT1/cmr/m/n/10.95 The system 8 communicates with controller 12 via bus 14 (s
+ee FIG. 2).
+[2]
+Overfull \hbox (12.74pt too wide) in paragraph at lines 197--201
+[]\OT1/cmr/m/n/10.95 In one embodiment, the apparatus includes a transducer ele
+ment configured to convert mechanical strain into an electrical signal.
+[3]
+Overfull \hbox (7.55pt too wide) in paragraph at lines 233--234
+[]\OT1/cmr/m/n/10.95 An additional aspect of the disclosed system is the wirele
+ss telemetry subsystem (16).
+[4]
+Overfull \hbox (28.92pt too wide) in paragraph at lines 305--309
+[]\OT1/cmr/m/n/10.95 [0042] Table 3 enumerates calibration coefficients for eac
+h channel of the multichannel acquisition system.
+[5]
+Overfull \hbox (83.6pt too wide) in paragraph at lines 412--418
+[]\OT1/cmr/m/n/10.95 Table 4: Comparison of measured performance metrics for th
+e disclosed embodiments against representative prior-art baselines reported in
+literature surveyed during Background.
+[6]
+Overfull \hbox (16.21pt too wide) in paragraph at lines 489--491
+[]\OT1/cmr/m/n/10.95 The processor 22 is configured to receive the digitized si
+gnal stream and execute a trained inference model.
+[7]
+Overfull \hbox (9.83pt too wide) in paragraph at lines 534--537
+[]\OT1/cmr/m/n/10.95 As described above with reference to FIG. 5, the housing 1
+8 encloses the analog front-end (AFE) 24 and the digital back-end 26.
+[8]
+Overfull \hbox (45.12pt too wide) in paragraph at lines 612--617
+[]\OT1/cmr/m/n/10.95 Table 5 summarizes the sweep results across the full opera
+ting envelope (temperature, supply voltage, and input frequency).
+[9]
+Overfull \vbox (18.7pt too high) detected at line 647
+[10]
+Overfull \hbox (22.35pt too wide) in paragraph at lines 689--691
+[]\OT1/cmr/m/n/10.95 The communications module 30 implements the wireless prot
+ocol stack including the physical, MAC, and network layers.
+[11]
+Overfull \hbox (6.42pt too wide) in paragraph at lines 743--745
+[]\OT1/cmr/m/n/10.95 The power-management unit 34 selects among battery, wired,
+and inductive sources.
+[12]
+Overfull \hbox (15.18pt too wide) in paragraph at lines 802--805
+[]\OT1/cmr/m/n/10.95 In further embodiments the disclosed system includes a sec
+ondary radio (38) configured for short-range pairing.
+[13]
+Overfull \hbox (11.05pt too wide) in paragraph at lines 877--879
+[]\OT1/cmr/m/n/10.95 Calibration data is stored in non-volatile memory 42 and i
+s read at boot by the controller 12.
+[14]
+Output written on spec.pdf (14 pages, 187234 bytes).
+Transcript written on spec.log.

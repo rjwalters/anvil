@@ -34,6 +34,8 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
 <thread>.{N}.audit/
   _summary.md       Pass/fail boolean + per-check status
   findings.md       Itemized findings (severity, location, rationale, suggested fix)
+  _gate.json        Render-gate backstop result (issue #572) — GateResult.to_json() payload
+                    from Check 11; consumed by ip-uspto-finalize's pre-finalize gate
   _meta.json        { critic: "audit", role: "ip-uspto-audit.md", started, finished, model, schema_version, scorecard_kind: "machine-summary" }
   _progress.json    Phase state for the audit
 ```
@@ -45,7 +47,7 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
 1. **Discover state**: find the highest `N` with `<thread>.{N}/_revise-result.md` containing `READY_FOR_AUDIT`. If no such version exists, exit with an error: "no version is READY_FOR_AUDIT; complete the revise cycle first." Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.audit)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.audit.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same portfolio root are NOT touched (issue #350, #376).
 2. **Idempotence check**: if `<thread>.{N}.audit/` exists (the atomic-rename contract guarantees the dir only exists when complete), exit early.
 3. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial audit left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.audit.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.audit/` exists without `_summary.md`, delete and re-audit.
-4. **Open the staged sidecar** for the audit dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.audit, required_files=["_summary.md", "findings.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.audit.tmp/`), NOT inside the final `<thread>.{N}.audit/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`.
+4. **Open the staged sidecar** for the audit dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.audit, required_files=["_summary.md", "findings.md", "_gate.json", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.audit.tmp/`), NOT inside the final `<thread>.{N}.audit/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`. The `_gate.json` file is written by Check 11 (render-gate backstop, issue #572) and is part of the required-files manifest — a Check 11 skip due to engine-unavailable still writes an `_gate.json` payload with `compile_status="unavailable"` so the manifest is satisfied.
 
 5. **Run audit checks** (collect findings; do not short-circuit):
 
@@ -100,6 +102,13 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
    - If figures have been rendered (TikZ or external), spot-check that each renders cleanly under the build pipeline.
    - Severity `minor` (informational; figures are typically completed by a human illustrator).
 
+   ### Check 11 — Render-gate backstop (compile + overfull + placeholders, issue #572)
+   - Invoke `anvil/lib/render_gate.py`'s `compile_and_gate(...)` against `<thread>.{N}/spec.tex` with `engine="pdflatex"`, `page_cap=None`, AND `overfull_threshold_pt=2.0` (the ip-skill legal-artifact calibration override — same value the pre-flight Check 9 uses).
+   - **Why this is a check at audit (NOT a duplicate of pre-flight)**: the pre-flight runs at the `REVISED → REVIEWED` loop edge. A late-revise edit AFTER the last pre-flight pass (e.g., a one-line table change between the final review and the READY_FOR_AUDIT marker) can introduce a new overfull box that reaches the audit unchallenged. This was the load-bearing gap that let the sphere canary's 83.6pt overfull reach a filed provisional (issue #572). The audit-time gate is the **backstop**: if the pre-flight was run AND nothing changed after it, this check is a no-op (the same compile is clean). If something DID change, the gate catches the new overfull before `ip-uspto-finalize` can package it.
+   - **Mechanical / pass-fail** — does NOT score a rubric dimension. Findings with severity `blocker` are added to the audit findings stream, which step 6's pass/fail rule already short-circuits on. On engine-unavailable (`pdflatex` not on PATH), the gate degrades gracefully (`compile_status="unavailable"`) and emits a `minor` finding (not a blocker) — audit still passes on CI without LaTeX.
+   - Source-side placeholder patterns are the same set the pre-flight uses (defaults plus the ip-uspto-specific `\refnum{??}` / `\anvilpara{}`); duplicate placeholder findings at audit time are not expected (the pre-flight already cleared them) and any hits indicate a post-pre-flight regression.
+   - Write the `GateResult.to_json()` payload to the audit staging dir's `_gate.json` for `ip-uspto-finalize`'s pre-finalize read (see `ip-uspto-finalize.md` step 4b). The finalize gate refuses to assemble `<thread>.final/` when any audit-time overfull finding is present, naming the pt-overflow and the source-line span in its `BLOCKED` notice.
+
 6. **Determine pass/fail**:
    - Pass iff no finding has severity `blocker`.
    - `major` findings do not block but should be addressed where feasible.
@@ -126,6 +135,7 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
    | 8. Background admissions | major | 1 (Background ¶[0008] could be construed as admitting Smith-2019 as prior art) |
    | 9. Inventorship matrix currency | fail | 1 (matrix generated against thread.2/claims.tex; current is thread.3) |
    | 10. Drawing-stub completeness | pass | - |
+   | 11. Render-gate backstop (compile/overfull/placeholder) | pass | - |
 
    **Overall**: <PASS | FAIL — 3 blockers>
 
