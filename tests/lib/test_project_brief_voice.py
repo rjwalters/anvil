@@ -453,6 +453,123 @@ def test_resolve_absolute_path(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Private (.gitignored) grounding — resolution lock (issue #577)
+# ---------------------------------------------------------------------------
+#
+# resolve_voice_docs never consults git status, so a .gitignored declared doc
+# must resolve and activate the tier IDENTICALLY to a committed one. These
+# tests lock that designed posture: writing a real .gitignore that ignores the
+# declared doc changes nothing about resolution. The byte-identical-when-absent
+# contract (#428/#452) is re-asserted alongside so a privacy special-case can
+# never sneak in that hides a broken private declaration.
+
+
+def test_private_gitignored_doc_resolves_and_activates_tier(tmp_path: Path) -> None:
+    """A declared doc that is .gitignored resolves + activates — git is ignored."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    # The documented private convention: a *.local.md suffix.
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          values: VALUES.local.md
+        {_DOCS_STANZA}""",
+    )
+    # The private doc exists on disk...
+    (consumer / "VALUES.local.md").write_text("private stances", encoding="utf-8")
+    # ...and is gitignored at the consumer root (the protected posture #577 ships).
+    (consumer / ".gitignore").write_text("*.local.md\n", encoding="utf-8")
+
+    resolved = resolve_voice_docs(project, consumer_root=consumer)
+    # Tier ACTIVATES: one entry, resolved, not missing — identical to a
+    # committed doc. resolve_voice_docs never consults .gitignore.
+    assert len(resolved) == 1
+    entry = resolved[0]
+    assert entry.kind == "values"
+    assert entry.missing is False
+    assert entry.source == "consumer"
+    assert entry.paths == [str((consumer / "VALUES.local.md").resolve())]
+
+
+def test_private_voice_locus_doc_resolves(tmp_path: Path) -> None:
+    """The alternative `.voice/` locus convention also resolves when gitignored."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          values: .voice/VALUES.md
+        {_DOCS_STANZA}""",
+    )
+    voice_dir = consumer / ".voice"
+    voice_dir.mkdir()
+    (voice_dir / "VALUES.md").write_text("private stances", encoding="utf-8")
+    (consumer / ".gitignore").write_text("/.voice/\n", encoding="utf-8")
+
+    resolved = resolve_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    assert resolved[0].kind == "values"
+    assert resolved[0].missing is False
+    assert resolved[0].source == "consumer"
+    assert resolved[0].paths == [str((voice_dir / "VALUES.md").resolve())]
+
+
+def test_private_declared_but_missing_still_surfaces_major_finding(
+    tmp_path: Path,
+) -> None:
+    """A gitignored-but-absent private declaration is NOT special-cased away.
+
+    Privacy must not hide a broken declaration: a declared private doc that
+    does not exist on disk surfaces the same structured ``missing: true``
+    entry as any other missing declared doc (the reviewer's ``major``
+    finding). The .gitignore presence is irrelevant.
+    """
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          values: VALUES.local.md
+        {_DOCS_STANZA}""",
+    )
+    # Gitignore the pattern, but never create the file.
+    (consumer / ".gitignore").write_text("*.local.md\n", encoding="utf-8")
+
+    resolved = resolve_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    entry = resolved[0]
+    assert entry.kind == "values"
+    assert entry.missing is True
+    assert entry.paths == []
+    assert entry.declared == "VALUES.local.md"
+
+
+def test_absent_private_declaration_is_byte_identical_empty(tmp_path: Path) -> None:
+    """No private declaration → empty list (the #428/#452 zero-new-reads path).
+
+    A .gitignore that *could* match a private doc, with NO ``voice:`` block,
+    must still resolve to nothing: the privacy posture adds no new reads when
+    the tier is inactive.
+    """
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / BRIEF_FILENAME).write_text(
+        "---\nproject: proj\n---\n\n# BRIEF\n", encoding="utf-8"
+    )
+    (consumer / ".gitignore").write_text("*.local.md\n", encoding="utf-8")
+    (consumer / "VALUES.local.md").write_text("orphan private doc", encoding="utf-8")
+
+    assert resolve_voice_docs(project, consumer_root=consumer) == []
+
+
+# ---------------------------------------------------------------------------
 # rhetoric_rules sub-key + resolve_rhetoric_rules (issue #468)
 # ---------------------------------------------------------------------------
 

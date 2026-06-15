@@ -2993,6 +2993,17 @@ def resolve_voice_docs(
     glob (``Path.glob`` semantics, ``**`` supported); matches are
     sorted; a root "hits" when the glob matches ≥1 file.
 
+    **Git status is never consulted.** Resolution is purely
+    filesystem-driven, so a ``.gitignored`` declared doc resolves and
+    activates the tier *identically* to a committed one. This is the
+    designed, tested posture behind **private voice grounding** (issue
+    #577; ``anvil/lib/snippets/voice_grounding.md`` §"Private
+    grounding"): a personal ``VALUES.local.md``-class doc can be
+    gitignored to keep the source out of the repo while still grounding
+    drafting and review. There is no special private code path here — a
+    gitignored doc that is declared-but-missing surfaces the same
+    ``major`` finding as any other missing declared doc.
+
     **Never raises on absence.** Missing-file results come back as
     structured ``missing: true`` entries — a broken declaration is a
     defect for the reviewer to surface (``major`` finding), not an
