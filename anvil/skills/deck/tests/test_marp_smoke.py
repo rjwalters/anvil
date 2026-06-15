@@ -239,6 +239,9 @@ class TestMermaidDiagramDoesNotLeakAsRawCode(unittest.TestCase):
             )
 
             # 2. Render the diagram to PNG via the working mmdc path.
+            # ``--scale 2`` is the issue-#545 fix — mmdc crops to the
+            # diagram's intrinsic bbox, so sparse flowchart grammars need
+            # the 2x density to remain legible at the theme cap.
             png = figures / "flow.png"
             mmdc_proc = subprocess.run(
                 [
@@ -251,6 +254,8 @@ class TestMermaidDiagramDoesNotLeakAsRawCode(unittest.TestCase):
                     "1600",
                     "--height",
                     "900",
+                    "--scale",
+                    "2",
                     "--backgroundColor",
                     "white",
                 ],

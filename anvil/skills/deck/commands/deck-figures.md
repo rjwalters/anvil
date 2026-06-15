@@ -111,11 +111,34 @@ Nested under the thread root `<thread>/`:
      --output figures/<name>.png \
      --width 1600 \
      --height 900 \
+     --scale 2 \
      --backgroundColor white \
      -c anvil/lib/figures/mermaid-theme.json
    ```
    (`mmdc` from `@mermaid-js/mermaid-cli`; install via `npm install -g @mermaid-js/mermaid-cli`.)
 
+   Equivalently, the figurer may call the shared Python wrapper
+   `anvil.lib.render.render_mermaid_to_png(src_mmd, out_png)` which pins the
+   same flag set (issue #545). The wrapper is the preferred call path when
+   the figurer is implemented as Python; direct `mmdc` invocation is fine
+   for shell-driven figurers.
+
+   - `--scale 2` is **load-bearing** (issue #545). `mmdc`'s `--width` /
+     `--height` set the **viewport** the diagram renders into, **NOT** the
+     output canvas — mmdc then crops the PNG to the diagram's intrinsic
+     bounding box. For a sparse `flowchart LR` (3–4 nodes, no branches),
+     the intrinsic bbox is wide-and-thin, so the documented invocation
+     without `--scale` produces ~Nx80–110px thin strips that are
+     unreadable on the deck theme. `--scale 2` doubles the rendered SVG
+     dimensions before PNG conversion (so a 784×102 strip becomes
+     1568×204), which is the legibility knob for the default theme's
+     `max-height` cap.
+   - **Orientation guidance for cyclic / dense flowcharts**: prefer
+     `flowchart TB` over `flowchart LR` in the `.mmd` source when the
+     diagram has a feedback loop or more than ~4 nodes. `LR` with a small
+     node count crops to a thin strip; `TB` produces a taller, more
+     legible portrait PNG. `--scale 2` helps but does not re-orient — the
+     authoring fix is in the `.mmd` grammar, not the render flag.
    - `-c anvil/lib/figures/mermaid-theme.json` applies the shared Anvil
      mermaid theme (`theme: base` + navy `themeVariables`) so diagrams render
      on the deck brand palette (navy nodes, muted-grey edges, Helvetica) by

@@ -190,6 +190,131 @@ def check_mmdc_available() -> bool:
     return shutil.which("mmdc") is not None
 
 
+# Default path to the shared Anvil mermaid theme (navy nodes, muted-grey
+# edges, Helvetica). Resolved relative to a repo root by the caller. In an
+# installed consumer repo this resolves under ``.anvil/lib/figures/``.
+DEFAULT_MERMAID_THEME = Path("anvil/lib/figures/mermaid-theme.json")
+
+
+def render_mermaid_to_png(
+    src_mmd: Path,
+    out_png: Path,
+    *,
+    width: int = 1600,
+    height: int = 900,
+    scale: int = 2,
+    background_color: str = "white",
+    config: Optional[Path] = None,
+) -> Path:
+    """Render a Mermaid ``.mmd`` source to a PNG via the ``mmdc`` CLI.
+
+    This is the canonical wrapper consumed by ``deck-figures`` and
+    ``slides-figures`` (issue #545). The two skills previously documented
+    identical inline ``mmdc`` invocations; promoting the shared call into one
+    Python helper gives a single place to evolve the flag set (mirrors the
+    "lib promotion after second consumer" pattern documented in
+    ``CLAUDE.md``).
+
+    The default flag set:
+
+    - ``--width 1600 --height 900`` — viewport the diagram renders INTO
+      (NOT the output canvas — mmdc crops the PNG to the diagram's intrinsic
+      bounding box after rendering, so small-node-count ``flowchart LR``
+      grammars still produce wide-thin output regardless of this value).
+    - ``--scale 2`` — multiplies the rendered SVG dimensions by 2 before PNG
+      conversion. This is the load-bearing knob for legibility on the
+      default deck theme: it doubles pixel density so a 784×102 thin strip
+      becomes 1568×204, which is legible at the theme's ``max-height`` cap.
+      Without ``--scale``, the documented invocation produces unusable PNGs
+      for sparse flowchart grammars (the goodboy canary signal that drove
+      issue #545).
+    - ``--backgroundColor white`` — opaque white background by default; pass
+      ``transparent`` to overlay on theme-colored slide backgrounds.
+    - ``-c anvil/lib/figures/mermaid-theme.json`` — the shared navy-on-grey
+      Anvil mermaid theme. Pass ``config=None`` to use this default, or an
+      explicit path to override (consumers who ship their own theme).
+
+    Orientation guidance (NOT enforced by this function): for cyclic
+    flowcharts (e.g., a 3-node feedback loop), prefer ``flowchart TB`` over
+    ``flowchart LR`` in the ``.mmd`` source. ``LR`` with a small node count
+    crops to a wide-thin strip that ``--scale 2`` legibilizes but does not
+    re-orient. The figurer commands document this convention; this wrapper
+    does NOT auto-rewrite (an orientation auto-detect is a tracked follow-up).
+
+    Parameters
+    ----------
+    src_mmd:
+        Path to the input ``.mmd`` (Mermaid grammar) source.
+    out_png:
+        Output PNG path. Parent directory must exist (the figurer typically
+        creates ``figures/`` ahead of calling).
+    width, height:
+        Viewport dimensions in pixels. Defaults to ``1600x900``. Note: this
+        is the render viewport, not the output canvas — see the ``--scale``
+        note above for the legibility knob.
+    scale:
+        Multiplier applied to the rendered SVG before PNG conversion. The
+        default ``2`` is the issue-#545 fix: it doubles pixel density so
+        sparse flowchart grammars produce legible PNGs at the deck theme's
+        ``max-height`` cap.
+    background_color:
+        Mermaid ``--backgroundColor`` value. ``"white"`` (default),
+        ``"transparent"``, or a hex color.
+    config:
+        Optional override for the mermaid theme config (``-c <file>``).
+        Defaults to :data:`DEFAULT_MERMAID_THEME` when ``None``.
+
+    Returns
+    -------
+    The output PNG path (the same as ``out_png``), for caller chaining.
+
+    Raises
+    ------
+    RenderError
+        If ``mmdc`` is not on PATH (see :data:`MMDC_REMEDIATION` for the
+        full install story), or returns non-zero exit status.
+    FileNotFoundError
+        If ``src_mmd`` does not exist.
+    """
+    src_mmd = Path(src_mmd)
+    out_png = Path(out_png)
+    if not src_mmd.exists():
+        raise FileNotFoundError(f"mermaid source not found: {src_mmd}")
+
+    if not check_mmdc_available():
+        raise RenderError(MMDC_REMEDIATION)
+
+    config_path = config if config is not None else DEFAULT_MERMAID_THEME
+
+    cmd = [
+        "mmdc",
+        "--input",
+        str(src_mmd),
+        "--output",
+        str(out_png),
+        "--width",
+        str(width),
+        "--height",
+        str(height),
+        "--scale",
+        str(scale),
+        "--backgroundColor",
+        background_color,
+        "-c",
+        str(config_path),
+    ]
+
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, check=False
+    )
+    if result.returncode != 0:
+        raise RenderError(
+            f"mmdc failed (exit {result.returncode}): "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    return out_png
+
+
 # ---------------------------------------------------------------------------
 # pdfjam preflight (OPTIONAL — only needed for slides-handout N-up layouts)
 # ---------------------------------------------------------------------------
@@ -743,6 +868,7 @@ def render_matplotlib_figures(figures_dir: Path) -> List[Path]:
 __all__ = [
     "AUTO_SHRINK_REMEDIATION",
     "DEFAULT_MARP_CONFIG",
+    "DEFAULT_MERMAID_THEME",
     "IMAGE_LINT_REMEDIATION",
     "MEMO_RENDERER_REMEDIATION",
     "MMDC_REMEDIATION",
@@ -759,6 +885,7 @@ __all__ = [
     "check_xelatex_available",
     "require_pdfjam",
     "render_marp_to_pdf",
+    "render_mermaid_to_png",
     "render_pdf_to_pngs",
     "render_pandoc_to_pdf",
     "render_matplotlib_figures",
