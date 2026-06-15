@@ -114,7 +114,19 @@ class Thresholds:
     Mirrors ``anvil.lib.marp_lint.Geometry`` so consumers with
     a heavier-padding theme or a different aspect ratio can override
     without monkeypatching internals.
+
+    Issue #562 promoted the detector from a single-signal rule
+    (bottom-margin only) to a **two-of-three composite** rule. The three
+    peer-relative signals — bottom margin, top margin, content-area —
+    each have an outlier-ratio and an absolute-floor threshold; a page
+    is flagged when at least two signals fire together. The two-of-three
+    quorum keeps false positives low (a single legitimately sparser
+    slide does not trigger) while catching fit-to-scale shrink even when
+    a single signal (typically bottom margin) sits near the class
+    median.
     """
+
+    # --- bottom-margin signal (the original / pre-#562 single signal) ---
 
     # Outlier ratio: a page is flagged only when its bottom margin is more
     # than this multiple of the per-class median. 1.5 means "50% more
@@ -129,6 +141,38 @@ class Thresholds:
     # already has small bottom margins (an "outlier" there might still be
     # only 5% of slide height empty — not a real auto-shrink).
     abs_bottom_margin_floor: float = 0.18
+
+    # --- top-margin signal (#562) ---
+
+    # Outlier ratio for the top-margin signal. Marp fit-to-scale tends
+    # to push the top down proportionally; same 1.5x ratio convention.
+    top_margin_ratio_threshold: float = 1.5
+
+    # Absolute floor for the top margin. Smaller than the bottom floor
+    # (0.10 vs 0.18) because slides typically carry less whitespace at
+    # the top — a 10% top margin is already a noticeable gap on a 16:9
+    # safe area.
+    abs_top_margin_floor: float = 0.10
+
+    # --- content-area signal (#562) ---
+
+    # Outlier ratio for the content-area-norm signal. Inverted vs the
+    # other signals: a page is flagged when its content-area is SMALLER
+    # than the class median by this factor or more. 0.75 means
+    # "shrunk to 75% or less of peer-class content area" — empirically
+    # the threshold that fires on the GoodBoy slides 3/8 fit-shrink mode
+    # without tripping on slides that just happen to have less content.
+    content_area_ratio_threshold: float = 0.75
+
+    # --- composite rule ---
+
+    # Number of signals (out of 3) that must fire for a page to be
+    # flagged. Two-of-three is the design contract (issue #562): a
+    # single legitimately sparser slide does not trigger; a
+    # fit-to-scale-shrunk slide trips ≥2 signals together.
+    composite_signals_required: int = 2
+
+    # --- pixel-detection knobs (unchanged from pre-#562) ---
 
     # Minimum number of pages per class required to compute a baseline
     # median. Classes with fewer pages are skipped (recorded with a
@@ -160,7 +204,23 @@ _DEFAULT_THRESHOLDS = Thresholds()
 
 @dataclass
 class ContentBbox:
-    """The pixel extent of "content" rows/columns on one rendered slide."""
+    """The pixel extent of "content" rows/columns on one rendered slide.
+
+    Three peer-relative shrink signals are exposed as properties:
+
+    - :attr:`bottom_margin_norm` — fraction of slide height empty BELOW
+      the lowest content row. Pre-#562 this was the only signal; it
+      catches Marp's fit-to-frame when the shrunk content sits up near
+      the top of the safe area.
+    - :attr:`top_margin_norm` — fraction of slide height empty ABOVE the
+      first content row. Catches the fit-shrunk-and-centred case the
+      bottom-margin-alone rule missed (issue #562).
+    - :attr:`content_area_norm` — ``(content_w × content_h) / (slide_w ×
+      slide_h)``, the fraction of slide area filled by the content bbox.
+      The strongest peer-relative signal of fit-to-scale shrink: when
+      Marp scales the section, the bbox area drops measurably even when
+      bottom-margin stays close to the class median.
+    """
 
     top: int
     bottom: int  # inclusive
@@ -176,6 +236,37 @@ class ContentBbox:
             return 0.0
         return max(0.0, (self.height - 1 - self.bottom) / self.height)
 
+    @property
+    def top_margin_norm(self) -> float:
+        """Fraction of slide height empty above the first content row.
+
+        Issue #562: Marp's fit-to-frame scaling can leave a proportionally
+        large gap at the TOP of the slide (when the content is vertically
+        centred in the safe area or when the title scales down with the
+        rest of the section). A top-margin peer-vs-median ratio catches
+        the auto-shrink cases the bottom-margin-only rule misses.
+        """
+        if self.height == 0:
+            return 0.0
+        return max(0.0, self.top / self.height)
+
+    @property
+    def content_area_norm(self) -> float:
+        """Fraction of slide area filled by the content bbox.
+
+        Issue #562: ``(content_w × content_h) / (slide_w × slide_h)``.
+        This is the strongest peer-relative shrink signal — when Marp
+        scales the section, the bbox area shrinks proportionally even
+        when bottom-margin or top-margin alone don't budge. A fit-shrunk
+        slide with bottom-margin near the class median can still show
+        clearly-reduced bbox area vs peers.
+        """
+        if self.height == 0 or self.width == 0:
+            return 0.0
+        content_h = max(0, self.bottom - self.top + 1)
+        content_w = max(0, self.right - self.left + 1)
+        return (content_h * content_w) / float(self.height * self.width)
+
 
 @dataclass
 class AutoShrinkFinding:
@@ -186,15 +277,30 @@ class AutoShrinkFinding:
     serialiser. ``rule`` is always ``"auto-shrink-fit-compression"`` for
     consistency with the upstream-rule-naming convention used by
     marp_lint.
+
+    Post-#562 the finding carries the full triplet of peer-relative
+    signals (bottom margin, top margin, content area) so the reviser
+    sees WHICH signals fired and the per-class medians for each. The
+    legacy ``ratio`` field is preserved as the bottom-margin ratio for
+    backwards compatibility with downstream readers; new consumers
+    should read the per-signal fields directly.
     """
 
     slide: int
     class_name: str
+    # --- bottom margin signal (pre-#562) ---
     bottom_margin_norm: float
     median_bottom_margin_norm: float
-    ratio: float
-    severity: str  # always "error" today; reserved for future warning tier
-    message: str
+    ratio: float  # = bottom_margin_norm / median (legacy field)
+    # --- composite signals (#562) ---
+    top_margin_norm: float = 0.0
+    median_top_margin_norm: float = 0.0
+    content_area_norm: float = 0.0
+    median_content_area_norm: float = 0.0
+    signals_fired: tuple = ()  # subset of ("bottom_margin", "top_margin", "content_area")
+    # --- shared fields ---
+    severity: str = "error"  # reserved for future warning tier
+    message: str = ""
     rule: str = "auto-shrink-fit-compression"
 
     def to_dict(self) -> dict:
@@ -206,6 +312,13 @@ class AutoShrinkFinding:
                 self.median_bottom_margin_norm, 4
             ),
             "ratio": round(self.ratio, 3),
+            "top_margin_norm": round(self.top_margin_norm, 4),
+            "median_top_margin_norm": round(self.median_top_margin_norm, 4),
+            "content_area_norm": round(self.content_area_norm, 4),
+            "median_content_area_norm": round(
+                self.median_content_area_norm, 4
+            ),
+            "signals_fired": list(self.signals_fired),
             "rule": self.rule,
             "severity": self.severity,
             "message": self.message,
@@ -228,8 +341,17 @@ class AutoShrinkResult:
     findings: list[AutoShrinkFinding] = field(default_factory=list)
     skipped: bool = False
     reason: Optional[str] = None
+    # Bottom-margin median per class (kept for backwards compatibility).
     per_class_medians: dict[str, float] = field(default_factory=dict)
     skipped_classes: dict[str, str] = field(default_factory=dict)
+    # Post-#562: full median triplet per class. Each value is a dict with
+    # keys ``bottom_margin``, ``top_margin``, ``content_area``. The legacy
+    # ``per_class_medians`` field above is preserved (bottom_margin only)
+    # so existing readers don't break; new consumers can read the
+    # extended triplet directly.
+    per_class_medians_extended: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -249,6 +371,10 @@ class AutoShrinkResult:
             "per_class_medians": {
                 cls: round(v, 4)
                 for cls, v in self.per_class_medians.items()
+            },
+            "per_class_medians_extended": {
+                cls: {k: round(v, 4) for k, v in trip.items()}
+                for cls, trip in self.per_class_medians_extended.items()
             },
             "skipped_classes": dict(self.skipped_classes),
         }
@@ -436,6 +562,73 @@ def _ensure_pngs(
     return pngs, tmp
 
 
+def _median(values: list[float]) -> float:
+    """Median of a sorted list of floats. Empty list returns 0.0."""
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    mid = len(sorted_vals) // 2
+    if len(sorted_vals) % 2 == 1:
+        return sorted_vals[mid]
+    return 0.5 * (sorted_vals[mid - 1] + sorted_vals[mid])
+
+
+def _format_composite_message(
+    *,
+    slide_idx: int,
+    cls: str,
+    fired: list[str],
+    bbox: ContentBbox,
+    medians_triplet: dict[str, float],
+) -> str:
+    """Compose the AutoShrinkFinding message naming the signals that fired.
+
+    Issue #562: the reviser should see WHICH signals tripped (bottom
+    margin vs top margin vs content area) so the fix hint is actionable.
+    Each fired signal contributes a short phrase quoting the page's
+    value and the class median; the message ends with the same fix
+    hint the pre-#562 single-signal rule produced.
+    """
+    phrases: list[str] = []
+    if "bottom_margin" in fired:
+        bm_med = medians_triplet["bottom_margin"]
+        if bm_med <= 0:
+            ratio_str = "inf"
+        else:
+            ratio_str = f"{bbox.bottom_margin_norm / bm_med:.2f}x"
+        phrases.append(
+            f"bottom-margin {bbox.bottom_margin_norm * 100:.1f}% "
+            f"(class median {bm_med * 100:.1f}%, {ratio_str})"
+        )
+    if "top_margin" in fired:
+        tm_med = medians_triplet["top_margin"]
+        if tm_med <= 0:
+            ratio_str = "inf"
+        else:
+            ratio_str = f"{bbox.top_margin_norm / tm_med:.2f}x"
+        phrases.append(
+            f"top-margin {bbox.top_margin_norm * 100:.1f}% "
+            f"(class median {tm_med * 100:.1f}%, {ratio_str})"
+        )
+    if "content_area" in fired:
+        ca_med = medians_triplet["content_area"]
+        if ca_med <= 0:
+            pct_str = "n/a"
+        else:
+            pct_str = f"{(bbox.content_area_norm / ca_med) * 100:.0f}%"
+        phrases.append(
+            f"content-area {bbox.content_area_norm * 100:.1f}% of slide "
+            f"(class median {ca_med * 100:.1f}%; {pct_str} of class median)"
+        )
+    signals_clause = "; ".join(phrases)
+    return (
+        f"Slide {slide_idx} (class '{cls}') shows fit-to-scale shrink: "
+        f"{signals_clause}. Marp likely fit-to-frame-scaled this page — "
+        "trim 10–20 words from the densest element or move one bullet to "
+        "a peer slide so the content fits without auto-shrink."
+    )
+
+
 def detect_auto_shrink(
     deck_pdf: Path,
     deck_md: Path,
@@ -445,18 +638,29 @@ def detect_auto_shrink(
 ) -> AutoShrinkResult:
     """Detect Marp silent auto-shrink across all slides in ``deck_pdf``.
 
-    Per-class peer-comparison rule:
+    Per-class peer-comparison rule (composite, post-issue-#562):
 
     1. Classify each slide via ``<!-- _class: ... -->`` directives in
        ``deck_md`` (default class: ``"content"``).
-    2. Compute the per-PNG content bounding box; derive
-       ``bottom_margin_norm = (slide_h - content_bottom_y) / slide_h``.
+    2. Compute the per-PNG content bounding box; derive three peer-
+       relative signals — ``bottom_margin_norm``, ``top_margin_norm``,
+       and ``content_area_norm`` (bbox area / slide area).
     3. For each class with at least ``thresholds.min_peers_per_class``
-       pages, compute the median bottom-margin-norm.
-    4. Flag any page where BOTH conditions hold:
-       - ``bottom_margin_norm > thresholds.median_ratio_threshold *
-         median[class]``
-       - ``bottom_margin_norm > thresholds.abs_bottom_margin_floor``.
+       pages, compute the per-class median for each signal.
+    4. Evaluate three signal-fired predicates per page:
+
+       - **bottom-margin** — ``bottom_margin_norm > 1.5 × class_median``
+         AND ``> 0.18``
+       - **top-margin** — ``top_margin_norm > 1.5 × class_median``
+         AND ``> 0.10`` (#562)
+       - **content-area** — ``content_area_norm < 0.75 × class_median``
+         (#562; inverted polarity — content shrunk vs peers)
+
+       A page is flagged when at least ``composite_signals_required``
+       (default: 2) signals fire. The two-of-three quorum keeps false
+       positives low (a single legitimately sparser slide does not
+       trigger) while catching the fit-to-scale shrink the pre-#562
+       single-signal rule missed.
     5. Classes with fewer than ``min_peers_per_class`` pages are recorded
        in ``skipped_classes`` and never flagged — a singleton class
        (typical: one ``title``, one ``ask``) has no peers to compare
@@ -544,19 +748,22 @@ def detect_auto_shrink(
             )
             page_records.append((idx, cls, bbox))
 
-        # Group bottom-margin measurements by class. Skip pages whose
-        # bbox is None (blank PNG / detector couldn't run on this image).
-        by_class: dict[str, list[tuple[int, float]]] = {}
+        # Group per-page bboxes by class. Skip pages whose bbox is None
+        # (blank PNG / detector couldn't run on this image). Each entry
+        # carries the full bbox so we can read all three composite
+        # signals (bottom margin, top margin, content area) per #562.
+        by_class: dict[str, list[tuple[int, ContentBbox]]] = {}
         for slide_idx, cls, bbox in page_records:
             if bbox is None:
                 continue
-            by_class.setdefault(cls, []).append(
-                (slide_idx, bbox.bottom_margin_norm)
-            )
+            by_class.setdefault(cls, []).append((slide_idx, bbox))
 
         # Compute medians for classes with enough peers; record
-        # too-few-peers reasons for the others.
-        medians: dict[str, float] = {}
+        # too-few-peers reasons for the others. The composite rule
+        # (#562) needs three medians per class — bottom margin, top
+        # margin, and content area — so we compute the triplet here.
+        medians: dict[str, float] = {}  # legacy field: bottom-margin only
+        medians_extended: dict[str, dict[str, float]] = {}
         skipped_classes: dict[str, str] = {}
         for cls, observations in by_class.items():
             if len(observations) < th.min_peers_per_class:
@@ -566,51 +773,100 @@ def detect_auto_shrink(
                     "for a peer-median comparison."
                 )
                 continue
-            values = sorted(v for _, v in observations)
-            mid = len(values) // 2
-            if len(values) % 2 == 1:
-                medians[cls] = values[mid]
-            else:
-                medians[cls] = 0.5 * (values[mid - 1] + values[mid])
+            bm_vals = sorted(b.bottom_margin_norm for _, b in observations)
+            tm_vals = sorted(b.top_margin_norm for _, b in observations)
+            ca_vals = sorted(b.content_area_norm for _, b in observations)
+            medians[cls] = _median(bm_vals)
+            medians_extended[cls] = {
+                "bottom_margin": _median(bm_vals),
+                "top_margin": _median(tm_vals),
+                "content_area": _median(ca_vals),
+            }
 
-        # Generate findings: a page is flagged iff BOTH the ratio
-        # condition and the absolute floor condition hold.
+        # Composite-signal flag rule (issue #562). For each page we
+        # evaluate three independent peer-relative signals; a page is
+        # flagged when at least ``composite_signals_required`` of them
+        # fire. Each signal requires BOTH the per-class ratio condition
+        # AND the absolute-floor condition — same shape as the pre-#562
+        # single-signal rule, applied per signal.
         findings: list[AutoShrinkFinding] = []
         for cls, observations in by_class.items():
-            if cls not in medians:
+            if cls not in medians_extended:
                 continue
-            median = medians[cls]
-            for slide_idx, bm in observations:
-                if bm <= th.abs_bottom_margin_floor:
+            trip = medians_extended[cls]
+            for slide_idx, bbox in observations:
+                fired: list[str] = []
+                bm = bbox.bottom_margin_norm
+                tm = bbox.top_margin_norm
+                ca = bbox.content_area_norm
+
+                # 1. Bottom-margin signal — large gap below content.
+                if bm > th.abs_bottom_margin_floor:
+                    bm_med = trip["bottom_margin"]
+                    if bm_med <= 0:
+                        bm_ratio = float("inf")
+                    else:
+                        bm_ratio = bm / bm_med
+                    if bm_ratio > th.median_ratio_threshold:
+                        fired.append("bottom_margin")
+
+                # 2. Top-margin signal (#562) — large gap above content.
+                if tm > th.abs_top_margin_floor:
+                    tm_med = trip["top_margin"]
+                    if tm_med <= 0:
+                        tm_ratio = float("inf")
+                    else:
+                        tm_ratio = tm / tm_med
+                    if tm_ratio > th.top_margin_ratio_threshold:
+                        fired.append("top_margin")
+
+                # 3. Content-area signal (#562) — bbox shrunk vs peers.
+                # Inverted polarity vs the margin signals: a flag fires
+                # when content area is SMALLER than the median (the
+                # bbox has shrunk). No absolute floor needed — a tiny
+                # bbox is always suspicious; the ratio test is what
+                # protects against legitimately-sparse peer sets.
+                ca_med = trip["content_area"]
+                if ca_med > 0:
+                    ca_ratio = ca / ca_med
+                    if ca_ratio < th.content_area_ratio_threshold:
+                        fired.append("content_area")
+
+                if len(fired) < th.composite_signals_required:
                     continue
-                # Guard against median == 0 producing infinity. If median
-                # is zero, every non-zero bottom-margin is mathematically
-                # an "infinite ratio" — but the absolute floor check
-                # already filtered out the noise floor, so treat this as
-                # a flag candidate (the page IS an outlier vs. peers that
-                # have effectively no bottom margin).
-                if median <= 0:
-                    ratio = float("inf")
-                else:
-                    ratio = bm / median
-                if ratio <= th.median_ratio_threshold:
-                    continue
-                ratio_display = "inf" if ratio == float("inf") else f"{ratio:.2f}x"
-                message = (
-                    f"Slide {slide_idx} (class '{cls}') has bottom margin "
-                    f"{bm * 100:.1f}% of slide height; class median is "
-                    f"{median * 100:.1f}% ({ratio_display}). Marp likely "
-                    "fit-to-frame-scaled this page — trim 10–20 words "
-                    "from the densest element or move one bullet to a "
-                    "peer slide so the content fits without auto-shrink."
+
+                # Compose a message that names the signals that fired
+                # so the reviser has actionable rationale (issue #562).
+                message = _format_composite_message(
+                    slide_idx=slide_idx,
+                    cls=cls,
+                    fired=fired,
+                    bbox=bbox,
+                    medians_triplet=trip,
                 )
+                # Legacy ratio field — bottom-margin ratio for backwards
+                # compatibility. When the bottom-margin signal didn't
+                # fire, we still report the ratio honestly (computed
+                # against the class median); the message clarifies
+                # which signals actually triggered the finding.
+                bm_med_for_field = trip["bottom_margin"]
+                if bm_med_for_field <= 0:
+                    legacy_ratio = float("inf") if bm > 0 else 0.0
+                else:
+                    legacy_ratio = bm / bm_med_for_field
+
                 findings.append(
                     AutoShrinkFinding(
                         slide=slide_idx,
                         class_name=cls,
                         bottom_margin_norm=bm,
-                        median_bottom_margin_norm=median,
-                        ratio=ratio,
+                        median_bottom_margin_norm=trip["bottom_margin"],
+                        ratio=legacy_ratio,
+                        top_margin_norm=tm,
+                        median_top_margin_norm=trip["top_margin"],
+                        content_area_norm=ca,
+                        median_content_area_norm=trip["content_area"],
+                        signals_fired=tuple(fired),
                         severity="error",
                         message=message,
                     )
@@ -623,6 +879,7 @@ def detect_auto_shrink(
             skipped=False,
             reason=None,
             per_class_medians=medians,
+            per_class_medians_extended=medians_extended,
             skipped_classes=skipped_classes,
         )
     finally:
