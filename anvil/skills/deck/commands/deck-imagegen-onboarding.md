@@ -134,8 +134,9 @@ class CloudImageBackend:
             )
         if resp.status_code != 200:
             raise BackendError(f"image worker returned {resp.status_code}: {resp.text[:500]}")
-        if not resp.content.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise BackendError("image worker returned non-PNG bytes")
+        # deck-imagegen accepts PNG / JPEG / WebP and transcodes JPEG/WebP
+        # to PNG on disk (issue #564). Adapters do not need to enforce
+        # PNG-only on the bytes coming back from their worker.
         return resp.content
 ```
 
@@ -152,7 +153,7 @@ No auth code enters anvil; this skeleton lives entirely in your repo.
 The full spec is in `commands/deck-imagegen-adapter.md` § "Non-goals" and `commands/deck-imagegen.md` § "Failure modes". The operational summary:
 
 - **Anvil never retries.** One `generate` call per slot per run. Retry/backoff (transient network errors, 429s with `Retry-After`, provider flakiness) lives inside your adapter; raise `BackendError` only when your retry budget is exhausted.
-- **Per-slot containment.** A `BackendError` (or non-PNG bytes) on one slot writes `assets/generated/<slot>.png-FAILED.md` and the run continues. `phases.imagegen.state` is `partial` when at least one slot succeeded, `failed` when every slot failed.
+- **Per-slot containment.** A `BackendError` (or unrecognized-image-format bytes) on one slot writes `assets/generated/<slot>.png-FAILED.md` and the run continues. `phases.imagegen.state` is `partial` when at least one slot succeeded, `failed` when every slot failed. JPEG and WebP bytes are auto-transcoded to PNG on disk (issue #564) — they are NOT per-slot failures.
 - **Stubs clean up on later success.** Fix the cause, re-run `deck-imagegen`, and a succeeding slot deletes its stale `*-FAILED.md` stub.
 - **Non-`BackendError` exceptions propagate** and abort the run — they indicate a bug in adapter glue, not a generation failure. Wrap everything your provider can throw.
 - **Idempotence is journal-keyed.** Unchanged prompt+style+steps with an existing PNG → `skipped-unchanged`, zero backend calls. Changing any element of the contract re-dispatches that slot only.
@@ -161,7 +162,7 @@ The full spec is in `commands/deck-imagegen-adapter.md` § "Non-goals" and `comm
 
 For consumers with a working image pipeline (e.g., a slides skill calling an in-house Flux 1 Schnell worker):
 
-- [ ] **Map your call into `generate(prompt, style, steps) -> bytes`.** Your existing "send prompt, get image" function becomes the body of `generate`. Return raw PNG bytes (convert/transcode inside the adapter if your worker returns JPEG/WebP).
+- [ ] **Map your call into `generate(prompt, style, steps) -> bytes`.** Your existing "send prompt, get image" function becomes the body of `generate`. Return the raw bytes your worker produces — anvil accepts PNG, JPEG, or WebP and transcodes JPEG/WebP to PNG on disk (issue #564). If you're returning JPEG or WebP, install the optional extra: `pip install 'anvil[deck_imagegen]'`. PNG-native adapters need no extras.
 - [ ] **Fold model routing onto `style`.** If your worker takes a model or LoRA selector, derive it from the `style` preset key (e.g., `documentary` → photo model, `diagram` → graphic model). The prompt already includes the preset's prose prefix; `style` is the routing hint.
 - [ ] **Fold step counts onto `steps`.** `steps=None` means "your default" — map it to whatever your worker's default inference-step count is. Per-slide overrides arrive via `<!-- anvil-imagegen: <slot> steps=N -->` markers.
 - [ ] **Move auth into the adapter** per "Auth bootstrap" above (constructor bootstraps, `generate` refreshes).

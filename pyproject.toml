@@ -125,6 +125,21 @@ image_lint = [
     "Pillow>=10.0",
     "numpy>=1.24",
 ]
+# `anvil:deck` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
+# Real image backends (Flux, DALL-E, SDXL, etc.) often default to JPEG
+# or WebP rather than PNG. The deck-imagegen dispatcher accepts those
+# formats from a consumer adapter and transcodes them to PNG via Pillow
+# before writing to disk, eliminating the
+# every-consumer-reimplements-the-same-Pillow-boilerplate friction the
+# canary reported. PNG-native adapters (including the shipped
+# placeholder backend) need NO extras — the transcode path only fires
+# when the adapter actually returns JPEG/WebP. Stock-venv installs
+# still work; the dispatcher hard-fails with a clear
+# "install anvil[deck_imagegen]" pointer ONLY when it receives non-PNG
+# bytes without Pillow available.
+deck_imagegen = [
+    "Pillow>=10.0",
+]
 # Memo HTML-to-PDF render chain (preferred engine).
 # weasyprint 69.0 is not compatible with Python 3.14 (CSS module import fails).
 # Use xelatex as the fallback engine on Python 3.14+ until weasyprint ships

@@ -882,14 +882,130 @@ def _write_progress_phase(
 
 
 # ---------------------------------------------------------------------------
-# PNG signature check
+# PNG signature check + format sniffing + transcode (issue #564)
 # ---------------------------------------------------------------------------
+#
+# Real image backends often default to JPEG or WebP rather than PNG. Rather
+# than force every consumer adapter to reimplement the same
+# ``Image.open(BytesIO(b)).save(buf, format='PNG')`` boilerplate (the
+# canary's complaint), the dispatcher accepts PNG/JPEG/WebP from the adapter
+# and transcodes JPEG/WebP to PNG before writing to disk. PNG bytes pass
+# through unchanged (byte-identical) so the placeholder backend and any
+# PNG-native adapter see zero behavior change.
+#
+# The format sniff is stdlib-only (modelled on
+# ``anvil/lib/render_gate.py``'s ``_read_png_dimensions`` /
+# ``_read_jpeg_dimensions`` — no new base deps). The transcode lives behind
+# the optional ``[deck_imagegen]`` extra (Pillow), gated by lazy import:
+# stock-venv installs still work; the dispatcher hard-fails with a clear
+# remediation pointer ONLY when it actually receives non-PNG bytes without
+# Pillow available.
 
 _PNG_SIGNATURE: bytes = b"\x89PNG\r\n\x1a\n"
 
 
 def _is_png(data: bytes) -> bool:
     return data[: len(_PNG_SIGNATURE)] == _PNG_SIGNATURE
+
+
+def _sniff_image_format(data: bytes) -> str | None:
+    """Return ``'png'`` / ``'jpeg'`` / ``'webp'`` for known headers, else None.
+
+    Stdlib-only byte-prefix sniffing, modelled directly on the
+    PNG/JPEG header parsing in ``anvil/lib/render_gate.py``.
+
+    - PNG: 8-byte signature ``\\x89PNG\\r\\n\\x1a\\n``.
+    - JPEG: starts with ``\\xff\\xd8\\xff`` (SOI + APPn marker prefix).
+    - WebP: 12-byte RIFF container, ``RIFF`` at offset 0 and ``WEBP``
+      at offset 8.
+
+    GIF/BMP/TIFF are intentionally OUT of scope per issue #564 — the
+    three formats real image backends actually return are PNG, JPEG, and
+    WebP. Truly unrecognized bytes return ``None`` so the dispatcher can
+    write a per-slot failure stub with the byte prefix named.
+    """
+    if not isinstance(data, (bytes, bytearray)) or len(data) < 4:
+        return None
+    b = bytes(data)
+    if b.startswith(_PNG_SIGNATURE):
+        return "png"
+    if b[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if len(b) >= 12 and b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+# Sentinel: optional Pillow extra is required for JPEG/WebP transcode.
+# Spelled out as a constant so the test that patches importlib can rely on
+# the dispatcher's error message containing the canonical install pointer.
+_PILLOW_INSTALL_HINT: str = (
+    "Install the optional 'deck_imagegen' extra: "
+    "`pip install 'anvil[deck_imagegen]'` (provides Pillow for JPEG/WebP "
+    "transcode)."
+)
+
+
+def _transcode_to_png(data: bytes, fmt: str) -> bytes:
+    """Transcode JPEG/WebP bytes to PNG bytes via Pillow (lazy-imported).
+
+    Args:
+        data: The raw bytes returned by the adapter.
+        fmt: One of ``"jpeg"`` or ``"webp"`` (the sniffed format). PNG
+            should NOT reach this function — the dispatcher's
+            short-circuit handles passthrough above.
+
+    Returns:
+        PNG bytes (signature-verified) suitable for writing to disk.
+
+    Raises:
+        ImagegenError: When Pillow is not installed. The message names the
+            ``[deck_imagegen]`` extra and the install command (this is a
+            run-level abort — every subsequent JPEG/WebP slot would fail
+            the same way; better to fail fast with a remediation pointer
+            than write N stubs).
+        BackendError: When Pillow IS installed but cannot decode the bytes
+            (truncated download, corrupt payload, etc.). The per-slot
+            caller catches this and writes the existing-style stub.
+
+    Notes:
+        - Animated WebP: Pillow opens the first frame; the
+          remaining frames are silently dropped. This is an explicit
+          design choice — the journal records the prompt+style+steps,
+          not the format-loss. A consumer who needs animation control
+          should keep the animation outside the dispatcher (e.g., write
+          the PNG directly via their adapter).
+        - The intermediate ``BytesIO`` round-trip costs ~50ms on a 1MB
+          JPEG — well within the noise of an HTTP-bound dispatch.
+    """
+    try:
+        pil_image = importlib.import_module("PIL.Image")
+    except ImportError as exc:
+        raise ImagegenError(
+            f"adapter returned image/{fmt} bytes but Pillow is not "
+            f"installed; deck-imagegen requires Pillow to transcode "
+            f"JPEG/WebP to PNG. {_PILLOW_INSTALL_HINT} "
+            f"(Original ImportError: {exc})"
+        ) from exc
+    from io import BytesIO
+
+    try:
+        with pil_image.open(BytesIO(bytes(data))) as im:
+            # WebP/JPEG may carry palette / non-RGB modes; PNG supports
+            # all the common modes Pillow yields here, but converting to
+            # RGB (or RGBA when an alpha band exists) gives the most
+            # predictable downstream rendering.
+            if im.mode in ("P", "CMYK", "YCbCr"):
+                im = im.convert("RGB")
+            buf = BytesIO()
+            im.save(buf, format="PNG")
+            png_bytes = buf.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        raise BackendError(
+            f"failed to transcode image/{fmt} payload to PNG via Pillow: "
+            f"{exc}"
+        ) from exc
+    return png_bytes
 
 
 # ---------------------------------------------------------------------------
@@ -1279,12 +1395,17 @@ def run_imagegen(
             )
             raise
 
-        # Validate PNG signature.
-        if not isinstance(data, (bytes, bytearray)) or not _is_png(bytes(data)):
+        # Validate / normalize: PNG passes through unchanged; JPEG/WebP
+        # are transcoded to PNG via the optional [deck_imagegen] extra
+        # (Pillow). Anything else is a per-slot failure with the inferred
+        # format (or "unrecognized") named in the stub message. See
+        # issue #564 — real backends often default to JPEG/WebP rather
+        # than PNG; central transcoding eliminates the
+        # every-consumer-reimplements-Pillow boilerplate.
+        if not isinstance(data, (bytes, bytearray)):
             stub_exc = BackendError(
-                f"adapter returned non-PNG bytes "
-                f"(first 8 bytes: {bytes(data)[:8]!r}); expected PNG signature "
-                f"{_PNG_SIGNATURE!r}."
+                f"adapter returned non-bytes object "
+                f"(type={type(data).__name__}); expected PNG/JPEG/WebP bytes."
             )
             _write_failed_stub(generated_dir, slot, final_prompt, style_key, stub_exc)
             failed_count += 1
@@ -1300,8 +1421,77 @@ def run_imagegen(
             )
             continue
 
+        data_bytes = bytes(data)
+        fmt = _sniff_image_format(data_bytes)
+        if fmt == "png":
+            png_to_write: bytes = data_bytes
+        elif fmt in ("jpeg", "webp"):
+            try:
+                png_to_write = _transcode_to_png(data_bytes, fmt)
+            except BackendError as exc:
+                # Pillow installed but decode failed — per-slot failure.
+                _write_failed_stub(
+                    generated_dir, slot, final_prompt, style_key, exc
+                )
+                failed_count += 1
+                dispatches.append(
+                    SlotDispatch(
+                        slot=slot,
+                        status="failed",
+                        prompt=final_prompt,
+                        style=style_key,
+                        steps=steps,
+                        error=str(exc),
+                    )
+                )
+                continue
+            except ImagegenError:
+                # Pillow missing — every subsequent JPEG/WebP slot would
+                # fail the same way. Record progress as failed and re-raise
+                # so the operator sees the remediation pointer once,
+                # not per-slot.
+                _write_progress_phase(
+                    version_dir / "_progress.json",
+                    thread=thread,
+                    phase="imagegen",
+                    fields={
+                        "state": "failed",
+                        "completed": _utc_now(),
+                        "reason": (
+                            f"adapter returned image/{fmt}; Pillow is not "
+                            f"installed for transcode"
+                        ),
+                    },
+                )
+                raise
+        else:
+            # Truly unrecognized bytes — neither PNG, JPEG, nor WebP.
+            # The per-slot stub names the format as "unrecognized" and
+            # records the byte prefix so the operator can diagnose
+            # truncated transfers, HTML error pages, etc.
+            stub_exc = BackendError(
+                f"adapter returned bytes in an unrecognized image format "
+                f"(first 8 bytes: {data_bytes[:8]!r}); deck-imagegen "
+                f"accepts PNG, JPEG, or WebP."
+            )
+            _write_failed_stub(
+                generated_dir, slot, final_prompt, style_key, stub_exc
+            )
+            failed_count += 1
+            dispatches.append(
+                SlotDispatch(
+                    slot=slot,
+                    status="failed",
+                    prompt=final_prompt,
+                    style=style_key,
+                    steps=steps,
+                    error=str(stub_exc),
+                )
+            )
+            continue
+
         # Success: write PNG and update journal entries.
-        png_path.write_bytes(bytes(data))
+        png_path.write_bytes(png_to_write)
         # Clean up any prior FAILED stub for this slot — the run
         # succeeded this time around.
         stub_path = generated_dir / f"{slot}.png-FAILED.md"
