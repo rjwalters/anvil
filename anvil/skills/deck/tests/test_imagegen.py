@@ -948,9 +948,16 @@ class TestRunImagegenPerSlotFailure(unittest.TestCase):
 
 
 class TestRunImagegenNonPngBytes(unittest.TestCase):
-    """Non-PNG bytes are caught and produce a *-FAILED.md stub."""
+    """Unrecognized bytes are caught and produce a *-FAILED.md stub.
 
-    def test_non_png_bytes_treated_as_failure(self) -> None:
+    Per issue #564, the dispatcher now accepts PNG/JPEG/WebP and only
+    falls into this branch when the bytes match none of those formats
+    (truncated transfers, HTML error pages, exotic raster types). The
+    stub's diagnostic names the format as "unrecognized" rather than
+    "non-PNG".
+    """
+
+    def test_unrecognized_bytes_named_in_stub(self) -> None:
         adapter = _BadBytesAdapter()
         with tempfile.TemporaryDirectory() as tmp:
             portfolio = Path(tmp)
@@ -964,11 +971,31 @@ class TestRunImagegenNonPngBytes(unittest.TestCase):
                     version_dir / "assets" / "generated" / "hero.png-FAILED.md"
                 ).exists()
             )
-            # The stub mentions the non-PNG bytes condition.
+            # Stub names the format as "unrecognized" with the byte prefix
+            # recorded so the operator can diagnose truncated transfers,
+            # HTML error pages, etc.
             stub_text = (
                 version_dir / "assets" / "generated" / "hero.png-FAILED.md"
             ).read_text(encoding="utf-8")
-            self.assertIn("non-PNG", stub_text)
+            self.assertIn("unrecognized", stub_text)
+            self.assertIn("PNG, JPEG, or WebP", stub_text)
+
+    def test_html_error_page_named_in_stub(self) -> None:
+        """HTML error pages (the classic 'returned a redirect/login page')
+        path: bytes start with `<html` — neither PNG, JPEG, nor WebP."""
+
+        class _HtmlAdapter:
+            def generate(self, prompt: str, style: str, steps: int | None) -> bytes:
+                return b"<html><body>500 internal error</body></html>"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            version_dir = _build_thread_fixture(portfolio)
+            run_imagegen("acme", portfolio=portfolio, adapter=_HtmlAdapter())
+            stub = (
+                version_dir / "assets" / "generated" / "hero.png-FAILED.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("unrecognized", stub)
 
 
 class TestRunImagegenIdempotence(unittest.TestCase):

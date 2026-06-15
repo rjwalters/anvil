@@ -40,13 +40,17 @@ class ImageBackend:
                    backend's default."
 
         Returns:
-            PNG-encoded image bytes. Must start with the PNG signature
-            (\\x89PNG\\r\\n\\x1a\\n). Non-PNG bytes cause deck-imagegen
-            to write a *-FAILED.md stub and surface the type mismatch.
+            PNG, JPEG, or WebP image bytes. PNG passes through to disk
+            byte-identical; JPEG/WebP are transcoded to PNG on disk by
+            deck-imagegen (the JPEG/WebP path requires the optional
+            `[deck_imagegen]` extra — `pip install 'anvil[deck_imagegen]'`
+            — which pulls in Pillow; PNG-native adapters need no extras).
+            Bytes in any other format produce a *-FAILED.md stub naming
+            the inferred format ("unrecognized" plus the byte prefix).
 
         Raises:
             BackendError: Any condition that prevented producing valid
-                          PNG bytes. The message becomes the body of
+                          image bytes. The message becomes the body of
                           the *-FAILED.md stub. deck-imagegen does NOT
                           retry.
         """
@@ -144,7 +148,7 @@ For clarity, the symmetric list — anvil's responsibilities in this contract:
 3. **Dispatch order**: call `generate` once per `<!-- anvil-imagegen: <prompt-id> -->` marker in `deck.md`, in markdown order, serially. (Backends that benefit from concurrency MUST batch internally; anvil does not parallelize.)
 4. **Error containment**: catch `BackendError` per-prompt; write `<prompt-id>.png-FAILED.md` stubs; continue with remaining prompts.
 5. **Journal write**: append every dispatched generation (prompt-id, prompt, style, steps, backend identifier, timestamp, returned bytes-length, returned dimensions) to `assets/_prompts.json` via the Phase 2 prompt-journal primitive.
-6. **PNG validation**: verify the returned bytes start with the PNG signature (`\\x89PNG\\r\\n\\x1a\\n`). Non-PNG bytes produce a `*-FAILED.md` stub.
+6. **Format validation + JPEG/WebP→PNG transcode (issue #564)**: sniff the returned bytes for PNG / JPEG / WebP via a stdlib byte-prefix check. PNG is written to disk byte-identical (the zero-change path for the placeholder backend and any PNG-native adapter). JPEG and WebP are transcoded to PNG via Pillow (the optional `[deck_imagegen]` extra) — the on-disk artifact is always PNG, so downstream `deck-figures` / Marp / mmdc never see the format change. Bytes in any other format (truncated transfers, HTML error pages, exotic raster types) produce a `*-FAILED.md` stub naming the format as "unrecognized" with the byte prefix recorded. The journal entry for a transcoded slot is identical to a PNG-native dispatch (the journal does NOT record "this slot was transcoded" — the on-disk PNG is the source of truth, and the idempotence check is `prompt+style+steps`-keyed).
 
 That is the entire surface. Six responsibilities; one method on the adapter.
 
@@ -202,10 +206,10 @@ class MyBackend:
             resp.raise_for_status()
         except requests.RequestException as exc:
             raise BackendError(f"my-provider API error: {exc}") from exc
-        body = resp.content
-        if not body.startswith(b"\\x89PNG"):
-            raise BackendError("my-provider returned non-PNG bytes")
-        return body
+        # deck-imagegen accepts PNG / JPEG / WebP and transcodes
+        # JPEG/WebP to PNG on disk (issue #564). Return raw bytes from
+        # the provider; no per-adapter format check is required.
+        return resp.content
 ```
 
 Registered via `.anvil/config.json`:
