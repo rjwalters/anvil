@@ -15,7 +15,7 @@ A markdown-source-only design critic is structurally weak — it can count bulle
 
 - **8 — Design polish** (weight 5)
 
-Total ownership: 5/49 (post-#550 the rubric pool widened to /49 with dim 10 *Business-model & unit-economics credibility* owned by `deck-review` as fallback — see `rubric.md`). Other dimensions remain `null` in this critic's `_summary.md`.
+Total ownership: 5/49 (post-#551 the rubric pool is /49 with dim 10 *Business-model & unit-economics credibility* owned by `deck-economics` (primary, post-#551) with `deck-review` retained as fallback — see `rubric.md`). Other dimensions remain `null` in this critic's `_summary.md`.
 
 ## Inputs
 
