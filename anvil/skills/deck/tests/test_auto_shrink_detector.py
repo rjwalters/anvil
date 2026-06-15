@@ -496,3 +496,233 @@ class TestContentBboxPrimitive:
         )
         assert bbox is not None
         assert 0.58 <= bbox.bottom_margin_norm <= 0.62
+
+
+# --- F6 / F7 — composite-rule regressions (issue #562) ---------------------
+
+
+class TestF6_FitShrunkAllSignals:
+    """F6 — fit-shrunk slide where all three signals fire.
+
+    Issue #562 — the canary regression (GoodBoy slides 3/8). Marp's
+    fit-to-scale shrink reduces top margin, bottom margin, AND content
+    area together; the post-#562 composite rule must catch this even
+    though the pre-#562 detector caught the same case via the
+    bottom-margin signal alone. Regression guard: confirms the
+    composite rule doesn't silently drop cases the legacy rule
+    already caught.
+    """
+
+    def test_slide_4_flagged(self, auto_shrink_fixture_root: Path) -> None:
+        case = auto_shrink_fixture_root / "F6"
+        result = detect_auto_shrink(
+            deck_pdf=case / "deck.pdf",
+            deck_md=case / "deck.md",
+            png_dir=case,
+        )
+        assert not result.skipped
+        assert len(result.findings) == 1, (
+            f"expected 1 finding for the fit-shrunk slide; got "
+            f"{[f.to_dict() for f in result.findings]}"
+        )
+        f = result.findings[0]
+        assert f.slide == 4
+        assert f.class_name == "content"
+        assert f.severity == "error"
+        # Post-#562: the finding records which signals fired.
+        # Expect at least two signals (composite quorum).
+        assert len(f.signals_fired) >= 2
+
+    def test_message_names_signals(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        case = auto_shrink_fixture_root / "F6"
+        result = detect_auto_shrink(
+            deck_pdf=case / "deck.pdf",
+            deck_md=case / "deck.md",
+            png_dir=case,
+        )
+        msg = result.findings[0].message
+        # Message must surface the slide number and identify the
+        # composite signals that fired so the reviser knows why.
+        assert "Slide 4" in msg
+        # At least one signal phrase must be present in the message.
+        has_phrase = any(
+            phrase in msg
+            for phrase in ("top-margin", "bottom-margin", "content-area")
+        )
+        assert has_phrase, f"expected signal phrase in message; got: {msg!r}"
+
+
+class TestF6_TopAndContentOnly:
+    """F6_TopAndContent — fit-shrunk slide where bottom-margin is SAFE.
+
+    Issue #562 — the load-bearing composite-rule test. The candidate's
+    bottom margin sits within 1.1x of the class median (so the
+    bottom-margin-alone signal does NOT fire), but the top margin and
+    content area both fire. Two-of-three quorum → flagged.
+
+    This is exactly the failure mode the pre-#562 single-signal
+    detector missed on the GoodBoy deck: slides 3/8 read as auto-shrunk
+    to the VLM and to a human reviewer, but their bottom margins were
+    close enough to peer median to slip past the bottom-margin-only
+    rule. The composite rule MUST flag this case.
+    """
+
+    def test_slide_4_flagged_via_composite(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        case = auto_shrink_fixture_root / "F6_TopAndContent"
+        result = detect_auto_shrink(
+            deck_pdf=case / "deck.pdf",
+            deck_md=case / "deck.md",
+            png_dir=case,
+        )
+        assert not result.skipped, (
+            f"unexpected skip: reason={result.reason!r}"
+        )
+        assert len(result.findings) == 1, (
+            f"expected 1 finding; got {[f.to_dict() for f in result.findings]}"
+        )
+        f = result.findings[0]
+        assert f.slide == 4
+        # At least two signals must have fired (composite quorum).
+        assert len(f.signals_fired) >= 2
+        # Top-margin and content-area should be among the firing
+        # signals (the load-bearing pair for this fixture). Bottom-
+        # margin MAY also fire because 16% bm / 15% peer median is
+        # 1.07x and below the 1.5x ratio threshold — confirm by
+        # checking the per-page measurements.
+        assert "top_margin" in f.signals_fired
+        assert "content_area" in f.signals_fired
+
+
+class TestF7_SingleSignalNotFlagged:
+    """F7 — only the content-area signal fires; composite quorum NOT met.
+
+    Issue #562 — composite-rule false-positive guard. A page whose only
+    distinguishing feature is a narrower bbox (single signal) must NOT
+    flag under the two-of-three quorum. This is the F7 negative
+    control: confirms the composite rule doesn't degenerate to "any
+    single signal flags."
+    """
+
+    def test_no_findings_for_single_signal(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        case = auto_shrink_fixture_root / "F7"
+        result = detect_auto_shrink(
+            deck_pdf=case / "deck.pdf",
+            deck_md=case / "deck.md",
+            png_dir=case,
+        )
+        assert not result.skipped
+        assert result.findings == [], (
+            f"F7 must produce zero findings — only content-area fires "
+            f"and the composite quorum requires 2 of 3. Got: "
+            f"{[f.to_dict() for f in result.findings]}"
+        )
+
+
+class TestExtendedMediansSurface:
+    """Post-#562 ``per_class_medians_extended`` exposes all three signals."""
+
+    def test_extended_medians_populated(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        case = auto_shrink_fixture_root / "F1"
+        result = detect_auto_shrink(
+            deck_pdf=case / "deck.pdf",
+            deck_md=case / "deck.md",
+            png_dir=case,
+        )
+        # F1 has three healthy peers in class "content". The extended
+        # medians map must contain the triplet for the class.
+        assert "content" in result.per_class_medians_extended
+        trip = result.per_class_medians_extended["content"]
+        assert set(trip.keys()) == {
+            "bottom_margin",
+            "top_margin",
+            "content_area",
+        }
+        # Each value is in [0, 1] (a normalised fraction).
+        for k, v in trip.items():
+            assert 0.0 <= v <= 1.0, f"{k}={v} out of [0,1] range"
+
+    def test_legacy_per_class_medians_still_populated(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        # Backwards-compat: the legacy ``per_class_medians`` field
+        # (bottom-margin only) must still be populated for readers
+        # written against the pre-#562 API.
+        case = auto_shrink_fixture_root / "F1"
+        result = detect_auto_shrink(
+            deck_pdf=case / "deck.pdf",
+            deck_md=case / "deck.md",
+            png_dir=case,
+        )
+        assert "content" in result.per_class_medians
+        # Same value as the extended triplet's bottom_margin entry.
+        assert result.per_class_medians["content"] == (
+            result.per_class_medians_extended["content"]["bottom_margin"]
+        )
+
+
+class TestContentBboxNewProperties:
+    """``ContentBbox`` exposes ``top_margin_norm`` and ``content_area_norm`` (#562)."""
+
+    def test_top_margin_norm_computed(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        # F6 peer slide — content starts at top=5%; top_margin_norm
+        # should be approximately 0.05.
+        bbox = _content_bbox(
+            auto_shrink_fixture_root / "F6" / "page-1.png",
+            bg_tolerance=8,
+            corner_margin_px=4,
+            corner_patch_px=16,
+        )
+        assert bbox is not None
+        assert 0.03 <= bbox.top_margin_norm <= 0.07
+
+    def test_top_margin_norm_for_shrunk_slide(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        # F6 candidate — content starts at top=20%; top_margin_norm
+        # should be approximately 0.20.
+        bbox = _content_bbox(
+            auto_shrink_fixture_root / "F6" / "page-4.png",
+            bg_tolerance=8,
+            corner_margin_px=4,
+            corner_patch_px=16,
+        )
+        assert bbox is not None
+        assert 0.18 <= bbox.top_margin_norm <= 0.22
+
+    def test_content_area_norm_for_full_bbox(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        # F6 peer — bbox spans top=5% to bottom=85%, columns 5%-95%.
+        # Area ≈ 0.80 × 0.90 = 0.72.
+        bbox = _content_bbox(
+            auto_shrink_fixture_root / "F6" / "page-1.png",
+            bg_tolerance=8,
+            corner_margin_px=4,
+            corner_patch_px=16,
+        )
+        assert bbox is not None
+        assert 0.68 <= bbox.content_area_norm <= 0.80
+
+    def test_content_area_norm_for_shrunk_bbox(
+        self, auto_shrink_fixture_root: Path
+    ) -> None:
+        # F6 candidate — bbox spans top=20% to bottom=68%, columns 18%-82%.
+        # Area ≈ 0.48 × 0.64 = ~0.31.
+        bbox = _content_bbox(
+            auto_shrink_fixture_root / "F6" / "page-4.png",
+            bg_tolerance=8,
+            corner_margin_px=4,
+            corner_patch_px=16,
+        )
+        assert bbox is not None
+        assert 0.25 <= bbox.content_area_norm <= 0.35

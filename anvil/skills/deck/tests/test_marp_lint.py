@@ -341,5 +341,361 @@ _Thanks for your time — questions?_
         self.assertEqual(result.errors[0].slide, 2)
 
 
+class TestMarpImageSizingKeywords(unittest.TestCase):
+    """Issue #562 — Marp image sizing keywords reduce phantom overflow errors.
+
+    Pre-#562: ``marp_lint`` charged a fixed ``image_units = 7.0u`` for every
+    standalone image regardless of its declared sizing. The GoodBoy deck used
+    ``![bg right:55%]`` hero panels (background → zero body flow) and
+    ``![h:230px]`` clamped figures (~3u vertical) heavily; the lint charged
+    them all at 7.0u and fired 6–8 phantom ``slide-content-overflow`` errors
+    per pass. The reviewer was forced to hand-confirm against the rendered
+    PDF on every revision — defeating the deterministic gate.
+
+    Post-#562: ``_image_cost_units`` parses the alt-string for Marp sizing
+    keywords (``bg``, ``h:N``, ``w:N``) and returns:
+      - 0u for any ``bg`` form (background image; behind body content)
+      - ``h_px / body_line_height_px`` for ``h:NNNpx``
+      - ``(pct/100) * capacity_units`` for ``h:N%``
+      - the legacy ``image_small_units`` for ``w:`` <50% (preserved)
+      - the legacy ``image_units`` for unannotated standalone images
+
+    These regression cases anchor the false-positive killer (AC1, AC2) and
+    a positive control (AC3 — a ``bg`` slide with overflowing bullets must
+    still flag; the background is free but the bullets blow budget on their
+    own).
+    """
+
+    def test_bg_right_panel_does_not_overflow(self) -> None:
+        """AC1 — ``![bg right:55%]`` hero panel + H1 + 2 bullets stays clean.
+
+        Background images consume zero body flow. The pre-#562 model
+        charged 7.0u; the slide also has an H1 (3.2u) + 2 bullets (~2.2u)
+        + a paragraph-break (0.4u) ≈ 5.8u of real content, well under
+        the 13u budget. Post-#562 must report zero ``slide-content-
+        overflow`` findings.
+        """
+        source = """---
+marp: true
+size: 16:9
+---
+
+# Hero panel
+
+![bg right:55%](figures/hero.png)
+
+- One bullet here
+- Another bullet here
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(
+            overflow_findings, [],
+            f"bg right:N% panel must not trigger overflow; got "
+            f"{[f.message for f in overflow_findings]}",
+        )
+
+    def test_bg_left_panel_does_not_overflow(self) -> None:
+        """The ``bg left:N%`` variant matches the same panel grammar."""
+        source = """---
+marp: true
+size: 16:9
+---
+
+# Hero panel
+
+![bg left:40%](figures/hero.png)
+
+- One bullet
+- Another bullet
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow_findings, [])
+
+    def test_bg_vertical_panel_does_not_overflow(self) -> None:
+        """The ``bg vertical:N%`` form (split-panel vertical) is also free."""
+        source = """---
+marp: true
+size: 16:9
+---
+
+# Section
+
+![bg vertical:30%](figures/hero.png)
+
+- One bullet
+- Another bullet
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow_findings, [])
+
+    def test_h_clamped_figure_does_not_overflow(self) -> None:
+        """AC2 — ``![h:230px]`` clamped figure + H2 + 3 bullets stays clean.
+
+        ``h:230px`` at ``body_line_height_px = 40`` translates to 5.75u of
+        vertical cost (vs the pre-#562 full-image 7.0u). With an H2 (2.0u),
+        three bullets (~3.3u), and a paragraph-break (0.4u), total is
+        ~11.5u — within the 13u budget. Post-#562 must report zero
+        ``slide-content-overflow`` findings.
+        """
+        source = """---
+marp: true
+size: 16:9
+---
+
+## Clamped figure
+
+![h:230px](figures/clamped.png)
+
+- First point
+- Second point
+- Third point
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(
+            overflow_findings, [],
+            f"h:230px clamped figure must not trigger overflow; got "
+            f"{[f.message for f in overflow_findings]}",
+        )
+
+    def test_h_percent_clamped_figure_does_not_overflow(self) -> None:
+        """``h:40%`` reduces vertical cost to ~5.2u, well within budget."""
+        source = """---
+marp: true
+size: 16:9
+---
+
+## Percent-clamped figure
+
+![h:40%](figures/clamped.png)
+
+- First point
+- Second point
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow_findings, [])
+
+    def test_bg_full_bleed_plus_overflowing_bullets_still_flags(self) -> None:
+        """AC3 — ``![bg]`` (full-bleed) is free, but enough bullets still flag.
+
+        Regression guard for the positive control: the background is free,
+        but bullets on top of it that legitimately exceed the budget must
+        still raise ``slide-content-overflow``. This proves the fix did
+        not over-correct into a blanket "ignore image-bearing slides"
+        rule.
+        """
+        source = """---
+marp: true
+size: 16:9
+---
+
+# Heavy overlay slide
+
+![bg](figures/full-bleed.png)
+
+- A very long first bullet that wraps around the budget enough to count
+- Another long bullet that wraps and adds to the budget enough to count
+- Yet another long bullet that wraps and adds to the budget enough to count
+- A fourth long bullet that wraps and adds to the budget enough to count
+- A fifth long bullet that wraps and adds to the budget enough to count
+- A sixth long bullet that wraps and adds to the budget enough to count
+- A seventh long bullet that wraps and adds to the budget enough to count
+- An eighth long bullet that wraps and adds to the budget enough to count
+- A ninth long bullet that wraps and adds to the budget enough to count
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f for f in result.errors
+            if f.rule == "slide-content-overflow"
+        ]
+        # The background is free, but 9 wrapping bullets + H1 + paragraph
+        # breaks exceed the 13u budget on their own — the slide must
+        # still flag.
+        self.assertGreaterEqual(
+            len(overflow_findings), 1,
+            "background + overflowing bullets must still raise overflow",
+        )
+
+    def test_w_only_keyword_still_works_legacy(self) -> None:
+        """``![w:30%]`` (no h:, no bg) preserves the legacy 'small' downgrade.
+
+        Backward-compat check — the pre-#562 width-only heuristic still
+        applies when no ``h:`` keyword is present. A small image leaves
+        room for additional body content.
+        """
+        source = """---
+marp: true
+size: 16:9
+---
+
+## Small image
+
+![w:30%](figures/small.png)
+
+- First point
+- Second point
+- Third point
+- Fourth point
+- Fifth point
+- Sixth point
+"""
+        result = lint_source(source)
+        # With image-small (3.0u) instead of image (7.0u), there's room
+        # for ~6 bullets in the budget.
+        overflow_findings = [
+            f for f in result.errors
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow_findings, [])
+
+    def test_h_and_w_both_present_h_wins(self) -> None:
+        """When both ``h:`` and ``w:`` are present, ``h:`` is the source of cost.
+
+        The ``h:`` keyword is the direct vertical-cost signal; ``w:`` is
+        only a fallback used when ``h:`` is absent. For ``h:200px w:40%``,
+        the cost is ``200/40 = 5.0u`` (the h: keyword), not 3.0u (the
+        legacy w: small downgrade).
+        """
+        source = """---
+marp: true
+size: 16:9
+---
+
+## Both keywords
+
+![w:40% h:200px](figures/both.png)
+
+- First point
+"""
+        result = lint_source(source)
+        # Either way, no overflow on a slide this sparse — but the test
+        # exists to document the precedence rule. We just verify clean.
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow_findings, [])
+
+    def test_unannotated_image_uses_full_cost(self) -> None:
+        """An image with NO sizing keywords falls back to the full 7.0u cost.
+
+        Backward-compat regression guard — the documented behaviour for
+        unannotated standalone images (full-width assumption) must not
+        change. The existing ``overflow_figure_plus_bullets.md`` fixture
+        already exercises this path; this test pins the same contract
+        explicitly to make the intent legible at the test surface.
+        """
+        source = """---
+marp: true
+size: 16:9
+---
+
+## Unannotated image
+
+![alt text](figures/unannotated.png)
+
+- First point that wraps around the budget enough to count toward the total
+- Second point that wraps around the budget enough to count toward the total
+- Third point that wraps around the budget enough to count toward the total
+- Fourth point that wraps around the budget enough to count toward the total
+- Fifth point that wraps around the budget enough to count toward the total
+"""
+        result = lint_source(source)
+        # Unannotated image (~7u) + H2 (2u) + 5 wrapping bullets (~7u) +
+        # paragraph break (0.4u) = ~16u, over the 13u budget.
+        overflow_findings = [
+            f for f in result.errors
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertGreaterEqual(
+            len(overflow_findings), 1,
+            "unannotated image with overflowing bullets must still flag",
+        )
+
+
+class TestImageCostUnits(unittest.TestCase):
+    """Unit tests for the ``_image_cost_units`` helper (issue #562).
+
+    The helper is a pure function on (alt_text, geometry) — testable in
+    isolation without constructing a full slide.
+    """
+
+    def test_bg_keyword_returns_zero(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        units, label = _image_cost_units("bg", Geometry())
+        self.assertEqual(units, 0.0)
+        self.assertEqual(label, "image-background")
+
+    def test_bg_right_panel_returns_zero(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        units, label = _image_cost_units("bg right:55%", Geometry())
+        self.assertEqual(units, 0.0)
+        self.assertEqual(label, "image-background")
+
+    def test_bg_left_panel_returns_zero(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        units, label = _image_cost_units("bg left:40%", Geometry())
+        self.assertEqual(units, 0.0)
+
+    def test_bg_vertical_returns_zero(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        units, label = _image_cost_units("bg vertical:30%", Geometry())
+        self.assertEqual(units, 0.0)
+
+    def test_h_pixels_translates_to_units(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        geo = Geometry()
+        # h:200px @ body_line_height_px=40 → 5.0u
+        units, label = _image_cost_units("h:200px", geo)
+        self.assertAlmostEqual(units, 5.0, places=1)
+        self.assertIn("h:200px", label)
+
+    def test_h_percent_translates_to_units(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        geo = Geometry()
+        # h:50% @ capacity_units=13.0 → 6.5u
+        units, label = _image_cost_units("h:50%", geo)
+        self.assertAlmostEqual(units, 6.5, places=1)
+
+    def test_w_only_small_downgrades(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        geo = Geometry()
+        units, label = _image_cost_units("w:30%", geo)
+        self.assertEqual(units, geo.image_small_units)
+        self.assertEqual(label, "image-small")
+
+    def test_no_keywords_returns_full(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        geo = Geometry()
+        units, label = _image_cost_units("alt text only", geo)
+        self.assertEqual(units, geo.image_units)
+        self.assertEqual(label, "image")
+
+    def test_empty_alt_returns_full(self) -> None:
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+        geo = Geometry()
+        units, label = _image_cost_units("", geo)
+        self.assertEqual(units, geo.image_units)
+
+
 if __name__ == "__main__":
     unittest.main()

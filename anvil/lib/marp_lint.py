@@ -447,13 +447,125 @@ _FENCED_OPEN_RE = re.compile(r"^\s*(```|~~~)")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 _BULLET_RE = re.compile(r"^(\s*)([-*+]|\d+[.)])\s+(.*)$")
 _IMAGE_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-_IMAGE_WITH_SIZE_RE = re.compile(
-    r"!\[(?P<alt>[^\]]*?)(?:\s+w[:= ](?P<width>\d+(?:%|px)?))?[^\]]*\]"
+
+# Captures the alt-string of an image so callers can scan it for Marp sizing
+# keywords. The alt-string is the bracketed text between ``![`` and ``](``;
+# Marp keyword sizing (``bg``, ``bg right:N%``, ``h:NNNpx``, ``w:N%``, …)
+# lives entirely inside this region. See ``_image_cost_units`` below for the
+# keyword parser that consumes the captured alt text.
+_IMAGE_ALT_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]")
+
+# Marp ``bg`` keyword in the alt-string: matches ``bg`` as a whole token. The
+# load-bearing forms are ``bg``, ``bg right:N%``, ``bg left:N%``, ``bg vertical:N%``
+# (split-panel backgrounds). All ``bg`` forms paint into the slide background
+# and consume zero vertical body flow.
+_IMAGE_BG_KEYWORD_RE = re.compile(r"(?:^|\s)bg(?:\s|$|:)")
+
+# Marp explicit-height keyword in the alt-string: ``h:NNNpx`` or ``h:NN%``.
+# Documented at https://marpit.marp.app/image-syntax — the ``h:`` keyword
+# clamps the rendered image's vertical extent; we use it to compute the
+# slide's actual vertical body-flow cost.
+_IMAGE_HEIGHT_KEYWORD_RE = re.compile(
+    r"(?:^|\s)h[:= ](?P<height>\d+(?:%|px))(?:\s|$)"
+)
+
+# Marp explicit-width keyword in the alt-string: ``w:NNNpx`` or ``w:NN%``.
+# Used as a secondary heuristic — only consulted when no ``h:`` keyword is
+# present, since width alone is a weak proxy for vertical cost.
+_IMAGE_WIDTH_KEYWORD_RE = re.compile(
+    r"(?:^|\s)w[:= ](?P<width>\d+(?:%|px))(?:\s|$)"
 )
 _HR_RE = re.compile(r"^\s*(\*\s*){3,}\s*$|^\s*(-\s*){3,}\s*$|^\s*(_\s*){3,}\s*$")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>")
 _TABLE_SEP_RE = re.compile(r"^\s*\|?[\s:|-]+\|[\s:|-]*$")
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+
+
+def _image_cost_units(alt_text: str, geo: Geometry) -> tuple[float, str]:
+    """Estimate the vertical body-flow cost of a Marp image from its alt-string.
+
+    Returns a ``(units, label)`` tuple. The label is a short tag used by the
+    cost-breakdown roll-up so a reviser reading the lint message can see WHY
+    the cost was charged as it was.
+
+    Marp's image-syntax keywords (https://marpit.marp.app/image-syntax) live
+    inside the alt-string between ``![`` and ``](``. The load-bearing
+    keywords for the capacity model:
+
+    - ``bg`` (and the panel variants ``bg right:N%`` / ``bg left:N%`` /
+      ``bg vertical:N%``) — paints into the slide background. Consumes
+      **zero** vertical body-flow units. The image lives behind the body
+      content, not inside it.
+    - ``h:NNNpx`` / ``h:NN%`` — explicit vertical clamp. We translate the
+      pixel/percent height directly to line units using
+      ``geo.body_line_height_px`` (px → units) or ``geo.capacity_units``
+      (% → units).
+    - ``w:NNNpx`` / ``w:NN%`` — explicit width clamp. Only consulted when
+      no ``h:`` is present; a width hint <50% is a weak proxy for "small
+      image" and downgrades the cost to ``geo.image_small_units``. This is
+      the legacy behaviour preserved verbatim.
+    - **No keyword** — falls back to ``geo.image_units`` (the full-width
+      assumption — unchanged for unannotated standalone-image blocks).
+
+    Issue #562 / canary friction: the GoodBoy deck used ``![bg right:55%]``
+    hero panels and ``![h:230px]`` clamped figures heavily. The pre-#562
+    capacity model charged ``geo.image_units = 7.0u`` for both, blowing the
+    13u budget by ~5u on slides that the rendered PDF showed sitting
+    comfortably inside the safe area. The reviewer was forced to
+    hand-confirm against the PDF on every pass — defeating the
+    deterministic gate. Recognising ``bg`` (zero cost) and ``h:`` (true
+    vertical cost) brings the source-side estimate into agreement with
+    what the renderer actually produces.
+    """
+    if not alt_text:
+        return (geo.image_units, "image")
+
+    # Pad the alt-string with leading/trailing whitespace so the keyword
+    # regexes (which use ``(?:^|\s)`` anchors to enforce token boundaries)
+    # match keywords at either edge.
+    padded = f" {alt_text} "
+
+    # `bg` keyword: any form. Background images do not consume body flow.
+    if _IMAGE_BG_KEYWORD_RE.search(padded):
+        return (0.0, "image-background")
+
+    # `h:` keyword (explicit vertical clamp). This is the most direct
+    # signal of vertical body-flow cost; prefer it over `w:` when both are
+    # present.
+    m_h = _IMAGE_HEIGHT_KEYWORD_RE.search(padded)
+    if m_h:
+        h = m_h.group("height")
+        try:
+            if h.endswith("px"):
+                px = int(h[:-2])
+                # 1 line unit = body_line_height_px; convert px → units.
+                units = max(0.5, px / float(geo.body_line_height_px))
+                return (units, f"image(h:{h})")
+            if h.endswith("%"):
+                pct = int(h[:-1])
+                units = max(0.5, (pct / 100.0) * geo.capacity_units)
+                return (units, f"image(h:{h})")
+        except ValueError:
+            pass
+
+    # `w:` keyword fallback (width as a weak proxy for "is this small?").
+    m_w = _IMAGE_WIDTH_KEYWORD_RE.search(padded)
+    if m_w:
+        w = m_w.group("width")
+        try:
+            if w.endswith("%"):
+                pct = int(w[:-1])
+                if pct < 50:
+                    return (geo.image_small_units, "image-small")
+            elif w.endswith("px"):
+                px = int(w[:-2])
+                if px < (geo.slide_width_px // 2):
+                    return (geo.image_small_units, "image-small")
+        except ValueError:
+            pass
+
+    # No size keyword and no `bg` keyword: full-width assumption.
+    return (geo.image_units, "image")
 
 
 def _estimate_slide_cost(slide: _Slide, geo: Geometry) -> _CostBreakdown:
@@ -588,27 +700,16 @@ def _estimate_slide_cost(slide: _Slide, geo: Geometry) -> _CostBreakdown:
 
         # Image (standalone block — image on its own paragraph).
         if _IMAGE_RE.search(raw_line) and len(raw_line.strip()) < 250:
-            # If a `w:` or width hint indicates the image is < 50% width, use small cost.
-            m_size = _IMAGE_WITH_SIZE_RE.search(raw_line)
-            small = False
-            if m_size and m_size.group("width"):
-                w = m_size.group("width")
-                if w.endswith("%"):
-                    try:
-                        pct = int(w[:-1])
-                        small = pct < 50
-                    except ValueError:
-                        pass
-                elif w.endswith("px"):
-                    try:
-                        px = int(w[:-2])
-                        small = px < (geo.slide_width_px // 2)
-                    except ValueError:
-                        pass
-            breakdown.add(
-                "image-small" if small else "image",
-                geo.image_small_units if small else geo.image_units,
-            )
+            # Parse the alt-string for Marp sizing keywords (`bg`, `h:N`,
+            # `w:N`, …). `_image_cost_units` returns the vertical body-flow
+            # cost; see its docstring for the keyword→cost mapping.
+            # Background images consume 0u; explicit-height images
+            # translate `h:` directly to line units; everything else falls
+            # back to the legacy width-only heuristic. Issue #562.
+            m_alt = _IMAGE_ALT_RE.search(raw_line)
+            alt = m_alt.group("alt") if m_alt else ""
+            units, label = _image_cost_units(alt, geo)
+            breakdown.add(label, units)
             i += 1
             seen_first_block = True
             just_added_paragraph_break = False
