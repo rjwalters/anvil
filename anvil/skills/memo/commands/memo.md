@@ -63,3 +63,11 @@ Follow the table with an `## Anomalies` section if any were detected, and an `##
 
 - This command does **not** write to disk. It is safe to run repeatedly.
 - The portfolio orchestrator is the recommended user-facing entry point. The four lifecycle commands (`memo-draft`, `memo-review`, `memo-revise`, `memo-figures`) can be invoked directly by an orchestrating agent or by a human operator running them in sequence.
+
+## Optional parallel critics
+
+Beyond the canonical lifecycle commands above, the orchestrator MAY recommend running optional sibling critics in parallel with `memo-review`. The orchestrator's discovery logic (which is just "find every `<slug>.{N}.<tag>/` sibling and aggregate") already handles these with no code change — they share the standard `<slug>.{N}.<critic>/` sibling shape and write canonical `_review.json` payloads consumed by `anvil/lib/critics.py::aggregate`.
+
+- **`memo-redteam <thread>`** (issue #560) — independent adversarial critic. Chartered to argue for killing the thesis, **independent of the author-supplied `refs/strongman-against.md`** (the file is consulted only as a calibration crosscheck *after* the red-team's objection set is generated). Emits `DEFEATED` / `SURVIVES` / `UNENGAGED` verdicts on whether the memo's response defeats each objection; a `SURVIVES` or `UNENGAGED` on a load-bearing objection emits a `redteam_survives` / `redteam_unengaged` critical flag in `<slug>.{N}.redteam/_review.json` that flows through the standard `aggregate` pathway to force `advance: false`. **Non-gating**: absence of a red-team sibling does NOT block the state machine; existing memo threads continue to advance unchanged. **Independence**: `memo-review` and `memo-redteam` MAY run in parallel against the same `<slug>.{N}/`; `memo-redteam` SHOULD NOT read `<slug>.{N}.review/` during objection generation (the two critics are genuinely independent in v1). See `commands/memo-redteam.md` for the full critic spec.
+- **`<slug>.{N}.audit/`** — optional auditor critic (fact-check). Manually invoked; not yet a shipped command.
+- **`<slug>.{N}.critic/`** — generic substantive critic slot for skill-local follow-ups.
