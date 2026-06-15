@@ -1,6 +1,6 @@
 ---
 name: deck-review
-description: General reviewer command for the deck skill. Scores rubric dimensions 2, 5, 6 (problem clarity, traction/proof, team credibility) and emits the full critic-sibling schema plus a verdict.md. The verdict aggregates sibling critic outputs against the /44 rubric (≥39 advance threshold).
+description: General reviewer command for the deck skill. Scores rubric dimensions 2, 5, 6, 10 (problem clarity, traction/proof, team credibility, business-model & unit-economics credibility) and emits the full critic-sibling schema plus a verdict.md. The verdict aggregates sibling critic outputs against the /49 rubric (≥43 advance threshold).
 ---
 
 # deck-review — General reviewer
@@ -17,8 +17,9 @@ The general reviewer owns dimensions:
 - **2 — Problem clarity** (weight 5)
 - **5 — Traction / proof** (weight 5)
 - **6 — Team credibility** (weight 4)
+- **10 — Business-model & unit-economics credibility** (weight 5) — fallback ownership in v0; sibling #551 will introduce `deck-economics` and reassign primary ownership.
 
-Total ownership: 14/44. Other dimensions are scored by specialist critics (`deck-narrative` for 1+7+9, `deck-market` for 3+4, `deck-design` for 8) and are left `null` in `_summary.md`. Note: post-#357, `deck-narrative` owns dim 9 *Rhetorical economy* in addition to dims 1 and 7 — the arc/ask critic's natural turf includes "could a busy investor extract the ask in 90 seconds?".
+Total ownership: 19/49. Other dimensions are scored by specialist critics (`deck-narrative` for 1+7+9, `deck-market` for 3+4, `deck-design` for 8) and are left `null` in `_summary.md`. Note: post-#357, `deck-narrative` owns dim 9 *Rhetorical economy* in addition to dims 1 and 7 — the arc/ask critic's natural turf includes "could a busy investor extract the ask in 90 seconds?". Post-#550, `deck-review` owns dim 10 *Business-model & unit-economics credibility* as fallback — sibling #551 introduces `deck-economics` and reassigns primary ownership.
 
 The general reviewer is also responsible for writing the **aggregated `verdict.md`** — the canonical artifact the orchestrator reads to decide advance/block. The aggregation reads sibling critics if present at the same `<thread>.{N}.<tag>/` and combines per-dimension scores (mean of non-null) and critical flags (logical OR).
 
@@ -26,7 +27,7 @@ The general reviewer is also responsible for writing the **aggregated `verdict.m
 
 - **Thread slug** (positional argument).
 - **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
-- **Rubric**: `anvil/skills/deck/rubric.md` (9 dimensions, /44, ≥39 threshold, four critical flags).
+- **Rubric**: `anvil/skills/deck/rubric.md` (10 dimensions, /49, ≥43 threshold, four critical flags).
 - **Optional consumer override**: `.anvil/skills/deck/rubric.overrides.md`.
 - **Optional per-doc `rubric_overrides`** (issue #393, mirroring the memo #233 / #265 / #296 contract): the `rubric_overrides:` block on the matching `documents:` entry in the **project-level** `BRIEF.md` (the parent of the thread root, post-#382 nested model), parsed via `anvil/lib/project_brief.py::load_rubric_overrides_for_slug`. Carries per-dimension `dim_N_calibration` verbatim-suffix calibrations and `dim_N_waiver` operator-directed dimension exclusions (rationale-as-value). See step 5e (load), step 8 (calibration suffixes), step 9 (`_summary.md` audit block), and step 12 (waiver-normalized verdict).
 - **Sibling critics at same `N`** (read but not modified): `<thread>.{N}.narrative/_summary.md`, `<thread>.{N}.market/_summary.md`, `<thread>.{N}.design/_summary.md`. These contribute to the aggregated `verdict.md` if present.
@@ -38,17 +39,17 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
 
 ```
 <thread>.{N}.review/
-  verdict.md         Aggregated decision + total /44 + critical flags + top revision priorities
+  verdict.md         Aggregated decision + total /49 + critical flags + top revision priorities
                      (carries `## Rubric version transition` subsection when prior rubric differs)
   scoring.md         Per-dimension score (owned dims only) + 1–3 sentence justification each
   comments.md        Slide-level comments keyed to deck.md slides
-  _summary.md        9-dim partial scorecard (owned dims scored; others null) + critical-flag bool
+  _summary.md        10-dim partial scorecard (owned dims scored; others null) + critical-flag bool
                      + top-level `rubric` block (id, total, advance_threshold, dimensions)
   findings.md        Itemized findings: severity, slide ref, rationale, suggested fix
                      + "Rubric version transition" subsection (conditional, when prior rubric differs)
   _meta.json         { "critic": "review", "role": "deck-review.md", "started": "<ISO>", "finished": "<ISO>", "model": "<id>",
-                       "scorecard_kind": "human-verdict", "rubric_id": "anvil-deck-v2",
-                       "rubric_total": 44, "advance_threshold": 39 }
+                       "scorecard_kind": "human-verdict", "rubric_id": "anvil-deck-v3",
+                       "rubric_total": 49, "advance_threshold": 43 }
   _progress.json     Phase state for the review (phase: review)
 ```
 
@@ -59,7 +60,7 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
 1. **Discover state**: find the highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.review)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.review.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). The sweep is idempotent and logs at INFO level when it removes a dir. If `<thread>.{N}.review/` exists (the atomic-rename contract guarantees the dir only exists when complete), the review is complete — exit early with a notice (idempotent).
 2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial review left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.review.tmp/` directory (NOT as a partially-filled `<thread>.{N}.review/`). The sweep in step 1 has already removed any such partial. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.review/` exists WITHOUT `verdict.md`, delete the dir and re-review.
 3. **Open the staged sidecar** for the review dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.review, required_files=["verdict.md", "scoring.md", "comments.md", "_summary.md", "findings.md", "_meta.json", "_progress.json"])`. Every file write from this step through the final `_progress.json` / `_meta.json` updates MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.review.tmp/`), NOT inside the final `<thread>.{N}.review/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Then, **inside the staging dir**, initialize `_progress.json`: `phases.review.state = in_progress`, `phases.review.started = <ISO>`.
-4. **Initialize `_meta.json`** with `critic: "review"`, `role: "deck-review.md"`, `started: <ISO>`, `model: <id>`, `scorecard_kind: "human-verdict"`, `rubric_id: "anvil-deck-v2"`, `rubric_total: 44`, and `advance_threshold: 39` (per `anvil/lib/snippets/scorecard_kind.md` §"The discriminator" — the three rubric-stamping fields are required for new reviews per issue #346; `"anvil-deck-v2"` is the deck skill's current /44 rubric identifier per `anvil/skills/deck/rubric.md` line 3). The rubric-stamping fields let downstream consumers compare scores apples-to-apples across the `/40 → /44` migration without re-reading the skill's current `rubric.md`. Also load the **prior review sibling** at `<thread>.{N-1}.review/_meta.json` when present and cache its `rubric_id` value as `prior_rubric_id` (or `None` when the prior sibling is absent — first iteration — or lacks the field — legacy pre-#346 review). The cached `prior_rubric_id` feeds the `_summary.md.rubric` block at step 9 + the `findings.md` rubric-transition subsection (step 11b) when the prior rubric differs from the current `"anvil-deck-v2"`. Specialist critics (`deck-narrative`, `deck-market`, `deck-design`, `deck-vision`) inherit the same `rubric_id` via their own `_meta.json` if they ship updated `<critic>-review.md`s in follow-up issues; in this PR only `deck-review` (the aggregator) stamps. The aggregator at step 12 reads sibling scores and stamps the aggregated verdict, which is sufficient for the canary failure mode this contract exists to close.
+4. **Initialize `_meta.json`** with `critic: "review"`, `role: "deck-review.md"`, `started: <ISO>`, `model: <id>`, `scorecard_kind: "human-verdict"`, `rubric_id: "anvil-deck-v3"`, `rubric_total: 49`, and `advance_threshold: 43` (per `anvil/lib/snippets/scorecard_kind.md` §"The discriminator" — the three rubric-stamping fields are required for new reviews per issue #346; `"anvil-deck-v3"` is the deck skill's current /49 rubric identifier per `anvil/skills/deck/rubric.md` line 3, post-#550). The rubric-stamping fields let downstream consumers compare scores apples-to-apples across the `/40 → /44 → /49` migrations without re-reading the skill's current `rubric.md`. Also load the **prior review sibling** at `<thread>.{N-1}.review/_meta.json` when present and cache its `rubric_id` value as `prior_rubric_id` (or `None` when the prior sibling is absent — first iteration — or lacks the field — legacy pre-#346 review). The cached `prior_rubric_id` feeds the `_summary.md.rubric` block at step 9 + the `findings.md` rubric-transition subsection (step 11b) when the prior rubric differs from the current `"anvil-deck-v3"`. Specialist critics (`deck-narrative`, `deck-market`, `deck-design`, `deck-vision`) inherit the same `rubric_id` via their own `_meta.json` if they ship updated `<critic>-review.md`s in follow-up issues; in this PR only `deck-review` (the aggregator) stamps. The aggregator at step 12 reads sibling scores and stamps the aggregated verdict, which is sufficient for the canary failure mode this contract exists to close.
 
    **When `--rescore-mode <rescore-id>` is set** (issue #368) — the rebackport reviewer-hook contract:
    - **Re-derive `final_dir`** (from step 3) from `<thread>.{N}.review` to `<thread>.{N}.review.rescore-<rescore-id>`. The staging directory derived by `anvil/lib/sidecar.py::staging_path_for(final_dir)` correspondingly becomes `.<thread>.{N}.review.rescore-<rescore-id>.tmp/` — no separate code path is needed; the same `staged_sidecar(final_dir=...)` call works with the rescore sidecar path. The deck-review aggregator's split-init shape (step 3 = staged_sidecar + `_progress.json`; step 4 = `_meta.json`) is preserved verbatim — only the path target changes.
@@ -109,10 +110,11 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
    - **Graceful-degrade when absent**: the loader returns an empty `RubricOverrides` for any of: missing project BRIEF, malformed BRIEF, BRIEF that does not list this slug, BRIEF entry without a `rubric_overrides:` block. The reviewer's behavior on an empty instance is **byte-identical** to the pre-#393 status quo: no suffixes attached, no waiver normalization, `_summary.md.rubric_overrides` emitted with `ran: false` (or omitted). This is the load-bearing backwards-compat contract for threads that declare no overrides.
    - Cache the `RubricOverrides` instance for steps 8, 9, 12, and 13.
 6. **Score owned dimensions**:
-   - **Quoted-evidence requirement (issue #464 / #475)**: each dimension's justification MUST embed at least one **verbatim quote from `deck.md`**, wrapped in inline double quotes and followed by a location anchor — `("the quoted span" — §2.1)` — per `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1. Use inline `"..."` spans, NOT blockquotes (justifications live in single table cells). A dim scored at **full weight** MAY substitute the by-absence marker `no instance of <X> found` — absence of defects has no quotable span; below ceiling the quote requirement stands. The quote must be byte-verbatim from the body — a paraphrase presented in quote marks is fabricated evidence, the defect class the step 8b self-check exists to catch. **Elision with `...` / `…` is permitted** (issue #478): a quote may skip intervening text with an ellipsis, provided each elided fragment is itself verbatim, ≥ `MIN_QUOTE_CHARS` normalized chars, in document order, and drawn from one nearby passage (within the verifier's `ELISION_WINDOW_CHARS` proximity window) — do NOT stitch fragments from distant sections into one quote. Em/en dashes may be typed as `--` / `---` (the verifier folds dash variants symmetrically). This requirement binds the OWNED dims (2 / 5 / 6) only — unowned rows are `null` / N/A and owe no evidence (the partial-scorecard rule in `snippets/critics.md`; the verifier skips them).
+   - **Quoted-evidence requirement (issue #464 / #475)**: each dimension's justification MUST embed at least one **verbatim quote from `deck.md`**, wrapped in inline double quotes and followed by a location anchor — `("the quoted span" — §2.1)` — per `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1. Use inline `"..."` spans, NOT blockquotes (justifications live in single table cells). A dim scored at **full weight** MAY substitute the by-absence marker `no instance of <X> found` — absence of defects has no quotable span; below ceiling the quote requirement stands. The quote must be byte-verbatim from the body — a paraphrase presented in quote marks is fabricated evidence, the defect class the step 8b self-check exists to catch. **Elision with `...` / `…` is permitted** (issue #478): a quote may skip intervening text with an ellipsis, provided each elided fragment is itself verbatim, ≥ `MIN_QUOTE_CHARS` normalized chars, in document order, and drawn from one nearby passage (within the verifier's `ELISION_WINDOW_CHARS` proximity window) — do NOT stitch fragments from distant sections into one quote. Em/en dashes may be typed as `--` / `---` (the verifier folds dash variants symmetrically). This requirement binds the OWNED dims (2 / 5 / 6 / 10) only — unowned rows are `null` / N/A and owe no evidence (the partial-scorecard rule in `snippets/critics.md`; the verifier skips them).
    - **Dim 2 — Problem clarity** (0–5): Does the problem slide convey what hurts, for whom, how much, in <30 seconds? Cite specific slide language. Vague problems, self-evident problems, or problems explained only via solution score low.
    - **Dim 5 — Traction / proof** (0–5): Does the traction slide show real evidence at the stage's level? Are projections clearly labeled as projections? Cross-check every number against `BRIEF.md` — any number on the slide not in the brief is a `Fabricated traction` critical flag.
    - **Dim 6 — Team credibility** (0–4): Are bios specific (named prior roles, named outcomes)? Is founder–market fit explicit? Cross-check every bio against `BRIEF.md` — any bio claim not in the brief is a `Fabricated team credentials` critical flag.
+   - **Dim 10 — Business-model & unit-economics credibility** (0–5): Does the business-model slide name a concrete revenue mechanic (subscription / per-seat / per-usage / platform-fee / transaction-take) — not just "SaaS"? Is the pricing basis validated against pilots or explicitly labeled as assumed? Is per-unit contribution margin / gross margin at scale stated? For B2B2C: is the counterparty acquisition cost AND the sales cycle named, not just consumer attach? Is the deck's sensitivity to the load-bearing assumption (e.g. attach rate, conversion rate, take rate) made explicit on the slide? Cross-check every economics number against `BRIEF.md` — any number on the model/economics slides not in the brief is a `Fabricated traction` critical flag (the existing flag absorbs fabricated economics numbers; sibling #552 introduces a dedicated "Incoherent or absent business model" flag). v0 fallback ownership — sibling #551 will introduce `deck-economics` as the primary owner.
    - **Dim 5 + Dim 6 refs back-check sub-step** (issue #166): enumerate `<thread>/refs/` and identify the **source-of-truth materials** present per SKILL.md §"Source-of-truth materials" (files named for their content — `cv.pdf`, `cv.md`, `founder-bio.md`, `transcript-*.md`, `filing-*.pdf`, `paper-*.pdf`, `email-loi-*.md` / `loi-*.md`, `quote-*.md`, `image-*.{png,jpg}`). The back-check applies to source-of-truth materials only; generic reference material (decks, transcripts the brief did not name as a source-of-truth, financial spreadsheets used only as drafter context) is out of scope for this sub-step and stays under the existing BRIEF-only cross-check. For each source-of-truth refs-document **type** present that is on-topic for dim 5 (traction-bearing files: LOIs, quotes, customer letters, traction-cited filings) or dim 6 (team-bearing files: CVs, founder bios, prior-outcome filings), pick at least one load-bearing claim in `deck.md` whose evidentiary basis is the document's subject and write a `comments.md` entry of the form:
      ```
      claim: "<excerpt from deck.md slide N>"
@@ -133,19 +135,20 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
    - **Critical flags are NOT waivable** (issue #393 boundary): a `dim_N_waiver` from step 5e removes scoring weight ONLY. If content belonging to a waived dimension appears on a slide anyway (e.g., a team bio on a deck whose dim 6 is waived under a no-team-content directive), the flag machinery applies in full — a fabricated bio still raises `Fabricated team credentials` and still blocks advance regardless of the waiver.
 8. **Write `scoring.md`** as a markdown table for owned dimensions (others omitted or shown as N/A):
    ```
-   | # | Dimension          | Weight | Score | Justification |
-   |---|--------------------|--------|-------|---------------|
-   | 2 | Problem clarity    | 5      | 4     | Slide 2 clearly identifies mid-market manufacturers and quantifies (250k plants, $200k/yr engineer cost). One gap: doesn't quantify how much profit is left on the table. |
-   | 5 | Traction / proof   | 5      | 3     | Slide 8 lists 8 paying customers and 3 LOIs (all verified in brief). Missing: retention/cohort data and revenue cadence. |
-   | 6 | Team credibility   | 4      | 3     | Founder bios are specific (prior roles named). Gap: no advisors slide; brief lists 2 advisors. |
+   | #  | Dimension                                       | Weight | Score | Justification |
+   |----|-------------------------------------------------|--------|-------|---------------|
+   | 2  | Problem clarity                                 | 5      | 4     | Slide 2 clearly identifies mid-market manufacturers and quantifies (250k plants, $200k/yr engineer cost). One gap: doesn't quantify how much profit is left on the table. |
+   | 5  | Traction / proof                                | 5      | 3     | Slide 8 lists 8 paying customers and 3 LOIs (all verified in brief). Missing: retention/cohort data and revenue cadence. |
+   | 6  | Team credibility                                | 4      | 3     | Founder bios are specific (prior roles named). Gap: no advisors slide; brief lists 2 advisors. |
+   | 10 | Business-model & unit-economics credibility     | 5      | 3     | Slide 9 names per-seat pricing ($X/seat/mo) with a labeled contribution-margin trace. Gap: load-bearing attach-rate assumption ("~8%") stated without a sensitivity table — score capped below full weight. |
    ```
 
-   **Rubric overrides — calibration suffixes** (issue #393, same verbatim-suffix contract as memo-review step 5): for each OWNED dimension N (2, 5, 6) with a `dim_N_calibration` declared in the cached `RubricOverrides` (step 5e), append the verbatim calibration text as a suffix to that dimension's justification BEFORE writing it to `scoring.md`. The mechanical helper is `anvil/lib/rubric_overrides_suffix.py::apply_calibration_to_justification(justification, overrides, dimension)` (single dim) or `apply_calibrations_to_scores(scores, overrides)` (batch) — invoke the helper rather than reproducing the suffix format by hand; the helper is the schema-of-record for the `"calibration applied: <verbatim override text>"` shape (prefix with one trailing space; override text byte-for-byte verbatim; one space joining suffix to existing prose; suffix becomes the whole justification when the reviewer wrote none). Zero-impact when the cached `RubricOverrides` is `None` / empty: the helper returns the input justification byte-for-byte unchanged — the scoring write path is byte-identical to pre-#393 behavior. A **waived** dimension is still scored and justified here (the score is observational; exclusion happens at verdict aggregation, step 12) — note the waiver in the justification (e.g., "waived per operator directive — excluded from verdict math; see verdict.md").
+   **Rubric overrides — calibration suffixes** (issue #393, same verbatim-suffix contract as memo-review step 5): for each OWNED dimension N (2, 5, 6, 10) with a `dim_N_calibration` declared in the cached `RubricOverrides` (step 5e), append the verbatim calibration text as a suffix to that dimension's justification BEFORE writing it to `scoring.md`. The mechanical helper is `anvil/lib/rubric_overrides_suffix.py::apply_calibration_to_justification(justification, overrides, dimension)` (single dim) or `apply_calibrations_to_scores(scores, overrides)` (batch) — invoke the helper rather than reproducing the suffix format by hand; the helper is the schema-of-record for the `"calibration applied: <verbatim override text>"` shape (prefix with one trailing space; override text byte-for-byte verbatim; one space joining suffix to existing prose; suffix becomes the whole justification when the reviewer wrote none). Zero-impact when the cached `RubricOverrides` is `None` / empty: the helper returns the input justification byte-for-byte unchanged — the scoring write path is byte-identical to pre-#393 behavior. A **waived** dimension is still scored and justified here (the score is observational; exclusion happens at verdict aggregation, step 12) — note the waiver in the justification (e.g., "waived per operator directive — excluded from verdict math; see verdict.md").
 8b. **Validate quoted evidence (deterministic, write-time self-check)** — issue #464 / #475:
    - After the `scoring.md` write lands inside the staging dir, invoke `python -m anvil.lib.evidence_check <thread>.{N}/ --scoring <staging dir>/scoring.md` (or call `anvil.lib.evidence_check::check_version_dir(<thread>.{N}/, scoring=<staging dir>/scoring.md)` directly). The verifier parses the scoring table via `anvil/lib/critics.py::parse_memo_scoring_table`, extracts the quoted spans from each justification, and checks each one against `deck.md` (curly→straight quote folding, dash-variant folding `—`/`–`/`---`/`--`, whitespace collapse, markdown-emphasis stripping; case-sensitive substring match, with `...`/`…`-elided spans matched fragment-by-fragment in document order within the `ELISION_WINDOW_CHARS` proximity window — issue #478). Classification per justification: ≥1 span matching the body → pass; score at full weight + `no instance of <X> found` marker → pass (ceiling-by-absence); spans present but none matching → **major `fabricated_evidence` finding**; no spans at all → minor `missing_evidence` advisory. Anchors are NOT validated (judgment-free scope). Rows with a `null` / `n/a` score (dimensions owned by other critics) are skipped entirely — this aggregator owes evidence only for its owned dims 2 / 5 / 6. The nested `<thread>/<thread>.{N}/` layout needs no special handling — the CLI takes the version-dir path directly.
    - **Findings are a write-time self-check failure — correct before the sidecar lands** (the memo-review step 7c posture): a `missing_evidence` finding means the reviewer adds the verbatim quote + anchor (or, at full weight, the by-absence marker) to that dimension's justification and re-runs the check. A `fabricated_evidence` finding is the hard case — the quoted span does not appear in the body, so the reviewer MUST re-derive that dimension's justification from the actual body text (re-read the section, re-quote verbatim, and reconsider whether the score itself was grounded) — exactly the lazy-critic failure mode the gate exists for. The check is deterministic and cheaply re-runnable; correction converges in one or two passes. The staged sidecar MUST NOT exit the context block while `fabricated_evidence` findings persist.
    - **Advisory boundary**: this self-check governs the reviewer's OWN staging-dir output only. It does NOT gate the verdict (no new critical-flag category, no change to the `advance` aggregation), does NOT write a sidecar, and is NEVER run retroactively against existing review dirs by this command — legacy review siblings are immutable and the rule applies to NEW reviews only.
-9. **Write `_summary.md`** as a JSON-in-markdown scorecard with a top-level `rubric` block (issue #346) sibling to `lint`. The `lint` block is populated from the cached `LintResult` returned by step 5b; the `rubric` block carries the rubric the reviewer scored against so a downstream consumer aggregating across versions does not need to walk back to `anvil/skills/deck/rubric.md` (which may have changed between v3 and v5 of a long thread that spanned the `/40 → /44` migration):
+9. **Write `_summary.md`** as a JSON-in-markdown scorecard with a top-level `rubric` block (issue #346) sibling to `lint`. The `lint` block is populated from the cached `LintResult` returned by step 5b; the `rubric` block carries the rubric the reviewer scored against so a downstream consumer aggregating across versions does not need to walk back to `anvil/skills/deck/rubric.md` (which may have changed between v3 and v5 of a long thread that spanned the `/40 → /44 → /49` migrations):
    ```markdown
    # Review summary
 
@@ -154,22 +157,23 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
      "critic": "review",
      "for_version": <N>,
      "rubric": {
-       "id": "anvil-deck-v2",
-       "total": 44,
-       "advance_threshold": 39,
-       "dimensions": 9,
-       "prior_rubric_id": "anvil-deck-v1"
+       "id": "anvil-deck-v3",
+       "total": 49,
+       "advance_threshold": 43,
+       "dimensions": 10,
+       "prior_rubric_id": "anvil-deck-v2"
      },
      "dimensions": {
-       "1_narrative_arc":            null,
-       "2_problem_clarity":          { "score": 4, "weight": 5 },
-       "3_market_size_credibility":  null,
-       "4_solution_differentiation": null,
-       "5_traction_proof":           { "score": 3, "weight": 5 },
-       "6_team_credibility":         { "score": 3, "weight": 4 },
-       "7_ask_specificity":          null,
-       "8_design_polish":            null,
-       "9_rhetorical_economy":       null
+       "1_narrative_arc":                            null,
+       "2_problem_clarity":                          { "score": 4, "weight": 5 },
+       "3_market_size_credibility":                  null,
+       "4_solution_differentiation":                 null,
+       "5_traction_proof":                           { "score": 3, "weight": 5 },
+       "6_team_credibility":                         { "score": 3, "weight": 4 },
+       "7_ask_specificity":                          null,
+       "8_design_polish":                            null,
+       "9_rhetorical_economy":                       null,
+       "10_business_model_economics":                { "score": 3, "weight": 5 }
      },
      "lint": {
        "ran": true,
@@ -225,7 +229,7 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
    }
    ```
    ```
-   - The `rubric` block fields (issue #346): `id` is the rubric identifier (`"anvil-deck-v2"`), `total` is the declared total (`44`), `advance_threshold` is the gate (`39`), `dimensions` is the count of weighted dimensions (`9`). The `prior_rubric_id` (conditional) is present when the prior review sibling exists; it is the prior `_meta.json.rubric_id` value (or `null` when the prior sibling lacks the field — legacy pre-#346 review). The `prior_rubric_inferred` (conditional) is present when `prior_rubric_id == null` AND a prior review sibling exists; its value is `"/40-legacy"` to signal "this thread's prior iteration was scored against the pre-#346 /40 rubric (whatever the skill shipped at the time)". Both fields are **omitted entirely** on the first iteration (no prior review sibling exists). The block is **observational only** — it does NOT affect verdict, critical flags, or `advance`.
+   - The `rubric` block fields (issue #346): `id` is the rubric identifier (`"anvil-deck-v3"` post-#550), `total` is the declared total (`49`), `advance_threshold` is the gate (`43`), `dimensions` is the count of weighted dimensions (`10`). The `prior_rubric_id` (conditional) is present when the prior review sibling exists; it is the prior `_meta.json.rubric_id` value (or `null` when the prior sibling lacks the field — legacy pre-#346 review). The `prior_rubric_inferred` (conditional) is present when `prior_rubric_id == null` AND a prior review sibling exists; its value is `"/40-legacy"` to signal "this thread's prior iteration was scored against the pre-#346 /40 rubric (whatever the skill shipped at the time)". Both fields are **omitted entirely** on the first iteration (no prior review sibling exists). The block is **observational only** — it does NOT affect verdict, critical flags, or `advance`.
    - The `deck_memo_parity` block is populated from the cached `LintResult` returned by step 5d. When the lint skipped (no memo sibling discoverable), the block shape is `{ "ran": false, "memo_sibling": null, "reason": "no memo sibling found at portfolio root; parity check inactive", "warnings": 0, "infos": 0, "only_in_memo": [], "only_in_deck": [], "warnings_by_token": [], "infos_by_token": [] }`. The `ran: false` skip path MUST be recorded — the operator should see WHY the parity check did not fire (same skip-reason convention as `auto_shrink`).
    - **`deck_memo_parity` findings do NOT contribute to `critical_flag` in v0** (Phase A ships warning-only). The block is observational: it surfaces drift in `findings.md` and the operator's revision priorities, but the `critical_flag` boolean is computed exactly as before (`marp_lint.errors > 0` OR `auto_shrink.errors > 0`). Phase B promotion to error severity (and therefore `advance: false`-gating) is a separate decision deferred per issue #200's Phase A / Phase B contract.
    - When `lint.errors > 0` (sum of source-side `errors` AND `auto_shrink.errors`), set `critical_flag: true` and append entries to `critical_flag_notes`:
@@ -326,27 +330,34 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
     - For critical flag, take logical OR of all critic flags **including both pre-flight lints** (source-side `marp_lint` from step 5b AND post-render `auto_shrink_detector` from step 5c). If this `_summary.md`'s own `lint.errors > 0` OR `lint.auto_shrink.errors > 0`, the aggregated critical flag is true regardless of any other critic.
     - **Waiver normalization** (issue #393): when the cached `RubricOverrides` (step 5e) carries waivers, each waived dimension is removed from BOTH the numerator and the denominator of the threshold check:
       - **Numerator**: exclude waived dims' aggregate scores from the total — `total_over_remaining = sum(aggregate score of every NON-waived dim)`.
-      - **Denominator / threshold**: scale the nominal threshold proportionally — `normalized_threshold = 39 × (44 − waived_weight) / 44`, where `waived_weight` is the sum of the waived dims' rubric weights. Compare against the **exact fraction** — do NOT round (e.g., dim 6 weight 4 waived: `39 × 40/44 = 390/11 ≈ 35.45`, so a 36/40 advances and a 35/40 does not). The mechanical helpers are `anvil/lib/rubric_overrides_suffix.py::normalized_advance_threshold(39, 44, waived_weight)` and `meets_normalized_threshold(total_over_remaining, 39, 44, waived_weight)` — invoke them rather than reproducing the fraction math by hand.
+      - **Denominator / threshold**: scale the nominal threshold proportionally — `normalized_threshold = 43 × (49 − waived_weight) / 49`, where `waived_weight` is the sum of the waived dims' rubric weights. Compare against the **exact fraction** — do NOT round (e.g., dim 6 weight 4 waived: `43 × 45/49 = 1935/49 ≈ 39.49`, so a 40/45 advances and a 39/45 does not). The mechanical helpers are `anvil/lib/rubric_overrides_suffix.py::normalized_advance_threshold(43, 49, waived_weight)` and `meets_normalized_threshold(total_over_remaining, 43, 49, waived_weight)` — invoke them rather than reproducing the fraction math by hand.
       - **Critical flags are NOT waivable**: the critical-flag OR above runs over ALL dims including waived ones. A waiver removes scoring weight only.
-      - **`_meta.json` stamping stays NOMINAL** (issue #346 contract): `rubric_total: 44` and `advance_threshold: 39` identify the rubric version and are NOT rewritten under a waiver. The per-review waiver record + effective normalized threshold live in the `_summary.md.rubric_overrides` block (step 9) and the `verdict.md` prose (step 13).
-      - **Zero-impact when no waivers**: `waived_weight = 0`, `normalized_threshold = 39`, and the decision below is byte-identical to pre-#393 behavior.
-    - Decision: `advance = (total_over_remaining >= normalized_threshold) AND (no critical flag)` — which with no waivers reduces to the nominal `advance = (total >= 39) AND (no critical flag)`. When `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags; when `lint.auto_shrink.errors > 0`, the verdict additionally lists `Slide auto-shrink (lint)`. The rubric total is reported honestly but does not save the verdict.
+      - **`_meta.json` stamping stays NOMINAL** (issue #346 contract): `rubric_total: 49` and `advance_threshold: 43` identify the rubric version and are NOT rewritten under a waiver. The per-review waiver record + effective normalized threshold live in the `_summary.md.rubric_overrides` block (step 9) and the `verdict.md` prose (step 13).
+      - **Zero-impact when no waivers**: `waived_weight = 0`, `normalized_threshold = 43`, and the decision below is byte-identical to pre-#393 behavior.
+    - Decision: `advance = (total_over_remaining >= normalized_threshold) AND (no critical flag)` — which with no waivers reduces to the nominal `advance = (total >= 43) AND (no critical flag)`. When `lint.errors > 0`, `advance` is forced `false` and the verdict lists `Slide overflow (lint)` under critical flags; when `lint.auto_shrink.errors > 0`, the verdict additionally lists `Slide auto-shrink (lint)`. The rubric total is reported honestly but does not save the verdict.
 
-    **Append `score_history` row with `rubric_id` (issue #346)**: the orchestrator (the command that drives review→revise iterations) appends one row to `<thread>.{N}/_progress.json.metadata.score_history` per finished review iteration. Per `anvil/lib/snippets/progress.md` §"Convergence fields → score_history", the canonical row shape is `{iteration, total, threshold, rubric_id}` — for the deck skill at /44, that's `{iteration: <N>, total: <aggregated-total>, threshold: 39, rubric_id: "anvil-deck-v2"}`. A thread that spans the `/40 → /44` migration records different `rubric_id` values across its rows; readers tolerate rows missing `rubric_id` per the backwards-compat contract (treat as `"unknown/legacy"`).
-12b. **Emit rubric-version-transition subsection in `findings.md` when the prior rubric differs (issue #346)**: when the cached `prior_rubric_id` from step 4 is non-`None` AND differs from the current `"anvil-deck-v2"`, OR when `prior_rubric_id == None` AND a prior review sibling exists (legacy pre-#346 review), append a `## Rubric version transition` subsection to `findings.md` (sibling to the existing `## Findings`, `## Lint findings`, `## Auto-shrink lint findings`, and `## Parity-lint findings` subsections). Three shapes:
+    **Append `score_history` row with `rubric_id` (issue #346)**: the orchestrator (the command that drives review→revise iterations) appends one row to `<thread>.{N}/_progress.json.metadata.score_history` per finished review iteration. Per `anvil/lib/snippets/progress.md` §"Convergence fields → score_history", the canonical row shape is `{iteration, total, threshold, rubric_id}` — for the deck skill at /49, that's `{iteration: <N>, total: <aggregated-total>, threshold: 43, rubric_id: "anvil-deck-v3"}`. A thread that spans the `/40 → /44 → /49` migrations records different `rubric_id` values across its rows; readers tolerate rows missing `rubric_id` per the backwards-compat contract (treat as `"unknown/legacy"`).
+12b. **Emit rubric-version-transition subsection in `findings.md` when the prior rubric differs (issue #346)**: when the cached `prior_rubric_id` from step 4 is non-`None` AND differs from the current `"anvil-deck-v3"`, OR when `prior_rubric_id == None` AND a prior review sibling exists (legacy pre-#346 review), append a `## Rubric version transition` subsection to `findings.md` (sibling to the existing `## Findings`, `## Lint findings`, `## Auto-shrink lint findings`, and `## Parity-lint findings` subsections). Four shapes:
 
-    When the prior rubric is a different stamped id:
+    When the prior rubric is `anvil-deck-v2` (the /44 → /49 migration — post-#550):
     ```
     ## Rubric version transition
 
-    This iteration was scored against `anvil-deck-v2` (/44, ≥39); the prior iteration at `<thread>.{N-1}.review/` was scored against `anvil-deck-v1` (/40, ≥35). The score delta `<prior_total>/40 → <current_total>/44` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/44` against the `≥39/44` threshold.
+    This iteration was scored against `anvil-deck-v3` (/49, ≥43); the prior iteration at `<thread>.{N-1}.review/` was scored against `anvil-deck-v2` (/44, ≥39). The score delta `<prior_total>/44 → <current_total>/49` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed (dim 10 *Business-model & unit-economics credibility*, weight 5, was added). A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/49` against the `≥43/49` threshold.
+    ```
+
+    When the prior rubric is `anvil-deck-v1` (a thread spanning /40 → /49 — legacy stamped):
+    ```
+    ## Rubric version transition
+
+    This iteration was scored against `anvil-deck-v3` (/49, ≥43); the prior iteration at `<thread>.{N-1}.review/` was scored against `anvil-deck-v1` (/40, ≥35). The score delta `<prior_total>/40 → <current_total>/49` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed across two migrations (/40 → /44 added dim 9; /44 → /49 added dim 10). A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/49` against the `≥43/49` threshold.
     ```
 
     When the prior rubric is legacy (no `rubric_id` stamped):
     ```
     ## Rubric version transition
 
-    This iteration was scored against `anvil-deck-v2` (/44, ≥39); the prior iteration at `<thread>.{N-1}.review/` predates per-review rubric version stamping (issue #346) and was scored against `/40-legacy` — the rubric this skill shipped before the `/40 → /44` migration (likely `anvil-deck-v1`, /40, ≥35). The score delta `<prior_total>/40-legacy → <current_total>/44` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/44` against the `≥39/44` threshold.
+    This iteration was scored against `anvil-deck-v3` (/49, ≥43); the prior iteration at `<thread>.{N-1}.review/` predates per-review rubric version stamping (issue #346) and was scored against `/40-legacy` — the rubric this skill shipped before the `/40 → /44 → /49` migrations (likely `anvil-deck-v1`, /40, ≥35). The score delta `<prior_total>/40-legacy → <current_total>/49` is NOT directly comparable — the threshold pool, dimension count, and weighted contributions all changed. A downstream consumer reading the delta SHOULD treat the prior score as advisory only and re-anchor on the current iteration's `<current_total>/49` against the `≥43/49` threshold.
     ```
 
     When the prior rubric matches the current rubric (the steady-state case — no transition surfaced):
@@ -359,23 +370,24 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
     ```markdown
     # Verdict — <thread> v<N>
 
-    **Total**: 36.5 / 44
+    **Total**: 39.5 / 49
     **Decision**: `advance: false`
     **Critical flags**: 1 (from deck-market)
 
     ## Dimension summary
 
-    | # | Dimension | Weight | Score | Critics contributing |
-    |---|-----------|--------|-------|---------------------|
-    | 1 | Narrative arc            | 6 | 5.0 | narrative |
-    | 2 | Problem clarity          | 5 | 4.0 | review |
-    | 3 | Market size credibility  | 5 | 3.0 | market |
-    | 4 | Solution differentiation | 5 | 4.0 | market |
-    | 5 | Traction / proof         | 5 | 3.0 | review |
-    | 6 | Team credibility         | 4 | 3.0 | review |
-    | 7 | Ask specificity          | 5 | 5.0 | narrative |
-    | 8 | Design polish            | 5 | 5.5 | design |
-    | 9 | Rhetorical economy       | 4 | 4.0 | narrative |
+    | #  | Dimension                                   | Weight | Score | Critics contributing |
+    |----|---------------------------------------------|--------|-------|---------------------|
+    | 1  | Narrative arc                               | 6      | 5.0   | narrative |
+    | 2  | Problem clarity                             | 5      | 4.0   | review |
+    | 3  | Market size credibility                     | 5      | 3.0   | market |
+    | 4  | Solution differentiation                    | 5      | 4.0   | market |
+    | 5  | Traction / proof                            | 5      | 3.0   | review |
+    | 6  | Team credibility                            | 4      | 3.0   | review |
+    | 7  | Ask specificity                             | 5      | 5.0   | narrative |
+    | 8  | Design polish                               | 5      | 5.5   | design |
+    | 9  | Rhetorical economy                          | 4      | 4.0   | narrative |
+    | 10 | Business-model & unit-economics credibility | 5      | 3.0   | review (fallback — #551 introduces deck-economics) |
 
     ## Critical flags
 
@@ -393,8 +405,8 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
     **Waiver surfacing in `verdict.md`** (issue #393): when the cached `RubricOverrides` carries waivers, the verdict MUST state the normalized judgment explicitly and quote each waiver rationale **verbatim** — an investor-send reviewer reads this artifact and must see what was excluded and why. The header lines change shape and a `## Waived dimensions` section is added (the dimension-summary table marks waived rows `waived` in the score column):
 
     ```markdown
-    **Total**: 36.0 / 40 (waiver-normalized; nominal rubric /44 with dim 6 waived, weight 4)
-    **Decision**: `advance: true` (36.0 ≥ normalized threshold 39 × 40/44 = 390/11 ≈ 35.45)
+    **Total**: 40.0 / 45 (waiver-normalized; nominal rubric /49 with dim 6 waived, weight 4)
+    **Decision**: `advance: true` (40.0 ≥ normalized threshold 43 × 45/49 = 1935/49 ≈ 39.49)
     **Critical flags**: 0
 
     ## Waived dimensions
@@ -403,7 +415,7 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
     ```
 14. **Update `_meta.json`** inside the staging dir: `finished: <ISO>`.
 15. **Update `_progress.json`** inside the staging dir: `phases.review.state = done`, `phases.review.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.review.tmp/` → `<thread>.{N}.review/`. The final-named dir only ever exists in **complete** form.
-16. **Report**: print one-line status (e.g., `Reviewed acme-seed.1 → acme-seed.1.review/ (review owns 14/44; aggregated total 36.5/44, advance: false, 1 critical flag)`).
+16. **Report**: print one-line status (e.g., `Reviewed acme-seed.1 → acme-seed.1.review/ (review owns 19/49; aggregated total 39.5/49, advance: false, 1 critical flag)`).
 
 ## Idempotence and resumability
 

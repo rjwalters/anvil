@@ -38,10 +38,10 @@ A **deck thread** is a single pitch artifact (typically: one round, one ask) aut
       deck.pdf                 Rendered PDF (produced by deck-figures or at READY)
       _progress.json
     <thread>.1.review/         General reviewer output (read-only)
-      verdict.md               Top-level decision + total /44 + critical flags
+      verdict.md               Top-level decision + total /49 + critical flags
       scoring.md               Per-dimension scores (this critic fills owned dimensions only)
       comments.md              Slide-level comments keyed to deck.md
-      _summary.md              9-dim partial scorecard (other critics' dims = null) + critical flag
+      _summary.md              10-dim partial scorecard (other critics' dims = null) + critical flag
       findings.md              Itemized findings: severity, slide ref, rationale, suggested fix
       _meta.json               { critic, role, started, finished, model }
     <thread>.1.narrative/      Narrative-arc critic (owns dims 1, 7, 9)
@@ -116,7 +116,7 @@ Every critic sibling under `<thread>.{N}.<tag>/` therefore declares its primary 
 
 ```
 <thread>.{N}.<tag>/                                    # for deck-narrative, deck-market, deck-design
-  _summary.md         9-dim partial scorecard (critic fills only owned dimensions; others = null) + critical flag
+  _summary.md         10-dim partial scorecard (critic fills only owned dimensions; others = null) + critical flag
   findings.md         Itemized findings: severity (blocker/major/minor/nit), slide ref, rationale, suggested fix
   _meta.json          { "critic": "<tag>", "role": "deck-<tag>.md", "started": <ISO>, "finished": <ISO>, "model": "<id>", "scorecard_kind": "machine-summary" }
 ```
@@ -125,10 +125,10 @@ The aggregator schema (both layers present):
 
 ```
 <thread>.{N}.review/                                   # the deck-review aggregator
-  verdict.md          Aggregated decision + total /44 + critical flags (primary deliverable)
+  verdict.md          Aggregated decision + total /49 + critical flags (primary deliverable)
   scoring.md          Per-dimension scorecard with justifications
   comments.md         Slide-level comments
-  _summary.md         9-dim partial scorecard (review owns dims 2, 5, 6; specialists fill others when aggregated)
+  _summary.md         10-dim partial scorecard (review owns dims 2, 5, 6, 10; specialists fill others when aggregated)
   findings.md         Itemized findings owned by the general reviewer
   _meta.json          { ..., "scorecard_kind": "human-verdict" }   # primary intent
 ```
@@ -163,8 +163,8 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 
 **Thresholds** (deck is a customer-facing artifact per `lib/README.md`'s legal/customer-facing rule — a pitch deck is the founder's pitch to external capital):
 
-- **≥39/44** advances to `READY`.
-- **<39/44** requires revision.
+- **≥43/49** advances to `READY`.
+- **<43/49** requires revision.
 - **Any critical flag short-circuits** regardless of total. The four deck-specific critical flags are:
   1. **Fabricated traction** — a traction number (revenue, users, LOIs, pilots, design partners) not attested in the brief or refs.
   2. **Fabricated team credentials** — a bio claim (prior role, prior exit, degree, named hire) not attested in the brief or refs.
@@ -348,7 +348,7 @@ The canonical `_progress.json` schema, read-merge-write recipe, and crash recove
 
 ## Rubric
 
-See `rubric.md` for the 9-dimension /44 scoring schema, the ≥39 advance threshold, and the four critical-flag conditions.
+See `rubric.md` for the 10-dimension /49 scoring schema, the ≥43 advance threshold, and the four critical-flag conditions.
 
 ## Defaults and overrides
 
