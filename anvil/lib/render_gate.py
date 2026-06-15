@@ -173,6 +173,27 @@ Public API
   typed ``Review`` consumed by the critics aggregator).
 - ``DEFAULT_PLACEHOLDER_PATTERNS`` — the default placeholder regex tuple;
   skills can extend via the ``placeholder_patterns`` arg.
+
+Audit-time backstop pattern (issue #572)
+----------------------------------------
+
+The ip-skill audit commands (``ip-uspto-audit``,
+``ip-uspto-provisional-audit``) reinvoke ``compile_and_gate(...)`` as a
+**backstop** check, writing the result to the audit sibling's
+``_gate.json``. The matching finalize commands then read that file at
+their pre-finalize gate and refuse to assemble the terminal package
+(``<thread>.final/`` / ``<thread>.counsel/``) when any overfull-box
+finding is present. This closes the gap a *filed* legal artifact
+exposed: a late-revise overfull introduced after the last pre-flight
+pass would otherwise reach FILING-READY / COUNSEL-READY unchallenged.
+The ip-skill call sites tighten the threshold to
+``overfull_threshold_pt=2.0`` (the framework default of 5.0pt is
+unchanged for ``installation`` / ``proposal`` / ``datasheet`` / ``pub``
+/ ``report``). The sphere-canary regression fixture at
+``tests/lib/fixtures/render_gate/overfull_sphere_canary.txt`` (13 hits,
+worst 83.6pt) is pinned in
+``tests/lib/test_render_gate.py::test_overfull_sphere_canary_shape`` so
+threshold drift cannot silently re-open the hole.
 """
 
 from __future__ import annotations
