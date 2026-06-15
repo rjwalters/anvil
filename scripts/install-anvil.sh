@@ -1312,7 +1312,13 @@ elif [[ ! -d "$SRC_VOICE_DIR" ]]; then
   note "source voice templates dir not found: $SRC_VOICE_DIR (skipping)"
 else
   # Map each shipped template to its de-infixed destination filename.
-  for voice_pair in "STYLE_GUIDE.template.md:STYLE_GUIDE.md" "VOCABULARY.template.md:VOCABULARY.md"; do
+  # VALUES is PRIVATE BY DEFAULT (issue #578): it scaffolds to a
+  # VALUES.local.md (NOT a committed VALUES.md) so the `*.local.md` gitignore
+  # line appended below keeps the first-person stances/anti-stances/standing
+  # out of commits. resolve_voice_docs resolves a gitignored declared doc
+  # identically to a committed one — privacy is where the file lives in git,
+  # not how anvil reads it.
+  for voice_pair in "STYLE_GUIDE.template.md:STYLE_GUIDE.md" "VOCABULARY.template.md:VOCABULARY.md" "VALUES.template.md:VALUES.local.md"; do
     voice_src_name="${voice_pair%%:*}"
     voice_dst_name="${voice_pair##*:}"
     voice_src="$SRC_VOICE_DIR/$voice_src_name"
@@ -1621,23 +1627,25 @@ else
   # YAML snippet to paste so the wiring stays explicit.
   if [[ "$VOICE_SKILL_SELECTED" == true ]]; then
     echo ""
-    note "voice grounding: starter STYLE_GUIDE.md / VOCABULARY.md scaffolded at the consumer root."
+    note "voice grounding: starter STYLE_GUIDE.md / VOCABULARY.md / VALUES.local.md scaffolded at the consumer root."
     echo "         They ship as templates — fill in the <!-- replace me --> placeholders with"
-    echo "         examples from your own domain, then activate per project by adding this to"
-    echo "         the project BRIEF.md frontmatter:"
+    echo "         examples (and your own first-person stances, for VALUES) before relying on"
+    echo "         them, then activate per project by adding this to the project BRIEF.md"
+    echo "         frontmatter:"
     echo "             voice:"
     echo "               style_guide: STYLE_GUIDE.md"
     echo "               vocabulary: VOCABULARY.md"
-    echo "         An existing STYLE_GUIDE.md / VOCABULARY.md is never overwritten (per-file"
-    echo "         skip). See anvil/templates/voice/README.md for the four-doc taxonomy."
-    echo ""
-    echo "         Private grounding (issue #577): personal VALUES.md-class stances you do"
-    echo "         NOT want committed go in a gitignored doc — the documented convention is"
-    echo "         a '*.local.md' suffix (e.g. VALUES.local.md) or a '.voice/' locus. Both"
-    echo "         patterns were added to your .gitignore, and anvil's git-sync hook never"
-    echo "         commits them. A gitignored doc resolves identically to a committed one;"
-    echo "         declare it in the same voice: block, e.g.:"
     echo "               values: VALUES.local.md   # private — resolves, never committed"
+    echo "         An existing STYLE_GUIDE.md / VOCABULARY.md / VALUES.local.md is never"
+    echo "         overwritten (per-file skip). See anvil/templates/voice/README.md for the"
+    echo "         four-doc taxonomy."
+    echo ""
+    echo "         Private grounding (issues #577, #578): VALUES carries first-person stances"
+    echo "         most authors do NOT want committed, so it scaffolds PRIVATE BY DEFAULT to a"
+    echo "         gitignored VALUES.local.md (NOT a committed VALUES.md). The '*.local.md'"
+    echo "         and '.voice/' patterns were added to your .gitignore, and anvil's git-sync"
+    echo "         hook never commits them. A gitignored doc resolves identically to a"
+    echo "         committed one."
     echo "         NOTE: this is not encryption and does not stop 'git add -f' — it keeps"
     echo "         the private source out of anvil's own commits, not out of every tool."
   fi

@@ -40,6 +40,7 @@ This command is the canonical "N parallel critics, one reviser" pattern. For the
    - `<thread>.{N}.audit/`: `verdict.md` + `findings.md` + `evidence.md`.
    - Every other `<thread>.{N}.<critic>/` sibling discovered on disk (e.g., a consumer-added `.critic/`).
    - `_project.md` for ongoing recipient context.
+   - **Voice grounding docs (conditional — issues #461, #578)**: when the project BRIEF declares a top-level `voice:` block, read the resolved voice docs via `anvil/lib/project_brief.py::resolve_voice_docs(<project_dir>)` alongside the critic feedback and **preserve voice signatures the reviewer flagged as working** — voice-grounded revision must not sand off the persona while chasing rubric points (see `anvil/lib/snippets/voice_grounding.md` §"Reviser contract"). No `voice:` block → skip; behavior is byte-identical to pre-#578.
 7. **Build a revision plan**:
    - For each rubric dimension that scored below threshold (or had a critical flag), enumerate the specific changes required to lift the score.
    - For each `comments.md` entry tagged `blocker` or `major`, plan a concrete change.
