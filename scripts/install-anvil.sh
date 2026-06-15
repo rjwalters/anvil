@@ -11,7 +11,9 @@
 #   --check-deps      Check renderer dependencies (marp/pdftoppm/mmdc/pdfjam) and exit
 #   --no-sync         Skip the post-install `uv sync --project .anvil` step
 #                     (useful for offline installs or hosts without uv)
-#   -y, --yes         Non-interactive (skip confirmation prompts)
+#   -y, --yes         Non-interactive (skip confirmation prompts; also
+#                     auto-enabled when stdin is not a TTY, e.g. CI pipelines
+#                     or `install-anvil.sh . </dev/null`)
 #   -h, --help        Show this help and exit
 #
 # Examples:
@@ -137,6 +139,18 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Auto-detect non-interactive mode when stdin is not a TTY (agent shells,
+# CI pipelines, `install-anvil.sh . </dev/null`). Without this, the
+# confirmation prompt below hits EOF on `read`, which under `set -euo
+# pipefail` (see line 77 above) silently aborts the script with exit 1 and
+# no diagnostic. Mirrors install-loom.sh:285-293. The explicit `--yes` flag
+# is still honored on a TTY; the note below only prints when the auto-detect
+# is what flipped the flag.
+if [[ "$NON_INTERACTIVE" != true ]] && [[ ! -t 0 ]]; then
+  NON_INTERACTIVE=true
+  note "stdin is not a TTY — proceeding non-interactively (use --yes explicitly to suppress this note)"
+fi
 
 # ----- Renderer dependency check --------------------------------------------
 # Renderer binaries the presentation skills (deck/slides) shell out to. The
