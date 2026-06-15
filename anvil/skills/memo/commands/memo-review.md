@@ -289,7 +289,19 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
 
    Dims 2, 3, 4, 8, 9 carry their normal reviewer-prose justifications with NO suffix attached (no calibration declared for those dims). The verdict + advance logic at step 7 is unchanged — the suffix is audit-trail commentary, not a score modifier.
 6. **Identify critical flags**: review the memo against the 4 example flags in `rubric.md` AND the open-ended "any deal-breaker a sophisticated reader would catch" instruction. For each flag set, write a one-paragraph justification in `verdict.md`. **Voice anti-stance violations (issue #461)**: when the voice tier is active (step 4l) and the resolved values doc declares anti-stances / substrate / standing limits, a memo passage violating one is a critical-flag candidate under this existing machinery (the `hard_rules` precedent) — the flag justification quotes the violated values-doc passage; no new flag category is introduced.
+
+   **NO-GO promotion (issue #559)** — after the standard critical-flag list is assembled, apply the `_classify_no_go_eligibility(aggregated_flags, iteration, max_iterations)` policy to decide whether any flag escalates to a thesis-failure `no_go` flag. The policy is conservative in v0 — canary will tune. Initial v0 trigger conditions, evaluated against the aggregated flag list (after `anvil/lib/critics.py::aggregate` has unioned flags from `.review/`, `.redteam/`, `.audit/`, etc.):
+
+   1. A `redteam_survives` flag (issue #560 / PR #573) on a **load-bearing** objection AND `iteration >= max_iterations - 1` (the iteration budget is about to be exhausted against an unrebutted structural objection). The load-bearing-ness signal comes from the red-team sibling's per-flag `justification` field, which (per `commands/memo-redteam.md`) names the objection's load-bearing-ness explicitly.
+   2. A `Strongman: NOT_ADDRESSED (load-bearing)` flag (issue #330; step 4g's `strongman_critical_flag`) AND `iteration >= max_iterations - 1`. The load-bearing-ness signal comes from the strongman back-check classifier at step 4g.
+   3. A `Summary-detail consistency: CONTRADICTED` flag (issue #245; step 4e's `summary_detail_critical_flag`) on a load-bearing thesis claim AND `iteration >= max_iterations - 1`. The load-bearing-ness signal comes from each finding's `load_bearing_justification` field (step 4e structured block, when severity is `critical`).
+
+   Lower-tier flags (typos, dim 9 bloat, unverified cites) NEVER promote to `no_go`. The bar is: **an evaluator has identified a defect that re-revision against the existing evidence cannot fix.** When the policy fires, emit a `CriticalFlag(type="no_go", justification=<one-paragraph kill rationale>, evidence_span=<the triggering flag's evidence_span when present>)` and APPEND it to the verdict's critical-flag list. The original triggering flag (e.g., `redteam_survives`) is preserved alongside the new `no_go` flag — both surface in `verdict.md` so the audit trail records both the underlying signal AND the policy decision to escalate. The kill rationale text is the **verbatim** `justification` from the triggering flag — no paraphrase, no truncation; this is the operator-visible record of *why* the evaluator concluded the thesis itself fails.
+
+   The Path A composition with PR #573 documented in issue #559's curator enhancement is realized here: the red-team critic continues to emit `redteam_survives` / `redteam_unengaged` unchanged at the critic boundary, and the memo-review step 6 promotion logic concentrates the NO-GO escalation policy in one place. Other critics that emit load-bearing flags (strongman, summary-detail-consistency) promote under the same rules — the policy is "evaluator-declared structural failure of the thesis itself," not "the red-team said so." Cache `no_go_critical_flag = bool(<any no_go-typed flag in the verdict's critical-flag list>)` for the verdict logic at step 7.
 7. **Compute total**: sum all dimension scores. `advance = (total >= 35) AND (no critical flags) AND (lint.errors == 0)`. When the pre-flight image-reference lint (step 4b) reports `errors > 0`, `advance` is forced `false` and the verdict lists `Memo image refs (lint)` under critical flags. The rubric total is reported honestly but does not save the verdict — a memo that references files that do not exist is not advance-eligible regardless of its prose quality.
+
+   **NO-GO terminal verdict (issue #559)**: when the cached `no_go_critical_flag` from step 6 is `true` (i.e., the step-6 promotion policy emitted a `CriticalFlag(type="no_go", ...)`), the verdict is `Verdict.NO_GO` and `advance` stays `false`. NO-GO is a **terminal** verdict — distinct from `BLOCK` (which routes to revise on the expectation that re-revision against the existing evidence can fix the defect): the reviser at the next pass refuses to proceed unless `--override-no-go "<reason>"` is passed (see `commands/memo-revise.md` step 4). The `_progress.json` audit trail at this step writes `termination_reason: "NO_GO"` (top-level) and `metadata.kill_rationale: <verbatim justification from the no_go flag>`; the `verdict.md` write at step 10 emits the NO-GO shape (see step 10 below). The standard `score_history` row append still happens — the row records `{iteration, total, threshold, rubric_id}` even when the iteration terminated in NO-GO (the total is computed honestly; the termination_reason discriminates the verdict). Resolution order (highest priority first): NO-GO > generic CRITICAL_FLAG (BLOCK) > THRESHOLD_MET (ADVANCE) > MAX_ITERATIONS (REVISE) > STALLED — mirrors `anvil/lib/convergence.py::decide_termination`.
 
    **Append `score_history` row with `rubric_id` (issue #346)**: the orchestrator (the command that drives review→revise iterations) appends one row to `<thread>.{N}/_progress.json.metadata.score_history` per finished review iteration. Per `anvil/lib/snippets/progress.md` §"Convergence fields → score_history", the canonical row shape is `{iteration, total, threshold, rubric_id}` — for the memo skill at /44, that's `{iteration: <N>, total: <computed-total>, threshold: 35, rubric_id: "anvil-memo-v2"}`. A thread that spans the `/40 → /44` migration records different `rubric_id` values across its rows (e.g., rows 1–2 may carry `"anvil-memo-v1"` from legacy reviews and rows 3+ carry `"anvil-memo-v2"` from post-migration reviews); readers tolerate rows missing `rubric_id` per the backwards-compat contract (treat as `"unknown/legacy"`). See `convergence.check_stable` for the precedent on `None`-tolerance.
 
@@ -771,6 +783,35 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
 
     The subsection is **observational** — it does NOT affect the verdict, the critical-flag list, or the `advance` decision. It is purely audit-trail prose so the operator's mental model stays calibrated across a rubric migration. Backwards-compat: a legacy review sibling produced before this contract shipped does NOT need to be re-emitted.
 10. **Write `verdict.md`** in the format specified in `rubric.md`:
+    - **NO-GO shape (issue #559)** — when the verdict is `Verdict.NO_GO` (`no_go_critical_flag == true` per step 7), write the NO-GO `verdict.md` shape instead of the standard shape below. The NO-GO shape REPLACES the `Total: XX / 44` + `Decision: advance: true|false` rows with the NO-GO block; downstream parsers that read `parse_memo_verdict_decision` see no `Decision: advance: ...` line and return `None`, which the legacy adapter at `_adapt_memo_legacy` then maps via the new `parse_memo_verdict_no_go` check to `Verdict.NO_GO`. Canonical NO-GO `verdict.md` shape:
+
+      ```markdown
+      # NO-GO — terminal
+
+      **Verdict**: NO-GO
+      **Iteration**: <N>
+      **Triggering flag**: <type, e.g. redteam_survives | strongman_load_bearing | summary_detail_contradicted>
+      **Source critic**: <critic_id, e.g. memo-redteam, memo-review>
+
+      ## Kill rationale
+
+      <one-paragraph verbatim from the triggering critical flag's justification field>
+
+      ## Evidence
+
+      - <evidence_span(s) from the triggering flag, when present>
+
+      ## Operator override
+
+      To resurrect this thread, run `memo-revise <thread> --override-no-go "<reason>"`.
+      The override writes a new version dir with `metadata.no_go_overridden = true`
+      and `metadata.no_go_override_reason = "<verbatim>"`. The NO-GO verdict.md is
+      preserved as a permanent record of the kill recommendation.
+      ```
+
+      The standard `Critical flags` section MAY be included AFTER the operator-override section to record the OTHER critical flags that were present alongside the `no_go` flag (e.g., a load-bearing `redteam_survives` that triggered the promotion remains visible). The `Dimension summary table` and `Top 3 revision priorities` sections are **omitted** for NO-GO — they presuppose a revise loop that NO-GO has just terminated. Skip directly to step 11.
+
+    - **Standard shape (non-NO-GO)** — when the verdict is `ADVANCE` / `REVISE` / `BLOCK`:
     - Total: `XX / 44`
     - Decision: `advance: true` or `advance: false`
     - Critical flags (if any) — include `Memo image refs (lint)` when `lint.memo_image_refs.errors > 0`; include `Summary-detail consistency: CONTRADICTED` when `summary_detail_consistency.critical_flag_candidate == true` (issue #245), with the claim excerpt + contradicting detail location as the one-paragraph justification; include `Cross-thread cite: ANCHOR-CONTRADICTED` when `cross_thread_cite_consistency.critical_flag_candidate == true` (issue #236), with the cite text + contradicting cited-section location as the one-paragraph justification; include `Strongman: NOT_ADDRESSED (load-bearing)` when `strongman_back_check.critical_flag_candidate == true` (issue #330), with the objection title + source `strongman-against.md` path as the one-paragraph justification; include `Scorecard arithmetic (lint)` when error-level `scorecard_lint` findings persist after the step 7b correction pass (issue #392), with the compact finding list (e.g. `weights_sum_mismatch: 48 != 44`) as the justification — a review whose own scorecard is arithmetically impossible must not advance the thread.

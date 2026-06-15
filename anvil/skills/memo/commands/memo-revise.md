@@ -109,6 +109,27 @@ Each rejection leaves the thread untouched (no partial output, no `_progress.jso
 
 See §"Plan-then-apply mode" below for the full procedure (steps 0a + 0b dispatch) and SKILL.md §"Operator-confirmable change-set preview" for the user-facing shape.
 
+### `--override-no-go "<reason>"` (optional)
+
+Operator-override entry point for the NO-GO terminal state (issue #559). When the prior review's `<thread>.{N}.review/verdict.md` carries `**Verdict**: NO-GO`, the default verdict pre-check at step 4 refuses to proceed (the thread is in NO-GO terminal state — see SKILL.md §"NO-GO terminal state"). Operators MAY override the refusal by passing `--override-no-go "<reason>"`, which:
+
+1. Bypasses the NO-GO check at step 4 (proceeds to step 5 regardless of the NO-GO `verdict.md`).
+2. Records the operator-supplied reason verbatim in `<thread>.{N+1}/_progress.json.metadata.no_go_override_reason`.
+3. Sets `<thread>.{N+1}/_progress.json.metadata.no_go_overridden = true` for downstream readers (orchestrator, share script) to distinguish a resurrected thread from a fresh one.
+4. Preserves the NO-GO `<thread>.{N}.review/verdict.md` unmodified — the kill recommendation remains a permanent record of the evaluator's verdict at that iteration, alongside the resurrected version's audit trail.
+
+**The reason argument is required.** `--override-no-go` without a value, `--override-no-go ""`, and `--override-no-go "   "` (whitespace-only) are all rejected with a clear error pointing at this rule. The reason exists as on-disk audit trail in `_progress.json.metadata.no_go_override_reason` — operators MUST supply substantive intent (e.g., *"new evidence: customer Y signed LOI on 2026-06-14 — addresses redteam objection #2 about adoption traction."* or *"reframe the thesis around adoption rather than technical superiority — the red-team objection about TAM was on the original thesis, not the reframed one."*). This mirrors the `--polish "<reason>"` rejection pattern: an unjustified override is treated as malformed.
+
+**The override is per-version, not sticky.** A thread that resurrects from NO-GO and the resurrected version re-earns a `no_go` flag on the next review is in NO-GO again. The override does NOT immunize subsequent versions — it explicitly bypasses the refusal for **this** revise pass only.
+
+**What `--override-no-go` bypasses.** Step 4's NO-GO refusal **only**. Step 3 (iteration-cap check) still applies — `--override-no-go` against a thread at `max_iterations` still hits the BLOCKED notice. Step 1 (review-exists check) still applies. The flag does NOT bypass `--polish`'s verdict-pre-check refusal (`advance:true` + 0-critical) — that is a different precondition. The flag is single-pass: it produces exactly one `<thread>.{N+1}/`, never loops, never consults a target score, never re-invokes itself.
+
+**Composition with `--polish`.** Mutually exclusive. The two flags address opposite preconditions (`--polish` requires `advance:true` + 0-critical; `--override-no-go` requires `Verdict: NO-GO`). The reviser rejects `--polish` + `--override-no-go` as contradictory.
+
+**Composition with `--plan` / `--apply`.** When the prior review is NO-GO, `--plan` (or `--apply`) without `--override-no-go` is rejected at step 4 in the same shape as the default path. With `--override-no-go "<reason>"`, the plan dispatch (step 0a) proceeds and the resulting plan's header records `Revision mode: override-no-go`. The `--apply` invocation reads the override reason from the plan header so the operator does NOT re-pass `--override-no-go` on the `--apply` invocation — the plan IS the audit trail (same shape as the `--polish` composition).
+
+See SKILL.md §"NO-GO terminal state" for the user-facing shape and operator-override semantics.
+
 ## Plan-then-apply mode
 
 The `--plan` / `--apply` flags compose a two-phase invocation that materializes a change-set preview between scope choice and edit application — the `terraform plan` / `terraform apply` (or `git rebase -i`) pattern, adapted to the markdown-first anvil:memo lifecycle. The phase split exists because the studio canary surfaced a structural gap (issue #243): the default-path reviser produces a defensible higher-scoring version that nonetheless drifts away from operator intent, and the drift is only visible after the edit is committed. A `plan.md` preview lets the operator see per-item summaries and decline at line-level before any edit is written.
@@ -230,6 +251,18 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
    If `N + 1 > effective_max_iterations`, exit with the **BLOCKED notice** per §"BLOCKED notice" below — human review required.
 4. **Verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` and there are no critical flags AND `--polish` was NOT passed, exit with a notice: the thread is `READY`, no revision needed. (Default behavior is to refuse to revise an already-passing version.)
 
+   **NO-GO refusal (issue #559).** Before the `advance == true` check, parse the prior review's `verdict.md` via `anvil/lib/critics.py::parse_memo_verdict_no_go`. If the function returns `True` AND `--override-no-go "<reason>"` was NOT passed, the thread is in **NO-GO terminal state** — refuse to proceed with the documented error message:
+
+   ```
+   Thread is in NO-GO terminal state. The reviewer concluded the thesis itself fails.
+   Kill rationale: <one-line summary extracted via parse_memo_verdict_kill_rationale>
+   To resurrect, re-run with `--override-no-go "<rationale>"`.
+   ```
+
+   The kill rationale's full text is in `<thread>.{N}.review/verdict.md`; the one-line summary is the first sentence (up to the first period or newline) of the `## Kill rationale` paragraph extracted via `parse_memo_verdict_kill_rationale`. The thread is left untouched — no `<thread>.{N+1}/` is written, no `_progress.json` mutation. The NO-GO `<thread>.{N}.review/verdict.md` is preserved unmodified (the immutability contract holds — the review sibling has been read-only since it was written, and the refusal is enforced at the reviser pre-check, not by modifying the review).
+
+   **`--override-no-go` bypass.** When `memo-revise <thread> --override-no-go "<reason>"` is invoked, this NO-GO refusal is bypassed; proceed to step 5 regardless of the NO-GO `verdict.md`. Pre-check the flag's reason argument before bypassing: an absent / empty / whitespace-only reason is rejected with a clear error (see §"CLI flags" §"`--override-no-go`" above); the thread is left untouched. The override path additionally records `metadata.no_go_overridden = true` and `metadata.no_go_override_reason = "<verbatim>"` at step 5 (see step 5 below). The override does NOT bypass the standard `advance:true` + 0-critical refusal (the polish-pass precondition is a separate matter) — `--polish` and `--override-no-go` are mutually exclusive per §"CLI flags".
+
    **`--polish` bypass.** When `memo-revise <thread> --polish "<reason>"` is invoked, this step is skipped entirely; proceed to step 5 regardless of `advance:true` + 0-critical. The `--polish` flag is the in-band, audit-trailed alternative to the destructive workarounds (deleting `verdict.md`, hand-bumping `metadata.iteration`, force-editing verdict status) the default-refuse path historically forced operators into. Pre-check the flag's reason argument before bypassing: an absent / empty / whitespace-only reason is rejected with a clear error (see §"CLI flags" above); the thread is left untouched. See §"CLI flags" for the full required-reason contract.
 5. **Initialize `_progress.json`**: write `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations` (the effective cap from step 3), and `metadata.iteration_cap_rationale` (the rationale from step 3 when the per-document BRIEF override is in effect; `null` otherwise). The drafter / reviser carry both fields forward on every pass so every version dir's `_progress.json` records the cap + rationale in effect when the version was produced. Also resolve `target_length` for v{N+1} per step 6 and record `metadata.target_length_resolved` with provenance — the resolution must happen before the revision-plan prompt is built so the resolved range is in scope for both the prompt injection and the `_progress.json` provenance write.
 
@@ -238,6 +271,12 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
    - Polish path (`--polish "<reason>"`): `metadata.revision_mode = "polish"`; `metadata.revise_force_reason = "<verbatim operator-supplied reason>"`. The reason MUST be stored verbatim — no trimming, no normalization, no truncation beyond what JSON encoding requires.
 
    Both fields participate in the standard shallow-merge rule per `anvil/lib/snippets/progress.md` §"Read-merge-write recipe" — any subsequent command that touches `_progress.json` preserves them. `revision_mode` is NOT scored, NOT gating, and has NO state-machine impact — it is audit-trail-only (operator-side disclosure of why the polish-pass bypass was taken).
+
+   **NO-GO override audit trail (issue #559).** When the reviser was invoked with `--override-no-go "<reason>"` (per §"CLI flags" §"`--override-no-go`"), additionally write:
+   - `metadata.no_go_overridden = true`.
+   - `metadata.no_go_override_reason = "<verbatim operator-supplied reason>"` — stored verbatim, no trimming / normalization / truncation beyond what JSON encoding requires. Same shape as `revise_force_reason`.
+
+   Both fields participate in the standard shallow-merge rule and are absent on every non-override path (every non-override version dir is byte-identical to the pre-#559 shape). The fields are audit-trail-only — NOT scored, NOT gating, NO state-machine impact at the reviser. The next `memo-review` pass does NOT special-case `metadata.no_go_overridden` (a resurrected version dir is scored on its own rubric merits); if the underlying triggering flag re-fires on the resurrected version, the next review may emit a new `no_go` critical flag and the thread is in NO-GO again. The override is per-version, not sticky.
 
    **Scope audit trail.** Also record the resolved `--scope` level: write `metadata.scope` as one of `"critical-only"`, `"important"`, or `"all"`. The value stored is the *resolved* value at invocation time (the default `"important"` when the flag was absent, or the explicit operator-supplied value). The field participates in the shallow-merge rule per `anvil/lib/snippets/progress.md` and is preserved on subsequent writes by other commands. Absence of the field is tolerated by readers and treated as `"all"` for backwards-compat with pre-this-change version dirs. **`metadata.scope` is NOT scored, NOT gating, and has NO state-machine impact** — it is audit-trail-only, the same shape as `revision_mode`. The reviewer at the next pass does NOT read `metadata.scope` and does NOT special-case "the prior revise punted these findings" — it scores `<thread>.{N+1}/` on its own rubric merits. The audit-trail field exists for operator-side disclosure (why did the prior revise produce a deferred list?) and for the changelog header (see step 9).
 6. **Read inputs**:
