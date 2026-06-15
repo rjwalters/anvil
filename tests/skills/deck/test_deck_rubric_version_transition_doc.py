@@ -1,13 +1,16 @@
 """Doc-coverage + fixture-driven tests for the per-review rubric version
-stamping landed by issue #346 and applied to the `deck` skill by issue
+stamping landed by issue #346 and applied to the `deck` skill by issues
 #357 (the /40 → /44 migration with dim 9 *Rhetorical economy*, owned
-by deck-narrative).
+by deck-narrative) and #550 (the /44 → /49 migration with dim 10
+*Business-model & unit-economics credibility*, owned by deck-review as
+fallback).
 
 Mirrors `tests/skills/memo/test_memo_rubric_version_transition_doc.py`.
 
-The deck skill is customer-facing tier — threshold ≥39/44 (was
-≥35/40), the proportional bump. Only the aggregator (deck-review)
-stamps in this PR; the four specialist critics inherit on follow-up.
+The deck skill is customer-facing tier — threshold ≥43/49 (was
+≥39/44, which was ≥35/40), the proportional bumps. Only the
+aggregator (deck-review) stamps in this PR; the four specialist
+critics inherit on follow-up.
 """
 
 from __future__ import annotations
@@ -37,15 +40,15 @@ def _read(path: Path) -> str:
 def test_deck_review_step4_stamps_rubric_id():
     body = _read(DECK_REVIEW_MD)
     assert "rubric_id" in body
-    assert '"anvil-deck-v2"' in body
+    assert '"anvil-deck-v3"' in body
 
 
 def test_deck_review_step4_stamps_rubric_total_and_threshold():
     body = _read(DECK_REVIEW_MD)
     assert "rubric_total" in body and "advance_threshold" in body
-    assert "rubric_total: 44" in body or '"rubric_total": 44' in body
-    # Deck ships customer-facing tier — threshold is 39, not 35.
-    assert "advance_threshold: 39" in body or '"advance_threshold": 39' in body
+    assert "rubric_total: 49" in body or '"rubric_total": 49' in body
+    # Deck ships customer-facing tier — threshold is 43 (39 × 49/44 ≈ 43.43, rounded down).
+    assert "advance_threshold: 43" in body or '"advance_threshold": 43' in body
 
 
 def test_deck_review_emits_top_level_rubric_block():
@@ -123,13 +126,27 @@ def test_fixture_meta_stamped_v1_carries_legacy_40_stamp():
 
 
 def test_fixture_meta_stamped_v2_carries_44_stamp():
+    """Legacy v2 fixture (pre-#550 /44 rubric) — kept as a sibling so
+    the /44 → /49 transition still tests green for threads stamped
+    with anvil-deck-v2."""
     data = json.loads((FIXTURES / "meta_stamped_v2.json").read_text())
     assert data["rubric_id"] == "anvil-deck-v2"
     assert data["rubric_total"] == 44
     assert data["advance_threshold"] == 39
 
 
+def test_fixture_meta_stamped_v3_carries_49_stamp():
+    """Post-#550 v3 fixture (/49 rubric, ≥43 threshold) — the current
+    rubric stamp."""
+    data = json.loads((FIXTURES / "meta_stamped_v3.json").read_text())
+    assert data["rubric_id"] == "anvil-deck-v3"
+    assert data["rubric_total"] == 49
+    assert data["advance_threshold"] == 43
+
+
 def test_fixture_summary_carries_rubric_block_with_prior_rubric_inferred():
+    """Legacy v2 summary fixture (pre-#550) — the /40-legacy →
+    /44 transition still tests green."""
     data = json.loads(
         (FIXTURES / "summary_with_rubric_block.json").read_text()
     )
@@ -142,21 +159,45 @@ def test_fixture_summary_carries_rubric_block_with_prior_rubric_inferred():
     assert rubric_block["prior_rubric_inferred"] == "/40-legacy"
 
 
+def test_fixture_summary_v3_carries_rubric_block_with_prior_rubric_v2():
+    """Post-#550 v3 summary fixture — a thread that ran v2 in the
+    prior iteration and now runs against v3. Exercises the v2 → v3
+    transition variant added in step 12b of deck-review.md."""
+    data = json.loads(
+        (FIXTURES / "summary_with_rubric_block_v3.json").read_text()
+    )
+    rubric_block = data["rubric"]
+    assert rubric_block["id"] == "anvil-deck-v3"
+    assert rubric_block["total"] == 49
+    assert rubric_block["advance_threshold"] == 43
+    assert rubric_block["dimensions"] == 10
+    assert rubric_block["prior_rubric_id"] == "anvil-deck-v2"
+
+
 # ---------------------------------------------------------------------------
 # Rubric file pinning
 # ---------------------------------------------------------------------------
 
 
-def test_deck_rubric_md_declares_44_threshold_39():
+def test_deck_rubric_md_declares_49_threshold_43():
     body = _read(DECK_RUBRIC_MD)
-    assert "**44**" in body or "/44" in body
-    assert "≥39/44" in body or "≥39**" in body or "≥39" in body
+    assert "**49**" in body or "/49" in body
+    assert "≥43/49" in body or "≥43**" in body or "≥43" in body
 
 
 def test_deck_rubric_md_declares_dim_9_rhetorical_economy():
     body = _read(DECK_RUBRIC_MD)
     assert "Rhetorical economy" in body
-    assert "**Total**" in body and "**44**" in body
+    assert "**Total**" in body and "**49**" in body
+
+
+def test_deck_rubric_md_declares_dim_10_business_model_economics():
+    """Post-#550: dim 10 *Business-model & unit-economics credibility*
+    is owned by deck-review as the fallback owner in v0 — sibling #551
+    will introduce deck-economics and reassign primary ownership."""
+    body = _read(DECK_RUBRIC_MD)
+    assert "Business-model & unit-economics credibility" in body
+    assert "**Total**" in body and "**49**" in body
 
 
 def test_deck_rubric_md_documents_dim_9_owned_by_narrative():
@@ -177,4 +218,16 @@ def test_deck_rubric_md_documents_dim_9_owned_by_narrative():
     assert "1, 7, 9" in body or "deck-narrative` | 1, 7, 9" in body, (
         "rubric.md MUST assign dim 9 ownership to deck-narrative per "
         "issue #357's decision matrix."
+    )
+
+
+def test_deck_rubric_md_documents_dim_10_owned_by_review_fallback():
+    """Per #550 curator's decision: dim 10 is owned by deck-review as
+    the fallback owner in v0 — sibling #551 will introduce
+    deck-economics and reassign primary ownership."""
+    body = _read(DECK_RUBRIC_MD)
+    # deck-review's ownership row should include "10" alongside dims 2/5/6.
+    assert "2, 5, 6, 10" in body, (
+        "rubric.md MUST assign dim 10 ownership to deck-review as the "
+        "fallback owner per issue #550's decision matrix."
     )

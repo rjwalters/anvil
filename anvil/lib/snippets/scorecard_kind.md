@@ -62,17 +62,22 @@ re-reading the skill's current `rubric.md`.
   artifact-class skills ship `-v2` for their main gate rubric
   post-#357: `anvil-memo-v2`, `anvil-proposal-v2`, `anvil-pub-v2`,
   `anvil-slides-v2`, `anvil-deck-v2`, `anvil-report-v2`,
-  `anvil-installation-v2`, `anvil-ip-uspto-v2`.
+  `anvil-installation-v2`, `anvil-ip-uspto-v2`. The deck skill bumped
+  to `anvil-deck-v3` post-#550 (the /44 → /49 migration adding dim 10
+  *Business-model & unit-economics credibility*); the legacy
+  `anvil-deck-v2` literal remains a recognized stamp on prior-iteration
+  reviews per the per-review version stamping contract.
 - `rubric_total` (`int`) — the rubric's declared `total` (the point
   pool the per-dimension weights sum to). The v0 observed values are
-  `40` (legacy), `44` (seven post-#357 skills), and `45` (ip-uspto
-  post-#357, preserving flat-weight design).
+  `40` (legacy), `44` (seven post-#357 skills), `45` (ip-uspto
+  post-#357, preserving flat-weight design), and `49` (deck post-#550).
 - `advance_threshold` (`int`) — the rubric's declared advance
   threshold (the minimum aggregated total that yields `ADVANCE` when
   no critical flag is set). Observed values: `32` and `35` for the
   legacy /40 skills; `35` for the internal-tier /44 skills (memo,
   proposal, pub, slides, installation); `39` for the customer-facing
-  /44 skills (deck, report); `39` for the /45 ip-uspto skill.
+  /44 skills (report; deck pre-#550); `39` for the /45 ip-uspto skill;
+  `43` for the customer-facing /49 deck skill post-#550.
 
 **Backwards compatibility**: a critic sibling produced before these
 fields landed MAY omit any or all of them. Readers MUST tolerate the

@@ -13,7 +13,7 @@ This critic exists because Anvil's markdown-source critics never *look at* the r
 
 ## Owned vision dimensions (six, scored /5 each, /30 total)
 
-This critic owns a separate **vision rubric subset** alongside the deck's main 9-dimension /44 rubric. The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
+This critic owns a separate **vision rubric subset** alongside the deck's main 10-dimension /49 rubric. The vision dims appear in the aggregated scorecard via the existing mean-of-non-null aggregator (`anvil/lib/critics.py::aggregate`); no schema or aggregation changes are required.
 
 | Dim | Name | What it catches |
 |---|---|---|
@@ -24,7 +24,7 @@ This critic owns a separate **vision rubric subset** alongside the deck's main 9
 | v5 | `mathtext_artifacts` | Italic letters adjacent to dollar signs (direct catch for #23). LaTeX source rendered literally. |
 | v6 | `slide_density` | Walls of text exceeding ~30 words per slide / ~6 bullets (IC-grade decks). |
 
-The six vision dims are scored 0–5 each. The vision critic puts `null` on the deck's 8 main-rubric dimensions (it does not own them); other critics put `null` on v1–v6. The aggregator merges the two scorecards cleanly per the existing rules.
+The six vision dims are scored 0–5 each. The vision critic puts `null` on the deck's 10 main-rubric dimensions (it does not own them); other critics put `null` on v1–v6. The aggregator merges the two scorecards cleanly per the existing rules.
 
 **Default rubric**: the six dims above. Skills may pass a subset via `VisionRubric(dimensions=[...])` to `VisionCritic.critique()`.
 
@@ -136,7 +136,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 
 This critic's `_review.json` is discovered by `anvil.lib.critics.discover_critics` exactly like the other deck specialists. The aggregator merges its scorecard into the composite verdict per the existing rules:
 
-- The vision dims (v1–v6) appear in the aggregated scorecard alongside the deck's 8 main-rubric dims.
+- The vision dims (v1–v6) appear in the aggregated scorecard alongside the deck's 10 main-rubric dims.
 - Per-dim `critical=True` ORs across critics; non-empty `critical_flags` forces `Verdict.BLOCK`.
 - The deck-revise command (with no code changes) consumes the vision findings via the same discover-glob → aggregate pattern.
 

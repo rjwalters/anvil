@@ -1,0 +1,24 @@
+{
+  "critic": "review",
+  "for_version": 3,
+  "rubric": {
+    "id": "anvil-deck-v3",
+    "total": 49,
+    "advance_threshold": 43,
+    "dimensions": 10,
+    "prior_rubric_id": "anvil-deck-v2"
+  },
+  "dimensions": {
+    "1_narrative_arc": 5,
+    "2_problem_clarity": 4,
+    "3_market_size_credibility": 3,
+    "4_solution_differentiation": 4,
+    "5_traction_proof": 3,
+    "6_team_credibility": 3,
+    "7_ask_specificity": 5,
+    "8_design_polish": 4,
+    "9_rhetorical_economy": 3,
+    "10_business_model_economics": 3
+  },
+  "critical_flag": false
+}
