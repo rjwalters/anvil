@@ -376,3 +376,168 @@ def test_check_xelatex_available_true(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/xelatex")
     from anvil.lib.render import check_xelatex_available
     assert check_xelatex_available() is True
+
+
+# ---------------------------------------------------------------------------
+# render_mermaid_to_png — wrapper for deck-figures / slides-figures (issue #545)
+# ---------------------------------------------------------------------------
+
+
+def test_render_mermaid_to_png_is_exported() -> None:
+    """The wrapper is part of the public API and listed in ``__all__``."""
+    from anvil.lib.render import render_mermaid_to_png
+
+    assert callable(render_mermaid_to_png)
+    assert "render_mermaid_to_png" in render.__all__
+    assert "DEFAULT_MERMAID_THEME" in render.__all__
+
+
+def test_default_mermaid_theme_path_matches_pin() -> None:
+    """The default theme pin resolves under ``anvil/lib/figures/``."""
+    from anvil.lib.render import DEFAULT_MERMAID_THEME
+
+    assert DEFAULT_MERMAID_THEME == Path(
+        "anvil/lib/figures/mermaid-theme.json"
+    )
+
+
+def test_render_mermaid_to_png_missing_source_raises(tmp_path):
+    """A missing ``.mmd`` source must raise ``FileNotFoundError`` before
+    the binary check."""
+    from anvil.lib.render import render_mermaid_to_png
+
+    with pytest.raises(FileNotFoundError):
+        render_mermaid_to_png(tmp_path / "missing.mmd", tmp_path / "out.png")
+
+
+def test_render_mermaid_to_png_missing_binary_raises_render_error(
+    tmp_path, monkeypatch
+):
+    """When ``mmdc`` is absent the wrapper raises ``RenderError`` with the
+    canonical remediation string."""
+    from anvil.lib.render import (
+        MMDC_REMEDIATION,
+        render_mermaid_to_png,
+    )
+
+    src = tmp_path / "flow.mmd"
+    src.write_text("flowchart LR\n  A --> B\n", encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    with pytest.raises(RenderError) as excinfo:
+        render_mermaid_to_png(src, tmp_path / "out.png")
+    # The full install story (npm + Chromium + --no-sandbox) must surface.
+    assert "@mermaid-js/mermaid-cli" in str(excinfo.value)
+    assert str(excinfo.value) == MMDC_REMEDIATION
+
+
+def test_render_mermaid_to_png_invokes_canonical_flag_set(tmp_path, monkeypatch):
+    """AC: subprocess argv includes the canonical issue-#545 flag set
+    (``--scale 2`` plus the pre-existing flags). Mock pattern mirrors
+    ``test_deck_mmdc_preflight.py``: stub ``shutil.which`` + capture the
+    ``subprocess.run`` argv."""
+    from anvil.lib.render import (
+        DEFAULT_MERMAID_THEME,
+        render_mermaid_to_png,
+    )
+
+    src = tmp_path / "flow.mmd"
+    src.write_text("flowchart LR\n  A --> B\n", encoding="utf-8")
+    out = tmp_path / "flow.png"
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+
+    captured: dict = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=0, stdout="", stderr=""
+        )
+
+    monkeypatch.setattr("anvil.lib.render.subprocess.run", fake_run)
+    result = render_mermaid_to_png(src, out)
+    assert result == out
+
+    cmd = captured["cmd"]
+    # Binary name first.
+    assert cmd[0] == "mmdc"
+    # Canonical flag set — each flag/value pair must be adjacent.
+    for flag, value in (
+        ("--input", str(src)),
+        ("--output", str(out)),
+        ("--width", "1600"),
+        ("--height", "900"),
+        ("--scale", "2"),
+        ("--backgroundColor", "white"),
+        ("-c", str(DEFAULT_MERMAID_THEME)),
+    ):
+        assert flag in cmd, f"argv missing flag {flag!r}; cmd={cmd!r}"
+        idx = cmd.index(flag)
+        assert cmd[idx + 1] == value, (
+            f"flag {flag!r} not followed by expected value {value!r}; "
+            f"got {cmd[idx + 1]!r}"
+        )
+
+
+def test_render_mermaid_to_png_honors_explicit_overrides(tmp_path, monkeypatch):
+    """Explicit ``width`` / ``height`` / ``scale`` / ``background_color`` /
+    ``config`` kwargs override the defaults."""
+    from anvil.lib.render import render_mermaid_to_png
+
+    src = tmp_path / "flow.mmd"
+    src.write_text("flowchart TB\n  A --> B\n", encoding="utf-8")
+    out = tmp_path / "flow.png"
+    custom_theme = tmp_path / "custom-theme.json"
+    custom_theme.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+    captured: dict = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=0, stdout="", stderr=""
+        )
+
+    monkeypatch.setattr("anvil.lib.render.subprocess.run", fake_run)
+    render_mermaid_to_png(
+        src,
+        out,
+        width=2000,
+        height=1200,
+        scale=3,
+        background_color="transparent",
+        config=custom_theme,
+    )
+
+    cmd = captured["cmd"]
+    for flag, value in (
+        ("--width", "2000"),
+        ("--height", "1200"),
+        ("--scale", "3"),
+        ("--backgroundColor", "transparent"),
+        ("-c", str(custom_theme)),
+    ):
+        idx = cmd.index(flag)
+        assert cmd[idx + 1] == value
+
+
+def test_render_mermaid_to_png_nonzero_exit_raises_render_error(
+    tmp_path, monkeypatch
+):
+    """Non-zero exit from ``mmdc`` raises ``RenderError`` with the captured
+    stderr (mirrors the ``marp`` failure path)."""
+    from anvil.lib.render import render_mermaid_to_png
+
+    src = tmp_path / "flow.mmd"
+    src.write_text("flowchart LR\n  A --> B\n", encoding="utf-8")
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+    fake_completed = subprocess.CompletedProcess(
+        args=["mmdc"], returncode=1, stdout="", stderr="boom: chromium crashed"
+    )
+    monkeypatch.setattr(
+        "anvil.lib.render.subprocess.run", lambda *a, **kw: fake_completed
+    )
+    with pytest.raises(RenderError, match="mmdc failed.*boom"):
+        render_mermaid_to_png(src, tmp_path / "out.png")
