@@ -141,6 +141,35 @@ Stage **only** the paths the phase wrote — never `git add -A`, never
 The narrow staging scope is what makes the hook safe under parallel
 fan-out and safe in a repo with unrelated uncommitted operator edits.
 
+### Never stage a gitignored path (safety-critical)
+
+Private voice-grounding docs are a designed `.gitignored` posture
+(`anvil/lib/snippets/voice_grounding.md` §"Private grounding"): a
+personal `VALUES.local.md`-class doc carries an author's stances and
+must NEVER leak into git history via an auto-commit. The hook
+formalizes that guarantee into an absolute rule:
+
+- **The hook MUST NOT stage any path matched by `.gitignore`.** A
+  grounding doc is never in a phase's write-set to begin with (phases
+  stage `<thread>.{N}/` version dirs and their own sidecar dirs, never
+  the consumer root where grounding docs live), so the staging scope
+  above already excludes it. This rule makes "excluded in practice"
+  into "excluded by contract."
+- **The hook MUST use plain `git add <path>`, never `git add -f` and
+  never `git add -A` / `git add .`.** Plain `git add` of a gitignored
+  file is a no-op/refusal — git declines to stage it — which is
+  exactly the desired behavior. The `-f` (force) flag overrides
+  `.gitignore` and is **forbidden** in this hook; `-A`/`.` would sweep
+  in unrelated and gitignored paths and is likewise forbidden (see
+  the staging-scope rule above).
+- **Why this is load-bearing:** an auto-commit of a private grounding
+  doc would silently publish personal perspective into a shared or
+  public repo. Because the hook is opt-in and runs unattended under an
+  orchestrator, the operator is not in the loop to catch it. The guard
+  is therefore a hard contract, verified by a real-git-fixture test
+  (`tests/lib/test_git_sync_gitignore_guard.py`) that fails if `-f` or
+  `-A` is reintroduced.
+
 ## Failure semantics (warn-and-continue)
 
 Git failures MUST NOT fail the phase or destroy artifacts —
@@ -204,3 +233,5 @@ non-executable contract/walkthrough documents
 - `thread_state.md` — deriving the `[<resulting-state>]` bracket.
 - `version_layout.md` — the `<thread>.{N}/` + sidecar naming the
   staging scope is defined over.
+- `voice_grounding.md` §"Private grounding" — the `.gitignored`
+  personal-doc posture the never-stage-a-gitignored-path guard protects.

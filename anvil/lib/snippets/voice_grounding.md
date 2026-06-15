@@ -55,9 +55,11 @@ consumer adopting voice grounding does not start from a blank page:
 `STYLE_GUIDE.md` / `VOCABULARY.md` (per-file skip-if-exists, never
 clobbering an existing grounding doc) when a voice-consuming skill
 (`essay` / `memo`) is selected. See `anvil/templates/voice/README.md`.
-`VALUES.md` (issue #578), the private/`.gitignored` grounding model
-(issue #577), and the optional vocab reminder CLI tool (issue #579) are
-tracked separately and deliberately not shipped as templates here.
+The **private/`.gitignored` grounding model is a first-class posture**
+(issue #577) — see "## Private grounding" below. `VALUES.md` (issue
+#578, the canonical private candidate) and the optional vocab reminder
+CLI tool (issue #579) are tracked separately and deliberately not
+shipped as templates here.
 
 **`rhetoric_rules` is the asymmetric fifth sub-key** (issue #468): a
 path to a consumer **JSON rule file** consumed by the render gate's
@@ -105,6 +107,108 @@ locally. The `corpus` value is a glob (`**` supported); a root "hits"
 when the glob matches at least one file; matches are sorted. Use
 `anvil/lib/project_brief.py::resolve_voice_docs(project_dir,
 consumer_root=None)` — do not re-implement the walk.
+
+## Private grounding (`.gitignored` personal docs)
+
+The personal layer of voice grounding — *what the author believes,
+what they refuse to say, what they have standing to claim*
+(`VALUES.md`-class content) — is exactly the material many consumers
+will NOT want committed into a shared or public repo. Anvil makes
+**private grounding a designed, tested, protected posture** so those
+consumers neither commit personal stances publicly nor skip the
+highest-leverage grounding doc.
+
+This works because resolution is **filesystem-driven and never
+consults git status**: `resolve_voice_docs` walks project-root then
+consumer-root and resolves a declared doc whether or not it is tracked
+by git. A `.gitignored` declared doc resolves and activates the tier
+**identically to a committed one** — same load order, same drafter
+grounding, same reviewer calibration, same `major` finding when it is
+declared-but-missing. There is no separate "private" code path and no
+special-casing; privacy is a property of where the file lives in git,
+not of how anvil reads it.
+
+### The convention
+
+- **Default (documented): the `*.local.md` suffix.** Name a private
+  grounding doc with a `.local.md` suffix (e.g. `VALUES.local.md`) and
+  declare it in the `voice:` block like any other doc. The suffix has
+  industry precedent (dotenv `.env.local`, Vite `*.local`) and reads
+  unambiguously as "private overlay, do not commit." The scaffolder
+  gitignores `*.local.md` with a single pattern line.
+- **Supported alternative: a `.voice/` locus.** A consumer who prefers
+  a directory boundary may keep private docs under a gitignored
+  `.voice/` directory (e.g. `.voice/VALUES.md`) and declare that path.
+  One `.gitignore` line (`/.voice/`) covers the whole locus. This is
+  supported but not the documented default — pick one convention per
+  repo and stay consistent.
+
+Either way the declaration is ordinary `voice:` grammar — there is no
+new config surface and no `--private` flag in the BRIEF:
+
+```yaml
+voice:
+  style_guide: STYLE_GUIDE.md      # committed — team-shared register
+  values: VALUES.local.md          # private  — gitignored personal stances
+```
+
+### What "private" guarantees
+
+- The doc **resolves and grounds** drafting and review identically to
+  a committed doc (the filesystem-driven resolver above).
+- The scaffolder **appends its path to `.gitignore`** idempotently
+  (see `scripts/install-anvil.sh` Stage 7.9 and
+  `anvil/templates/voice/README.md`).
+- **Anvil's own git-sync hook will never stage or commit it** (the
+  opt-in per-phase commit hook, `anvil/lib/snippets/git_sync.md`; the
+  guard is stated there under §"Staging scope").
+
+### What "private" does NOT guarantee
+
+State this plainly so operators do not over-trust the model:
+
+- It is **not encryption.** The file sits in plaintext on disk; anyone
+  with filesystem access reads it.
+- It is **not protection against a human or a non-anvil tool.** A
+  `git add -f <path>` force-adds a gitignored file, and any other tool
+  that runs `git add -A`/`-f` can stage it. Anvil's guarantee is only
+  about *anvil's own* git activity (the git-sync hook), which never
+  uses `-f` and never `git add -A`.
+- It **does not stop the doc's *influence* from appearing in committed
+  prose.** That is the point: the voice is grounded by the private
+  stances, but only the resulting artifact is committed — the source
+  document stays private, its effect does not.
+
+### Intended user
+
+`VALUES.md`-class personal stances are the intended user of private
+grounding (the canonical `VALUES.local.md`): stances and anti-stances,
+standing, voice signatures, named failure modes — the content authored
+in the first person that an author would not publish verbatim. The
+`VALUES.md` schema + starter template is tracked by issue #578, which
+is a **downstream consumer** of this private path: it simply declares a
+`VALUES.local.md` (or `.voice/VALUES.md`) using the mechanism shipped
+here.
+
+### Layering (committed base + private overlay): DEFERRED
+
+A committed team-level base supplemented by a private personal overlay
+(e.g. `VALUES.md` committed + `VALUES.local.md` gitignored, merged or
+last-wins) is **deliberately deferred** to a follow-up (epic #575).
+Anvil ships the **single-private-doc model first**. Rationale:
+
+1. Merge/last-wins semantics multiply the resolver's surface —
+   `resolve_voice_docs` returns one `ResolvedVoiceDoc` per declared
+   kind today; layering would require a list-per-kind or a merge step,
+   touching every downstream consumer of `ResolvedVoiceDoc`.
+2. The single-private-doc model already solves the stated need (a
+   private `VALUES.md`).
+3. The `*.local.md` suffix convention chosen above leaves the door
+   open to add layering later without a breaking change (the overlay
+   already has a name).
+
+If layering is later shipped it must define merge semantics precisely
+and update the four-doc load-order docs above.
 
 ## Drafter contract
 
