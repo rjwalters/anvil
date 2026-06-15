@@ -7,6 +7,7 @@ Scaffolds for new skills and rubrics. Used by a `scripts/new-skill.sh` (planned)
 | Template | Purpose |
 |---|---|
 | `themes/starter/` | Consumer starter theme (issue #471). `scripts/install-anvil.sh` Stage 7.8 scaffolds it to `<consumer>/.anvil/themes/starter/` when `memo` is among the selected skills (skip-if-exists — the installer never overwrites files under `.anvil/themes/`). Ships `theme.yml` plus a navy-accented `memo/styles.css` that preserves the framework default's functional baseline (booktabs-class tables, `@page` footer). |
+| `voice/` | Starter voice-grounding docs (issue #576). De-personalized templates `STYLE_GUIDE.template.md` and `VOCABULARY.template.md` — schema, not content; every author-specific example is a marked `<!-- replace me -->` placeholder. `scripts/install-anvil.sh` Stage 7.9 scaffolds them to the consumer root as `STYLE_GUIDE.md` / `VOCABULARY.md` when a voice-consuming skill (`essay` or `memo`) is selected (per-file skip-if-exists — never clobbers an existing grounding doc; prints the `voice:` YAML to paste rather than editing `BRIEF.md`). The ship-now half of the four-doc taxonomy from `anvil/lib/snippets/voice_grounding.md`; `VALUES.md` (#578), private grounding (#577), and the vocab CLI tool (#579) are deferred. See `voice/README.md`. |
 
 ## Planned templates
 
