@@ -1211,6 +1211,66 @@ else
   [[ "$DRY_RUN" == true ]] || ok "starter theme scaffolded (enable per project with 'theme: starter' in BRIEF.md)"
 fi
 
+# ----- Stage 7.9: scaffold starter voice-grounding docs (issue #576) ---------
+# Anvil documents the voice-grounding contract (issue #461;
+# anvil/lib/snippets/voice_grounding.md) but a consumer adopting it faced a
+# blank page — anvil shipped zero starter grounding documents. Stage 7.9 drops
+# the two ship-now, de-personalized templates
+# (anvil/templates/voice/STYLE_GUIDE.template.md and VOCABULARY.template.md)
+# at the CONSUMER ROOT as STYLE_GUIDE.md / VOCABULARY.md (stripping the
+# `.template` infix). Voice docs are persona-level repo-root artifacts shared
+# across every project in the consumer repo, which is exactly where
+# resolve_voice_docs's consumer-root fallback looks.
+#
+# Contract (mirrors Stage 7.8; the idempotent skip-if-exists model):
+#   * Gated on a voice-consuming skill (`essay` or `memo`) being in
+#     SELECTED_SKILLS — the docs are only useful to a skill that grounds in
+#     them.
+#   * Per-file skip-if-exists: if STYLE_GUIDE.md (or VOCABULARY.md) already
+#     exists at the consumer root, it is PRESERVED untouched and the stage
+#     notes the skip — per file, not all-or-nothing. A hand-authored
+#     STYLE_GUIDE.md does not block VOCABULARY.md from scaffolding.
+#   * NEVER overwrites an existing grounding doc (warn-and-skip). The
+#     scaffold is inert until a project BRIEF declares the `voice:` block;
+#     the stage prints the exact YAML to paste rather than auto-editing a
+#     hand-authored BRIEF.
+#   * --dry-run reports the would-scaffold action and writes nothing
+#     (issue #81 honesty discipline).
+#
+# Reuses the existing `voice:` grammar (anvil/lib/project_brief.py::VoiceDocs /
+# resolve_voice_docs) — no new declaration mechanism. VALUES.md (#578), the
+# private/.gitignored grounding model (#577), and the vocab CLI tool (#579) are
+# deliberately out of scope here.
+info "Stage 7.9: scaffold starter voice-grounding docs (anvil/templates/voice -> consumer root)"
+SRC_VOICE_DIR="$ANVIL_ROOT/anvil/templates/voice"
+VOICE_SKILL_SELECTED=false
+for s in "${SELECTED_SKILLS[@]}"; do
+  if [[ "$s" == "essay" || "$s" == "memo" ]]; then VOICE_SKILL_SELECTED=true; break; fi
+done
+VOICE_SCAFFOLDED_ANY=false
+if [[ "$VOICE_SKILL_SELECTED" != true ]]; then
+  note "no voice-consuming skill (essay/memo) selected; skipping voice-grounding scaffold"
+elif [[ ! -d "$SRC_VOICE_DIR" ]]; then
+  note "source voice templates dir not found: $SRC_VOICE_DIR (skipping)"
+else
+  # Map each shipped template to its de-infixed destination filename.
+  for voice_pair in "STYLE_GUIDE.template.md:STYLE_GUIDE.md" "VOCABULARY.template.md:VOCABULARY.md"; do
+    voice_src_name="${voice_pair%%:*}"
+    voice_dst_name="${voice_pair##*:}"
+    voice_src="$SRC_VOICE_DIR/$voice_src_name"
+    voice_dst="$TARGET/$voice_dst_name"
+    if [[ ! -f "$voice_src" ]]; then
+      note "source voice template not found: $voice_src (skipping)"
+    elif [[ -e "$voice_dst" ]]; then
+      note "existing $voice_dst_name detected — preserving (the installer never overwrites a grounding doc)"
+    else
+      do_action "scaffold voice-grounding doc at $voice_dst_name (consumer-owned; tune the <!-- replace me --> placeholders)" \
+        copy_file_with_parents "$voice_src" "$voice_dst"
+      [[ "$DRY_RUN" == true ]] || { ok "$voice_dst_name scaffolded"; VOICE_SCAFFOLDED_ANY=true; }
+    fi
+  done
+fi
+
 # ----- Stage 8: CLAUDE.md additive merge ------------------------------------
 info "Stage 8: CLAUDE.md additive merge"
 CLAUDE_MD="$TARGET/CLAUDE.md"
@@ -1466,6 +1526,22 @@ else
     echo "           in-place (lib copy):   .anvil/anvil/lib/memo/styles.css"
     echo "             CAUTION: the in-place copy is overwritten on every re-install/"
     echo "             upgrade — prefer the theme tier for durable overrides."
+  fi
+  # Voice-grounding hint (issue #576): the scaffolded STYLE_GUIDE.md /
+  # VOCABULARY.md are inert until a project BRIEF declares the `voice:` block.
+  # We deliberately do NOT auto-edit the consumer's BRIEF — print the exact
+  # YAML snippet to paste so the wiring stays explicit.
+  if [[ "$VOICE_SKILL_SELECTED" == true ]]; then
+    echo ""
+    note "voice grounding: starter STYLE_GUIDE.md / VOCABULARY.md scaffolded at the consumer root."
+    echo "         They ship as templates — fill in the <!-- replace me --> placeholders with"
+    echo "         examples from your own domain, then activate per project by adding this to"
+    echo "         the project BRIEF.md frontmatter:"
+    echo "             voice:"
+    echo "               style_guide: STYLE_GUIDE.md"
+    echo "               vocabulary: VOCABULARY.md"
+    echo "         An existing STYLE_GUIDE.md / VOCABULARY.md is never overwritten (per-file"
+    echo "         skip). See anvil/templates/voice/README.md for the four-doc taxonomy."
   fi
   if [[ "$DEPS_MISSING" -gt 0 ]]; then
     warn "install complete, but $DEPS_MISSING renderer dependenc$([[ "$DEPS_MISSING" -eq 1 ]] && echo y || echo ies) missing (see above) -- deck/slides rendering will be impaired until installed"
