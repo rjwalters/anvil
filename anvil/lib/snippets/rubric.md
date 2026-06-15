@@ -394,7 +394,7 @@ existing per-dim sub-rules like `§"Citation hooks (dim N)"` and
 4. (Optionally) names the natural-escalation path for an existing
    deduction when a known-gap claim is made un-hooked.
 
-The v0 adopters are `anvil:deck` (dims 3 + 4), `anvil:memo` (dim 3),
+The v0 adopters are `anvil:deck` (dims 3 + 4 + 10), `anvil:memo` (dim 3),
 `anvil:proposal` (dim 6 with light dim 4 reference), and `anvil:pub`
 (dim 4 — codifies the implicit litsearch rule). Other skills (`slides`,
 `installation`, `ip-uspto`, `report`) do not currently consume
