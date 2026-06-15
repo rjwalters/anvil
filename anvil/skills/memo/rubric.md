@@ -203,6 +203,42 @@ The dim 3 justification MUST cite the specific objection title and verdict tag (
 
 The classification is applied entirely via reviewer judgment — there is no automated strongman parsing in v0 (no new Python detector, no schema change to `anvil/lib/review_schema.py`). See `commands/memo-review.md` §Procedure step 4g for the reviewer-side procedure and `commands/memo-draft.md` §Procedure step 3 for the drafter-side ingestion contract (drafter reads strongman files when present and addresses or scopes out the named counter-arguments).
 
+### Red-team back-check (dim 2 + dim 3)
+
+The §"Strongman back-check (dim 3)" sub-rule above scores the memo's engagement with the **author-supplied** `strongman-against.md`. Two compounding weaknesses (issue #560) limit that contract: (1) the strongest objection is bounded by the author's willingness to imagine it — the "knowing you're right" failure mode survives intact; (2) the `ADDRESSED` classification clears on *engagement*, not *victory* — a hand-waving rebuttal of a self-authored objection still clears the bar. The **red-team back-check** addresses both weaknesses via an **independent adversarial critic** (`commands/memo-redteam.md`) that generates objections independently of the author's substrate and judges rebuttal sufficiency rather than mere engagement.
+
+This sub-rule is **optional** — it activates when a `<thread>.{N}.redteam/` sibling exists alongside `<thread>.{N}.review/`. Absence of the sibling is byte-identical to a pre-#560 thread: the §"Strongman back-check (dim 3)" sub-rule continues to function as the sole adversarial-engagement surface. Presence of the sibling adds an independent leg whose findings layer additively on dim 2 + dim 3 — same composition shape as the existing back-check triangle (refs back-check + summary-detail consistency + cross-thread cite + author-supplied strongman).
+
+The red-team critic enumerates its own objections (independent of `refs/strongman-against.md` — the author's strongman is consulted only as a post-hoc calibration crosscheck) and renders one of three verdicts on each objection:
+
+- **`DEFEATED`** — the memo's response to this objection actually wins on the merits. The rebuttal is sound, the evidence holds, the scope is honest. **No finding emitted; no deduction; no flag.** This is the only verdict that clears the bar.
+- **`SURVIVES`** — the memo engages the objection but the rebuttal does not win. The objection still stands after the memo's response (thin evidence, hand-wavy reasoning, the rebuttal addresses a weaker version of the objection, or the scope-out is dishonest). Severity ladder splits on load-bearing-ness:
+  - **Load-bearing objection** (one that would force the recommendation to change if it stands): severity **`critical`**; **-2 dim 3 deduction AND critical-flag candidate** (`redteam_survives` type per `anvil/lib/review_schema.py::CriticalFlag.type`, which is skill-defined; the new vocabulary value drops in without a schema bump). Forces `advance: false` via the existing critical-flag aggregation at `commands/memo-review.md` step 7.
+  - **Non-load-bearing objection**: severity `important`; **-1 dim 3 deduction**. Not flag-eligible on its own.
+- **`UNENGAGED`** — the memo does not address the objection at all (neither defeats nor scopes out). Severity ladder splits on load-bearing-ness:
+  - **Load-bearing objection**: severity **`critical`**; **-2 dim 3 deduction AND critical-flag candidate** (`redteam_unengaged` type). Forces `advance: false` via the existing critical-flag aggregation.
+  - **Non-load-bearing objection**: severity `important`; **-1 dim 3 deduction**. Not flag-eligible on its own.
+
+The bar is materially higher than the existing strongman back-check vocabulary. The existing `ADDRESSED` classification clears on engagement alone; the red-team's `DEFEATED` requires the rebuttal to *win*. This is the operational claim of issue #560 — that "knowing you're right" is the failure mode the existing contract cannot catch, and that a sufficiently rigorous independent adversary will surface it.
+
+**Dim ownership.** The red-team critic owns **dim 2 (*Thesis coherence*)** AND **dim 3 (*Evidence quality*)** — the two dimensions a kill-case attacks. Per the aggregator's mean-of-non-null contract (`anvil/lib/critics.py::aggregate`), the red-team writes `score: null` for dims 1, 4, 5, 6, 7, 8, 9 (those dims are owned by `memo-review`); the aggregated dim 2 + dim 3 scores merge across both critics via mean-of-non-null. The red-team's per-instance deductions on dim 3 (above) are applied to its own `_review.json` dim 3 score; the aggregator computes the merged dim 3 from the means.
+
+**Calibration crosscheck (the author's strongman becomes a check on the red-team).** When `refs/strongman-against.md` is present in the resolved refs-dir list, the red-team writes a `calibration.md` block in its sibling dir that compares the red-team's independently-generated objection set against the author's anticipated set:
+
+- **Anticipated** — objections the red-team raised that the author already named (positive signal for author imagination).
+- **Novel** — objections the red-team raised that the author did NOT name (load-bearing-blind-spot signal).
+- **Over-weighted** — author-named objections the red-team judged non-load-bearing or already defeated (author over-imagined).
+
+The calibration block is **operator-facing audit-trail only** — it does NOT contribute findings or critical flags to `_review.json`. The existing §"Strongman back-check (dim 3)" sub-rule above continues to function as designed; the red-team's calibration crosscheck inverts the contract: the self-authored strongman becomes a **calibration signal on the author's adversarial imagination**, not the sole source of adversarial input.
+
+**Verdict pathway.** A `SURVIVES` or `UNENGAGED` verdict on a load-bearing objection emits a critical flag in the red-team's `_review.json`; `anvil/lib/critics.py::aggregate` unions all per-critic critical flags; the aggregated verdict at `commands/memo-review.md` step 7 is `Verdict.BLOCK` regardless of total whenever the union is non-empty. The existing `advance = (total >= 35) AND (no critical flags) AND (lint.errors == 0)` rule is unchanged; the red-team's flags plug into the "no critical flags" clause via the same pathway as every other load-bearing back-check critical flag (refs back-check `CONTRADICTED`, summary-detail `CONTRADICTED`, cross-thread cite `ANCHOR-CONTRADICTED`, strongman back-check `NOT_ADDRESSED (load-bearing)`).
+
+**No new state-machine transition.** A `SURVIVES` on a load-bearing objection forces `advance: false` via the existing critical-flag pathway — the same as every other load-bearing back-check critical flag. The dedicated **NO-GO terminal state** is OUT of scope for this issue — that is owned by issue #559 (Wave 3). The interaction point between this sub-rule and #559 is "SURVIVES → critical_flag candidate → `advance: false`", which existing plumbing already supports.
+
+**Backward compatibility.** When no `<thread>.{N}.redteam/` sibling exists, this sub-rule is **inactive** and dim 2 + dim 3 fall back to the existing per-rule behavior (Citation hooks + Refs back-check + Strongman back-check + Cross-thread cite back-check, plus the dim 2 strongman-for calibration note). A memo authored before the red-team critic shipped (or one where the operator never invokes `memo-redteam`) is unaffected.
+
+See `commands/memo-redteam.md` for the reviewer-side procedure (objection generation, verdict rendering, calibration crosscheck, `_review.json` shape).
+
 ### Figure + hyperlink enrichment (dim 3, advisory `scope: expand`)
 
 The reviewer's standard dim 3 *Evidence quality* pass ALSO emits **`scope: expand` enrichment findings** in `comments.md` for four classes of gap the existing sub-rules (citation hooks, refs back-check, strongman back-check, cross-thread back-check) do not catch by construction: missing or off-brand figures, missing or inadequate alt text on existing image refs, prose references to figures that the body does not actually contain, and load-bearing claims that could anchor to a known external hyperlink but do not. The four enrichment scopes are **independent and additive** to the existing dim 3 sub-rules: a memo can carry enrichment findings on all four classes without any of the existing per-instance deductions firing (and vice versa — the enrichment scopes do NOT alter the dim 3 score, see §"Scoring posture" below).
