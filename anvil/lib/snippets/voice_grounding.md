@@ -45,6 +45,20 @@ voice:
 
 Every sub-key is optional; the block itself is optional.
 
+**Starter templates ship for the two ship-now doc kinds** (issue #576):
+`anvil/templates/voice/STYLE_GUIDE.template.md` and
+`anvil/templates/voice/VOCABULARY.template.md` are generalized,
+de-personalized starting points (schema, not content — every
+author-specific example is a marked `<!-- replace me -->` placeholder). A
+consumer adopting voice grounding does not start from a blank page:
+`scripts/install-anvil.sh` scaffolds them to the consumer root as
+`STYLE_GUIDE.md` / `VOCABULARY.md` (per-file skip-if-exists, never
+clobbering an existing grounding doc) when a voice-consuming skill
+(`essay` / `memo`) is selected. See `anvil/templates/voice/README.md`.
+`VALUES.md` (issue #578), the private/`.gitignored` grounding model
+(issue #577), and the optional vocab reminder CLI tool (issue #579) are
+tracked separately and deliberately not shipped as templates here.
+
 **`rhetoric_rules` is the asymmetric fifth sub-key** (issue #468): a
 path to a consumer **JSON rule file** consumed by the render gate's
 advisory `memo_rhetoric_lint` check (issue #463) — lint-side
