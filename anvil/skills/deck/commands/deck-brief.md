@@ -56,7 +56,19 @@ Declares which classes of imagery the drafter is allowed to emit. The drafter re
 - **`consumer-provided`** — drafter expects every image asset to already exist under `<thread>/assets/` (and to appear in the brief's "Assets available" inventory). This is the current implicit behavior for hand-curated decks where the founder has supplied all imagery.
 - **`deterministic-only`** — drafter MUST NOT reference any image asset that doesn't already exist on disk. Only matplotlib charts and mermaid diagrams (which are regenerable from `figures/src/`) may appear on slides. This is the safest setting and the **default** when the field is absent — existing decks continue to behave exactly as they did before this field was introduced.
 
-When the field is omitted entirely from the frontmatter, the brief is treated as `imagery_policy: deterministic-only`. The intake does NOT prompt the founder for a policy value during brief generation; the operator sets the policy by editing `BRIEF.md` after intake (or by hand-writing the frontmatter when the brief is hand-authored).
+When the field is omitted entirely from the frontmatter, the brief is treated as `imagery_policy: deterministic-only` **unless** a consumer-level default is registered (see "Consumer-level default override" below). The intake does NOT prompt the founder for a policy value during brief generation; the operator sets the policy by editing `BRIEF.md` after intake (or by hand-writing the frontmatter when the brief is hand-authored).
+
+##### Consumer-level default override (`.anvil/config.json` `deck.imagegen.default_policy`)
+
+Per issue #547, a consumer can register `deck.imagegen.default_policy` in `.anvil/config.json` to opt every BRIEF that omits `imagery_policy` into a proactive (always-on) generative posture. The resolution order is (highest priority first):
+
+1. `BRIEF.md` frontmatter `imagery_policy:` (per-thread, explicit).
+2. `.anvil/config.json` `deck.imagegen.default_policy` (consumer-level fallback).
+3. Built-in `deterministic-only` (existing default; what this section described before #547).
+
+Setting `default_policy: generative-eligible` in the consumer config saves the operator from repeating `imagery_policy: generative-eligible` in every BRIEF for an aesthetic-craft / consumer-product portfolio. A B2B / technical thread inside the same portfolio can still opt out by setting `imagery_policy: deterministic-only` in its BRIEF — per-thread intent always wins over the consumer-level default.
+
+Both `imagery_policy` and `default_policy` are validated against the same closed enum (`generative-eligible | consumer-provided | deterministic-only`); a typo in either is surfaced as a clear error (config-side at config-read time; BRIEF-side at the existing drafter / `deck-imagegen` gate). See `commands/deck-imagegen-adapter.md` § "Optional: `deck.imagegen.default_policy`" for the registration snippet and the rationale for the proactive default.
 
 #### `imagery_style` (optional)
 

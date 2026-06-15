@@ -87,7 +87,8 @@ The consumer registers their adapter via `.anvil/config.json` at the repo root:
   "version": 1,
   "deck": {
     "imagegen": {
-      "backend": "myrepo.imagery_adapter:MyBackend"
+      "backend": "myrepo.imagery_adapter:MyBackend",
+      "default_policy": "generative-eligible"
     }
   }
 }
@@ -100,6 +101,36 @@ The `backend` value is a dotted Python path of the form `<module>:<attribute>`, 
 - A plain function with the `generate` signature — `deck-imagegen` calls it directly.
 
 The full resolution algorithm and edge cases (JSON parse errors, missing module, missing attribute, attribute not callable) are specified by the Phase 2 implementation (Epic #130 / issue E). v0 contract: this doc specifies the *shape* of the registration; it does not enumerate every error path.
+
+### Optional: `deck.imagegen.default_policy` (consumer-level override)
+
+A consumer that wants proactive (always-on) generative imagery can set `deck.imagegen.default_policy` alongside `backend`. The key supplies the **effective** `imagery_policy` for any BRIEF that omits the field — saving the operator from setting `imagery_policy: generative-eligible` in every BRIEF. Per-thread `imagery_policy` in BRIEF.md frontmatter still wins; the `default_policy` is the consumer-chosen fallback, not an override of explicit per-thread intent.
+
+**Resolution order** (highest priority first; issue #547):
+
+1. `<thread>/BRIEF.md` frontmatter `imagery_policy:` (per-thread, explicit).
+2. `.anvil/config.json` `deck.imagegen.default_policy` (consumer-level fallback).
+3. Built-in `deterministic-only` (existing behavior, unchanged).
+
+**Closed enum**: `default_policy` MUST be one of `generative-eligible | consumer-provided | deterministic-only` (same enum as the BRIEF-level field; see `commands/deck-brief.md` § "imagery_policy"). An out-of-enum value (e.g., `"generative_eligible"` with an underscore) raises `ImagegenError` at config-read time, naming the offending value and enumerating the three valid choices.
+
+**Backward compatibility**: omitting `default_policy` is byte-identical to today's behavior — a BRIEF without `imagery_policy` falls back to the built-in `deterministic-only`. Consumers who have not adopted the proactive posture see zero behavior change.
+
+**Per-thread opt-out under proactive default**: a consumer who has registered `default_policy: generative-eligible` can still set `imagery_policy: deterministic-only` (or `consumer-provided`) in an individual BRIEF — the BRIEF-level value wins. Use this for B2B / technical decks where investors notice generative imagery as a credibility liability (per `SKILL.md` § "Asset generation"); the proactive default applies to the aesthetic-craft / consumer-product threads, and the per-thread opt-out preserves the deterministic-only path where it belongs.
+
+**Paste-ready snippet (proactive default with closed-enum value)**:
+
+```json
+{
+  "version": 1,
+  "deck": {
+    "imagegen": {
+      "backend": "myrepo.imagery_adapter:MyBackend",
+      "default_policy": "generative-eligible"
+    }
+  }
+}
+```
 
 ### Why `.anvil/config.json`
 
