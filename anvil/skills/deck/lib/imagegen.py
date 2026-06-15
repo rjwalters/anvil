@@ -101,6 +101,7 @@ __all__ = (
     "load_style_presets",
     "compose_prompt",
     "enumerate_imagery_slots",
+    "resolve_default_policy",
     "resolve_slot_prompt",
     "run_imagegen",
 )
@@ -289,11 +290,31 @@ _CONFIG_JSON_SNIPPET: str = (
     '  "version": 1,\n'
     '  "deck": {\n'
     '    "imagegen": {\n'
-    '      "backend": "<module>:<attr>"\n'
+    '      "backend": "<module>:<attr>",\n'
+    '      "default_policy": "generative-eligible"\n'
     "    }\n"
     "  }\n"
     "}"
 )
+
+
+# Closed enum of valid ``imagery_policy`` / ``default_policy`` values,
+# per ``commands/deck-brief.md`` § "imagery_policy". A typo-driven value
+# (e.g., ``"generative_eligible"`` with an underscore) MUST NOT fall
+# back to a different policy silently — the closed enum lives here so
+# the resolver and the BRIEF-side gate share the same source of truth.
+_VALID_IMAGERY_POLICIES: frozenset[str] = frozenset(
+    {"generative-eligible", "consumer-provided", "deterministic-only"}
+)
+
+# The hardcoded fallback applied when neither ``BRIEF.md`` nor the
+# consumer-level ``deck.imagegen.default_policy`` in
+# ``.anvil/config.json`` supplies a policy. This is the historical
+# behavior (Epic #130 Phase 1B): absent → ``deterministic-only``. The
+# default-policy override (issue #547) only kicks in when the BRIEF
+# omits ``imagery_policy``; built-in fallback only kicks in when the
+# config override is also absent.
+_BUILTIN_DEFAULT_POLICY: str = "deterministic-only"
 
 
 def _stale_toml_migration_hint(config_path: Path) -> str | None:
@@ -382,6 +403,92 @@ def load_config(config_path: Path | str) -> dict[str, Any]:
             f"§ 'Consumer registration' for the expected shape."
         )
     return cfg
+
+
+def resolve_default_policy(config_path: Path | str | None) -> str | None:
+    """Resolve the consumer-level ``deck.imagegen.default_policy`` override.
+
+    Reads ``.anvil/config.json`` (when present) and returns the value of
+    ``deck.imagegen.default_policy`` after validating it against the
+    closed enum. This is the issue #547 / proactive-imagery override —
+    it lets a consumer set "always-on generative imagery" once, rather
+    than per-BRIEF. The BRIEF.md frontmatter ``imagery_policy`` field
+    still takes precedence (per-thread opt-in / opt-out is preserved).
+
+    Resolution rules (mirror ``commands/deck-imagegen.md`` § "Preconditions"):
+
+    1. When ``config_path`` is ``None`` or the file does not exist, the
+       override is treated as absent → returns ``None``. The caller falls
+       back to the built-in ``deterministic-only`` policy.
+    2. When the file exists but is malformed JSON or has a non-object
+       top level → :class:`ImagegenError` per the existing
+       :func:`load_config` contract.
+    3. When the file exists but ``deck`` / ``deck.imagegen`` /
+       ``deck.imagegen.default_policy`` is absent → returns ``None``
+       (section-must-be-object-else-treated-absent, matching the
+       ``report.figure_adapters`` precedent).
+    4. When ``deck.imagegen`` is present but ``default_policy`` is a
+       non-string (e.g., ``42``, ``null``, an array) → returns ``None``
+       (same precedent — defensive against config typos that shouldn't
+       crash the run for an absent override).
+    5. When ``default_policy`` is a string outside the closed enum →
+       :class:`ImagegenError` whose message names the offending value
+       and enumerates the three valid choices. This is a config-time
+       error (not a per-slot error) — the consumer's intent is clear
+       but the value is typoed.
+
+    Args:
+        config_path: Filesystem path to ``.anvil/config.json``. Pass
+            ``None`` to skip the lookup entirely (the
+            ``adapter``-injected test path that bypasses config).
+
+    Returns:
+        The validated ``default_policy`` string when an override is
+        registered; ``None`` when no override is found. The caller is
+        responsible for falling back to the built-in default.
+
+    Raises:
+        ImagegenError: When the JSON is malformed (delegated to
+            :func:`load_config`) OR when ``default_policy`` is a string
+            outside the closed enum.
+    """
+    if config_path is None:
+        return None
+    p = Path(config_path)
+    if not p.exists():
+        return None
+    # Re-use the load_config error handling for malformed JSON. We
+    # intentionally do NOT raise for a missing file — the missing-file
+    # branch is the "no override" case, and the adapter-registration
+    # gate (run_imagegen Precondition 3) is responsible for the missing-
+    # registration error message.
+    cfg = load_config(p)
+    deck_section = cfg.get("deck")
+    if not isinstance(deck_section, dict):
+        return None
+    imagegen_section = deck_section.get("imagegen")
+    if not isinstance(imagegen_section, dict):
+        return None
+    raw = imagegen_section.get("default_policy")
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        # Defensive: a non-string default_policy is treated as absent
+        # (matches the section-must-be-object-else-treated-absent
+        # convention). Surface a clear remediation in the *missing*
+        # case only — silent ignore here is safer than raising for a
+        # config typo, and `_VALID_IMAGERY_POLICIES` will still catch
+        # any string-shaped typo below.
+        return None
+    candidate = raw.strip().lower()
+    if candidate not in _VALID_IMAGERY_POLICIES:
+        raise ImagegenError(
+            f'deck.imagegen.default_policy = {raw!r} in {p} is not one of '
+            f"the closed enum {sorted(_VALID_IMAGERY_POLICIES)}. See "
+            f"commands/deck-imagegen-adapter.md § 'Consumer registration' "
+            f"and commands/deck-brief.md § 'imagery_policy'."
+        )
+    return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -1127,8 +1234,44 @@ def run_imagegen(
     thread_dir = portfolio_path / thread
     brief = load_brief_frontmatter(thread_dir / "BRIEF.md")
 
-    # --- Precondition 1: imagery_policy opt-in ---
-    policy = brief.get("imagery_policy", "deterministic-only").strip().lower()
+    # --- Precondition 1: imagery_policy opt-in (with default_policy resolution) ---
+    #
+    # Resolution order (highest priority first; issue #547):
+    #   1. BRIEF.md frontmatter ``imagery_policy`` (per-thread, explicit).
+    #   2. ``.anvil/config.json`` ``deck.imagegen.default_policy``
+    #      (consumer-level proactive override).
+    #   3. Built-in ``deterministic-only`` (existing behavior, unchanged).
+    #
+    # The ``policy_source`` field is load-bearing for an operator
+    # surprised by a ``skipped`` run: they need to see whether the BRIEF
+    # or the config-level override supplied the effective value.
+    raw_policy = brief.get("imagery_policy")
+    brief_has_policy = raw_policy is not None and raw_policy.strip() != ""
+    if brief_has_policy:
+        policy = raw_policy.strip().lower()
+        policy_source = "BRIEF.md"
+    else:
+        # BRIEF omitted the field. Consult the consumer-level override.
+        # When ``adapter`` is injected (test path) AND no explicit
+        # ``config_path`` is provided, the config lookup still happens
+        # at the conventional location — this lets the
+        # default_policy-override tests inject an adapter while still
+        # validating the resolver pipeline.
+        cfg_path_for_resolve = (
+            Path(config_path)
+            if config_path is not None
+            else portfolio_path / ".anvil" / "config.json"
+        )
+        override = resolve_default_policy(cfg_path_for_resolve)
+        if override is not None:
+            policy = override
+            policy_source = (
+                f"{cfg_path_for_resolve} deck.imagegen.default_policy"
+            )
+        else:
+            policy = _BUILTIN_DEFAULT_POLICY
+            policy_source = "built-in default"
+
     if policy != "generative-eligible":
         # Surface as a clean skip; deck-imagegen.md's failure-modes
         # table marks this as ``phases.imagegen.state = skipped``.
@@ -1143,18 +1286,23 @@ def run_imagegen(
                     "started": _utc_now(),
                     "completed": _utc_now(),
                     "reason": (
-                        f"BRIEF.md imagery_policy is {policy!r}; "
-                        f"deck-imagegen is opt-in via "
-                        f"imagery_policy: generative-eligible. See "
-                        f"commands/deck-brief.md."
+                        f"effective imagery_policy is {policy!r} "
+                        f"(source: {policy_source}); deck-imagegen is "
+                        f"opt-in via imagery_policy: generative-eligible "
+                        f"in BRIEF.md frontmatter or "
+                        f"deck.imagegen.default_policy in .anvil/config.json. "
+                        f"See commands/deck-brief.md."
                     ),
                 },
             )
         raise ImagegenError(
-            f"BRIEF.md imagery_policy is {policy!r}, not 'generative-eligible'. "
-            f"deck-imagegen is opt-in via the imagery_policy field in BRIEF.md "
-            f"frontmatter. See SKILL.md § 'Asset generation' and "
-            f"commands/deck-brief.md § 'imagery_policy'."
+            f"effective imagery_policy is {policy!r}, not 'generative-eligible' "
+            f"(source: {policy_source}). deck-imagegen is opt-in via the "
+            f"imagery_policy field in BRIEF.md frontmatter, or via "
+            f"deck.imagegen.default_policy in .anvil/config.json (consumer-level "
+            f"default for threads that omit the field). See SKILL.md "
+            f"§ 'Asset generation', commands/deck-brief.md § 'imagery_policy', "
+            f"and commands/deck-imagegen-adapter.md § 'Consumer registration'."
         )
 
     # --- Precondition 2: latest version dir ---
