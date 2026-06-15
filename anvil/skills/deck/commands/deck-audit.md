@@ -137,6 +137,13 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
        { "type": "fabricated_traction", "slide_ref": "Slide 8", "justification": "Boeing customer logo on slide; not in brief Assets inventory; asset file does not exist" },
        { "type": "fabricated_traction", "slide_ref": "Slide 8", "justification": "94% net retention asserted on slide; brief says TBD pending cohort analysis" }
      ]
+     // The `type` field is a short snake_case tag; per `anvil/lib/review_schema.py`
+     // the lib does not enforce a vocabulary. The five standing deck flag types
+     // are `fabricated_traction`, `fabricated_team_credentials`, `market_math_error`,
+     // `absent_ask`, and `incoherent_or_absent_business_model` (the latter raised
+     // by `deck-economics` primary / `deck-review` fallback per `rubric.md`
+     // §"Critical flags"; this auditor does not raise it but MAY surface
+     // entries of that type when re-emitting flags from prior critic siblings).
    }
    ```
    ```
