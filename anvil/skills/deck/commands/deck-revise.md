@@ -62,6 +62,7 @@ For each rubric dimension (1–8):
 For the critical flag:
 - `aggregated_critical_flag = OR(critic.critical_flag for each critic in critic_dirs)`.
 - Collect all `critical_flag_notes` from contributing critics into the aggregated verdict.
+- The five standing deck critical-flag types that may appear in `critical_flag_notes[].type` (per `rubric.md` §"Critical flags") are: `fabricated_traction`, `fabricated_team_credentials`, `market_math_error`, `absent_ask`, and `incoherent_or_absent_business_model`. The OR fires identically across all five — any one triggers `aggregated_critical_flag = true`. Critic-discretion flags (e.g., `fabricated_competitive_claims` from `deck-market`) participate via the same OR with no special-casing.
 
 For the decision:
 - `aggregated_advance = (aggregated_total >= 39) AND (aggregated_critical_flag == false) AND (no dimension is null)`.
