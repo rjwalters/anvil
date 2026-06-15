@@ -165,11 +165,12 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 
 - **≥43/49** advances to `READY`.
 - **<43/49** requires revision.
-- **Any critical flag short-circuits** regardless of total. The four deck-specific critical flags are:
+- **Any critical flag short-circuits** regardless of total. The five deck-specific critical flags are:
   1. **Fabricated traction** — a traction number (revenue, users, LOIs, pilots, design partners) not attested in the brief or refs.
   2. **Fabricated team credentials** — a bio claim (prior role, prior exit, degree, named hire) not attested in the brief or refs.
   3. **Market-math error** — TAM/SAM/SOM arithmetic that does not check out, OR top-down-only sizing presented as defensible.
   4. **Absent ask** — no specific round size, no use-of-funds breakdown, no runway-to-milestone framing.
+  5. **Incoherent or absent business model** (wire-key `incoherent_or_absent_business_model`) — no revenue mechanic stated, OR internally contradictory unit economics, OR counterparty-rejecting terms. Raised by `deck-economics` (primary, post-#551) with `deck-review` as fallback when `deck-economics` is skipped from the critic fan-out.
 
 Iteration cap: default `max_iterations: 4` (terminal version is `<thread>.5/`). Configurable per-thread via `<thread>/.anvil.json`. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
@@ -350,7 +351,7 @@ The canonical `_progress.json` schema, read-merge-write recipe, and crash recove
 
 ## Rubric
 
-See `rubric.md` for the 10-dimension /49 scoring schema, the ≥43 advance threshold, and the four critical-flag conditions.
+See `rubric.md` for the 10-dimension /49 scoring schema, the ≥43 advance threshold, and the five critical-flag conditions.
 
 ## Defaults and overrides
 

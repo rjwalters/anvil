@@ -62,7 +62,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    - Use of funds broken down? (engineering / GTM / hires / runway, with rough percentages or dollar amounts).
    - Runway-to-milestone framing? ("$3M gets us to $5M ARR over 18 months", not just "$3M for 18 months runway").
    - Does the ask in deck.md match the ask in BRIEF.md? If not, flag — drafter or brief is out of sync.
-   - **Critical flag — `Absent ask`**: trigger if any of round size / use of funds / runway-to-milestone is missing entirely, OR if the ask is so vague it gives the investor permission to say "interesting, keep me posted."
+   - **Critical flag — `Absent ask`**: trigger if any of round size / use of funds / runway-to-milestone is missing entirely, OR if the ask is so vague it gives the investor permission to say "interesting, keep me posted." (Structural twin: `Incoherent or absent business model` is the parallel dim-10 critical flag owned by `deck-economics` — this critic owns the ask-side disqualifier; `deck-economics` owns the model-side disqualifier. Both are standing critical flags per `rubric.md` §"Critical flags".)
 7. **Evaluate rhetorical economy** (Dim 9, weight 4):
    - Could a busy investor extract the ask in 90 seconds?
    - Are slides 18+ load-bearing? Could the same arc reach the ask in fewer slides?
