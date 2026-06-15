@@ -34,11 +34,14 @@ A single command that an operator (or orchestrating agent) runs to see the state
    |---|---|
    | `EMPTY` | `memo-draft <thread>` |
    | `DRAFTED` | `memo-review <thread>` |
+   | `NO-GO` | `(no action — thread is terminal; run `memo-revise <thread> --override-no-go "<reason>"` to resurrect)` |
    | `REVIEWED` (advance=false, under iteration cap) | `memo-revise <thread>` |
    | `REVIEWED` (advance=false, AT iteration cap) | `BLOCKED — human review required` |
    | `REVIEWED` (advance=true, no figures yet) | `memo-figures <thread>` (optional) |
    | `READY` | (terminal) |
    | `READY` + figures missing exhibits | `memo-figures <thread>` |
+
+   **NO-GO state derivation (issue #559)**: when reading `<slug>.{N}.review/verdict.md`, surface state `NO-GO` instead of `REVIEWED` when `anvil/lib/critics.py::parse_memo_verdict_no_go(verdict_md)` returns `True`. NO-GO is the highest-priority state — it takes precedence over `READY` and `REVIEWED` in the state-derivation predicate. A NO-GO thread that subsequently has a `<slug>.{N+1}/` written (operator override path; see SKILL.md §"NO-GO terminal state") transitions to `REVISED` per the standard state-derivation rule — NO-GO is terminal for the iteration that emitted it, not for the thread as a whole.
 
 5. Detect anomalies and surface them:
    - A `<slug>.{N}/_progress.json` with any phase in state `in_progress` AND the version dir is older than 10 minutes — likely a crashed phase; recommend resuming.

@@ -131,8 +131,9 @@ intermediate iterations. Values:
 
 | Value | Meaning |
 |---|---|
+| `NO_GO` | A thesis-failure critical flag (type `"no_go"`) is set — terminal verdict `NO-GO` (issue #559). The reviser refuses to proceed; operator override required to resurrect. Highest priority: NO-GO short-circuits every other terminator including `CRITICAL_FLAG` and `THRESHOLD_MET`. |
 | `THRESHOLD_MET` | `total >= threshold`, no critical flag — `ADVANCE`. |
-| `CRITICAL_FLAG` | A critical flag is set — `BLOCK`. |
+| `CRITICAL_FLAG` | A critical flag is set — `BLOCK`. (NOT a `no_go`-typed flag; those route through `NO_GO` above.) |
 | `STALLED` | The last `lookback` totals are within `± window` and below threshold — secondary stop condition. Verdict = `STALLED`. |
 | `MAX_ITERATIONS` | Iteration cap exhausted without convergence. Verdict stays `REVISE`; the termination reason distinguishes "ran out of budget" from "demonstrated plateau". |
 
@@ -140,6 +141,35 @@ The resolution order is documented in `rubric.md`'s "Convergence logic"
 and implemented in `anvil.lib.convergence.decide_termination`. The two
 sources MUST agree; the Python implementation is the source of truth for
 programmatic use, the snippet for LLM-side authoring.
+
+### `metadata.kill_rationale` (#559)
+
+A one-paragraph operator-readable rationale set **only** when
+`termination_reason == "NO_GO"`. The verbatim contents of the triggering
+`no_go` critical flag's `justification` field. Authored once at NO-GO
+emission time (by `memo-review` step 7); preserved on every subsequent
+shallow merge. Other commands MUST NOT mutate it. Absent (or `null`) on
+every non-NO-GO termination and on every pre-#559 thread.
+
+### `metadata.no_go_overridden` + `metadata.no_go_override_reason` (#559)
+
+Operator-override audit-trail fields set **only** by the operator-
+override path of `memo-revise --override-no-go "<reason>"`. When set on
+a version dir's `_progress.json`:
+
+- `metadata.no_go_overridden: true` — the operator explicitly bypassed
+  the NO-GO refusal at memo-revise step 4. Downstream readers (orchestrator,
+  share script) MAY surface this to distinguish a resurrected thread from
+  a fresh one.
+- `metadata.no_go_override_reason: "<verbatim>"` — the verbatim
+  operator-supplied rationale for the override. Treated identically to
+  `metadata.revise_force_reason` from the `--polish` precedent: no
+  trimming, no normalization, no truncation beyond what JSON encoding
+  requires.
+
+Both fields are absent on every non-override path. The NO-GO override is
+**per-version** (audit-trail-only); a thread that resurrects and then
+re-earns a `no_go` flag on the resurrected version is in NO-GO again.
 
 ### Why this is additive
 
