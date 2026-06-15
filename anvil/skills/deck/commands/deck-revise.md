@@ -204,7 +204,7 @@ For the decision:
 
 After this command produces `<thread>.{N+1}/`, the orchestrator should:
 1. Run `deck-figures <thread>` to re-render the PDF and any updated figures.
-2. Run `deck-review`, `deck-narrative`, `deck-market`, `deck-design` in parallel on the new version.
+2. Run `deck-review`, `deck-narrative`, `deck-market`, `deck-design`, `deck-economics` in parallel on the new version.
 3. Re-run `deck-revise <thread>` or — if the aggregated verdict says advance — let the thread settle in `READY` state.
 
 The cycle continues until:

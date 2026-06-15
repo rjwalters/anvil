@@ -17,7 +17,7 @@ The rubric is tuned for the way investors actually read decks: **narrative coher
 | 7 | **Ask specificity** | 5 | Round size, optionally valuation expectation, use of funds breakdown, milestones the raise unlocks, runway months. "Raising $X to do Y by Z" — no hand-waving. An absent or vague ask is a critical flag. | `deck-narrative` |
 | 8 | **Design polish** | 5 | Visual hierarchy, slide density (≤6 bullets and ≤30 words per content slide is the working bar), chart legibility at projection scale, consistent typography/palette, no chartjunk, no walls of text. Decks are seen, not read — design is content. Critique runs against the **rendered PDF**, not the markdown source. | `deck-design` |
 | 9 | **Rhetorical economy** | 4 | Could a busy investor extract the ask in 90 seconds? Are slides 18+ load-bearing? Could the same arc reach the ask in fewer slides? Decks lose to bloat hardest of any skill — a 30-slide deck is fatal. Owned by `deck-narrative` (which owns the arc/ask pair); the arc critic's natural turf. | `deck-narrative` |
-| 10 | **Business-model & unit-economics credibility** | 5 | How money actually flows: revenue mechanic clarity (subscription / per-seat / per-usage / platform-fee / transaction-take); pricing basis (validated against pilots or assumed); per-unit contribution margin / gross margin at scale; the GTM motion AND its cost (for B2B2C: counterparty acquisition cost + sales cycle, not just consumer attach); sensitivity to the load-bearing assumption (e.g. Docent's ~8% attach rate — the canary anchor for the calibrated full-weight evidence shape: explicit attach-rate sensitivity table is full credit; hand-wavy "we'll get to 8%" without a contribution-margin trace is ≤2/5). A deck that nails the rest but treats the business model as a single bullet ("SaaS subscription, $X/seat") scores low here — and SHOULD, because every other dim rewards a coherent argument and a clean rendering but no dim scores how the company makes money. **Owned by `deck-review` as fallback in v0** — sibling #551 introduces `deck-economics` and reassigns primary ownership. | `deck-review` |
+| 10 | **Business-model & unit-economics credibility** | 5 | How money actually flows: revenue mechanic clarity (subscription / per-seat / per-usage / platform-fee / transaction-take); pricing basis (validated against pilots or assumed); per-unit contribution margin / gross margin at scale; the GTM motion AND its cost (for B2B2C: counterparty acquisition cost + sales cycle, not just consumer attach); sensitivity to the load-bearing assumption (e.g. Docent's ~8% attach rate — the canary anchor for the calibrated full-weight evidence shape: explicit attach-rate sensitivity table is full credit; hand-wavy "we'll get to 8%" without a contribution-margin trace is ≤2/5). A deck that nails the rest but treats the business model as a single bullet ("SaaS subscription, $X/seat") scores low here — and SHOULD, because every other dim rewards a coherent argument and a clean rendering but no dim scores how the company makes money. **Owned by `deck-economics`** (primary, post-#551 adversarial economic-diligence pass); `deck-review` is the fallback if `deck-economics` is skipped from the critic fan-out. | `deck-economics` |
 | | **Total** | **49** | Advance threshold: **≥43** | |
 
 **Weight rationale**:
@@ -32,7 +32,8 @@ Critics fill only the rubric dimensions they own. Other dimensions remain `null`
 
 | Critic | Owns dimensions | Notes |
 |---|---|---|
-| `deck-review` | 2, 5, 6, 10 (fallback) | General reviewer; can fill any dimension as a fallback if the specialist critic is skipped, but primary ownership is here. Dim 10 *Business-model & unit-economics credibility* is provisionally owned by `deck-review` as the fallback owner in v0 — sibling #551 will introduce `deck-economics` and reassign primary ownership for dim 10. The rubric is internally consistent at every intermediate state. |
+| `deck-review` | 2, 5, 6, 10 (fallback) | General reviewer; can fill any dimension as a fallback if the specialist critic is skipped, but primary ownership is here. Dim 10 *Business-model & unit-economics credibility* is retained as fallback when `deck-economics` is skipped from the critic fan-out — parallel to how dims 3 / 4 fall back here when `deck-market` is skipped, and how dim 8 (rendered-PDF density) falls back here when `deck-vision` is skipped. The joint-ownership-with-fallback pattern is the same as dim 8 between `deck-design` and `deck-vision`. |
+| `deck-economics` | 10 | Business-model + unit-economics credibility — counterparty acceptance of price/rev-share, CAC + sales cycle + payback, contribution margin at scale, sensitivity to load-bearing assumption (e.g. attach rate). Adversarial economic-diligence pass; recomputes contribution margin / payback / sensitivity independently from cited inputs. |
 | `deck-narrative` | 1, 7, 9 | Arc + ask + rhetorical economy — read the deck end to end as a single argument. Dim 9 *Rhetorical economy* maps naturally to the arc/ask critic's turf: "could a busy investor extract the ask in 90 seconds?" is the same critic's question. |
 | `deck-market` | 3, 4 | Market math + competitive differentiation — verify arithmetic, check framing. |
 | `deck-design` | 8 (markdown-source density / hierarchy / consistency) | Visual quality — critique against the rendered PDF, not the source. |
@@ -140,13 +141,12 @@ dim 3 and dim 4 per the dimension table above, so the perspective
 interaction for dims 3 and 4 lives in that critic's hot path (see
 `commands/deck-market.md` for the per-candidate validation steps);
 `deck-review` is the fallback when `deck-market` is skipped. The dim
-10 substrate check is owned by **whichever critic owns dim 10 at
-build time** — `deck-review` as the fallback owner in v0 (per the
-dimension table above); after sibling #551 lands, primary ownership
-moves to `deck-economics` with `deck-review` retained as fallback,
-parallel to how dims 3 / 4 live in `deck-market`'s hot path with
-`deck-review` as the fallback. The substrate prose itself is unchanged
-by that ownership move — only the consuming critic changes.
+10 substrate check is owned by `deck-economics` (primary, per the
+dimension table above) with `deck-review` retained as the fallback
+when `deck-economics` is skipped — parallel to how dims 3 / 4 live in
+`deck-market`'s hot path with `deck-review` as the fallback. The
+substrate prose itself is unchanged by that ownership move — only
+the consuming critic changes.
 
 **Backward compatibility.** Threads without a perspective sibling
 (legacy decks; threads run with the pre-#149 deck skill) score dims 3,
