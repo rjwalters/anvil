@@ -50,6 +50,64 @@ consumer before generalizing." With both ``anvil/skills/deck/lib/parity_lint.py`
 first time. This module is the resulting promotion; both skill-local modules
 are now thin re-exports.
 
+Load-bearingness filter (issue #553)
+------------------------------------
+v0 of this lint fired one undifferentiated "drift" warning per ``only_in_memo``
+token. The canary failure mode that surfaced this issue (Docent, 2026-06-12)
+was that thin-deck-vs-rich-memo is the **expected** steady state — decks are
+legitimately terser than memos. The operator (correctly) treated all 38
+``only_in_memo`` warnings on Docent as the "accept the divergence" branch and
+bulk-dismissed them. A **load-bearing economic drop** (a ``$/seat``
+contribution-margin number with no deck-side counterpart) hid in that noise.
+
+The fix is **not** a new direction — both directions already emit. It is a
+**load-bearingness filter** layered over the existing ``only_in_memo`` set
+that promotes the load-bearing-economic subset to a new sharper warning class
+(``side="only_in_memo_economic"``) the reviser consults before deciding to
+bulk-dismiss.
+
+**Schema choice (Option A from the issue #553 curator brief)**: ``side`` is
+extended to the Literal value ``"only_in_memo_economic"`` and ``LintResult``
+exposes the promoted subset via a new ``only_in_memo_economic`` property
+paralleling ``only_in_memo`` / ``only_in_deck``. **Invariants**:
+
+- ``only_in_memo`` is **unchanged** — it still carries the full set of tokens
+  present in memo but absent from deck. The promoted subset is **additive**
+  surfacing; legacy consumers reading ``only_in_memo`` see byte-identical
+  behavior.
+- ``set(only_in_memo_economic) ⊆ set(only_in_memo)``. A token promoted to the
+  economic subset is also recorded as an ``only_in_memo`` finding (under a
+  separate ``Finding`` with ``side="only_in_memo"``) so the full set is
+  observable without traversing the economic subset.
+- The classifier respects the existing ``<!-- anvil-lint-disable:
+  <rule> -->`` escape hatch — a suppressed token is downgraded to ``info``
+  on **both** the ``only_in_memo`` and the ``only_in_memo_economic`` findings;
+  no second escape mechanism.
+- Phase A severity preserved: promoted findings ship at ``severity="warning"``
+  (or ``"info"`` if suppressed). They do NOT promote to ``"error"``.
+
+**Heuristic** (deliberately conservative — false-negative-tolerant):
+
+- A token is *load-bearing-economic* if (a) its extractor rule label is
+  ``money``, ``percent``, or ``unit_int`` AND (b) the memo source line
+  carrying the token co-occurs (same line, or within ±3 lines) with one of
+  :data:`ECONOMIC_CONTEXT_VOCABULARY` (attach / ARPU / ACV / ARR / MRR / LTV
+  / CAC / margin / payback / kill threshold / unit economics / take rate /
+  rev share / pricing / conversion / churn / retention / GMV / TAM / SAM /
+  SOM).
+- Bare acronym tokens (e.g., ``FTC``, ``SFMTA``) are **NOT** promoted —
+  acronyms appearing in regulatory-background prose remain undifferentiated
+  ``only_in_memo`` noise. The narrow "money / percent / unit_int near
+  economic-context vocab" cut is the v0 calibration; vocabulary drift is
+  expected as the canary surfaces real false positives.
+
+**Phase A non-gating** preserved: economic-subset findings ship at warning
+severity, do NOT contribute to ``lint_critical_flag``, and do NOT force
+``advance: false``. The reviser side (``deck-revise``) is responsible for
+treating the promoted subset with sharper framing ("memo carried this
+substance; the deck dropped it — was that deliberate?") instead of the bulk
+"drift, reconcile" framing the v0 ``only_in_memo`` warnings carry.
+
 Phase A / Phase B (warning vs. error severity)
 ----------------------------------------------
 v0 ships at **`warning` severity** for every parity finding. The lint is
@@ -193,10 +251,16 @@ class Finding:
     - ``token``: the exact extracted token that diverged between the two
       bodies (e.g., ``"~50–60% completion"`` minus the leading qualifier,
       or ``"50–60%"`` from the percentage extractor).
-    - ``side``: ``"only_in_memo"`` or ``"only_in_deck"`` — which body
-      contained the token that the other did not. **Values preserved
-      verbatim across both wrappers** — they describe *which body the
-      token came from*, independent of which side is "primary".
+    - ``side``: ``"only_in_memo"``, ``"only_in_deck"``, or
+      ``"only_in_memo_economic"`` — which body contained the token that
+      the other did not, OR (the third value) a memo-only token that the
+      load-bearingness classifier promoted to the economic subset per
+      issue #553. **Values preserved verbatim across both wrappers** —
+      they describe *which body the token came from*, independent of
+      which side is "primary". The ``"only_in_memo_economic"`` finding
+      is **always emitted alongside** an ``"only_in_memo"`` finding for
+      the same token; the economic side is the *additional* sharper
+      signal, not a replacement.
     """
 
     line: int
@@ -204,7 +268,7 @@ class Finding:
     severity: str  # "warning" | "info"  (v0 ships warning-only; info is the suppressed path)
     message: str
     token: str
-    side: str  # "only_in_memo" | "only_in_deck"
+    side: str  # "only_in_memo" | "only_in_deck" | "only_in_memo_economic"
 
     def to_dict(self) -> dict:
         return {
@@ -271,6 +335,34 @@ class LintResult:
                 seen.append(f.token)
         return seen
 
+    @property
+    def only_in_memo_economic(self) -> list[str]:
+        """Unique ``only_in_memo`` tokens that the load-bearingness
+        classifier promoted to the economic subset (issue #553).
+
+        **Invariant**: ``set(only_in_memo_economic) ⊆ set(only_in_memo)``.
+        A token in this list is **always** also recorded as an
+        ``only_in_memo`` finding (a separate ``Finding`` with
+        ``side="only_in_memo"``); the economic side is the *additional*
+        sharper signal a reviser consults before bulk-dismissing the
+        full ``only_in_memo`` set.
+
+        v0 (Phase A) ships at ``severity="warning"`` (or ``"info"`` when
+        the escape hatch suppresses the underlying ``only_in_memo``
+        token). The economic-subset finding does NOT promote to
+        ``"error"`` and does NOT contribute to the host review's
+        ``lint_critical_flag``.
+
+        Always empty on the deck-side direction (``only_in_deck``
+        findings are never promoted) and always empty when the lint
+        skipped.
+        """
+        seen: list[str] = []
+        for f in self.warnings + self.infos:
+            if f.side == "only_in_memo_economic" and f.token not in seen:
+                seen.append(f.token)
+        return seen
+
     def to_summary(self) -> dict:
         """Shape that fits cleanly into the review ``_summary.md`` ``lint`` block.
 
@@ -289,6 +381,7 @@ class LintResult:
             "infos": len(self.infos),
             "only_in_memo": self.only_in_memo,
             "only_in_deck": self.only_in_deck,
+            "only_in_memo_economic": self.only_in_memo_economic,
             "warnings_by_token": [f.to_dict() for f in self.warnings],
             "infos_by_token": [f.to_dict() for f in self.infos],
         }
@@ -378,6 +471,47 @@ UNIT_VOCABULARY: tuple[str, ...] = (
 _UNIT_ALT = "|".join(sorted(UNIT_VOCABULARY, key=lambda s: -len(s)))
 _UNIT_INT_RE = re.compile(
     r"\b\d+(?:,\d{3})*(?:\.\d+)?[KkMmBb]?\s+(?:" + _UNIT_ALT + r")\b",
+)
+
+
+#: Economic-context vocabulary — the load-bearingness filter (issue #553).
+#:
+#: A token from a ``money`` / ``percent`` / ``unit_int`` extractor that
+#: co-occurs (same line, ±3 lines) with one of these terms in the memo
+#: source is promoted to the new ``only_in_memo_economic`` finding side.
+#: Conservative seed list per the canary brief: enough to catch the Docent
+#: failure shape (a contribution-margin / attach-rate number near
+#: unit-economics prose) without firing on every memo noun phrase.
+#: Calibration knob — narrow / widen via canary feedback. Bare acronym
+#: tokens (e.g., ``FTC``) are NEVER promoted; only money/percent/unit_int
+#: rule-label tokens qualify, and only when the co-occurrence check fires.
+ECONOMIC_CONTEXT_VOCABULARY: tuple[str, ...] = (
+    "attach", "attach rate",
+    "ARPU", "ACV", "ARR", "MRR", "LTV", "CAC",
+    "margin", "contribution margin", "gross margin", "net margin",
+    "payback", "payback period",
+    "kill threshold", "kill-threshold",
+    "unit economics", "unit-economics",
+    "take rate", "take-rate", "rev-share", "rev share", "revenue share",
+    "pricing", "price",
+    "conversion", "conversion rate",
+    "churn", "retention",
+    "GMV", "TAM", "SAM", "SOM",
+)
+
+#: Proximity window for the load-bearingness co-occurrence check, in lines
+#: above and below the token's line. v0 ships at ±3 lines per the curator
+#: brief. A memo that buries an attach-rate number more than 3 lines from
+#: the word "attach" misses promotion (false-negative-tolerant by design).
+#: Canary-driven follow-on may widen.
+ECONOMIC_CONTEXT_PROXIMITY_LINES: int = 3
+
+#: Rule labels whose tokens are eligible for promotion. Acronym /
+#: quarter_fy / month_year tokens are NEVER promoted: the conservative cut
+#: targets quantitative substance (money / percent / unit-bearing integers)
+#: only. See issue #553's "Bare acronyms NOT promoted" contract.
+_ECONOMIC_ELIGIBLE_RULE_LABELS: frozenset[str] = frozenset(
+    {"money", "percent", "unit_int"}
 )
 
 
@@ -531,7 +665,29 @@ def _build_message_deck_side(token: str, side: str, line_no: int) -> str:
     ``only_in_memo`` branch names the canary failure mode (the
     citation-clear insurer benchmark) so the Phase A → Phase B promotion
     conversation has a concrete anchor.
+
+    The third side value ``"only_in_memo_economic"`` (issue #553) emits a
+    sharper "deck dropped substance the memo carried" framing the
+    reviser consults before bulk-dismissing the broader ``only_in_memo``
+    set. The classifier promotes a strict subset of ``only_in_memo``
+    tokens to this side; the underlying ``only_in_memo`` finding for the
+    same token is still emitted (the economic side is additional
+    surfacing, not a replacement).
     """
+    if side == "only_in_memo_economic":
+        return (
+            f"**Economic substance dropped from deck.** Hard claim `{token}` "
+            f"appears in memo (line {line_no}) near unit-economics / pricing "
+            f"context (see `ECONOMIC_CONTEXT_VOCABULARY`) but is absent from "
+            f"the sibling deck. This is a sharper warning than the broader "
+            f"`only_in_memo` class: a load-bearing economic number the deck "
+            f"dropped. Was the drop deliberate? If yes, document with "
+            f"`<!-- anvil-lint-disable: deck_memo_parity -->`; if no, port "
+            f"the claim into the deck on next `deck-revise`. Do NOT bulk-"
+            f"dismiss as ordinary drift (warning only in v0, but the "
+            f"reviser should consult this subset before accepting the "
+            f"broader memo↔deck divergence)."
+        )
     if side == "only_in_memo":
         return (
             f"Hard claim `{token}` appears in memo (line {line_no}) but not "
@@ -560,7 +716,24 @@ def _build_message_memo_side(token: str, side: str, line_no: int) -> str:
     claim (memo says X, deck does not — informational from the memo
     POV, since the deck-side lint would catch this in the symmetric
     direction).
+
+    The third side value ``"only_in_memo_economic"`` (issue #553) emits
+    on the memo side too — informational from the memo POV (the memo is
+    rich, the deck is thin; from this POV no memo-revise action is
+    required), but the schema-parity contract requires the side and the
+    classifier output to surface symmetrically across both wrappers.
     """
+    if side == "only_in_memo_economic":
+        return (
+            f"**Economic substance the deck dropped.** Hard claim `{token}` "
+            f"appears in memo (line {line_no}) near unit-economics / pricing "
+            f"context (see `ECONOMIC_CONTEXT_VOCABULARY`) but is absent from "
+            f"the sibling deck. From the memo-side POV this is informational "
+            f"— the memo is the rich body; this signal is actionable for "
+            f"the deck-revise reviser, not the memo-revise reviser. "
+            f"Surfacing on both sides preserves schema parity (warning only "
+            f"in v0)."
+        )
     if side == "only_in_deck":
         return (
             f"Hard claim `{token}` appears in deck (line {line_no}) but not "
@@ -589,6 +762,91 @@ def _build_message(token: str, side: str, line_no: int, rule: str) -> str:
     if rule == "memo_deck_parity":
         return _build_message_memo_side(token, side, line_no)
     return _build_message_deck_side(token, side, line_no)
+
+
+# Load-bearingness classifier (issue #553) -------------------------------------
+
+
+def _classify_economic_tokens(
+    only_in_memo_tokens: set[str],
+    memo_hits: list[_Hit],
+    memo_source: str,
+) -> set[str]:
+    """Promote a strict subset of ``only_in_memo`` tokens to the
+    load-bearing-economic class (issue #553).
+
+    Conservative cut: a token qualifies iff (a) its extractor rule label
+    is one of :data:`_ECONOMIC_ELIGIBLE_RULE_LABELS` (``money`` /
+    ``percent`` / ``unit_int``) AND (b) the memo source contains an
+    :data:`ECONOMIC_CONTEXT_VOCABULARY` term within
+    :data:`ECONOMIC_CONTEXT_PROXIMITY_LINES` lines of the token's first
+    appearance in the memo. Acronym / quarter_fy / month_year tokens are
+    NEVER promoted (per the issue #553 "bare acronyms NOT promoted"
+    contract).
+
+    Returns the set of normalized token strings to promote. Always a
+    subset of ``only_in_memo_tokens`` (invariant enforced by the caller;
+    a token that does not appear in ``only_in_memo_tokens`` is never
+    returned).
+
+    The check is case-insensitive on the vocabulary side (the memo's
+    "ARPU" matches the vocab's "ARPU" exactly, while "Attach Rate" in
+    the memo matches the vocab's "attach rate" via lower-casing). Lint-
+    disable directives on the memo line are scrubbed before the
+    co-occurrence check so the directive's inner rule name does not
+    surface as fake vocab.
+    """
+    if not only_in_memo_tokens:
+        return set()
+
+    # Build vocab matchers: compile a per-term whole-word regex so
+    # short acronyms (``ARR``, ``CAC``, ``GMV``) do not false-positive
+    # on substring matches inside ordinary prose (``carrier`` contains
+    # ``arr``; ``vacate`` contains ``cac``). Multi-word terms get
+    # whitespace-tolerant matching (``contribution margin`` matches
+    # both ``contribution margin`` and ``contribution  margin``). Case-
+    # insensitive: ``Attach`` in prose matches the vocab's ``attach``.
+    vocab_patterns: list[re.Pattern[str]] = []
+    for term in ECONOMIC_CONTEXT_VOCABULARY:
+        # Escape regex metachars then split on internal whitespace so
+        # multi-word terms tolerate any whitespace run between tokens.
+        escaped_parts = [re.escape(p) for p in term.split()]
+        body = r"\s+".join(escaped_parts) if len(escaped_parts) > 1 else escaped_parts[0]
+        vocab_patterns.append(
+            re.compile(r"(?<![A-Za-z0-9])" + body + r"(?![A-Za-z0-9])", re.IGNORECASE)
+        )
+
+    # Pre-scrub source lines (drop lint-disable directives so their
+    # internal rule name does not match against the vocab).
+    scrubbed_lines = [
+        _LINT_DISABLE_RE.sub("", line)
+        for line in memo_source.splitlines()
+    ]
+
+    def _line_has_context(line_idx_1based: int) -> bool:
+        lo = max(1, line_idx_1based - ECONOMIC_CONTEXT_PROXIMITY_LINES)
+        hi = min(len(scrubbed_lines), line_idx_1based + ECONOMIC_CONTEXT_PROXIMITY_LINES)
+        for i in range(lo, hi + 1):
+            haystack = scrubbed_lines[i - 1]
+            for pattern in vocab_patterns:
+                if pattern.search(haystack):
+                    return True
+        return False
+
+    promoted: set[str] = set()
+    # Iterate ALL hits (not just the first) for each candidate token —
+    # a token can appear multiple times in the memo; promotion fires if
+    # ANY appearance is in economic context.
+    for h in memo_hits:
+        if h.token in promoted:
+            continue
+        if h.token not in only_in_memo_tokens:
+            continue
+        if h.rule_label not in _ECONOMIC_ELIGIBLE_RULE_LABELS:
+            continue
+        if _line_has_context(h.line):
+            promoted.add(h.token)
+    return promoted
 
 
 # Public API -------------------------------------------------------------------
@@ -637,6 +895,19 @@ def lint_source(
         if h.token in only_in_memo_tokens and h.token not in memo_first_line:
             memo_first_line[h.token] = h.line
 
+    # Load-bearingness classifier (issue #553): promote the subset of
+    # only_in_memo_tokens whose memo-side appearance co-occurs with
+    # ECONOMIC_CONTEXT_VOCABULARY within ±N lines AND whose extractor
+    # rule label is money / percent / unit_int. The promoted subset
+    # is layered ADDITIVELY on top of only_in_memo — every promoted
+    # token gets BOTH a side="only_in_memo" finding AND a
+    # side="only_in_memo_economic" finding. The escape hatch applies
+    # symmetrically (a suppressed only_in_memo token's promoted finding
+    # is also info, not warning).
+    economic_promoted = _classify_economic_tokens(
+        only_in_memo_tokens, memo_hits, memo_source
+    )
+
     for token in sorted(only_in_memo_tokens):
         line_no = memo_first_line.get(token, 0)
         suppressed = token in memo_disabled
@@ -652,6 +923,24 @@ def lint_source(
             result.infos.append(finding)
         else:
             result.warnings.append(finding)
+
+        # Layer the load-bearing-economic finding on top, when promoted.
+        # Severity tracks the underlying only_in_memo finding's
+        # severity — a suppressed token's economic surfacing is also
+        # info, so the escape hatch needs no second mechanism.
+        if token in economic_promoted:
+            econ_finding = Finding(
+                line=line_no,
+                rule=rule,
+                severity="info" if suppressed else "warning",
+                message=_build_message(token, "only_in_memo_economic", line_no, rule),
+                token=token,
+                side="only_in_memo_economic",
+            )
+            if suppressed:
+                result.infos.append(econ_finding)
+            else:
+                result.warnings.append(econ_finding)
 
     # only_in_deck: symmetric — tokens present in deck but absent from memo.
     only_in_deck_tokens = deck_tokens - memo_tokens
@@ -826,6 +1115,8 @@ def lint_parity(
 
 
 __all__ = [
+    "ECONOMIC_CONTEXT_PROXIMITY_LINES",
+    "ECONOMIC_CONTEXT_VOCABULARY",
     "EXTRACTORS",
     "Finding",
     "LintResult",

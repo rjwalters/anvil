@@ -22,6 +22,8 @@ from pathlib import Path
 import pytest
 
 from anvil.lib.parity import (
+    ECONOMIC_CONTEXT_PROXIMITY_LINES,
+    ECONOMIC_CONTEXT_VOCABULARY,
     EXTRACTORS,
     Finding,
     LintResult,
@@ -454,3 +456,260 @@ def test_memo_side_lint_source_wrapper_flips_arg_order():
     deck_pairs = sorted((f.token, f.side) for f in deck_result.warnings)
     memo_pairs = sorted((f.token, f.side) for f in memo_result.warnings)
     assert deck_pairs == memo_pairs
+
+
+# ---------------------------------------------------------------------------
+# Load-bearingness filter — only_in_memo_economic subset (issue #553)
+# ---------------------------------------------------------------------------
+
+
+def test_economic_context_vocabulary_includes_canary_anchors():
+    """``ECONOMIC_CONTEXT_VOCABULARY`` includes the canary-validated
+    seed terms (issue #553). Pinning the seed list so a future edit
+    cannot accidentally narrow the vocab below the Docent-canary floor.
+    """
+    assert "attach" in ECONOMIC_CONTEXT_VOCABULARY
+    assert "unit economics" in ECONOMIC_CONTEXT_VOCABULARY
+    assert "contribution margin" in ECONOMIC_CONTEXT_VOCABULARY
+    assert "kill threshold" in ECONOMIC_CONTEXT_VOCABULARY
+    # The proximity window default — pinned so the calibration knob
+    # remains visible at the test surface.
+    assert ECONOMIC_CONTEXT_PROXIMITY_LINES == 3
+
+
+def test_only_in_memo_economic_promotes_money_near_attach_context():
+    """Memo carries ``~$2.50 contribution margin per seat at 8% attach``
+    on a line the deck omits. The classifier promotes ``$2.50`` to the
+    economic subset because the ``money`` rule label co-occurs with
+    ``contribution margin`` / ``attach`` vocab on the same line.
+    Existing ``only_in_memo`` finding is preserved (additive surfacing).
+    """
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: ~$2.50 contribution margin per seat at 8% attach.\n"
+    )
+    deck_body = "# Deck\n\nNo economics slide in this version.\n"
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+
+    # The existing only_in_memo set is unchanged (full set carried).
+    assert "$2.50" in result.only_in_memo, (
+        f"expected `$2.50` in only_in_memo; got {result.only_in_memo!r}"
+    )
+    # The new economic subset promotes the money token.
+    assert "$2.50" in result.only_in_memo_economic, (
+        f"expected `$2.50` in only_in_memo_economic; "
+        f"got {result.only_in_memo_economic!r}"
+    )
+
+
+def test_only_in_memo_economic_does_not_promote_acronym_without_context():
+    """Bare acronym tokens in regulatory-background prose stay
+    undifferentiated ``only_in_memo`` noise. The classifier's narrow
+    cut targets ``money`` / ``percent`` / ``unit_int`` rule labels
+    ONLY — acronyms are never promoted regardless of vocab proximity.
+    """
+    memo_body = "# Memo\n\nThe FTC enforcement action was widely reported.\n"
+    deck_body = "# Deck\n\nNo regulatory background slide.\n"
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+
+    assert "FTC" in result.only_in_memo
+    assert "FTC" not in result.only_in_memo_economic, (
+        "bare acronym tokens must NOT be promoted to only_in_memo_economic — "
+        "the conservative cut targets money/percent/unit_int only"
+    )
+
+
+def test_only_in_memo_economic_promotes_percent_near_unit_econ_context():
+    """Memo says ``~8% attach rate is the load-bearing unit-economics
+    assumption``, deck omits the whole line. The classifier promotes
+    ``8%`` to the economic subset (percent label + ``attach rate`` /
+    ``unit-economics`` vocab co-occurrence).
+    """
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Critical: ~8% attach rate is the load-bearing unit-economics assumption.\n"
+    )
+    deck_body = "# Deck\n\nNo unit-economics slide.\n"
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+
+    assert "8%" in result.only_in_memo
+    assert "8%" in result.only_in_memo_economic, (
+        f"expected `8%` in only_in_memo_economic; "
+        f"got {result.only_in_memo_economic!r}"
+    )
+
+
+def test_only_in_memo_economic_only_in_deck_not_promoted():
+    """The classifier runs only on ``only_in_memo`` tokens. A token
+    that lives in the deck but not the memo (deck made up a number)
+    is NEVER promoted to ``only_in_memo_economic`` — that side already
+    carries the right load-bearing semantics (fabrication risk) by
+    default.
+    """
+    memo_body = "# Memo\n\nNo financials yet.\n"
+    deck_body = (
+        "# Deck\n"
+        "\n"
+        "Pricing: $5M ARR target with $5M contribution margin runway.\n"
+    )
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+
+    # The deck has $5M, memo does not — the only_in_deck surface fires.
+    assert "$5M" in result.only_in_deck
+    # And the economic subset is EMPTY — the classifier never promotes
+    # only_in_deck findings (memo→deck direction only).
+    assert result.only_in_memo_economic == [], (
+        "only_in_deck tokens MUST NOT be promoted to only_in_memo_economic; "
+        f"got {result.only_in_memo_economic!r}"
+    )
+
+
+def test_economic_classifier_respects_lint_disable_directive():
+    """A ``<!-- anvil-lint-disable: deck_memo_parity -->`` directive on
+    the memo line carrying a load-bearing-economic token downgrades
+    BOTH the underlying ``only_in_memo`` finding AND the promoted
+    ``only_in_memo_economic`` finding to ``info`` severity. The escape
+    hatch needs no second mechanism.
+    """
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: $2.50 contribution margin per seat. <!-- anvil-lint-disable: deck_memo_parity -->\n"
+    )
+    deck_body = "# Deck\n\nNo economics slide.\n"
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+
+    info_pairs = {(f.token, f.side) for f in result.infos}
+    warning_pairs = {(f.token, f.side) for f in result.warnings}
+
+    # Both surfaces are info, neither is warning.
+    assert ("$2.50", "only_in_memo") in info_pairs
+    assert ("$2.50", "only_in_memo_economic") in info_pairs
+    assert ("$2.50", "only_in_memo") not in warning_pairs
+    assert ("$2.50", "only_in_memo_economic") not in warning_pairs
+
+
+def test_lint_result_summary_carries_only_in_memo_economic_key():
+    """``LintResult.to_summary()`` emits a top-level ``only_in_memo_economic``
+    list paralleling ``only_in_memo`` / ``only_in_deck``. Schema parity
+    pin: a downstream consumer reading the wire shape sees the new key
+    as a first-class field, not buried inside ``warnings_by_token``.
+    """
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: ~$2.50 contribution margin per seat.\n"
+    )
+    deck_body = "# Deck\n\nNo economics slide.\n"
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+    summary = result.to_summary()
+
+    assert "only_in_memo_economic" in summary
+    assert "$2.50" in summary["only_in_memo_economic"]
+    # Existing keys preserved verbatim.
+    assert "only_in_memo" in summary
+    assert "only_in_deck" in summary
+
+
+def test_only_in_memo_economic_subset_of_only_in_memo():
+    """**Invariant**: ``set(only_in_memo_economic) ⊆ set(only_in_memo)``.
+    A token can be promoted but never appears *only* in the economic
+    subset — the broader ``only_in_memo`` set is always carried as a
+    superset.
+    """
+    # Build a synthetic memo with multiple economic-adjacent tokens.
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Pricing model: $8.99 per month at 5% attach rate.\n"
+        "Contribution margin: 60% gross margin at scale.\n"
+        "Other facts: $193K FTC settlement; SFMTA $126M+.\n"
+    )
+    deck_body = "# Deck\n\nNo financials.\n"
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+
+    economic_set = set(result.only_in_memo_economic)
+    memo_set = set(result.only_in_memo)
+
+    # The load-bearing invariant.
+    assert economic_set <= memo_set, (
+        f"only_in_memo_economic must be a SUBSET of only_in_memo; "
+        f"got economic={economic_set!r}, memo={memo_set!r}, "
+        f"diff (economic - memo) = {economic_set - memo_set!r}"
+    )
+    # Non-empty sanity check — the test would be vacuous if both were
+    # empty. The classifier should fire on at least one of the
+    # economic-adjacent money/percent tokens.
+    assert len(economic_set) >= 1, (
+        f"expected at least one economic promotion; got {economic_set!r}"
+    )
+
+
+def test_phase_a_severity_preserved():
+    """Promoted ``only_in_memo_economic`` findings ship at
+    ``severity="warning"`` (or ``"info"`` when suppressed) — never
+    ``"error"``. Phase A non-gating contract preserved verbatim
+    (issue #200): this issue is additive surfacing, not a Phase B
+    promotion to error severity.
+    """
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: ~$2.50 contribution margin per seat at 8% attach.\n"
+    )
+    deck_body = "# Deck\n\nNo economics slide.\n"
+
+    result = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+
+    economic_findings = [
+        f for f in result.warnings + result.infos
+        if f.side == "only_in_memo_economic"
+    ]
+    assert len(economic_findings) >= 1, "expected at least one economic finding"
+    for f in economic_findings:
+        assert f.severity in ("warning", "info"), (
+            f"only_in_memo_economic finding must ship at warning|info severity; "
+            f"got {f.severity!r}"
+        )
+        assert f.severity != "error"
+    # The result-level errors list MUST remain empty in v0.
+    assert result.errors == []
+
+
+# ---------------------------------------------------------------------------
+# Subset invariant — memo-side rule preserves the same behavior (#553)
+# ---------------------------------------------------------------------------
+
+
+def test_economic_subset_emitted_under_memo_side_rule():
+    """Schema parity: the memo-side ``memo_deck_parity`` rule fires the
+    same ``only_in_memo_economic`` side as the deck-side rule on the
+    same memo body. (The classifier is content-independent of which
+    side's wrapper invoked it.) The memo-side message is informational
+    from the memo-revise POV but the wire shape carries the same key
+    so a downstream consumer aggregating across both sides sees a
+    consistent schema.
+    """
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: ~$2.50 contribution margin per seat.\n"
+    )
+    deck_body = "# Deck\n\nNo economics slide.\n"
+
+    result = lint_source(deck_body, memo_body, rule="memo_deck_parity")
+
+    assert "$2.50" in result.only_in_memo_economic
+    # Rule label on the promoted finding matches the active rule.
+    econ_findings = [f for f in result.warnings if f.side == "only_in_memo_economic"]
+    assert len(econ_findings) == 1
+    assert econ_findings[0].rule == "memo_deck_parity"
