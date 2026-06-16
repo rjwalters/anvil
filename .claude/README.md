@@ -158,8 +158,6 @@ The `agents/` directory contains custom subagent definitions for Loom roles. The
 
 | Subagent | Model | Purpose |
 |----------|-------|---------|
-| `loom-shepherd` | sonnet | Single-issue lifecycle orchestration (Layer 1) |
-| `loom-daemon` | sonnet | System orchestration, work generation (Layer 2) |
 | `loom-builder` | opus | Implement features and fixes |
 | `loom-judge` | opus | Review pull requests |
 | `loom-curator` | sonnet | Enhance and organize issues |
@@ -169,6 +167,8 @@ The `agents/` directory contains custom subagent definitions for Loom roles. The
 | `loom-hermit` | sonnet | Identify simplification opportunities |
 | `loom-guide` | sonnet | Prioritize and triage issues |
 | `loom-auditor` | sonnet | Verify runtime behavior of built software |
+
+> **Note**: the `loom-shepherd` subagent was removed in v0.10.0 along with the `/shepherd` slash command — see [the migration guide](../../docs/migration/v0.10.0-shepherd-deprecation.md). Use `/loom:sweep <issue>` (Tier 1) for the equivalent lifecycle. The `loom-daemon` subagent is preserved and now documents the shell-level daemon surface (`./.loom/scripts/daemon.sh` + tmux + token rotation) rather than the deleted Python brain.
 
 ### How Subagents Work
 
