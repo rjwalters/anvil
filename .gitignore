@@ -62,3 +62,4 @@ uv.lock
 .loom/*.log
 .loom/*.sock
 .loom/logs/
+.loom/spawn-loop-state.json
