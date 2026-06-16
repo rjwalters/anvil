@@ -3,13 +3,20 @@
 #
 # Usage:
 #   ./scripts/version.sh                    # Show current version
+#   ./scripts/version.sh list               # List version-bearing files (one per line)
 #   ./scripts/version.sh check              # Verify all files are in sync
 #   ./scripts/version.sh set 0.1.0          # Set explicit version
 #   ./scripts/version.sh set 0.1.0 --tag    # Set version, commit, and tag
+#   ./scripts/version.sh bump patch         # Bump patch (0.1.0 -> 0.1.1)
+#   ./scripts/version.sh bump minor --tag   # Bump minor + commit + tag
+#   ./scripts/version.sh bump major --tag   # Bump major + commit + tag
 #
 # Currently covers CLAUDE.md and pyproject.toml. To extend when a new
 # version-bearing file lands, add it to VERSION_FILES below and add matching
 # case-arms to both get_version_from_file() and set_version().
+#
+# The list / check / bump <level> --tag interface conforms to the upstream
+# Loom v0.10.4 release.md scripts/version.sh contract (#590).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -90,14 +97,37 @@ set_version() {
   echo "Set version to $new"
 }
 
+bump_version() {
+  local level="$1"
+  case "$level" in
+    patch|minor|major) ;;
+    *)
+      echo "error: bump level must be patch, minor, or major (got '$level')" >&2
+      exit 2
+      ;;
+  esac
+  local current maj min pat
+  current=$(get_version)
+  IFS=. read -r maj min pat <<<"$current"
+  case "$level" in
+    patch) pat=$((pat + 1)) ;;
+    minor) min=$((min + 1)); pat=0 ;;
+    major) maj=$((maj + 1)); min=0; pat=0 ;;
+  esac
+  echo "${maj}.${min}.${pat}"
+}
+
 usage() {
-  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
 case "${1:-show}" in
   show|"")
     get_version
+    ;;
+  list)
+    printf '%s\n' "${VERSION_FILES[@]}"
     ;;
   check)
     check_versions
@@ -109,6 +139,18 @@ case "${1:-show}" in
       cd "$REPO_ROOT"
       git add "${VERSION_FILES[@]}"
       git commit -m "chore: bump version to $new"
+      git tag "v$new"
+      echo "Committed and tagged v$new"
+    fi
+    ;;
+  bump)
+    level="${2:?usage: bump <patch|minor|major> [--tag]}"
+    new=$(bump_version "$level")
+    set_version "$new"
+    if [[ "${3:-}" == "--tag" ]]; then
+      cd "$REPO_ROOT"
+      git add "${VERSION_FILES[@]}"
+      git commit -m "chore: release v$new"
       git tag "v$new"
       echo "Committed and tagged v$new"
     fi
