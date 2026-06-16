@@ -642,6 +642,17 @@ _RECOGNIZED_VOICE_KEYS = {
     "rhetoric_rules",
 }
 
+# Recognized sub-keys when the optional ``audience:`` block is written
+# in the dict shape (issue #546 — the studio's canonical multi-thread
+# BRIEF convention). The tuple order IS the precedence used when
+# flattening the dict back into the on-the-wire ``List[str]`` shape:
+# primary first, then secondary, then tertiary, then any unknown sub-
+# keys in YAML insertion order. Mirrors the lenient-inner-block posture
+# of ``_normalize_voice`` (forward-compat surface — unknown keys warn
+# but do not raise, so studio drafters can add roles ahead of the
+# parser learning them).
+_RECOGNIZED_AUDIENCE_KEYS: Tuple[str, ...] = ("primary", "secondary", "tertiary")
+
 # Load order for resolved voice docs (issue #461): values first (stances
 # / anti-stances / standing), then register rules, then vocabulary
 # guidance, then the published-exemplar corpus. Mirrors the consumer
@@ -1405,6 +1416,17 @@ class ProjectBrief(BaseModel):
         Free-string descriptors of the project audience. The BRIEF
         author lists them in priority order (primary first); the
         loader does NOT enforce any ordering convention.
+
+        Two on-disk shapes are accepted (issue #546): a YAML list of
+        strings (the canonical flat form — drafter controls the
+        order), OR a mapping with role-keyed sub-keys (``primary``,
+        ``secondary``, ``tertiary``, with unknown roles preserved as
+        a forward-compat surface) whose values are strings or lists
+        of strings. The dict shape is flattened in role-precedence
+        order — ``primary`` first, ``secondary`` next, then
+        ``tertiary``, then any unknown sub-keys in YAML insertion
+        order — so this field remains ``List[str]`` regardless of the
+        on-disk shape. See :func:`_normalize_audience`.
     hard_rules
         Cross-document discipline rules that apply to every document in
         the project. Free strings; the reviewer treats each as a
@@ -1629,6 +1651,111 @@ def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
         recognized[key] = stripped if stripped else None
 
     return VoiceDocs(**recognized, unknown_keys=unknown_keys)
+
+
+def _normalize_audience(value: Any) -> List[str]:
+    """Normalize the ``audience:`` frontmatter key (issues #285, #546).
+
+    Accepts three shapes, normalizing all of them to the on-the-wire
+    ``List[str]`` field shape so downstream consumers (which iterate /
+    pass through as ``Iterable[str]``) are unaffected:
+
+    - **Absent / None** → empty list. The field is optional per the
+      schema.
+    - **List of strings** → unchanged (legacy + canonical flat form;
+      this is the back-compat path that keeps every existing BRIEF
+      parsing identically).
+    - **Dict mapping role → string-or-list-of-strings** → flattened in
+      role-precedence order (``primary``, ``secondary``, ``tertiary``,
+      then any unknown sub-keys in YAML insertion order). This is the
+      studio's canonical multi-thread BRIEF convention (#546).
+
+    Dict-shape values may be either a single string (one audience per
+    role) or a list of strings (multiple audiences per role); a non-
+    string entry — at the top level OR inside a per-role list — raises
+    ``ValueError`` with the field path. Unknown sub-keys are preserved
+    at the END of the flattened list and emit a ``warnings.warn``
+    breadcrumb naming the recognized set (forward-compat surface,
+    mirroring ``_normalize_voice``).
+
+    The dict shape is a parser-only convenience: ``brief.audience``
+    remains ``List[str]`` on the schema, and the load-bearing
+    paired-override / documents-schema validation downstream of this
+    helper still runs unchanged (the regression bug this helper fixes:
+    drafters who wrote the dict shape were silently routing around the
+    entire parser via the bare ``except`` in render_gate's theme
+    discovery — see #546).
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        # Back-compat path: delegate to the existing list normalizer
+        # byte-for-byte so the flat-list contract is provably unchanged.
+        return _normalize_string_list(value, "audience")
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"BRIEF.audience must be a list of strings or a mapping of "
+            f"role → string/list (recognized roles: "
+            f"{list(_RECOGNIZED_AUDIENCE_KEYS)}); got "
+            f"{type(value).__name__}: {value!r} — suggested fix: write "
+            f"the value as a YAML list (`- item` lines or "
+            f"`[item, item]`) or as a mapping (`audience: {{primary: "
+            f"\"...\", secondary: \"...\"}}`)."
+        )
+
+    # Split the dict into recognized-role entries (precedence-ordered)
+    # and unknown-role entries (insertion-ordered). We materialize the
+    # YAML insertion order from ``value.items()`` so unknown sub-keys
+    # land deterministically at the tail of the flattened list.
+    recognized_entries: Dict[str, Any] = {}
+    unknown_entries: Dict[str, Any] = {}
+    for key, raw in value.items():
+        if key in _RECOGNIZED_AUDIENCE_KEYS:
+            recognized_entries[key] = raw
+        else:
+            unknown_entries[key] = raw
+            warnings.warn(
+                f"BRIEF.audience.{key}: unknown sub-key — preserved "
+                f"verbatim at the tail of the flattened audience list "
+                f"(forward-compat). Recognized sub-keys (in precedence "
+                f"order): {list(_RECOGNIZED_AUDIENCE_KEYS)}.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    def _coerce_role_value(role: str, raw: Any) -> List[str]:
+        """Convert one role's right-hand side into a list of strings."""
+        if isinstance(raw, str):
+            return [raw]
+        if isinstance(raw, list):
+            out: List[str] = []
+            for i, entry in enumerate(raw):
+                if not isinstance(entry, str):
+                    raise ValueError(
+                        f"BRIEF.audience.{role}[{i}] must be a string; "
+                        f"got {type(entry).__name__}: {entry!r} — "
+                        f"suggested fix: quote the entry or remove the "
+                        f"non-string value."
+                    )
+                out.append(entry)
+            return out
+        raise ValueError(
+            f"BRIEF.audience.{role} must be a string or a list of "
+            f"strings; got {type(raw).__name__}: {raw!r} — suggested "
+            f"fix: write the value as a quoted string (one audience) "
+            f"or a YAML list (multiple audiences per role)."
+        )
+
+    flattened: List[str] = []
+    # Recognized keys in precedence order (NOT YAML insertion order).
+    for role in _RECOGNIZED_AUDIENCE_KEYS:
+        if role not in recognized_entries:
+            continue
+        flattened.extend(_coerce_role_value(role, recognized_entries[role]))
+    # Unknown keys in YAML insertion order at the tail.
+    for role, raw in unknown_entries.items():
+        flattened.extend(_coerce_role_value(role, raw))
+    return flattened
 
 
 def _normalize_target_length_range(
@@ -2646,9 +2773,7 @@ def _parse_brief_body(
             f"Suggested fix: add a `project:` key naming the project."
         )
 
-    audience = _normalize_string_list(
-        frontmatter.get("audience"), "audience"
-    )
+    audience = _normalize_audience(frontmatter.get("audience"))
     hard_rules = _normalize_string_list(
         frontmatter.get("hard_rules"), "hard_rules"
     )

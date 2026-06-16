@@ -1079,6 +1079,203 @@ class TestAudienceHardRulesValidation(_TmpProjectBase):
 
 
 # ---------------------------------------------------------------------------
+# Audience dict-shape (issue #546)
+# ---------------------------------------------------------------------------
+
+
+class TestAudienceDictShape(_TmpProjectBase):
+    """``audience: {primary, secondary, ...}`` dict shape normalization.
+
+    Issue #546 — the studio's canonical multi-thread BRIEF convention
+    uses the dict form. Before this fix, ``_normalize_string_list``
+    hard-rejected the dict shape, which silently routed drafters around
+    the entire parser (the bare ``except`` in render_gate's theme
+    discovery swallowed the ValueError, losing paired-override
+    validation and silently disabling the ``theme:`` system). These
+    tests pin the new acceptance contract.
+    """
+
+    def test_dict_with_primary_and_secondary(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              primary: Sphere internal leadership
+              secondary: VC investors
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(
+            brief.audience,
+            ["Sphere internal leadership", "VC investors"],
+        )
+
+    def test_dict_with_list_values_flattens_per_role(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              primary:
+                - Sphere leadership
+                - Sphere board
+              secondary: VC investors
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(
+            brief.audience,
+            ["Sphere leadership", "Sphere board", "VC investors"],
+        )
+
+    def test_dict_role_precedence_order_not_yaml_order(self) -> None:
+        # primary appears AFTER tertiary in YAML insertion order; the
+        # flattener must still emit primary first.
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              tertiary: Tertiary audience
+              primary: Primary audience
+              secondary: Secondary audience
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(
+            brief.audience,
+            ["Primary audience", "Secondary audience", "Tertiary audience"],
+        )
+
+    def test_dict_with_unknown_subkey_warns_and_preserves_value(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              primary: Sphere
+              quaternary: Future role
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
+            brief = load_project_brief_strict(self.project_dir)
+        # Unknown keys land at the tail of the flattened list.
+        self.assertEqual(brief.audience, ["Sphere", "Future role"])
+        # The breadcrumb names the unknown sub-key explicitly.
+        unknown_warnings = [
+            w for w in captured
+            if "quaternary" in str(w.message)
+            and "audience" in str(w.message)
+        ]
+        self.assertTrue(
+            unknown_warnings,
+            f"expected an audience-sub-key warning naming "
+            f"'quaternary'; got {[str(w.message) for w in captured]}",
+        )
+
+    def test_dict_with_non_string_value_raises(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              primary: 42
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        msg = str(cm.exception)
+        self.assertIn("audience", msg)
+        self.assertIn("primary", msg)
+
+    def test_dict_with_non_string_list_entry_raises(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              primary:
+                - valid
+                - 42
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        msg = str(cm.exception)
+        self.assertIn("audience", msg)
+        self.assertIn("primary", msg)
+
+    def test_backward_compat_flat_list_still_parses(self) -> None:
+        # Pin the back-compat path: the legacy flat list continues to
+        # parse exactly as it did before this helper was introduced.
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              - Sphere internal leadership
+              - VC investors
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+        self.assertEqual(
+            brief.audience,
+            ["Sphere internal leadership", "VC investors"],
+        )
+
+    def test_dict_audience_does_not_bypass_max_iterations_check(self) -> None:
+        # Load-bearing regression pin (#546 acceptance gate): a BRIEF
+        # using the dict-form audience must still trigger the
+        # ``max_iterations`` paired-override validator downstream.
+        # Before the fix, drafters who wrote the dict shape silently
+        # routed around the entire parser via render_gate's bare
+        # ``except`` — losing this validation and silently disabling
+        # the theme system.
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            audience:
+              primary: Sphere internal leadership
+              secondary: VC investors
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                max_iterations: 12
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        msg = str(cm.exception)
+        # The paired-override validator fires with both field names.
+        self.assertIn("max_iterations", msg)
+        self.assertIn("iteration_cap_rationale", msg)
+
+
+# ---------------------------------------------------------------------------
 # Unknown keys on document entries
 # ---------------------------------------------------------------------------
 

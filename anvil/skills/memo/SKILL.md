@@ -163,6 +163,16 @@ documents:
 ---
 ```
 
+`audience:` accepts two equivalent shapes (issue #546). The flat list above is the canonical form. The role-keyed mapping form is also accepted for studio drafters who prefer to name precedence explicitly:
+
+```yaml
+audience:
+  primary: <primary audience>
+  secondary: <secondary audience>
+```
+
+Both shapes flatten to the same `brief.audience: List[str]` (the mapping form flattens in `primary → secondary → tertiary → <unknown roles>` order), so downstream consumers are unaffected. Per-role values may be either a string (one audience per role) or a list of strings (multiple audiences per role).
+
 **Registered `artifact_type` values** (closed-ended enum per Open Question #5 of #283, with a consumer extension tier per #394):
 
 - `investment-memo` — ranked-recommendation invest / pass / conditional with check size. The default memo shape.
