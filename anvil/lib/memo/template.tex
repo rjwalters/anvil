@@ -38,6 +38,20 @@
   BoldItalicFont = Helvetica Bold,
 ]
 
+% --- Math support ----------------------------------------------------------
+% pandoc emits amsmath-only commands when converting markdown math, most
+% commonly the text-in-math macro (multi-letter subscripts, units, labels).
+% amsmath defines that macro (via amstext); amssymb covers the broader symbol
+% set pandoc can emit (mathbb, lesssim, nleq, ...). pandoc's stock LaTeX
+% template loads amsmath by default; this custom template replaced the stock
+% one, so without these loads any text-in-math body fails to render with
+% ``Undefined control sequence'' (xelatex exit 43). See issue #592 for the
+% canary reproducer. amssymb must load after amsmath (standard ordering).
+% NOTE: this file is a pandoc template — avoid literal dollar signs in
+% comments, which pandoc's template engine parses as variable interpolation.
+\usepackage{amsmath}
+\usepackage{amssymb}
+
 % --- Unicode fallback for symbols not covered by Helvetica ---------------
 % Helvetica (and Arial) lack coverage for many Unicode symbols — arrows
 % (→ ↑ ↓ ←), Greek/SI letters (μ), math-adjacent signs (≥ ≤ ± × ÷).
