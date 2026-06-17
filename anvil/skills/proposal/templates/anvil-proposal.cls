@@ -192,6 +192,17 @@
 \RequirePackage{graphicx}
 \RequirePackage{microtype}
 
+%% ─── Math support ────────────────────────────────────────────────────────────
+%% pandoc emits amsmath-only commands when converting markdown math, most
+%% commonly \text{} (subscripts like $B_{\text{eff}}$, units, multi-letter
+%% labels). amsmath defines \text{} (via amstext); amssymb covers the broader
+%% symbol set pandoc can emit (\mathbb, \lesssim, \nleq, …). Without these
+%% loads any \text{}-in-math body fails to render with ``Undefined control
+%% sequence'' (xelatex exit 43). See issue #592. amssymb loads after amsmath
+%% (standard ordering; amssymb depends on amsfonts, no conflict).
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+
 %% ─── Title-block metadata + renderer ─────────────────────────────────────────
 %% etoolbox supplies \ifdefempty for the empty-subtitle/hero guards below.
 %% Already loaded transitively by tcolorbox; the explicit load is idempotent

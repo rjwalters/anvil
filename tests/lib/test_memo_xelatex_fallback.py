@@ -7,6 +7,14 @@ shipped minimal xelatex fallback template did not historically load.
 Issue #277 documents the canary reproducer (pandoc 3.9.0.2 + MacTeX
 xelatex, undefined ``\\st``) and the curator's missing-package list.
 
+Issue #592 extends the same failure class to math mode: pandoc emits
+``\\text{}`` (and ``\\mathbb``/``\\lesssim``/…) for markdown math, which
+require ``amsmath``/``amssymb``. The same root cause affects four preamble
+files (memo ``template.tex``, the shared ``anvil-doc.cls``, and the
+proposal/installation ``.cls`` files); the static lane below asserts all
+four load amsmath + amssymb, and a skip-guarded real-render lane exercises
+the ``\\text{}`` math path.
+
 This module pins three lanes of regression coverage:
 
 1. **Static ``\\usepackage`` assertion.** Reads ``template.tex`` from
@@ -75,6 +83,38 @@ def _repro_fixture_path() -> Path:
         / "memo_xelatex"
         / "repro.md"
     )
+
+
+def _math_text_fixture_path() -> Path:
+    """Return the absolute path to ``math_text.md`` (the issue-#592 reproducer)."""
+    return (
+        Path(__file__).parent
+        / "fixtures"
+        / "memo_xelatex"
+        / "math_text.md"
+    )
+
+
+def _latex_preamble_paths() -> dict[str, Path]:
+    """Return the four LaTeX preamble files that share the #592 amsmath gap.
+
+    The shared ``anvil-doc.cls`` is the highest-leverage of the four — it
+    backs the generic ``pdf_output: true`` path in
+    ``anvil/lib/latex_render.py`` (``render_brief_to_pdf``), so any future
+    PDF-emitting skill inherits the fix.
+    """
+    anvil_root = Path(_render.__file__).parent  # anvil/lib/
+    skills_root = anvil_root.parent / "skills"
+    return {
+        "memo template.tex": anvil_root / "memo" / "template.tex",
+        "shared anvil-doc.cls": anvil_root / "latex" / "anvil-doc.cls",
+        "proposal anvil-proposal.cls": (
+            skills_root / "proposal" / "templates" / "anvil-proposal.cls"
+        ),
+        "installation anvil-installation.cls": (
+            skills_root / "installation" / "templates" / "anvil-installation.cls"
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +300,75 @@ def test_template_uses_ifluatex_guard_for_lua_ul():
 
 
 # ---------------------------------------------------------------------------
+# Lane 1d: amsmath / amssymb math support — issue #592
+# ---------------------------------------------------------------------------
+
+# Math-support package tokens pandoc-emitted math requires. amsmath defines
+# \text{} (via amstext); amssymb covers the broader symbol set pandoc emits
+# (\mathbb, \lesssim, \nleq, …). The memo template loads them via
+# \usepackage; the three .cls files via \RequirePackage. Both load tokens
+# are accepted so a single matrix covers all four preambles.
+_AMSMATH_LOAD_TOKENS = (
+    (r"\usepackage{amsmath}", r"\RequirePackage{amsmath}"),
+    (r"\usepackage{amssymb}", r"\RequirePackage{amssymb}"),
+)
+
+
+def test_all_preambles_load_amsmath_and_amssymb():
+    """Static: all four shared LaTeX preambles load amsmath + amssymb.
+
+    pandoc emits ``\\text{}`` (and ``\\mathbb``/``\\lesssim``/…) when
+    converting markdown math; without amsmath the document hard-fails with
+    ``Undefined control sequence`` at ``\\text`` (xelatex exit 43). Issue
+    #592 documents the canary reproducer across four preamble files:
+
+    - ``anvil/lib/memo/template.tex`` (``anvil:memo``)
+    - ``anvil/lib/latex/anvil-doc.cls`` (shared ``pdf_output: true`` path)
+    - ``anvil/skills/proposal/templates/anvil-proposal.cls``
+    - ``anvil/skills/installation/templates/anvil-installation.cls``
+
+    Runs in CI without any LaTeX install — its purpose is to catch
+    accidental deletion of the math-support loads during future edits, so
+    the regression surfaces loudly rather than at render time.
+    """
+    for label, path in _latex_preamble_paths().items():
+        assert path.is_file(), f"{label} preamble not found at {path}"
+        content = path.read_text(encoding="utf-8")
+        for accepted in _AMSMATH_LOAD_TOKENS:
+            assert any(tok in content for tok in accepted), (
+                f"{label} ({path}) is missing one of {accepted}. "
+                "See issue #592 — pandoc-emitted \\text{} math fails to "
+                "render without amsmath."
+            )
+
+
+def test_amssymb_loads_after_amsmath_in_all_preambles():
+    """Static: amssymb is loaded *after* amsmath in every preamble.
+
+    amssymb depends on amsfonts and is conventionally loaded after amsmath;
+    inverting the order is the standard ordering mistake. This pins the
+    documented load order from issue #592 across all four files.
+    """
+    for label, path in _latex_preamble_paths().items():
+        content = path.read_text(encoding="utf-8")
+        amsmath_idx = max(
+            content.find(r"\usepackage{amsmath}"),
+            content.find(r"\RequirePackage{amsmath}"),
+        )
+        amssymb_idx = max(
+            content.find(r"\usepackage{amssymb}"),
+            content.find(r"\RequirePackage{amssymb}"),
+        )
+        assert amsmath_idx >= 0 and amssymb_idx >= 0, (
+            f"{label} ({path}) is missing an amsmath/amssymb load"
+        )
+        assert amssymb_idx > amsmath_idx, (
+            f"{label} ({path}) loads amssymb before amsmath — amssymb must "
+            "load after amsmath (standard ordering, see issue #592)."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Lane 2: Skip-guarded real-render against the reproducer fixture
 # ---------------------------------------------------------------------------
 
@@ -306,6 +415,46 @@ def test_repro_fixture_renders_under_real_pandoc_plus_xelatex(tmp_path):
     assert proc.returncode == 0, (
         f"pandoc + xelatex chain failed on the issue-#277 reproducer. "
         f"stderr:\n{proc.stderr}"
+    )
+    assert out_pdf.exists(), "pandoc returned 0 but no PDF was written"
+    assert out_pdf.stat().st_size > 0, "rendered PDF is empty"
+
+
+@pytest.mark.skipif(
+    not _xelatex_chain_available(),
+    reason="xelatex chain unavailable (pandoc or xelatex not on PATH)",
+)
+def test_math_text_fixture_renders_under_real_pandoc_plus_xelatex(tmp_path):
+    """Real-chain regression: the issue-#592 ``\\text{}`` math reproducer
+    renders cleanly under the real pandoc + xelatex chain.
+
+    The fixture body contains ``$B_{\\text{eff}}$`` and
+    ``$$B_{\\text{eff}} \\approx B \\cdot \\frac{k}{E}$$`` plus
+    ``\\mathbb``/``\\lesssim`` symbols — the exact constructs that fail with
+    ``Undefined control sequence`` at ``\\text`` when amsmath is absent.
+    With amsmath + amssymb in the preamble the chain exits 0 and produces a
+    non-empty PDF.
+
+    Skipped when either binary is absent so the CI lane that lacks TeX Live
+    still passes (mirrors the issue-#277 real-render lane above).
+    """
+    fixture = _math_text_fixture_path()
+    assert fixture.is_file(), f"math_text fixture not found at {fixture}"
+
+    out_pdf = tmp_path / "math_text.pdf"
+    cmd = [
+        "pandoc",
+        str(fixture),
+        "--template",
+        str(_template_tex_path()),
+        "--pdf-engine=xelatex",
+        "-o",
+        str(out_pdf),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, (
+        f"pandoc + xelatex chain failed on the issue-#592 \\text{{}} math "
+        f"reproducer (amsmath missing?). stderr:\n{proc.stderr}"
     )
     assert out_pdf.exists(), "pandoc returned 0 but no PDF was written"
     assert out_pdf.stat().st_size > 0, "rendered PDF is empty"
