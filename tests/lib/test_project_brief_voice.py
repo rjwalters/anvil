@@ -33,11 +33,14 @@ import pytest
 from anvil.lib.project_brief import (
     VOICE_DOC_KINDS,
     ProjectBrief,
+    ResolvedSubjectVoice,
     ResolvedVoiceDoc,
+    SubjectVoiceEntry,
     VoiceDocs,
     load_project_brief,
     load_rubric_overrides_for_slug,
     resolve_rhetoric_rules,
+    resolve_subject_voice_docs,
     resolve_voice_docs,
 )
 from anvil.lib.project_discovery import BRIEF_FILENAME
@@ -851,3 +854,570 @@ def test_voice_docs_model_exported() -> None:
     assert VoiceDocs is pb.VoiceDocs
     assert ResolvedVoiceDoc is pb.ResolvedVoiceDoc
     assert isinstance(ProjectBrief.model_fields["voice"].default, type(None))
+
+
+# ===========================================================================
+# Subject voice tier (issue #598)
+# ===========================================================================
+#
+# The subject voice tier grounds a third party's rendered dialogue in that
+# speaker's *spoken* corpus (interview transcripts), as opposed to the
+# author-persona tier above. It activates INDEPENDENTLY of the author tier:
+# a subjects-only ``voice:`` block keeps ``VoiceDocs.is_empty == True`` while
+# ``has_subjects`` is True and ``resolve_subject_voice_docs`` returns entries.
+
+
+# ---------------------------------------------------------------------------
+# Subject schema parsing
+# ---------------------------------------------------------------------------
+
+
+def test_subject_entry_full_parses(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+              voice_doc: planning/grani-voice.md
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.subjects is not None
+    assert len(brief.voice.subjects) == 1
+    entry = brief.voice.subjects[0]
+    assert isinstance(entry, SubjectVoiceEntry)
+    assert entry.name == "grani"
+    assert entry.corpus == "transcripts/grani/**/*.md"
+    assert entry.voice_doc == "planning/grani-voice.md"
+
+
+def test_subject_entry_voice_doc_optional(tmp_path: Path) -> None:
+    """``voice_doc`` is optional — corpus alone activates the entry."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: aunt-jo
+              corpus: transcripts/aunt-jo/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.subjects is not None and len(brief.voice.subjects) == 1
+    assert brief.voice.subjects[0].voice_doc is None
+
+
+def test_subjects_list_parses_in_declared_order(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+            - name: aunt-jo
+              corpus: transcripts/aunt-jo/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.subjects is not None
+    assert [s.name for s in brief.voice.subjects] == ["grani", "aunt-jo"]
+
+
+def test_subjects_only_block_keeps_is_empty_true(tmp_path: Path) -> None:
+    """The load-bearing independence property: a subjects-only block does
+    NOT activate the author voice tier (``is_empty`` stays True), but the
+    subject tier IS active (``has_subjects`` True)."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.is_empty is True
+    assert brief.voice.has_subjects is True
+    # The author-tier resolver stays byte-identical empty for subjects-only.
+    assert resolve_voice_docs(project, consumer_root=tmp_path) == []
+
+
+def test_both_tiers_active_independently(tmp_path: Path) -> None:
+    """A memoir declaring both an author persona and subjects activates
+    both tiers independently."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          values: VALUES.md
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.is_empty is False  # author tier active (values)
+    assert brief.voice.has_subjects is True  # subject tier active
+
+
+def test_empty_subjects_list_treated_as_absent(tmp_path: Path) -> None:
+    """``subjects: []`` normalizes to None (tier inactive) — an empty list
+    does not activate the tier."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects: []
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.subjects is None
+    assert brief.voice.has_subjects is False
+    assert resolve_subject_voice_docs(project, consumer_root=tmp_path) == []
+
+
+def test_subjects_missing_name_rejected(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - corpus: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    with pytest.raises(ValueError, match=r"voice\.subjects\[0\]\.name"):
+        load_project_brief(project)
+
+
+def test_subjects_missing_corpus_rejected(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+        {_DOCS_STANZA}""",
+    )
+    with pytest.raises(ValueError, match=r"voice\.subjects\[0\]\.corpus"):
+        load_project_brief(project)
+
+
+def test_subjects_non_string_name_rejected(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: 42
+              corpus: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    with pytest.raises(ValueError, match=r"voice\.subjects\[0\]\.name"):
+        load_project_brief(project)
+
+
+def test_subjects_non_string_voice_doc_rejected(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+              voice_doc: [a.md, b.md]
+        {_DOCS_STANZA}""",
+    )
+    with pytest.raises(ValueError, match=r"voice\.subjects\[0\]\.voice_doc"):
+        load_project_brief(project)
+
+
+def test_subjects_non_mapping_entry_rejected(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - just-a-string
+        {_DOCS_STANZA}""",
+    )
+    with pytest.raises(ValueError, match=r"voice\.subjects\[0\] must be a mapping"):
+        load_project_brief(project)
+
+
+def test_subjects_non_list_rejected(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    with pytest.raises(ValueError, match=r"voice\.subjects must be a list"):
+        load_project_brief(project)
+
+
+def test_subjects_whitespace_voice_doc_normalizes_to_none(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+              voice_doc: "   "
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.subjects is not None
+    assert brief.voice.subjects[0].voice_doc is None
+
+
+def test_subjects_unknown_sub_key_tolerated_with_warning(tmp_path: Path) -> None:
+    """Unknown sub-keys inside a subject entry warn and are dropped
+    (forward-compat), the lenient inner-block posture."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+              cadence_hint: clipped
+        {_DOCS_STANZA}""",
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        brief = load_project_brief(project)
+    assert brief is not None and brief.voice is not None
+    assert brief.voice.subjects is not None and len(brief.voice.subjects) == 1
+    assert brief.voice.subjects[0].name == "grani"
+    assert any("cadence_hint" in str(w.message) for w in caught)
+
+
+# ---------------------------------------------------------------------------
+# Subject resolution (resolve_subject_voice_docs)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_subject_project_root_hit(tmp_path: Path) -> None:
+    """A subject corpus + voice_doc resolve project-root-first."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+              voice_doc: planning/grani-voice.md
+        {_DOCS_STANZA}""",
+    )
+    tx = project / "transcripts" / "grani"
+    tx.mkdir(parents=True)
+    (tx / "02.md").write_text("clipped.", encoding="utf-8")
+    (tx / "01.md").write_text("Well, I tell you.", encoding="utf-8")
+    (project / "planning").mkdir()
+    (project / "planning" / "grani-voice.md").write_text("cadence", encoding="utf-8")
+
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    entry = resolved[0]
+    assert isinstance(entry, ResolvedSubjectVoice)
+    assert entry.name == "grani"
+    assert entry.corpus.kind == "subject_corpus"
+    assert entry.corpus.missing is False
+    assert entry.corpus.source == "project"
+    assert [Path(p).name for p in entry.corpus.paths] == ["01.md", "02.md"]
+    assert entry.voice_doc is not None
+    assert entry.voice_doc.kind == "subject_voice_doc"
+    assert entry.voice_doc.missing is False
+    assert entry.voice_doc.source == "project"
+
+
+def test_resolve_subject_consumer_root_fallback(tmp_path: Path) -> None:
+    """A subject corpus resolves against the consumer root when absent at
+    the project root."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    tx = consumer / "transcripts" / "grani"
+    tx.mkdir(parents=True)
+    (tx / "01.md").write_text("Well, now.", encoding="utf-8")
+
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    assert resolved[0].corpus.missing is False
+    assert resolved[0].corpus.source == "consumer"
+    assert resolved[0].voice_doc is None
+
+
+def test_resolve_subject_missing_corpus_structured(tmp_path: Path) -> None:
+    """A subject corpus glob matching nothing comes back missing:true — no
+    raise (the major-finding signal, tier stays active)."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    assert resolved[0].corpus.missing is True
+    assert resolved[0].corpus.paths == []
+    assert resolved[0].corpus.source is None
+
+
+def test_resolve_subject_missing_voice_doc_structured(tmp_path: Path) -> None:
+    """A declared-but-missing subject voice_doc is a missing:true entry,
+    NOT None (None means the entry declared no voice_doc)."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+              voice_doc: planning/grani-voice.md
+        {_DOCS_STANZA}""",
+    )
+    tx = project / "transcripts" / "grani"
+    tx.mkdir(parents=True)
+    (tx / "01.md").write_text("Well.", encoding="utf-8")
+
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    assert resolved[0].corpus.missing is False
+    assert resolved[0].voice_doc is not None
+    assert resolved[0].voice_doc.missing is True
+    assert resolved[0].voice_doc.paths == []
+
+
+def test_resolve_subject_mixed_present_missing(tmp_path: Path) -> None:
+    """Two subjects: one fully present, one wholly missing — declared order
+    preserved, each resolved independently."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+              voice_doc: planning/grani-voice.md
+            - name: aunt-jo
+              corpus: transcripts/aunt-jo/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    tx = project / "transcripts" / "grani"
+    tx.mkdir(parents=True)
+    (tx / "01.md").write_text("Well.", encoding="utf-8")
+    (project / "planning").mkdir()
+    (project / "planning" / "grani-voice.md").write_text("cadence", encoding="utf-8")
+
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert [e.name for e in resolved] == ["grani", "aunt-jo"]
+    assert resolved[0].corpus.missing is False
+    assert resolved[0].voice_doc is not None and resolved[0].voice_doc.missing is False
+    assert resolved[1].corpus.missing is True
+    assert resolved[1].voice_doc is None
+
+
+def test_resolve_subject_absolute_corpus(tmp_path: Path) -> None:
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    abs_dir = tmp_path / "abs-transcripts"
+    abs_dir.mkdir()
+    (abs_dir / "01.md").write_text("Well.", encoding="utf-8")
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: {abs_dir}/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    assert resolved[0].corpus.missing is False
+    assert resolved[0].corpus.source == "absolute"
+
+
+def test_resolve_subject_declared_order_preserved(tmp_path: Path) -> None:
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: zebra
+              corpus: transcripts/zebra/**/*.md
+            - name: alpha
+              corpus: transcripts/alpha/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert [e.name for e in resolved] == ["zebra", "alpha"]
+
+
+def test_resolve_subject_no_subjects_returns_empty(tmp_path: Path) -> None:
+    """An author-only voice block resolves no subject entries (byte-identical
+    empty)."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          values: VALUES.md
+        {_DOCS_STANZA}""",
+    )
+    assert resolve_subject_voice_docs(project, consumer_root=consumer) == []
+
+
+def test_resolve_subject_no_voice_block_returns_empty(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _write_brief(project, f"project: proj\n{_DOCS_STANZA}")
+    assert resolve_subject_voice_docs(project, consumer_root=tmp_path) == []
+
+
+def test_resolve_subject_no_brief_returns_empty(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    assert resolve_subject_voice_docs(project, consumer_root=tmp_path) == []
+
+
+def test_resolve_subject_invalid_brief_returns_empty(tmp_path: Path) -> None:
+    """A structurally invalid BRIEF is swallowed leniently (mirrors
+    resolve_voice_docs) — the resolver never raises."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\nproject: proj\ndocuments: not-a-list\n---\n# BRIEF\n",
+        encoding="utf-8",
+    )
+    assert resolve_subject_voice_docs(project, consumer_root=tmp_path) == []
+
+
+def test_resolve_subject_gitignored_corpus_resolves(tmp_path: Path) -> None:
+    """Resolution is filesystem-driven, never git-aware: a gitignored
+    transcript corpus resolves identically to a committed one (the #577
+    private-grounding posture applies to the subject tier)."""
+    consumer = _make_consumer(tmp_path)
+    project = consumer / "proj"
+    (consumer / ".gitignore").write_text("transcripts/\n", encoding="utf-8")
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md
+        {_DOCS_STANZA}""",
+    )
+    tx = project / "transcripts" / "grani"
+    tx.mkdir(parents=True)
+    (tx / "01.md").write_text("Well.", encoding="utf-8")
+
+    resolved = resolve_subject_voice_docs(project, consumer_root=consumer)
+    assert len(resolved) == 1
+    assert resolved[0].corpus.missing is False
+
+
+# ---------------------------------------------------------------------------
+# Subject inertness + exports
+# ---------------------------------------------------------------------------
+
+
+def test_subject_inertness_no_voice_block(tmp_path: Path) -> None:
+    """A BRIEF with no ``voice:`` block is byte-identical across BOTH the
+    author-tier and subject-tier resolvers (#598 must not change pre-#598
+    no-voice behavior)."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        {_DOCS_STANZA}""",
+    )
+    brief = load_project_brief(project)
+    assert brief is not None and brief.voice is None
+    assert resolve_voice_docs(project, consumer_root=tmp_path) == []
+    assert resolve_subject_voice_docs(project, consumer_root=tmp_path) == []
+
+
+def test_subject_names_exported() -> None:
+    import anvil.lib.project_brief as pb
+
+    assert "SubjectVoiceEntry" in pb.__all__
+    assert "ResolvedSubjectVoice" in pb.__all__
+    assert "resolve_subject_voice_docs" in pb.__all__
+    assert SubjectVoiceEntry is pb.SubjectVoiceEntry
+    assert ResolvedSubjectVoice is pb.ResolvedSubjectVoice
+    assert resolve_subject_voice_docs is pb.resolve_subject_voice_docs

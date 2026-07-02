@@ -182,6 +182,19 @@ Public API
     ``anvil/lib/snippets/voice_grounding.md`` for the drafter /
     reviewer role contracts.
 
+``SubjectVoiceEntry`` / ``ResolvedSubjectVoice`` / ``resolve_subject_voice_docs``
+    The **subject voice tier** (issue #598) — the parallel, independently
+    activated tier for third-party dialogue grounded in a spoken corpus
+    (interview transcripts) rather than the author's published prose. The
+    optional ``voice.subjects`` list declares one entry per speaker
+    (``name`` + ``corpus`` glob + optional ``voice_doc``);
+    ``resolve_subject_voice_docs(project_dir, consumer_root=None)``
+    resolves each with the same project-root-first, consumer-root-fallback
+    walk and the same never-raise, structured ``missing: true`` posture.
+    The subject tier and the author tier activate independently — a
+    subjects-only block keeps ``VoiceDocs.is_empty == True``. See the
+    ``voice_grounding.md`` §"Subject voice tier".
+
 ``body_filename_for(slug: str) -> str``
     Return the body markdown filename for a thread (``f"{slug}.md"``).
     Issue #295's slug-echo convention; the only recognized shape. Lives
@@ -640,6 +653,7 @@ _RECOGNIZED_VOICE_KEYS = {
     "values",
     "corpus",
     "rhetoric_rules",
+    "subjects",
 }
 
 # Recognized sub-keys when the optional ``audience:`` block is written
@@ -975,6 +989,57 @@ class RubricOverrides(BaseModel):
         return None
 
 
+class SubjectVoiceEntry(BaseModel):
+    """One entry in the optional ``voice.subjects`` list (issue #598).
+
+    The **subject voice tier** grounds a third party's rendered dialogue
+    in that person's *spoken* corpus (interview transcripts) — as opposed
+    to the author-persona tier (:class:`VoiceDocs`), which grounds the
+    author's prose in their *published* exemplars. A memoir reconstructing
+    a grandmother's dialogue, a case study quoting a customer, an
+    oral-history project — anywhere a real person's speech is rendered
+    from recorded source.
+
+    On-disk shape (one entry per speaker)::
+
+        voice:
+          subjects:
+            - name: grani
+              corpus: transcripts/grani/**/*.md   # spoken ground truth (glob)
+              voice_doc: planning/grani-voice.md  # cadence + failure modes (optional)
+            - name: aunt-jo
+              corpus: transcripts/aunt-jo/**/*.md
+              # voice_doc optional — corpus alone activates the entry
+
+    Attributes
+    ----------
+    name
+        Speaker identifier used in review findings and the
+        ``subject_voice_grounding`` ``_summary.md`` block. Required,
+        non-empty.
+    corpus
+        Glob (project-root-first, consumer-root fallback — same semantics
+        as the author :attr:`VoiceDocs.corpus`) selecting the transcript
+        files that are this speaker's spoken ground truth. Required,
+        non-empty. Resolved by :func:`resolve_subject_voice_docs`; a glob
+        matching zero files comes back ``missing: true`` (a defect to
+        surface, not a crash).
+    voice_doc
+        Optional path to a markdown doc documenting this speaker's cadence
+        rules, characteristic openers, and named failure modes (e.g.
+        "an em-dash inside a spoken line is a strong drift signal; balanced
+        multi-clause sentences are polish creep"). Corpus alone is
+        sufficient to activate the entry — ``voice_doc`` is a refinement,
+        not a requirement.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., min_length=1)
+    corpus: str = Field(..., min_length=1)
+    voice_doc: Optional[str] = Field(default=None)
+
+
 class VoiceDocs(BaseModel):
     """Parsed optional top-level ``voice:`` block (issue #461).
 
@@ -1065,6 +1130,18 @@ class VoiceDocs(BaseModel):
             "``is_empty``. Resolved by ``resolve_rhetoric_rules``."
         ),
     )
+    subjects: Optional[List[SubjectVoiceEntry]] = Field(
+        default=None,
+        description=(
+            "Subject voice tier (issue #598): one entry per third-party "
+            "speaker whose dialogue is rendered from a spoken corpus. "
+            "Independently activated from the author tier — a "
+            "subjects-only block keeps ``is_empty`` True. ``None`` "
+            "(absent) or an empty list are equivalent; a non-empty list "
+            "activates the tier. Resolved by "
+            ":func:`resolve_subject_voice_docs`."
+        ),
+    )
     unknown_keys: Dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -1076,15 +1153,24 @@ class VoiceDocs(BaseModel):
 
     @property
     def is_empty(self) -> bool:
-        """Return True when no recognized voice **grounding doc** is declared.
+        """Return True when no recognized author-tier voice doc is declared.
 
         An empty block (``voice: {}`` or only unknown sub-keys) does
-        NOT activate the voice-grounding tier — consumers treat
+        NOT activate the author voice-grounding tier — consumers treat
         ``is_empty`` exactly like an absent block. ``rhetoric_rules``
         deliberately does NOT count: it is gate-side lint config, not
         drafter/reviewer grounding, so a ``rhetoric_rules``-only block
         is still ``is_empty`` (the lint wiring activates independently
         via :func:`resolve_rhetoric_rules`).
+
+        **``subjects`` does NOT count either** (issue #598): the subject
+        voice tier and the author voice tier activate *independently*. A
+        ``subjects``-only block (no author-tier keys) is still
+        ``is_empty`` — the author tier stays inactive while the subject
+        tier activates via :attr:`has_subjects` /
+        :func:`resolve_subject_voice_docs`. A memoir may declare both; a
+        case study may declare subjects only. Neither tier depends on the
+        other.
         """
         return (
             self.style_guide is None
@@ -1092,6 +1178,18 @@ class VoiceDocs(BaseModel):
             and self.values is None
             and self.corpus is None
         )
+
+    @property
+    def has_subjects(self) -> bool:
+        """Return True when the subject voice tier is active (issue #598).
+
+        The subject-tier analog of ``not is_empty`` for the author tier:
+        True iff a non-empty :attr:`subjects` list is declared. Empty /
+        absent ``subjects`` → False (byte-identical to pre-#598). The two
+        tiers are independent — ``has_subjects`` may be True while
+        ``is_empty`` is also True (a subjects-only block).
+        """
+        return bool(self.subjects)
 
 
 class ResolvedVoiceDoc(BaseModel):
@@ -1106,14 +1204,23 @@ class ResolvedVoiceDoc(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[
-        "values", "style_guide", "vocabulary", "corpus", "rhetoric_rules"
+        "values",
+        "style_guide",
+        "vocabulary",
+        "corpus",
+        "rhetoric_rules",
+        "subject_corpus",
+        "subject_voice_doc",
     ] = Field(
         ...,
         description=(
             "Which voice doc this entry resolves. ``rhetoric_rules`` "
             "entries (issue #468) come only from "
             ":func:`resolve_rhetoric_rules` — never from "
-            ":func:`resolve_voice_docs`."
+            ":func:`resolve_voice_docs`. ``subject_corpus`` / "
+            "``subject_voice_doc`` entries (issue #598) come only from "
+            ":func:`resolve_subject_voice_docs`, wrapped in a "
+            ":class:`ResolvedSubjectVoice`."
         ),
     )
     declared: str = Field(
@@ -1143,6 +1250,49 @@ class ResolvedVoiceDoc(BaseModel):
             "(consumer-root fallback via the ``.anvil/`` marker walk), "
             "``absolute`` (declared as an absolute path). ``None`` "
             "when ``missing``."
+        ),
+    )
+
+
+class ResolvedSubjectVoice(BaseModel):
+    """One resolved entry from :func:`resolve_subject_voice_docs` (issue #598).
+
+    The subject-tier analog of :class:`ResolvedVoiceDoc`, one per
+    declared ``voice.subjects`` entry (in declared order). Bundles the
+    resolved spoken corpus and the optional resolved voice doc for a
+    single speaker. Resolution mirrors the author tier exactly:
+    project-root first then consumer-root, never raising on absence —
+    a missing corpus glob or a missing voice doc comes back as a
+    structured ``missing: true`` :class:`ResolvedVoiceDoc`, the
+    reviewer's signal to surface a ``major`` finding while keeping the
+    subject tier active.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        description=(
+            "The speaker identifier from the BRIEF (``voice.subjects[].name``), "
+            "used in review findings and the ``subject_voice_grounding`` "
+            "``_summary.md`` block."
+        ),
+    )
+    corpus: ResolvedVoiceDoc = Field(
+        ...,
+        description=(
+            "The resolved spoken corpus (``kind='subject_corpus'``). A glob "
+            "matching zero files at either root is a ``missing: true`` "
+            "entry — the reviewer's ``major``-finding signal."
+        ),
+    )
+    voice_doc: Optional[ResolvedVoiceDoc] = Field(
+        default=None,
+        description=(
+            "The resolved cadence / failure-modes doc "
+            "(``kind='subject_voice_doc'``), or ``None`` when the subject "
+            "entry declared no ``voice_doc``. A declared-but-missing "
+            "voice doc is a ``missing: true`` entry (never ``None``)."
         ),
     )
 
@@ -1619,6 +1769,7 @@ def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
         )
 
     recognized: Dict[str, Optional[str]] = {}
+    subjects: Optional[List[SubjectVoiceEntry]] = None
     unknown_keys: Dict[str, Any] = {}
     for key, raw in value.items():
         if key not in _RECOGNIZED_VOICE_KEYS:
@@ -1631,6 +1782,11 @@ def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
                 UserWarning,
                 stacklevel=2,
             )
+            continue
+        if key == "subjects":
+            # The one non-string recognized sub-key (issue #598): a list
+            # of speaker entries, normalized by the dedicated helper.
+            subjects = _normalize_subjects(raw)
             continue
         if raw is None:
             recognized[key] = None
@@ -1650,7 +1806,92 @@ def _normalize_voice(value: Any) -> Optional[VoiceDocs]:
         stripped = raw.strip()
         recognized[key] = stripped if stripped else None
 
-    return VoiceDocs(**recognized, unknown_keys=unknown_keys)
+    return VoiceDocs(**recognized, subjects=subjects, unknown_keys=unknown_keys)
+
+
+def _normalize_subjects(value: Any) -> Optional[List[SubjectVoiceEntry]]:
+    """Normalize the optional ``voice.subjects`` list (issue #598).
+
+    The subject voice tier: a list of speaker entries, each a mapping
+    with a required ``name`` and ``corpus`` and an optional ``voice_doc``.
+    STRICT on the recognized structural shape (a fat-fingered
+    non-mapping entry or a missing / non-string required field raises
+    ``ValueError`` with the offending index and field), mirroring the
+    ``documents:`` list's strictness — a broken subject declaration is a
+    schema error, not a silent drop.
+
+    - ``None`` / absent → ``None`` (tier inactive).
+    - Empty list (``subjects: []``) → ``None`` (treated as absent per the
+      #598 contract — an empty list does not activate the tier).
+    - Unknown sub-keys *inside* a subject entry are preserved-by-warning
+      (the lenient inner-block posture of :func:`_normalize_voice`): they
+      warn and are dropped, so a forward-shipped subject sub-key does not
+      break this parser.
+    - ``voice_doc`` is optional; a whitespace-only value normalizes to
+      ``None`` (corpus alone activates the entry).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError(
+            f"BRIEF.voice.subjects must be a list of speaker mappings "
+            f"when set; got {type(value).__name__}: {value!r} — suggested "
+            f"fix: use the list shape (`- name: <speaker>` / `corpus: "
+            f"<glob>` / optional `voice_doc: <path>`), or remove the "
+            f"sub-key for byte-identical no-subject behavior."
+        )
+
+    _SUBJECT_KEYS = {"name", "corpus", "voice_doc"}
+    entries: List[SubjectVoiceEntry] = []
+    for idx, raw in enumerate(value):
+        if not isinstance(raw, dict):
+            raise ValueError(
+                f"BRIEF.voice.subjects[{idx}] must be a mapping with "
+                f"`name` and `corpus` (and optional `voice_doc`); got "
+                f"{type(raw).__name__}: {raw!r}."
+            )
+        for req in ("name", "corpus"):
+            val = raw.get(req)
+            if not isinstance(val, str) or not val.strip():
+                raise ValueError(
+                    f"BRIEF.voice.subjects[{idx}].{req} is required and "
+                    f"must be a non-empty string; got {val!r} — suggested "
+                    f"fix: set `{req}:` to "
+                    f"{'the speaker name' if req == 'name' else 'a transcript glob (e.g. transcripts/<speaker>/**/*.md)'}."
+                )
+        voice_doc_raw = raw.get("voice_doc")
+        if voice_doc_raw is None:
+            voice_doc: Optional[str] = None
+        elif not isinstance(voice_doc_raw, str):
+            raise ValueError(
+                f"BRIEF.voice.subjects[{idx}].voice_doc must be a string "
+                f"path when set; got {type(voice_doc_raw).__name__}: "
+                f"{voice_doc_raw!r} — suggested fix: quote a single path "
+                f"(e.g. `voice_doc: planning/{raw['name'].strip()}-voice.md`) "
+                f"or remove the key (corpus alone activates the entry)."
+            )
+        else:
+            stripped_vd = voice_doc_raw.strip()
+            voice_doc = stripped_vd if stripped_vd else None
+
+        for unknown in set(raw) - _SUBJECT_KEYS:
+            warnings.warn(
+                f"BRIEF.voice.subjects[{idx}].{unknown}: unknown sub-key "
+                f"— ignored (forward-compat); recognized subject sub-keys "
+                f"are {sorted(_SUBJECT_KEYS)}.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        entries.append(
+            SubjectVoiceEntry(
+                name=raw["name"].strip(),
+                corpus=raw["corpus"].strip(),
+                voice_doc=voice_doc,
+            )
+        )
+
+    return entries or None
 
 
 def _normalize_audience(value: Any) -> List[str]:
@@ -3045,10 +3286,16 @@ def _resolve_voice_path(
 
 
 def _resolve_voice_corpus(
-    declared: str, roots: List[Tuple[str, Path]]
+    declared: str,
+    roots: List[Tuple[str, Path]],
+    kind: str = "corpus",
 ) -> ResolvedVoiceDoc:
-    """Resolve the corpus glob against the root list (first root with
+    """Resolve a corpus glob against the root list (first root with
     ≥1 match wins; matches sorted; zero matches everywhere = missing).
+
+    ``kind`` selects the resolved entry's label — ``"corpus"`` for the
+    author tier (issue #461), ``"subject_corpus"`` for a subject's spoken
+    corpus (issue #598). The glob semantics are identical.
     """
     if Path(declared).is_absolute():
         try:
@@ -3061,13 +3308,13 @@ def _resolve_voice_corpus(
             matches = []
         if matches:
             return ResolvedVoiceDoc(
-                kind="corpus",
+                kind=kind,
                 declared=declared,
                 paths=matches,
                 missing=False,
                 source="absolute",
             )
-        return ResolvedVoiceDoc(kind="corpus", declared=declared, missing=True)
+        return ResolvedVoiceDoc(kind=kind, declared=declared, missing=True)
 
     for source, root in roots:
         try:
@@ -3078,13 +3325,13 @@ def _resolve_voice_corpus(
             matches = []
         if matches:
             return ResolvedVoiceDoc(
-                kind="corpus",
+                kind=kind,
                 declared=declared,
                 paths=matches,
                 missing=False,
                 source=source,
             )
-    return ResolvedVoiceDoc(kind="corpus", declared=declared, missing=True)
+    return ResolvedVoiceDoc(kind=kind, declared=declared, missing=True)
 
 
 def resolve_voice_docs(
@@ -3173,6 +3420,85 @@ def resolve_voice_docs(
             out.append(_resolve_voice_corpus(declared, roots))
         else:
             out.append(_resolve_voice_path(declared, kind, roots))
+    return out
+
+
+def resolve_subject_voice_docs(
+    project_dir: Path,
+    consumer_root: Optional[Path] = None,
+) -> List[ResolvedSubjectVoice]:
+    """Resolve the BRIEF's ``voice.subjects`` tier to on-disk paths (issue #598).
+
+    The subject-tier analog of :func:`resolve_voice_docs`. Reads
+    ``<project_dir>/BRIEF.md`` leniently and, when a non-empty
+    ``voice.subjects`` list is declared, resolves each speaker entry in
+    **declared order**:
+
+    - ``corpus`` — a glob of transcript files, resolved exactly like the
+      author ``corpus`` (``Path.glob`` semantics, ``**`` supported;
+      matches sorted; a root "hits" when ≥1 file matches).
+    - ``voice_doc`` — an optional single path, resolved like a non-corpus
+      author doc. ``None`` in the result when the entry declared no
+      ``voice_doc``.
+
+    Both resolve **project root first, then consumer root** (the same
+    ``.anvil/`` marker walk as :func:`resolve_voice_docs`; absolute paths
+    bypass the walk). Git status is never consulted — a ``.gitignored``
+    transcript corpus resolves identically to a committed one (the
+    private-grounding posture #577 documents for the author tier applies
+    unchanged here).
+
+    **Independent activation.** This resolver gates on
+    :attr:`VoiceDocs.has_subjects`, NOT on :attr:`VoiceDocs.is_empty`:
+    a subjects-only ``voice:`` block (no author-tier keys) resolves here
+    while :func:`resolve_voice_docs` returns ``[]``. The two tiers do not
+    depend on each other.
+
+    **Never raises on absence.** A ``corpus`` glob matching nothing, or a
+    declared-but-missing ``voice_doc``, comes back as a structured
+    ``missing: true`` :class:`ResolvedVoiceDoc` — a defect for the
+    reviewer to surface (``major`` finding), not a crash and not an
+    opt-out (the author-tier posture).
+
+    Returns
+    -------
+    List[ResolvedSubjectVoice]
+        One entry per declared subject, in declared order. Empty list
+        when the subject tier is INACTIVE: no BRIEF, malformed /
+        structurally invalid BRIEF (lenient swallow, mirroring
+        :func:`resolve_voice_docs`), no ``voice:`` block, or no
+        (non-empty) ``subjects`` list. Callers branch on
+        ``if not resolved:`` for the byte-identical inactive path.
+    """
+    try:
+        brief = load_project_brief(project_dir, consumer_root=consumer_root)
+    except ValueError:
+        return []
+    if brief is None or brief.voice is None or not brief.voice.has_subjects:
+        return []
+
+    roots: List[Tuple[str, Path]] = [("project", Path(project_dir))]
+    resolved_consumer = (
+        Path(consumer_root)
+        if consumer_root is not None
+        else find_consumer_root(Path(project_dir))
+    )
+    if resolved_consumer is not None:
+        roots.append(("consumer", resolved_consumer))
+
+    out: List[ResolvedSubjectVoice] = []
+    for subject in brief.voice.subjects or []:
+        corpus = _resolve_voice_corpus(subject.corpus, roots, kind="subject_corpus")
+        voice_doc = (
+            _resolve_voice_path(subject.voice_doc, "subject_voice_doc", roots)
+            if subject.voice_doc is not None
+            else None
+        )
+        out.append(
+            ResolvedSubjectVoice(
+                name=subject.name, corpus=corpus, voice_doc=voice_doc
+            )
+        )
     return out
 
 
@@ -3414,9 +3740,11 @@ __all__ = [
     "MIN_DIM",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
+    "ResolvedSubjectVoice",
     "ResolvedVoiceDoc",
     "RubricOverrides",
     "SKILL_IDENTITY_ARTIFACT_TYPES",
+    "SubjectVoiceEntry",
     "TargetLengthOverrides",
     "TargetLengthRange",
     "VOICE_DOC_KINDS",
@@ -3430,5 +3758,6 @@ __all__ = [
     "load_recommendation_target",
     "load_rubric_overrides_for_slug",
     "resolve_rhetoric_rules",
+    "resolve_subject_voice_docs",
     "resolve_voice_docs",
 ]

@@ -318,6 +318,192 @@ alongside the critic feedback and **preserves voice signatures the
 reviewer flagged as working** — voice-grounded revision must not
 sand off the persona while chasing rubric points.
 
+## Subject voice tier (issue #598)
+
+Everything above grounds the **author persona** — "does new prose sound
+like the author?" The **subject voice tier** points the same machinery
+at a *third party whose dialogue is rendered in the artifact*: a
+memoir reconstructing a grandmother's speech from interview
+transcripts, a `report` engagement narrative quoting a customer, a
+`pub` quoting a study participant, an oral-history project. The ground
+truth is a **spoken corpus** (recorded speech), not published prose,
+and the question is "does this reconstructed line sound like how *this
+speaker* would say it?"
+
+The subject tier is a **parallel, independently activated tier**. It
+does not replace or depend on the author tier — a memoir may declare
+both (an author persona for the narration + subjects for the
+dialogue); a case study may declare subjects only. A `subjects`-only
+`voice:` block keeps `VoiceDocs.is_empty == True` (the author tier
+stays inactive) while activating the subject tier via
+`VoiceDocs.has_subjects` / `resolve_subject_voice_docs`.
+
+### Scope boundary (vs. claim provenance, #597)
+
+This tier owns **voice/cadence fidelity only** — does the rendered line
+match the speaker's recorded register, rhythm, vocabulary, and
+characteristic patterns? It does **not** own whether the underlying
+facts/events actually appear in the transcript corpus (dates, names,
+memories) — that substance-verification half is issue #597's claim→
+source map. The touchstone for a line "She said X": #597 asks *did she
+say something like X in the transcripts?*; this tier asks *does the
+reconstructed line sound like how she would say it?* **Misattribution**
+sits at the boundary and this tier owns it **as a voice-identity
+failure** (one speaker's corpus does not match the line attributed to
+them, or matches another speaker's corpus more strongly) — NOT the
+substance-level "the event belongs to a different speaker's testimony"
+(that is #597).
+
+### BRIEF grammar
+
+```yaml
+voice:
+  # ... optional author-tier keys (style_guide / values / corpus …) …
+  subjects:
+    - name: grani                          # speaker id (findings + summary)
+      corpus: transcripts/grani/**/*.md    # spoken ground truth (glob)
+      voice_doc: planning/grani-voice.md   # optional — cadence + failure modes
+    - name: aunt-jo
+      corpus: transcripts/aunt-jo/**/*.md  # voice_doc optional — corpus alone activates
+```
+
+- `name` — required, non-empty. Used verbatim in review findings and
+  the `subject_voice_grounding` `_summary.md` block.
+- `corpus` — required glob of transcript files. **Same resolution
+  semantics as the author `corpus`**: project-root first, then
+  consumer-root; `**` supported; matches sorted; a root "hits" on ≥1
+  file. A glob matching zero files is `missing: true`.
+- `voice_doc` — **optional** single path to a markdown doc documenting
+  the speaker's cadence rules, characteristic openers ("Well,", "I'll
+  tell you"), and named failure modes (e.g. "an em-dash inside a spoken
+  line is a strong drift signal; balanced multi-clause sentences are
+  polish creep"). Corpus alone is sufficient to activate the entry.
+
+Resolve with
+`anvil/lib/project_brief.py::resolve_subject_voice_docs(project_dir,
+consumer_root=None)` — do not re-implement the walk. It returns one
+`ResolvedSubjectVoice` per declared subject, in declared order, each
+bundling a resolved `corpus` (`ResolvedVoiceDoc`, `kind='subject_corpus'`)
+and an optional resolved `voice_doc` (`ResolvedVoiceDoc`,
+`kind='subject_voice_doc'`, or `None` when the entry declared none).
+
+### Activation (byte-identical when absent)
+
+- **No `subjects` list (or `subjects: []`) → byte-identical.** No block,
+  no findings, no `_progress.json` field, no extra reads.
+  `resolve_subject_voice_docs` returns `[]`; callers branch on
+  `if not resolved:` for the inactive path, exactly as the author tier
+  branches on `is_empty`.
+- **Declared-but-missing corpus or voice_doc → the tier ACTIVATES** and
+  the breakage surfaces as a **`major` review finding** (structured
+  `missing: true` entry, never a raise — the same defect-to-surface
+  posture as the author tier).
+
+### Drafter contract
+
+When the subject tier is active, the drafter, before writing any
+reconstructed dialogue:
+
+1. **Notes which subjects appear in the draft** and loads each such
+   subject's `corpus` + `voice_doc` (when present) — the spoken ground
+   truth for that speaker's register.
+2. **Records the consulted transcript paths in `_progress.json`** under
+   `metadata.subject_voice_exemplars` — a **per-subject map**
+   `{"<name>": ["<transcript path>", …], …}` — so the reviewer can
+   check that grounding actually happened. No `subjects` list → the
+   field is omitted entirely.
+
+Missing declared corpora do not block drafting: the drafter proceeds
+with whatever resolved, and the reviewer surfaces the broken
+declaration.
+
+### Reviewer contract
+
+When the subject tier is active, the reviewer runs a **per-subject
+voice-fidelity pass** as a sub-step within its owned voice dimension
+(essay: dim 2 *Voice fidelity*). Rules mirror the author-tier
+discipline, pointed at each speaker's transcript:
+
+- **Every subject-voice deduction MUST quote the transcript** showing
+  the speaker's actual cadence **alongside the drifting reconstructed
+  line.** Quote the transcript, quote the drifting line. Vague feedback
+  ("doesn't sound like her") without a transcript quote is itself a
+  defective finding — the same load-bearing evidence discipline as the
+  author corpus-quote rule.
+- **The convergence-with-Claude check generalizes**: for each
+  reconstructed line, the reviewer asks — *would I, the AI, also write
+  this line for this speaker?* If yes, scrutinize harder, never defend.
+  A polished, balanced multi-clause sentence where the transcript shows
+  clipped declaratives is the canonical failure mode — model polish
+  displacing the speaker's actual rhythm.
+- **Misattribution is a critical flag** (**conditional: ≥2 subjects
+  declared**). When a line attributed to Subject A carries
+  characteristic markers that match Subject B's corpus and contradict
+  Subject A's corpus, it is a critical-flag candidate. This is the
+  **voice-identity failure only** (wrong voice in the wrong mouth) — the
+  substance-level "the event belongs to another speaker's testimony" is
+  #597 territory, NOT this flag. The justification quotes: (1) the
+  attributed line, (2) the Subject A corpus showing why it does not fit,
+  and (3) when identifiable, the Subject B corpus showing why it does.
+  The flag routes through the skill's **existing** critical-flag
+  machinery (same `Verdict.BLOCK` consequence) — it is an *additive*
+  flag, not a rubric-total change.
+
+### `_summary.md` block
+
+When the subject tier is active, the reviewer's `_summary.md` carries a
+top-level `subject_voice_grounding` block (parallel to
+`voice_grounding`):
+
+```json
+"subject_voice_grounding": {
+  "ran": true,
+  "subjects": [
+    {
+      "name": "grani",
+      "corpus_files_loaded": 12,
+      "voice_doc_loaded": true,
+      "exemplars_quoted": 3,
+      "lines_flagged": 1
+    }
+  ]
+}
+```
+
+`corpus_files_loaded` counts the resolved transcript paths read;
+`voice_doc_loaded` is whether a `voice_doc` resolved (present +
+non-missing); `exemplars_quoted` counts the transcript passages quoted
+across that subject's voice findings; `lines_flagged` counts the
+reconstructed lines deducted for that subject. When a subject's corpus
+or voice_doc was declared-but-missing, add a `"missing": ["<declared
+path>", …]` list on that subject entry (the `major` finding carries the
+remediation).
+
+**When the subject tier is inactive (no `subjects` list), the block is
+NOT emitted at all** — no `{ran: false}` entry, byte-identical to
+pre-#598 output. Same activation convention as the author-tier
+`voice_grounding` block above.
+
+### Reviser contract (one line)
+
+The one-line author-tier reviser rule **extends to subject voices**:
+when the subject tier is active, the reviser reads the resolved subject
+corpora + voice docs alongside the critic feedback and **preserves the
+subject voice signatures the reviewer flagged as working** — a
+reconstructed line the reviewer marked as corpus-faithful must not be
+sanded into model polish while chasing rubric points.
+
+### Out of scope for #598
+
+Substance/provenance tracing (→ #597); pub and report skill adoption
+(follow-on: same lib, same pattern — their voice-grounding steps
+already exist in `report-review.md` step 4d and `pub-draft.md`); audit
+hooks (essay has no audit command); rhetoric-lint integration for
+subject-dialogue lines (the lint's token-level rules apply to author
+prose; subject dialogue is a different register); a `vocab_reminder.py`
+equivalent for subject cadence. The **essay skill is the pilot
+consumer** (drafter + reviewer + reviser wired below).
+
 ## Adoption
 
 Skills adopt this contract by wiring three touch-points: an advisory
