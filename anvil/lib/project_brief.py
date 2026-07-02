@@ -1297,6 +1297,60 @@ class ResolvedSubjectVoice(BaseModel):
     )
 
 
+class ResolvedCorpusDir(BaseModel):
+    """One resolved entry from :func:`resolve_corpus_dirs` (issue #597).
+
+    The factual-ground-truth analog of :class:`ResolvedVoiceDoc`, but for
+    a **directory** rather than a file / glob: one per declared
+    ``corpus`` path, in declared order. The declared path names a
+    read-only evidence base (interview transcripts, family letters,
+    engagement notes, lab notebooks) whose passages the ``provenance.md``
+    claim→source map cites and the corpus-audit critic verifies against
+    (see ``anvil/lib/snippets/provenance.md``).
+
+    Missing-directory results are carried as **structured entries** —
+    resolution never raises on absence. A ``missing: true`` entry
+    activates the corpus tier and is the reviewer's signal to surface a
+    ``major`` finding (broken declaration), the same defect-to-surface
+    posture as the voice tier.
+
+    This is the substance-verification half of the local-corpus contract;
+    voice/cadence fidelity is the ``voice.subjects`` tier (issue #598).
+    The two tiers are independent and may both be declared by one memoir.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    declared: str = Field(
+        ...,
+        description="The verbatim directory path string from the BRIEF.",
+    )
+    path: Optional[str] = Field(
+        None,
+        description=(
+            "Absolute resolved directory path. ``None`` when ``missing`` "
+            "(the declared dir was absent at every resolution root)."
+        ),
+    )
+    missing: bool = Field(
+        ...,
+        description=(
+            "True when the declared path is not a directory at either "
+            "resolution root (project then consumer)."
+        ),
+    )
+    source: Optional[Literal["project", "consumer", "absolute"]] = Field(
+        None,
+        description=(
+            "Which root the entry resolved against: ``project`` "
+            "(project-root hit, first precedence), ``consumer`` "
+            "(consumer-root fallback via the ``.anvil/`` marker walk), "
+            "``absolute`` (declared as an absolute path). ``None`` when "
+            "``missing``."
+        ),
+    )
+
+
 class BriefDocument(BaseModel):
     """One entry in the project BRIEF's ``documents:`` frontmatter list.
 
@@ -1605,6 +1659,17 @@ class ProjectBrief(BaseModel):
         per ``anvil/lib/snippets/voice_grounding.md``. Absent →
         byte-identical behavior (the #428/#452 activation pattern).
         Path resolution is deferred to :func:`resolve_voice_docs`.
+    corpus
+        Optional list of read-only ground-truth corpus directory paths
+        (issue #597). Distinct from ``voice.corpus`` (a single glob of
+        author-persona *published* exemplars): this top-level ``corpus:``
+        declares **factual** ground truth — interview transcripts, family
+        letters, engagement notes — that the per-version ``provenance.md``
+        claim→source map cites and the corpus-audit critic verifies
+        against per ``anvil/lib/snippets/provenance.md``. ``None`` = tier
+        inactive (absent key, ``null``, or empty list) → byte-identical
+        behavior. Path resolution is deferred to
+        :func:`resolve_corpus_dirs`.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1615,6 +1680,7 @@ class ProjectBrief(BaseModel):
     documents: List[BriefDocument] = Field(..., min_length=1)
     theme: Optional[str] = Field(default=None)
     voice: Optional[VoiceDocs] = Field(default=None)
+    corpus: Optional[List[str]] = Field(default=None)
 
     def document_for_slug(self, slug: str) -> Optional[BriefDocument]:
         """Return the ``BriefDocument`` whose ``slug`` matches, or ``None``.
@@ -1892,6 +1958,61 @@ def _normalize_subjects(value: Any) -> Optional[List[SubjectVoiceEntry]]:
         )
 
     return entries or None
+
+
+def _normalize_corpus_dirs(value: Any) -> Optional[List[str]]:
+    """Normalize the optional top-level ``corpus:`` key (issue #597).
+
+    The factual ground-truth corpus declaration — a list of read-only
+    directory paths (interview transcripts, family letters, engagement
+    notes). Distinct from ``voice.corpus`` (a single glob nested under
+    ``voice:`` for author-persona published exemplars); this is a
+    top-level list of directories for substance verification.
+
+    Accepted shapes:
+
+    - **Absent / ``null`` / empty list** → ``None`` (tier INACTIVE;
+      byte-identical no-corpus behavior).
+    - **A single string** (``corpus: transcripts/``) → normalized to a
+      one-element list (``["transcripts/"]``), the fat-finger-friendly
+      shorthand.
+    - **A list of strings** (``corpus: [transcripts/, letters/]``) →
+      returned in declared order. Whitespace-only entries are dropped;
+      a list that reduces to empty normalizes to ``None``.
+
+    A non-string list element raises ``ValueError`` with the field path
+    (e.g. ``BRIEF.corpus[1]``) — STRICT on element type, catching
+    fat-finger shapes like ``corpus: [transcripts/, {nested: x}]``. Any
+    other non-list / non-string value (a mapping, a number) raises a
+    ``ValueError`` naming the recognized shapes, mirroring the strict
+    posture of the other typed BRIEF keys.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else None
+    if not isinstance(value, list):
+        raise ValueError(
+            f"BRIEF.corpus must be a list of directory-path strings (or a "
+            f"single string) when set; got {type(value).__name__}: "
+            f"{value!r} — suggested fix: write the value as a YAML list "
+            f"(`- transcripts/` lines or `[transcripts/, letters/]`), a "
+            f"single quoted path, or remove the key for byte-identical "
+            f"no-corpus behavior."
+        )
+    out: List[str] = []
+    for i, entry in enumerate(value):
+        if not isinstance(entry, str):
+            raise ValueError(
+                f"BRIEF.corpus[{i}] must be a string directory path; got "
+                f"{type(entry).__name__}: {entry!r} — suggested fix: quote "
+                f"the path or remove the non-string value."
+            )
+        stripped = entry.strip()
+        if stripped:
+            out.append(stripped)
+    return out or None
 
 
 def _normalize_audience(value: Any) -> List[str]:
@@ -2998,8 +3119,8 @@ def _parse_brief_body(
 
     Raises ``ValueError`` on any schema violation. Recognized top-level
     keys: ``project``, ``audience``, ``hard_rules``, ``documents``,
-    ``theme``, ``voice``. Other keys are ignored (forward-compat
-    surface for project-level fields that may land later).
+    ``theme``, ``voice``, ``corpus``. Other keys are ignored (forward-
+    compat surface for project-level fields that may land later).
 
     The consumer artifact-type set (issue #394) is discovered ONCE per
     parse here and threaded down to the per-entry ``artifact_type``
@@ -3029,6 +3150,7 @@ def _parse_brief_body(
     )
     theme = _normalize_theme(frontmatter.get("theme"))
     voice = _normalize_voice(frontmatter.get("voice"))
+    corpus = _normalize_corpus_dirs(frontmatter.get("corpus"))
 
     try:
         return ProjectBrief(
@@ -3038,6 +3160,7 @@ def _parse_brief_body(
             documents=documents,
             theme=theme,
             voice=voice,
+            corpus=corpus,
         )
     except ValidationError as exc:
         raise ValueError(
@@ -3502,6 +3625,108 @@ def resolve_subject_voice_docs(
     return out
 
 
+def resolve_corpus_dirs(
+    project_dir: Path,
+    consumer_root: Optional[Path] = None,
+) -> List[ResolvedCorpusDir]:
+    """Resolve the BRIEF's top-level ``corpus:`` list to on-disk dirs (issue #597).
+
+    The factual-ground-truth resolver — the substance-verification analog
+    of :func:`resolve_voice_docs`, but resolving each declared path to a
+    **directory** (an evidence base of transcripts / letters / notes)
+    rather than a file or glob. Reads ``<project_dir>/BRIEF.md`` leniently
+    and, when a non-empty ``corpus`` list is declared, resolves each
+    declared path in **declared order**.
+
+    Path resolution — **project root first, then consumer root** (the same
+    ``.anvil/`` marker walk as :func:`resolve_voice_docs`; first hit wins):
+
+    1. ``<project_dir>/<declared>`` — a project shadowing a repo-level
+       corpus locally.
+    2. ``<consumer_root>/<declared>`` — the common case: a project-level
+       evidence base shared across every thread in the consumer repo. The
+       consumer root carries the ``.anvil/`` install marker (discovered
+       via :func:`anvil.lib.theme.find_consumer_root` unless an explicit
+       ``consumer_root`` override is supplied).
+
+    Absolute declared paths are used as-is (``source="absolute"``). A path
+    "resolves" when it names an existing **directory** at a root — a file
+    of the same name does not satisfy the corpus contract.
+
+    **Git status is never consulted** — a ``.gitignored`` corpus directory
+    resolves identically to a committed one (the private-grounding posture
+    #577 documents for the voice tier applies here unchanged).
+
+    **Never raises on absence.** A declared directory absent at every root
+    comes back as a structured ``missing: true`` :class:`ResolvedCorpusDir`
+    — a defect for the reviewer to surface (``major`` finding), not an
+    opt-out and not a crash (the :func:`resolve_voice_docs` posture).
+
+    Returns
+    -------
+    List[ResolvedCorpusDir]
+        One entry per declared corpus path, in declared order. Empty list
+        when the tier is INACTIVE: no BRIEF, malformed / structurally
+        invalid BRIEF (lenient swallow, mirroring
+        :func:`resolve_voice_docs`), no ``corpus:`` key, ``corpus: null``,
+        or an empty list. Callers branch on ``if not resolved:`` for the
+        byte-identical inactive path.
+    """
+    try:
+        brief = load_project_brief(project_dir, consumer_root=consumer_root)
+    except ValueError:
+        return []
+    if brief is None or not brief.corpus:
+        return []
+
+    roots: List[Tuple[str, Path]] = [("project", Path(project_dir))]
+    resolved_consumer = (
+        Path(consumer_root)
+        if consumer_root is not None
+        else find_consumer_root(Path(project_dir))
+    )
+    if resolved_consumer is not None:
+        roots.append(("consumer", resolved_consumer))
+
+    out: List[ResolvedCorpusDir] = []
+    for declared in brief.corpus:
+        out.append(_resolve_corpus_dir(declared, roots))
+    return out
+
+
+def _resolve_corpus_dir(
+    declared: str, roots: List[Tuple[str, Path]]
+) -> ResolvedCorpusDir:
+    """Resolve one corpus directory path against the root list.
+
+    ``roots`` is the ordered ``[("project", <dir>), ("consumer", <dir>)]``
+    precedence list (consumer entry absent when no ``.anvil/`` marker
+    exists). First root where the path names an existing directory wins.
+    Absolute declared paths bypass the root walk entirely.
+    """
+    declared_path = Path(declared)
+    if declared_path.is_absolute():
+        if declared_path.is_dir():
+            return ResolvedCorpusDir(
+                declared=declared,
+                path=str(declared_path.resolve()),
+                missing=False,
+                source="absolute",
+            )
+        return ResolvedCorpusDir(declared=declared, missing=True)
+
+    for source, root in roots:
+        candidate = root / declared_path
+        if candidate.is_dir():
+            return ResolvedCorpusDir(
+                declared=declared,
+                path=str(candidate.resolve()),
+                missing=False,
+                source=source,
+            )
+    return ResolvedCorpusDir(declared=declared, missing=True)
+
+
 def resolve_rhetoric_rules(
     project_dir: Path,
     consumer_root: Optional[Path] = None,
@@ -3740,6 +3965,7 @@ __all__ = [
     "MIN_DIM",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
+    "ResolvedCorpusDir",
     "ResolvedSubjectVoice",
     "ResolvedVoiceDoc",
     "RubricOverrides",
@@ -3757,6 +3983,7 @@ __all__ = [
     "load_project_brief_strict",
     "load_recommendation_target",
     "load_rubric_overrides_for_slug",
+    "resolve_corpus_dirs",
     "resolve_rhetoric_rules",
     "resolve_subject_voice_docs",
     "resolve_voice_docs",
