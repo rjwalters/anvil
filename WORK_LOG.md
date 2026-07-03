@@ -4,7 +4,53 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-07-02
+
+- **PR #609**: feat(templates): add Substrate / Forming positions / Voice modes sections to `VALUES.template.md` + Standing reference-scaffolding prompt (closes #600) — closes the schema gap where essay rubric dims 2/5 and `voice_grounding.md` referenced concepts the template gave authors no place to declare; `REQUIRED_SECTIONS` test tuple 6 → 9
+- **PR #608**: feat(rhetoric_lint): document-positional rule scope (`scope: "first-line"`) + `no-opening-emdash` default rule (closes #601) — new `_first_prose_lineno` helper (front-matter/heading stripping); rule count 27 → 28; density-tightening recipe (5/1000 id-collision replacement) documented in the voice README
+- **PR #607**: feat(install): Stage 7.9 scaffolds the starter word list as `VOCABULARY.words.txt` (fourth voice-grounding pair, closes #602) — sibling-resolution convention now visible at install time; hint block names `python -m anvil.lib.vocab_reminder`
+- **PR #606**: feat(project-book): NEW UTILITY SKILL `anvil:project-book` — multi-thread book assembly (closes #596). Stages `.latest`-resolved chapter threads into a consumer-owned master LaTeX doc (skill-local `build:` BRIEF block), two-pass compile via `compile_and_gate`, per-thread `BOOK_REPORT.md`; build-does-not-block-on-quality (placeholder chapters for EMPTY threads, warn-never-block). Catalog 16 → 17 skills
+- **PR #605**: feat(lib): local-corpus claim provenance contract (closes #597) — top-level `corpus:` BRIEF field + `ResolvedCorpusDir`/`resolve_corpus_dirs` (dir-gated, project-first/consumer-fallback) + new `anvil/lib/snippets/provenance.md` (per-version claim→source map, five-way VERIFIED/PARAPHRASE_OK/MISMATCH/NOT_FOUND/FABRICATED classification, five fabrication-class critical flags, `<thread>.{N}.corpus-audit/` sibling). Skill adoption (pub/essay) tracked as follow-ons
+- **PR #604**: feat(lib): subject voice tier for the voice-grounding contract (closes #598) — `voice.subjects[]` (per-subject spoken corpus + voice_doc), independently activated from the author tier (`is_empty` untouched), `resolve_subject_voice_docs` mirror resolver, essay pilot wiring with conditional Misattribution critical flag 8. Scope boundary vs #597: this tier owns voice/cadence fidelity; substance verification is the corpus-provenance contract's
+- **Sweep note**: #596–#602 (the nitas-mama memoir enablement wave + blog-parity batch) ran through two `/loom:sweep` sessions — 7 issues, 7 PRs (#603–#609), 0 doctor cycles; suite 6,531 → 6,708 passing
+
+### 2026-07-01
+
+- **PR #603**: feat(project-photos): NEW UTILITY SKILL `anvil:project-photos` — read-only scanned-photo provenance manifest (closes #599). Human-authored numbering doc → deterministic `manifest.json` (capture → stable name + archive IDs + rotation hint + `multi_item`, `missing_captures` list); byte-identical re-runs, SHA-256-verified zero image mutation; image manipulation stays consumer-native per curation. Catalog 15 → 16 skills
+
+### 2026-06-17
+
+- **PR #595**: test(sidecar): guard against per-critic entry steps using portfolio-wide staging sweep (closes #593) — 41 command docs across 8 skills audited
+- **PR #594**: fix(latex): load amsmath/amssymb in all four xelatex preambles (closes #592) — pandoc-emitted `\text{}` no longer fails render (exit 43)
+
+### 2026-06-16
+
+- **PR #591**: feat(version.sh): add `list` + `bump <level> --tag` subcommands (closes #590) — implements upstream Loom v0.10.4 `release.md` interface
+- **PR #589**: chore(loom): install Loom 0.10.4 orchestration framework
+- **PR #588**: feat(project_brief): accept `audience: {primary, secondary}` dict shape (closes #546)
+
 ### 2026-06-15
+
+- **PR #587**: feat(ip): audit/finalize render-gate backstop + 2pt ip-skill threshold (closes #572)
+- **PR #585**: feat(deck): proactive generative imagery — `default_policy` override + additive-ness gate (closes #547)
+- **PR #583**: feat(memo): `NO-GO` terminal state for thesis-failure (closes #559) — memo's state machine gains an honest negative terminal
+- **PR #573**: feat(memo): independent red-team adversarial critic sibling (closes #560)
+- **PR #574**: feat(deck): unify overflow/fit gate — sizing-aware marp_lint + composite auto-shrink (closes #562)
+- **PR #571**: feat(deck): figure legibility-at-display-size gate (closes #563)
+- **PR #570**: feat(deck-imagegen): accept JPEG/WebP and transcode to PNG via optional `[deck_imagegen]` extra (closes #564)
+- **PR #569**: fix(install): auto-proceed on non-TTY stdin to surface CI/agent installs
+- **PR #568**: fix(deck-figures): apply `--scale 2` to mmdc + loosen theme max-height for tall PNGs
+- **PR #567**: feat(deck): deck-outline gate + reviser restructure authority
+
+### 2026-06-14
+
+- **PR #556**: feat(deck): Business-model & unit-economics rubric dim 10 — deck migrates /44 → **/49**, threshold ≥39 → **≥43** (closes #550); the 16-point narrative+ask+market anchor preserved in absolute terms
+- **PR #557**: feat(deck): extend perspective substrate to dim 10 (business-model)
+- **PR #565**: feat(deck): deck-economics critic owns dim 10 (business-model adversarial pass)
+- **PR #566**: feat(deck): 5th critical flag for incoherent/absent business model
+- **PR #558**: feat(parity): promote economic-context `only_in_memo` findings to a sharper warning class
+
+### 2026-06-15 (epic close)
 
 - **Epic #575 (tunable & private voice grounding) — epic-close pass**: all four child issues are merged and closed; this PR closes the coordination anchor itself with a single-line WORK_LOG entry and the `Closes #575` syntax on the PR. No code or doc changes beyond this entry — the epic's substance shipped across PRs #580 (closes #576, starter `STYLE_GUIDE.md` / `VOCABULARY.md` templates + idempotent scaffolder under `anvil/templates/voice/`), #581 (closes #577, the load-bearing new feature — `.gitignored` private voice grounding as a designed/protected posture: documented locus, auto-gitignore on scaffold, git-sync hook exclusion, committed-base + private-overlay layering), #582 (closes #578, de-personalized `VALUES.md` schema template + report dim-8 voice calibration broadening voice-grounding consumers beyond essay/memo), and #584 (closes #579, the `vocab` precision-vocabulary reminder tool wired to the essay drafter as a *reminder*, not an injector). The curator deliberately declined to promote this issue to `loom:curated` (per the issue comment: "Promoting this issue to `loom:curated` would mislead the Builder into attempting a multi-PR scope in a single pass"); the operator force-promoted it to `loom:issue` for the epic-close pass once #584 landed. Out-of-scope follow-ons sketched in the epic body (rhetoric-lint reopening, judgment-side `voice:` contract redefinition) remain out of scope and are NOT addressed here. Two structural wins shipped under the epic worth flagging for future canary signal: (1) the privacy posture (private grounding documented + scaffolded + protected from auto-commit, not merely "happens to work because the filesystem doesn't care about .gitignore"), and (2) the schema-not-content discipline (`VALUES.md` ships as instructive placeholders + shape, never one author's actual beliefs — the de-personalization is the load-bearing example for future personal-stance-shaped grounding docs).
   - **Touched**: MODIFIED this `WORK_LOG.md` entry. Zero `anvil/` changes, zero schema changes, zero new tests (epic-close-only PR; the substance shipped under #580/#581/#582/#584).

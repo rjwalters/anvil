@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-05-30*
+*Last updated: 2026-07-03*
 
 ---
 
@@ -12,7 +12,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*No issues currently claimed.* The full v0 backlog cleared between 2026-05-28 and 2026-05-30 (see `WORK_LOG.md` for the merge sequence). Builders are idle pending new canary-surfaced friction or maintainer-prioritized follow-ups.
+*No issues currently claimed.*
 
 ## Ready for Work (`loom:issue`)
 
@@ -20,9 +20,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Triage queue (`loom:triage`)
 
-| Issue | Title | Tier | Notes |
-|---|---|---|---|
-| **#106** | Declare `pydantic` in `pyproject.toml` — `anvil/lib/__init__.py` eagerly imports `cite` which requires it | `tier:maintenance` | Surfaced by #102/#105 builder + judge. Pre-existing on main. Now that `pyproject.toml` exists (post-#105), this is the right time. Two paths: declare `pydantic` in `[project] dependencies` (recommended; `pydantic` is a real lib-level dep for the schema layer) OR make the `cite` import lazy. |
+*Empty.* The 2026-07-01/02 sweep waves cleared the entire backlog: the `nitas-mama` memoir enablement wave (#596–#599 → PRs #603–#606) and the blog-parity batch (#600–#602 → PRs #607–#609). See `WORK_LOG.md` for the merge record.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -30,21 +28,25 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-The repository moved from "v0 punch list of skill implementations" (2026-05-28) to "shipped 8 skills + lib substrate + figure-theming + render-gate + 2 vision-critic families + extensive install-script hardening" (2026-05-30). The aggressive cycle was canary-driven — 2AM Logic Studio's authoring use against the framework surfaced the prioritized friction in real time, and the framework absorbed it through small bounded PRs (typically 1-4 files modified + 1 new test file).
+Zero open issues as of 2026-07-03. A **v0.7.0 release cut is pending** — `CHANGELOG.md` `[Unreleased]` carries the full post-0.6.0 batch (deck business-model wave, memoir enablement wave, blog-parity batch, memo/ip/install hardening).
+
+### Known follow-ons (documented in curation comments, filed as issues as needed)
+
+These were deliberately deferred from the 2026-07-02 sweep to keep PRs small; the lib contracts shipped without skill-level consumers:
+
+1. **Corpus claim-provenance skill adoption** (from #597's curation): `pub-audit` corpus verification step (`kind: tool_evidence`, five-way classification, fabrication-class critical flags), `pub-review` back-check (5–10 spot samples), `essay-draft` provenance.md writing + `essay-review` back-check. Until one lands, a corpus-declaring project cannot actually run a corpus audit.
+2. **Subject voice tier adoption beyond essay** (from #598's curation): pub and report drafter/reviewer wiring per the same pattern (their voice-grounding steps already exist); audit hooks.
+3. **Deferred from #598**: rhetoric-lint integration for subject-dialogue lines; `vocab_reminder`-style subject-cadence tool.
 
 ### Recurring themes the next wave of issues will likely touch
 
-These are not currently open — they're forward-looking signals based on patterns visible across the closed issues:
+Forward-looking signals from `ROADMAP.md` "Near-Term Themes" (dormant until canary friction or a second consumer surfaces):
 
-1. **Per-skill `lib/` extraction → `anvil/lib/`.** Several primitives that started skill-local (deck's `marp_lint`, `auto_shrink_detector`; report's `ack.py` / `audit_flags.py` / `pdf_freshness.py`) are candidates for promotion when a second skill needs them. Trigger is observed duplication, not anticipation.
-
-2. **Per-skill audit-command migrations.** Five skills (`pub`, `report`, `deck`, `slides`, `ip-uspto`) have `*-audit` commands that pre-date #29's `kind: tool_evidence` codification. Migrations to emit typed `_review.json` from those commands are tracked as separate follow-ups when they're filed.
-
-3. **Memo-side render-gate analog.** `anvil:memo` is markdown-first (maintainer decision, #64); a markdown-appropriate length-proxy + clean-output gate could ship as memo's analog of `render_gate` if canary friction emerges.
-
-4. **Render-gate consumer ergonomics.** The five paginated skills have `render_gate` wired (#64); per-thread `.anvil.json` overrides for `page_cap` and similar are part of the contract but the consumer-side ergonomics for setting them haven't been exercised at scale yet.
-
-5. **Cross-skill primitive sharing.** `marp_lint` is duplicated between deck and slides via `importlib` shim (post-#38); a deeper consolidation would be a `lib/` extraction following theme #1.
+1. **Per-skill `lib/` extraction → `anvil/lib/`** — trigger is observed duplication, not anticipation.
+2. **Per-skill audit-command migrations** to typed `_review.json` (`kind: tool_evidence`).
+3. **Memo-side render-gate analog** (markdown-appropriate length proxy + clean-output gate).
+4. **Render-gate consumer ergonomics** (per-thread overrides at scale).
+5. **Cross-skill lint sharing** (deck/slides `marp_lint` consolidation).
 
 ## How this file is maintained
 
