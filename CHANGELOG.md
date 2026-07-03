@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Summary
+
+Two arcs since v0.6.0: (1) the **deck business-model wave** — deck gains dim 10 *Business-model & unit-economics credibility* (/44 → /49, threshold ≥43), a dim-10-owning `deck-economics` adversarial critic, a fifth critical flag, an outline gate, a figure-legibility gate, and a unified overflow/fit gate; (2) the **`nitas-mama` family-memoir enablement wave** — two new utility skills (`anvil:project-photos`, `anvil:project-book`, catalog 15 → 17) plus two lib-level grounding contracts (subject voice tier, local-corpus claim provenance) that point anvil's voice and evidence machinery at a real person's spoken corpus and an on-disk ground-truth archive. A blog-parity batch (opening-line em-dash lint scope, `VOCABULARY.words.txt` install scaffold, VALUES template schema completion) and assorted memo/ip/install hardening round it out.
+
+### Added
+
+- **NEW SKILL `anvil:project-book`** (#596/#606): multi-thread book assembly — stages the `.latest`-resolved version of every chapter thread into a consumer-owned master LaTeX document (skill-local `build:` BRIEF block), two-pass compiles via `compile_and_gate`, and writes a per-thread `BOOK_REPORT.md` (state, score, audit, next command). Build-does-not-block-on-quality: EMPTY/missing threads get placeholder chapters, below-READY threads warn; marker-guarded blow-away rebuild; `--dry-run`.
+- **NEW SKILL `anvil:project-photos`** (#599/#603): read-only scanned-photo provenance manifest — human-authored numbering doc → deterministic `manifest.json` (original capture → stable name + archive item IDs + rotation hint + `multi_item` flag + `missing_captures`); byte-identical re-runs; image manipulation deliberately stays consumer-native.
+- **Subject voice tier for the voice-grounding contract** (#598/#604): `voice.subjects[]` (per-subject spoken `corpus` glob + optional `voice_doc`), independently activated from the author tier; `resolve_subject_voice_docs` mirror resolver; essay pilot consumer with conditional Misattribution critical flag 8 (voice-identity failures; substance verification belongs to the corpus-provenance contract).
+- **Local-corpus claim provenance contract** (#597/#605): top-level `corpus: [paths]` BRIEF field + `resolve_corpus_dirs` (directory-gated, project-first/consumer-fallback, missing-as-structured-entry) + `anvil/lib/snippets/provenance.md` — per-version claim→source map, five-way audit classification (VERIFIED / PARAPHRASE_OK / MISMATCH / NOT_FOUND / FABRICATED), five fabrication-class critical flags, `<thread>.{N}.corpus-audit/` sibling naming. Skill adoption (pub/essay) tracked as follow-ons.
+- **Deck business-model dimension** (#550/#556, #557, #565, #566): dim 10 *Business-model & unit-economics credibility* (weight 5) — deck rubric /44 → **/49**, threshold **≥43**; perspective substrate extended; `deck-economics` adversarial critic owns the dim; fifth critical flag for incoherent/absent business model.
+- **Deck gates + imagery** (#547/#585, #562/#574, #563/#571, #564/#570, #567, #568): proactive generative imagery with `default_policy` override + additive-ness gate; unified sizing-aware overflow/fit gate; figure legibility-at-display-size gate; JPEG/WebP → PNG transcode via optional `[deck_imagegen]` extra; deck-outline gate + reviser restructure authority; mmdc `--scale 2` fix.
+- **Memo hardening** (#559/#583, #560/#573): `NO-GO` terminal state for honest thesis-failure; independent red-team adversarial critic sibling.
+- **Rhetoric lint positional scope** (#601/#608): `scope: "first-line"` rule attribute + `no-opening-emdash` default rule (28 rules); consumer density-tightening recipe (5/1000 id-collision replacement) documented.
+- **Install scaffold: `VOCABULARY.words.txt`** (#602/#607): Stage 7.9 ships the starter word list as the fourth voice-grounding pair (sibling-resolution convention); hint block documents `python -m anvil.lib.vocab_reminder`.
+- **VALUES template schema completion** (#600/#609): Substrate / Forming positions / Voice modes sections + Standing reference-scaffolding prompt — the concepts essay rubric dims 2/5 already score against.
+- **`version.sh` release interface** (#590/#591): `list` + `bump <level> --tag` subcommands per upstream Loom v0.10.4 `release.md`.
+- **`project_brief.py`**: `audience: {primary, secondary}` dict shape (#546/#588).
+- **ip-uspto**: audit/finalize render-gate backstop + 2pt ip-skill threshold adjustment (#572/#587).
+
+### Fixed
+
+- All four xelatex preambles load amsmath/amssymb — pandoc-emitted `\text{}` no longer fails render (#592/#594).
+- Installer auto-proceeds on non-TTY stdin (CI/agent installs) (#569).
+- Per-critic entry steps guarded against portfolio-wide staging sweeps (test armor, #593/#595).
+
 ## [0.6.0] — 2026-06-13
 
 ### Summary
