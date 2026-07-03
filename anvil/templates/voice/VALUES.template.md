@@ -35,9 +35,11 @@
 
 **Purpose.** A reference for the voice-grounding contract
 (`anvil/lib/snippets/voice_grounding.md`): who you write for, what you
-believe and will argue for, what you refuse to say, what you have
-firsthand standing to claim, the recurring moves that mark your prose,
-and the defects you want the reviewer to catch. This is the
+believe and will argue for, what you refuse to say, the background
+commitments you argue *from*, the positions you are still forming, what
+you have firsthand standing to claim, the registers you legitimately write
+in, the recurring moves that mark your prose, and the defects you want the
+reviewer to catch. This is the
 **judgment-side** persona doc. Deterministic word/em-dash screening is
 the rhetoric lint's job (issue #463); this doc carries the positions and
 named failure modes the reviewer calibrates against. Edit it freely —
@@ -140,6 +142,111 @@ the *tell* that signals each drift.
 
 ---
 
+## Substrate
+
+Background commitments you argue *from*, not positions you argue *for*. A
+substrate item is the ground your audience assumes you stand on — a
+disposition, value, or worldview so basic to your writing that you rarely
+state it outright, yet a draft that quietly violates it reads as not-you.
+Distinct from Stances (which you defend on the page) and from Anti-stances
+(which you refuse): substrate is the assumed floor beneath both.
+
+> **Cross-link to the critical-flag routing.** Like an anti-stance, a
+> substrate item is a *judgment* concern, not a word-list. When the values
+> tier is active, a passage that contradicts a declared substrate item is
+> a **critical-flag candidate** routed through the skill's existing
+> critical-flag machinery (no new flag category), and the reviewer (rubric
+> dim 5) calibrates against the declared substrate alongside your stances
+> and anti-stances — see `anvil/lib/snippets/voice_grounding.md`
+> §"Reviewer contract".
+
+### 1. <!-- replace me: a background commitment your audience assumes you hold — the ground you argue from, not a position you argue -->
+
+<!-- replace me: two or three sentences on what the commitment is and how a draft would read if it quietly violated it -->
+
+### 2. <!-- replace me: a second substrate item -->
+
+<!-- replace me: expansion + the tell that a draft has drifted off it -->
+
+<!--
+  replace me (add more): substrate items are rarely stated outright in
+  your corpus — they are the assumptions a careful reader infers. Naming
+  them here gives the reviewer ground to catch the drafts that argue
+  correctly but from the wrong floor.
+-->
+
+---
+
+## Forming positions
+
+Positions you are actively developing but have not fully published — the
+half-formed arguments you are working toward. Declare them so the reviewer
+treats a consistent-but-novel claim as a **positive signal**, not as
+drift.
+
+> **Positive signal for dim 5, not a violation.** Rubric dim 5 scores a
+> forming position consistent with the values doc as *alignment*, not
+> misalignment: a draft that advances a claim you have declared as forming
+> is you thinking on the page, not you going off-voice. Without this
+> section the reviewer has no way to tell a legitimate developing position
+> from genuine drift, and may score consistent-but-novel material as a
+> deduction.
+
+### 1. <!-- replace me: a position you are developing but have not fully argued in your published corpus -->
+
+<!-- replace me: two or three sentences on where the thinking currently stands and which direction it is moving -->
+
+### 2. <!-- replace me: a second forming position -->
+
+<!-- replace me: expansion -->
+
+<!--
+  replace me (add more): keep these honest — a forming position is one you
+  are actually working toward, not a stance you already hold. Promote it to
+  Stances (with an exemplar) once it settles.
+-->
+
+---
+
+## Voice modes
+
+The named registers you legitimately write in. Most authors move between a
+few — a careful technical register, a looser observational one, a mode
+that samples other voices — and a reviewer that knows only one of them
+flags the others as drift. Name each mode with a one-line description so
+the reviewer's register check calibrates against your actual range.
+
+> **Dim 2 calibrates register against the declared modes.** The reviewer's
+> voice-fidelity register check (rubric dim 2) tests a passage against the
+> *declared* modes, not a single assumed voice — a register that matches a
+> declared mode is on-voice even when it differs sharply from your default.
+> In particular, **a declared sampling mode suppresses false anti-stance
+> flags on sampled surface material**: when you have named a mode that
+> quotes, echoes, or inhabits material you do not personally endorse
+> (cultural sampling, satire, steelmanning an opposing view), the reviewer
+> reads that surface as sampling rather than as a substrate / anti-stance
+> violation. Without the declared mode the anti-stance critical flag fires
+> on legitimate sampling.
+
+### <!-- replace me: name a mode (e.g. a careful / technical register) -->
+
+<!-- replace me: one line on when you write in it and how it reads -->
+
+### <!-- replace me: a second mode (e.g. a looser observational register) -->
+
+<!-- replace me: one line -->
+
+### <!-- replace me: a sampling mode, if you use one — the register in which you quote or inhabit material you do not personally endorse -->
+
+<!-- replace me: one line naming what kind of surface material this mode covers, so the reviewer reads it as sampling, not endorsement -->
+
+<!--
+  replace me (add more): a mode you never actually write in is noise —
+  declare only the registers a reader would recognize across your corpus.
+-->
+
+---
+
 ## Standing
 
 What you have **firsthand authority** to discuss versus what you'd cite
@@ -170,6 +277,21 @@ to reference-level or cut it.
 -->
 
 - <!-- replace me: a topic you cite rather than claim -->
+- <!-- replace me: another -->
+
+### Reference-scaffolding exemptions
+
+<!--
+  HOW TO FILL THIS. Rubric dim 4 asks that thinkers / concepts your
+  audience may not know get a one-line orientation the first time they
+  appear. That check is audience-relative: your specific readers already
+  know some names cold, and orienting those insults them. List the
+  thinkers / concepts / terms YOUR audience already knows so the reviewer
+  does NOT flag a missing one-line orientation for them — this makes the
+  dim 4 scaffolding check audience-aware.
+-->
+
+- <!-- replace me: a thinker / concept / term your specific audience already knows and therefore needs no one-line orientation -->
 - <!-- replace me: another -->
 
 ---

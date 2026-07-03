@@ -12,7 +12,9 @@ never get committed by accident.
 The contract this test enforces:
 
   * The template ships at ``anvil/templates/voice/VALUES.template.md`` with the
-    six proven sections and is **de-personalized** — no canary author belief
+    nine proven sections (Audience, Stances, Anti-stances, Substrate, Forming
+    positions, Voice modes, Standing, Voice signatures, Failure modes) and is
+    **de-personalized** — no canary author belief
     content survives; every author-specific slot is a ``<!-- replace me -->``
     placeholder.
   * The header's ``voice:`` example shows the PRIVATE wiring
@@ -76,11 +78,18 @@ BANNED_TOKENS = (
     "burning man",
 )
 
-# The six proven sections that must survive generalization.
+# The nine proven sections that must survive generalization. Substrate,
+# Forming positions, and Voice modes were added in #600 — the essay rubric
+# (dim 5 substrate / forming positions; dim 2 declared modes) and
+# voice_grounding.md already consume these concepts; the starter template now
+# gives authors a place to declare them.
 REQUIRED_SECTIONS = (
     "## Audience",
     "## Stances",
     "## Anti-stances",
+    "## Substrate",
+    "## Forming positions",
+    "## Voice modes",
     "## Standing",
     "## Voice signatures",
     "## Failure modes",
@@ -112,7 +121,9 @@ def test_values_template_ships() -> None:
     assert VALUES_TEMPLATE.is_file(), f"missing {VALUES_TEMPLATE}"
 
 
-def test_values_template_has_all_six_sections() -> None:
+def test_values_template_has_all_nine_sections() -> None:
+    """All nine proven sections survive generalization (six original + the
+    three #600 additions: Substrate, Forming positions, Voice modes)."""
     text = VALUES_TEMPLATE.read_text(encoding="utf-8")
     for section in REQUIRED_SECTIONS:
         assert section in text, f"VALUES template lost section: {section}"
