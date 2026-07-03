@@ -38,6 +38,11 @@ INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
 VOICE_SRC = REPO_ROOT / "anvil" / "templates" / "voice"
 STYLE_TEMPLATE = VOICE_SRC / "STYLE_GUIDE.template.md"
 VOCAB_TEMPLATE = VOICE_SRC / "VOCABULARY.template.md"
+# The starter word list (issue #602). Unlike the three docs it ships WITHOUT a
+# ``.template.`` infix — it is a real seed list, not a fill-in scaffold — and
+# scaffolds to ``VOCABULARY.words.txt`` (sibling of ``VOCABULARY.md``), the
+# path ``anvil/lib/vocab_reminder.py::resolve_word_list()`` resolves.
+VOCAB_WORDS = VOICE_SRC / "vocab.words.txt"
 
 # Author-identifying tokens from the source docs that MUST NOT survive
 # de-personalization. (These are the concrete examples / domains / repo
@@ -95,6 +100,7 @@ def test_voice_templates_ship() -> None:
 
     assert STYLE_TEMPLATE.is_file(), f"missing {STYLE_TEMPLATE}"
     assert VOCAB_TEMPLATE.is_file(), f"missing {VOCAB_TEMPLATE}"
+    assert VOCAB_WORDS.is_file(), f"missing starter word list {VOCAB_WORDS}"
     assert (VOICE_SRC / "README.md").is_file(), (
         f"missing voice templates README: {VOICE_SRC / 'README.md'}"
     )
@@ -185,8 +191,10 @@ def test_fresh_install_scaffolds_voice_docs_with_memo(tmp_path: Path) -> None:
 
     style = target / "STYLE_GUIDE.md"
     vocab = target / "VOCABULARY.md"
+    words = target / "VOCABULARY.words.txt"
     assert style.is_file(), f"did not scaffold {style}; stdout:\n{result.stdout}"
     assert vocab.is_file(), f"did not scaffold {vocab}; stdout:\n{result.stdout}"
+    assert words.is_file(), f"did not scaffold {words}; stdout:\n{result.stdout}"
 
     # Byte-faithful copy of the shipped templates (the `.template` infix is
     # stripped from the destination filename, content is identical).
@@ -196,6 +204,12 @@ def test_fresh_install_scaffolds_voice_docs_with_memo(tmp_path: Path) -> None:
     assert vocab.read_text(encoding="utf-8") == VOCAB_TEMPLATE.read_text(
         encoding="utf-8"
     ), "scaffolded VOCABULARY.md differs from the shipped template"
+    # The word list scaffolds byte-identical to the shipped starter (the source
+    # ships WITHOUT a `.template.` infix — the `vocab.words.txt` stem is renamed
+    # to the sibling-resolved `VOCABULARY.words.txt` on copy).
+    assert words.read_text(encoding="utf-8") == VOCAB_WORDS.read_text(
+        encoding="utf-8"
+    ), "scaffolded VOCABULARY.words.txt differs from the shipped starter list"
 
 
 def test_fresh_install_scaffolds_voice_docs_with_essay(tmp_path: Path) -> None:
@@ -212,6 +226,10 @@ def test_fresh_install_scaffolds_voice_docs_with_essay(tmp_path: Path) -> None:
     )
     assert (target / "VOCABULARY.md").is_file(), (
         f"essay install did not scaffold VOCABULARY.md; stdout:\n{result.stdout}"
+    )
+    assert (target / "VOCABULARY.words.txt").is_file(), (
+        f"essay install did not scaffold VOCABULARY.words.txt; "
+        f"stdout:\n{result.stdout}"
     )
 
 
@@ -232,6 +250,10 @@ def test_install_without_voice_skill_does_not_scaffold(tmp_path: Path) -> None:
         "scaffolded VOCABULARY.md even though no voice-consuming skill was "
         f"selected; stdout:\n{result.stdout}"
     )
+    assert not (target / "VOCABULARY.words.txt").exists(), (
+        "scaffolded VOCABULARY.words.txt even though no voice-consuming skill "
+        f"was selected; stdout:\n{result.stdout}"
+    )
     assert "skipping voice-grounding scaffold" in result.stdout, (
         f"expected the no-voice-skill skip note; got:\n{result.stdout}"
     )
@@ -251,12 +273,17 @@ def test_reinstall_is_idempotent_no_duplicate_no_error(tmp_path: Path) -> None:
     first = _run("--skills=memo", str(target))
     _assert_ok(first)
     style = target / "STYLE_GUIDE.md"
+    words = target / "VOCABULARY.words.txt"
     first_content = style.read_text(encoding="utf-8")
+    first_words = words.read_text(encoding="utf-8")
 
     second = _run("--skills=memo", str(target))
     _assert_ok(second)
     assert style.read_text(encoding="utf-8") == first_content, (
         "second install changed STYLE_GUIDE.md"
+    )
+    assert words.read_text(encoding="utf-8") == first_words, (
+        "second install changed VOCABULARY.words.txt"
     )
     assert "preserving" in second.stdout, (
         f"expected the skip-if-exists 'preserving' note on re-install; "
@@ -272,12 +299,19 @@ def test_existing_grounding_doc_is_never_clobbered(tmp_path: Path) -> None:
 
     sentinel = "# My hand-authored style guide\n\nDo not touch this.\n"
     (target / "STYLE_GUIDE.md").write_text(sentinel, encoding="utf-8")
+    words_sentinel = "my-own-precision-word\nanother-one\n"
+    (target / "VOCABULARY.words.txt").write_text(words_sentinel, encoding="utf-8")
 
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
 
     assert (target / "STYLE_GUIDE.md").read_text(encoding="utf-8") == sentinel, (
         "installer clobbered a pre-existing hand-authored STYLE_GUIDE.md"
+    )
+    assert (
+        target / "VOCABULARY.words.txt"
+    ).read_text(encoding="utf-8") == words_sentinel, (
+        "installer clobbered a pre-existing hand-authored VOCABULARY.words.txt"
     )
 
 
@@ -289,6 +323,9 @@ def test_skip_is_per_file_not_all_or_nothing(tmp_path: Path) -> None:
 
     sentinel = "# custom style guide\n"
     (target / "STYLE_GUIDE.md").write_text(sentinel, encoding="utf-8")
+    # A custom word list must likewise not block the docs from scaffolding.
+    words_sentinel = "custom-word\n"
+    (target / "VOCABULARY.words.txt").write_text(words_sentinel, encoding="utf-8")
 
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
@@ -296,6 +333,12 @@ def test_skip_is_per_file_not_all_or_nothing(tmp_path: Path) -> None:
     # Custom STYLE_GUIDE.md preserved...
     assert (target / "STYLE_GUIDE.md").read_text(encoding="utf-8") == sentinel, (
         "custom STYLE_GUIDE.md was overwritten"
+    )
+    # ...custom VOCABULARY.words.txt preserved...
+    assert (
+        target / "VOCABULARY.words.txt"
+    ).read_text(encoding="utf-8") == words_sentinel, (
+        "custom VOCABULARY.words.txt was overwritten"
     )
     # ...and VOCABULARY.md STILL scaffolded (per-file, not all-or-nothing).
     assert (target / "VOCABULARY.md").is_file(), (
@@ -334,11 +377,20 @@ def test_dry_run_reports_and_writes_nothing(tmp_path: Path) -> None:
         "expected the '[dry-run] scaffold voice-grounding doc at STYLE_GUIDE.md "
         f"...' action line; got:\n{result.stdout}"
     )
+    assert "[dry-run] scaffold voice-grounding doc at VOCABULARY.words.txt" in (
+        result.stdout
+    ), (
+        "expected the '[dry-run] scaffold voice-grounding doc at "
+        f"VOCABULARY.words.txt ...' action line; got:\n{result.stdout}"
+    )
     assert not (target / "STYLE_GUIDE.md").exists(), (
         "--dry-run wrote STYLE_GUIDE.md to the target"
     )
     assert not (target / "VOCABULARY.md").exists(), (
         "--dry-run wrote VOCABULARY.md to the target"
+    )
+    assert not (target / "VOCABULARY.words.txt").exists(), (
+        "--dry-run wrote VOCABULARY.words.txt to the target"
     )
     # The post-action confirmation must not fire under --dry-run.
     assert "ok: STYLE_GUIDE.md scaffolded" not in result.stdout, (
@@ -369,6 +421,16 @@ def test_summary_prints_voice_block_snippet(tmp_path: Path) -> None:
     )
     assert "vocabulary: VOCABULARY.md" in stdout, (
         f"Stage 11 hint missing the vocabulary wiring; got:\n{stdout}"
+    )
+
+    # The sibling word-list convention (issue #602) must be documented so a
+    # consumer migrating an existing word list knows where it resolves.
+    assert "VOCABULARY.words.txt" in stdout, (
+        f"Stage 11 hint missing the VOCABULARY.words.txt sibling convention; "
+        f"got:\n{stdout}"
+    )
+    assert "anvil.lib.vocab_reminder" in stdout, (
+        f"Stage 11 hint missing the vocab_reminder resolution note; got:\n{stdout}"
     )
 
     # The installer must NOT have written a BRIEF.md (it prints, never edits).
