@@ -1318,7 +1318,18 @@ else
   # out of commits. resolve_voice_docs resolves a gitignored declared doc
   # identically to a committed one — privacy is where the file lives in git,
   # not how anvil reads it.
-  for voice_pair in "STYLE_GUIDE.template.md:STYLE_GUIDE.md" "VOCABULARY.template.md:VOCABULARY.md" "VALUES.template.md:VALUES.local.md"; do
+  # The vocab.words.txt:VOCABULARY.words.txt pair (issue #602) seeds the
+  # sibling word list that anvil/lib/vocab_reminder.py::resolve_word_list()
+  # picks up automatically: it resolves a `<stem>.words.txt` next to the
+  # declared voice.vocabulary doc (VOCABULARY.words.txt beside VOCABULARY.md),
+  # falling back to the shipped package default only when no sibling exists.
+  # Scaffolding it here means the consumer owns and grows the list with zero
+  # BRIEF changes. Unlike VALUES.local.md this is COMMITTED by design — a word
+  # list carries no first-person stances, so it matches VOCABULARY.md's
+  # committed posture and needs no gitignore pattern below. The source ships
+  # without a `.template.` infix (it is a real starter list, not a fill-in
+  # scaffold), so the pair is `vocab.words.txt:VOCABULARY.words.txt`.
+  for voice_pair in "STYLE_GUIDE.template.md:STYLE_GUIDE.md" "VOCABULARY.template.md:VOCABULARY.md" "VALUES.template.md:VALUES.local.md" "vocab.words.txt:VOCABULARY.words.txt"; do
     voice_src_name="${voice_pair%%:*}"
     voice_dst_name="${voice_pair##*:}"
     voice_src="$SRC_VOICE_DIR/$voice_src_name"
@@ -1639,6 +1650,10 @@ else
     echo "         An existing STYLE_GUIDE.md / VOCABULARY.md / VALUES.local.md is never"
     echo "         overwritten (per-file skip). See anvil/templates/voice/README.md for the"
     echo "         four-doc taxonomy."
+    echo ""
+    echo "         Starter word list scaffolded at VOCABULARY.words.txt (sibling of"
+    echo "         VOCABULARY.md). 'python -m anvil.lib.vocab_reminder' resolves it"
+    echo "         automatically; grow or replace the list with your own precision words."
     echo ""
     echo "         Private grounding (issues #577, #578): VALUES carries first-person stances"
     echo "         most authors do NOT want committed, so it scaffolds PRIVATE BY DEFAULT to a"
