@@ -147,6 +147,77 @@ Zero-to-active path for a fresh adopter:
 2. Paste the printed `voice:` snippet into your project `BRIEF.md`.
 3. Fill in the `<!-- replace me -->` placeholders in the scaffolded docs.
 
+## Customizing rhetoric rules
+
+The judgment-side `VOCABULARY.md` doc has a deterministic complement: the
+**rhetoric lint** (`anvil/lib/rhetoric_lint.py`), a rule-set-driven
+anti-trope / AI-tell scan that ships ~28 conservative default rules. A
+project points the lint at a consumer rule file by declaring the optional
+`voice.rhetoric_rules` sub-key in its `BRIEF.md` frontmatter (resolved by
+`anvil.lib.project_brief.resolve_rhetoric_rules`; wired into the memo
+render gate — see `anvil/skills/memo/commands/memo-render.md`):
+
+```yaml
+voice:
+  style_guide: STYLE_GUIDE.md
+  vocabulary: VOCABULARY.md
+  rhetoric_rules: rhetoric-rules.json   # optional consumer rule file
+```
+
+Consumer rules are **merged over** the framework defaults; a consumer
+rule whose `id` collides with a default **replaces** it silently. That
+id-collision override is the mechanism for the two most common tunings.
+
+### Tightening em-dash density (worked example)
+
+The default `em-dash-density` rule flags sustained em-dash use above
+`8` per 1000 words (`max_per_1000_words: 8`). To enforce a **tighter**
+threshold, ship a consumer rule reusing the same `id` — it replaces the
+default, so only your threshold applies:
+
+```json
+{
+  "name": "my-voice-rules",
+  "rules": [
+    {
+      "id": "em-dash-density",
+      "kind": "frequency",
+      "pattern": "—",
+      "max_per_1000_words": 5,
+      "message": "Em-dash density exceeds the tighter voice threshold (5/1000); vary punctuation."
+    }
+  ]
+}
+```
+
+`5/1000` (≈ 1 per 200 words) is the worked example from a surveyed
+consumer's judgment-side em-dash discipline — noticeably stricter than
+the framework's `8/1000` default. Because the `id` is `em-dash-density`,
+the framework's rule is not *also* applied; your `5/1000` is the only
+em-dash-density rule that runs. The same id-collision pattern loosens the
+threshold (raise `max_per_1000_words`) or fully replaces any other
+default rule.
+
+### Positional (opening-line) tells
+
+Beyond density, `phrase`/`regex` rules accept an optional
+`scope: "first-line"` attribute that restricts the rule to the
+document's first prose line (after front-matter/heading stripping). The
+default `no-opening-emdash` rule uses it to flag **any** em-dash in the
+opening line regardless of overall density — a documented generic-AI
+cadence tell. Consumers author their own positional rules the same way:
+
+```json
+{"id": "no-opening-question", "kind": "regex", "scope": "first-line",
+ "pattern": "\\?\\s*$", "message": "Avoid opening on a rhetorical question."}
+```
+
+`scope` is meaningful only for `phrase`/`regex` rules; `frequency` rules
+are always document-level. Absent or unknown `scope` values default to
+`"body"` (evaluate every line). Both tunings are advisory — the rhetoric
+lint's warning-severity ceiling is a contract; no consumer rule can
+change a gate/verdict.
+
 ## Private grounding (`.gitignored` personal docs)
 
 The personal layer of voice grounding — `VALUES.md`-class stances,

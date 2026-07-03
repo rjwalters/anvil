@@ -199,8 +199,15 @@ def test_frequency_over_threshold_fires_document_level():
 
 
 def test_frequency_min_words_floor():
-    """Density on a tiny text is noise, not signal — no finding."""
-    text = _words(DEFAULT_FREQUENCY_MIN_WORDS - 10) + " — — — — —"
+    """Density on a tiny text is noise, not signal — no finding.
+
+    The em-dashes live on line 2 (not the opening prose line) so the
+    positional ``no-opening-emdash`` rule stays silent and this test
+    isolates the frequency-floor behavior it exists to check.
+    """
+    text = "Opening line, no dash.\n" + _words(
+        DEFAULT_FREQUENCY_MIN_WORDS - 10
+    ) + " — — — — —"
     assert _active(lint_rhetoric(text)) == []
 
 
@@ -471,11 +478,14 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
     file in the repo (fixture memo bodies, BRIEF templates) plus the
     other skills' worked examples.
 
-    The em-dash *frequency* rule is asserted separately
-    (``test_zero_findings_on_clean_memo_fixture``): the repo's own
-    fixture prose is em-dash-dense AI-written text (10-30 per 1000
-    words — exactly the tell the rule exists to flag), so it cannot
-    serve as the "good prose" baseline for the frequency dimension.
+    Both em-dash rules — the ``em-dash-density`` *frequency* rule and the
+    positional ``no-opening-emdash`` rule (issue #601) — are asserted
+    separately (``test_zero_findings_on_clean_memo_fixture`` and the
+    dedicated positional tests): the repo's own fixture prose is
+    em-dash-dense AI-written text (10-30 per 1000 words, several opening
+    directly on an em-dash — exactly the tells those rules exist to
+    flag), so it cannot serve as the "good prose" baseline for either
+    em-dash dimension.
     """
     corpus = (
         sorted((REPO_ROOT / "anvil/skills/memo/tests/fixtures").rglob("*.md"))
@@ -493,7 +503,7 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
         hits = [
             f.to_dict()
             for f in _active(result)
-            if f.rule_id != "em-dash-density"
+            if f.rule_id not in ("em-dash-density", "no-opening-emdash")
         ]
         if hits:
             offenders[str(path)] = hits
@@ -572,3 +582,167 @@ def test_module_docstring_documents_json_schema():
     doc = mod.__doc__ or ""
     for token in ('"rules"', '"disable"', "max_per_1000_words", "phrase", "regex", "frequency"):
         assert token in doc, f"module docstring missing {token!r}"
+
+
+# ---------------------------------------------------------------------------
+# Positional scope: schema normalization (issue #601)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_rule_scope_first_line():
+    """``scope: "first-line"`` normalizes through for phrase/regex kinds."""
+    for kind in (RULE_KIND_PHRASE, RULE_KIND_REGEX):
+        normalized, error = _validate_rule(
+            {
+                "id": "x",
+                "kind": kind,
+                "pattern": "foo",
+                "message": "m",
+                "scope": "first-line",
+            }
+        )
+        assert error is None, error
+        assert normalized is not None
+        assert normalized["scope"] == "first-line"
+
+
+def test_validate_rule_scope_default_body():
+    """Absent or unknown ``scope`` coerces to ``"body"``."""
+    absent, err1 = _validate_rule(
+        {"id": "x", "kind": RULE_KIND_REGEX, "pattern": "foo", "message": "m"}
+    )
+    assert err1 is None
+    assert absent["scope"] == "body"
+    unknown, err2 = _validate_rule(
+        {
+            "id": "x",
+            "kind": RULE_KIND_REGEX,
+            "pattern": "foo",
+            "message": "m",
+            "scope": "nonsense",
+        }
+    )
+    assert err2 is None
+    assert unknown["scope"] == "body"
+
+
+def test_validate_rule_frequency_has_no_scope():
+    """Frequency rules are document-level: no ``scope`` key is stored."""
+    normalized, error = _validate_rule(
+        {
+            "id": "f",
+            "kind": RULE_KIND_FREQUENCY,
+            "pattern": "—",
+            "max_per_1000_words": 8,
+            "message": "m",
+            "scope": "first-line",  # ignored for frequency
+        }
+    )
+    assert error is None, error
+    assert "scope" not in normalized
+
+
+# ---------------------------------------------------------------------------
+# Positional scope: the no-opening-emdash default rule (issue #601)
+# ---------------------------------------------------------------------------
+
+
+def _opening(result: RhetoricLintResult):
+    return [f for f in _active(result) if f.rule_id == "no-opening-emdash"]
+
+
+def test_default_set_contains_opening_emdash_rule():
+    matches = [
+        r for r in DEFAULT_RHETORIC_RULES if r["id"] == "no-opening-emdash"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["scope"] == "first-line"
+    assert matches[0]["kind"] == RULE_KIND_REGEX
+
+
+def test_opening_emdash_first_prose_line_fires():
+    result = lint_rhetoric("First line — with dash.\n\nSecond line.\n")
+    hits = _opening(result)
+    assert len(hits) == 1
+    assert hits[0].line == 1
+    assert hits[0].match == "—"
+
+
+def test_opening_emdash_non_first_line_no_finding():
+    """Same em-dash on line 3 does not fire the positional rule."""
+    result = lint_rhetoric("First line clean.\n\nSecond line — with dash.\n")
+    assert _opening(result) == []
+
+
+def test_opening_emdash_skips_heading():
+    """An em-dash in a leading heading is not the opening prose line."""
+    result = lint_rhetoric("# Heading — title\n\nFirst prose — with dash.\n")
+    assert [f.line for f in _opening(result)] == [3]
+
+
+def test_opening_emdash_skips_front_matter():
+    """YAML front-matter is skipped; the first prose line is line 5."""
+    result = lint_rhetoric(
+        "---\ntitle: Foo — bar\n---\n\nFirst prose — with dash.\n"
+    )
+    assert [f.line for f in _opening(result)] == [5]
+
+
+def test_opening_emdash_suppression():
+    """A directive on the line above the first prose line downgrades to info."""
+    text = (
+        "<!-- anvil-lint-disable: memo_rhetoric_lint -->\n"
+        "First prose — with dash.\n"
+    )
+    result = lint_rhetoric(text)
+    assert _opening(result) == []
+    infos = [f for f in result.infos if f.rule_id == "no-opening-emdash"]
+    assert len(infos) == 1
+    assert infos[0].line == 2
+    assert "(suppressed)" in infos[0].message
+
+
+def test_opening_emdash_empty_document_no_crash():
+    """Empty and front-matter-only documents produce no finding, no crash."""
+    assert lint_rhetoric("").findings == []
+    fm_only = lint_rhetoric("---\ntitle: Foo\n---\n")
+    assert _opening(fm_only) == []
+
+
+# ---------------------------------------------------------------------------
+# Density tightening via id-collision (issue #601)
+# ---------------------------------------------------------------------------
+
+
+def test_consumer_id_collision_density_tightening(tmp_path):
+    """A consumer 5/1000 ``em-dash-density`` replaces the 8/1000 default."""
+    path = _write_rules(
+        tmp_path,
+        {
+            "rules": [
+                {
+                    "id": "em-dash-density",
+                    "kind": "frequency",
+                    "pattern": "—",
+                    "max_per_1000_words": 5,
+                    "message": "tighter 5/1000",
+                }
+            ]
+        },
+    )
+    text = _words(1000) + "\n" + "— " * 6  # 6/1000: > 5 but <= 8
+    # Framework default (8/1000) does NOT fire at 6/1000.
+    assert _active(lint_rhetoric(text)) == []
+    # Consumer 5/1000 replaces it and DOES fire.
+    hits = _active(lint_rhetoric(text, extra_rules_path=path))
+    assert [f.rule_id for f in hits] == ["em-dash-density"]
+    assert "tighter 5/1000" in hits[0].message
+
+
+def test_voice_readme_documents_density_tightening_recipe():
+    """Doc coverage: the density-tightening recipe is documented."""
+    readme = (
+        REPO_ROOT / "anvil/templates/voice/README.md"
+    ).read_text(encoding="utf-8")
+    assert "em-dash-density" in readme
+    assert "max_per_1000_words" in readme
