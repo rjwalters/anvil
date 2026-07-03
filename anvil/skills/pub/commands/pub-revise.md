@@ -6,8 +6,8 @@ description: Reviser command for the pub skill. Reads the latest version + all c
 # pub-revise — Reviser
 
 **Role**: reviser.
-**Reads**: latest `<thread>.{N}/` and ALL `<thread>.{N}.*/` critic siblings (`.review/`, `.audit/`, `.litsearch/`, `.critic/`, ...).
-**Writes**: `<thread>.{N+1}/` containing the revised paper, `figures/`, `_progress.json`, and a `changelog.md` mapping critic notes to the changes made.
+**Reads**: latest `<thread>.{N}/` (+ `provenance.md` when the corpus tier is active — issue #612) and ALL `<thread>.{N}.*/` critic siblings (`.review/`, `.audit/`, `.corpus-audit/`, `.litsearch/`, `.critic/`, ...).
+**Writes**: `<thread>.{N+1}/` containing the revised paper, `figures/`, `_progress.json` (+ a refreshed `provenance.md` when the corpus tier is active), and a `changelog.md` mapping critic notes to the changes made.
 
 This command is the canonical "N parallel critics, one reviser" pattern from anvil's design principles. It consumes any number of critic siblings at the current version and produces a single revised version that addresses them.
 
@@ -41,6 +41,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - `<thread>.{N}.review/_review.json` (canonical generic /44 scorecard) via `anvil.lib.critics.load_review`.
    - `<thread>.{N}.review/_review.venue.json` IF present — the venue advisory overlay scorecard. Load via the same `load_review` (both files use the existing `Review` schema in `anvil/lib/review_schema.py`; no new shape). The venue file's findings and critical_flags ARE actionable for the reviser, but a venue critical flag does NOT independently force another revise iteration (the convergence gate is computed from the generic file's verdict only).
    - `<thread>.{N}.audit/` if present: `citation-audit.md`, `numerical-audit.md`, `flags.md`.
+   - `<thread>.{N}.corpus-audit/` if present (corpus tier active — issue #612): `_review.json` (`kind: tool_evidence`) via `anvil.lib.critics.load_review` + `corpus-audit.md`. Its five-way classification findings and fabrication-class `critical_flags` drive `provenance.md` copy-forward corrections in step 8b (a `FABRICATED` row means cut or re-ground the claim, never invent a citation).
    - `<thread>.{N}.vision/` if present: `_review.json` (`kind=vision`) via `anvil.lib.critics.load_review`. Vision findings target rendered-only figure/table/equation defects and are resolved at the figure source or LaTeX structure, not the prose (see the D6 note under "Notes for the reviser agent").
    - `<thread>.{N}.litsearch/` if present: `notes.md` + `candidates.bib` (the reviser may merge new entries into the revised `refs.bib`).
    - Every other `<thread>.{N}.<critic>/` sibling discovered on disk.
@@ -54,6 +55,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - Address each planned change.
    - Preserve sections that scored well — do not regress on dimensions that already met the standard. (Reviser anti-pattern: rewriting an 6/6 Method section to "improve flow" and accidentally introducing ambiguity.)
    - Carry over `figures/` from the prior version; update or add figures as the revision plan requires. **Preserve `figures/src/` scripts** so the figurer can re-render in place.
+8b. **Copy `provenance.md` forward (conditional — issue #612)**: when the project BRIEF declares a top-level `corpus:` (i.e., `anvil/lib/project_brief.py::resolve_corpus_dirs(<project_dir>)` returns ≥1 dir), read the `<thread>.{N}/provenance.md` claim→source map alongside the critic feedback and **copy it forward** — write a refreshed `<thread>.{N+1}/provenance.md` per `anvil/lib/snippets/provenance.md` §Section 2, applying the same updates as the prose revision: new claims added in the revision get new rows; claims removed drop their rows; changed claims have their `Source file` / `Line range` updated to match the revised `main.tex`. Any fabrication-class critical flag from `pub-review` step 6 or the `<thread>.{N}.corpus-audit/` sidecar MUST be addressed — cut the fabricated claim or re-ground it in a real corpus passage, never invent a citation. Without this copy-forward, a draft → review → revise → re-audit thread would have no map in version N+1 for `pub-audit` step 5b's second pass to verify. **Carry forward `metadata.corpus_dirs_resolved`** in the new `_progress.json`. When the tier is inactive (no `corpus:` key), skip this step entirely — no `provenance.md` copy-forward, **byte-identical to pre-#612** behavior.
 9. **Produce `refs.bib`** at `<thread>.{N+1}/refs.bib`:
    - Start from prior version's `refs.bib`.
    - Remove entries that were cited only in passages now deleted.
@@ -128,6 +130,8 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   }
 }
 ```
+
+When the corpus tier is active (issue #612), the reviser also carries `metadata.corpus_dirs_resolved` forward into this new `_progress.json`; the field is omitted entirely when the tier is inactive (byte-identical to pre-#612).
 
 `metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 
