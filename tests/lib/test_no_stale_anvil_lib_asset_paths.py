@@ -19,11 +19,13 @@ This guard pins that outcome so a future edit (or a "simplification" that
 reintroduces the shorter-looking path) can't silently regress a documented
 invocation back to a directory a fresh install does not create.
 
-Scope: the guard forbids the *consumer* forms ``.anvil/lib/marp/`` and
-``.anvil/lib/figures/`` (leading dot — the on-disk consumer path). The
-source-tree forms ``anvil/lib/marp/`` / ``anvil/lib/figures/`` (no leading
-dot — a reference to a path within the anvil source checkout, or a Python
-module import) are legitimate and are NOT matched by these patterns.
+Scope: the guard forbids the *consumer* forms ``.anvil/lib/marp/``,
+``.anvil/lib/figures/``, and ``.anvil/lib/snippets/`` (leading dot — the
+on-disk consumer path) across the shipped trees plus the top-level README.
+The source-tree forms ``anvil/lib/marp/`` / ``anvil/lib/figures/`` /
+``anvil/lib/snippets/`` (no leading dot — a reference to a path within the
+anvil source checkout, or a Python module import) are legitimate and are NOT
+matched by these patterns.
 """
 
 from __future__ import annotations
@@ -38,12 +40,21 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # The legacy consumer-path prefixes a fresh post-#230 install never populates.
 # The leading dot is load-bearing: it distinguishes the on-disk consumer path
 # (``.anvil/lib/...``) from a source-checkout / module reference
-# (``anvil/lib/...``), which is legitimate and must be left alone.
-FORBIDDEN_STRINGS = (".anvil/lib/marp/", ".anvil/lib/figures/")
+# (``anvil/lib/...``), which is legitimate and must be left alone. Bare
+# ``.anvil/lib/`` (no subtree) stays allowed — several docs mention it when
+# describing the pre-#230 layout and its migration warning.
+FORBIDDEN_STRINGS = (
+    ".anvil/lib/marp/",
+    ".anvil/lib/figures/",
+    ".anvil/lib/snippets/",
+)
 
 # Text-ish shipped files under the two trees an agent/critic reads and executes
 # literally. Covers command specs, skill docs, templates, and asset headers.
 SCAN_ROOTS = ("anvil/skills", "anvil/lib")
+# Top-level consumer-facing docs outside the shipped trees. README.md walked a
+# consumer through a legacy snippet path until the v0.7.1 cleanup.
+EXTRA_FILES = ("README.md",)
 SCAN_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".css", ".j2", ".json", ".txt"}
 
 
@@ -54,6 +65,10 @@ def _scanned_files() -> List[Path]:
             if path.is_file() and path.suffix in SCAN_SUFFIXES:
                 files.append(path)
     assert files, f"no files found under {SCAN_ROOTS!r}; scan globs are broken"
+    for name in EXTRA_FILES:
+        path = REPO_ROOT / name
+        assert path.is_file(), f"{name} missing at repo root; EXTRA_FILES is stale"
+        files.append(path)
     return files
 
 
