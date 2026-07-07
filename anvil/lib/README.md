@@ -210,7 +210,7 @@ is also a clear pointer for human readers.
 In SKILL.md or a command file:
 
 > The `_progress.json` schema and the read-merge-write convention live in
-> `anvil/lib/snippets/progress.md` (or `.anvil/lib/snippets/progress.md`
+> `anvil/lib/snippets/progress.md` (or `.anvil/anvil/lib/snippets/progress.md`
 > in an installed consumer repo). Every command in this skill follows
 > that convention.
 
@@ -224,7 +224,7 @@ copy diverge, the snippet wins.
 The install script (`scripts/install-anvil.sh`) copies `anvil/lib/` to
 `<consumer>/.anvil/lib/` in stage 5 (`copy framework code`). Both the
 markdown snippets and the Python modules land alongside each other; the
-consumer repo's commands reference them by the `.anvil/lib/snippets/<name>.md`
+consumer repo's commands reference them by the `.anvil/anvil/lib/snippets/<name>.md`
 relative path.
 
 ## Why these 8 snippets?

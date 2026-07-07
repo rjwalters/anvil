@@ -19,7 +19,7 @@
  * The full porting recipe (beamer-concept mapping table, registration,
  * validation via render gate + vision critic) lives at
  * anvil/lib/snippets/brand-theme-porting.md (in an installed consumer
- * repo: .anvil/lib/snippets/brand-theme-porting.md).
+ * repo: .anvil/anvil/lib/snippets/brand-theme-porting.md).
  *
  * The token pattern below mirrors the shipped default theme at
  * anvil/skills/deck/assets/anvil-deck.css — same :root custom-property

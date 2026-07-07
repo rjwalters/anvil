@@ -202,7 +202,7 @@ A command file adopts the contract with one short final step:
 
 > **Git sync (opt-in, off by default)**: if `.anvil/config.json`
 > exists and `git.commit_per_phase` is `true`, end this phase per
-> `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md`
+> `anvil/lib/snippets/git_sync.md` (`.anvil/anvil/lib/snippets/git_sync.md`
 > in an installed consumer repo): stage only the dirs this phase
 > wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`,
 > push if `git.push` is `true`. Git failures warn and continue —
