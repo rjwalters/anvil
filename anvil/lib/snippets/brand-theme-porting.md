@@ -20,7 +20,7 @@ installed consumer repo this file resolves to
 
 Anvil ships a heavily commented starter at
 `anvil/lib/marp/brand-theme-starter.css` (consumer repo:
-`.anvil/lib/marp/brand-theme-starter.css`). It contains the `@theme`
+`.anvil/anvil/lib/marp/brand-theme-starter.css`). It contains the `@theme`
 marker, a `:root` brand-token block, and the four slots a corporate
 `.sty` almost always defines: **title slide**, **section divider**,
 **callout box**, **footer/confidentiality strip**. Prove the wiring
@@ -29,7 +29,7 @@ before porting any real styling:
 1. **Copy the starter into your overlay** and name it after your brand:
 
    ```bash
-   cp .anvil/lib/marp/brand-theme-starter.css \
+   cp .anvil/anvil/lib/marp/brand-theme-starter.css \
       .anvil/skills/deck/templates/acme-brand.css
    ```
 
@@ -86,7 +86,7 @@ before porting any real styling:
 
    ```bash
    marp smoke/smoke.md --pdf --html --allow-local-files \
-     --config-file .anvil/lib/marp/config.yml \
+     --config-file .anvil/anvil/lib/marp/config.yml \
      --theme-set .anvil/skills/deck/templates/acme-brand.css \
      -o smoke/smoke.pdf
    ```

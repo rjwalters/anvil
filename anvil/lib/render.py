@@ -60,9 +60,15 @@ from pathlib import Path
 from typing import List, Optional
 
 
-# Default Marp config path relative to a repo root. Resolved by the
-# caller when invoked from a different cwd.
-DEFAULT_MARP_CONFIG = Path("anvil/lib/marp/config.yml")
+# Default Marp config path, resolved relative to THIS module file (not the
+# process cwd). This is load-bearing for consumer installs: the module ships
+# to ``.anvil/anvil/lib/render.py`` and the config sits beside it at
+# ``.anvil/anvil/lib/marp/config.yml``. A cwd-relative default (the old
+# ``Path("anvil/lib/marp/config.yml")``) silently pointed marp at a
+# nonexistent path whenever the process ran from a consumer repo root. The
+# ``__file__``-relative form resolves correctly in both a source checkout and
+# an installed consumer repo. Callers may still override via ``config=``.
+DEFAULT_MARP_CONFIG = Path(__file__).parent / "marp" / "config.yml"
 
 
 class RenderError(RuntimeError):
@@ -199,9 +205,11 @@ def check_mmdc_available() -> bool:
 
 
 # Default path to the shared Anvil mermaid theme (navy nodes, muted-grey
-# edges, Helvetica). Resolved relative to a repo root by the caller. In an
-# installed consumer repo this resolves under ``.anvil/lib/figures/``.
-DEFAULT_MERMAID_THEME = Path("anvil/lib/figures/mermaid-theme.json")
+# edges, Helvetica). Resolved relative to THIS module file (not the process
+# cwd), so it points at the theme shipped beside the module — in a consumer
+# install that is ``.anvil/anvil/lib/figures/mermaid-theme.json``. Callers may
+# still override via ``config=``.
+DEFAULT_MERMAID_THEME = Path(__file__).parent / "figures" / "mermaid-theme.json"
 
 
 def render_mermaid_to_png(

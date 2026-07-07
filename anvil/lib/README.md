@@ -122,7 +122,7 @@ load-bearing halves:
 1. **`anvil/lib/marp/config.yml`** — CLI-side pin. Every `marp ...`
    invocation in both skills passes
    `--config-file anvil/lib/marp/config.yml` (resolved to
-   `.anvil/lib/marp/config.yml` in an installed consumer repo). Marp accepts
+   `.anvil/anvil/lib/marp/config.yml` in an installed consumer repo). Marp accepts
    this directly via its `--config-file` flag — no Python shim required;
    config-not-code lands cleanly.
 2. **Per-document frontmatter** — every `deck.md` produced by either skill

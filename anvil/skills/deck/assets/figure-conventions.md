@@ -141,7 +141,7 @@ chart for a deck on a custom theme.
 The `from anvil.lib.figures.palette import ...` snippet above assumes Anvil is
 on `sys.path` (the case in Anvil's own test suite, and in consumer repos that
 `uv pip install -e <anvil-checkout>`). **In the default consumer install
-topology — `<repo>/.anvil/lib/figures/palette.py` — bare `python3 figures/src/
+topology — `<repo>/.anvil/anvil/lib/figures/palette.py` — bare `python3 figures/src/
 <name>.py` cannot import it**: `.anvil/` is not on `PYTHONPATH`, so the import
 raises `ModuleNotFoundError: No module named 'anvil'`.
 
@@ -159,7 +159,7 @@ from pathlib import Path
 
 
 def _find_anvil_root(start: Path) -> Path:
-    """Walk up from ``start`` until a ``.anvil/lib/figures/palette.json`` is found.
+    """Walk up from ``start`` until a ``.anvil/anvil/lib/figures/palette.json`` is found.
 
     Tolerates non-canonical thread depths — uses search-up rather than a
     hard-coded ``parents[N]`` index, so the script works from any directory
@@ -355,7 +355,7 @@ navy-first `prop_cycle`), palette tokens, `$`-escaping, and the `OUT =
 SRC.parent / "<name>.png"` output path.
 
 **This template uses the JSON-read pattern from section 3** so it works under
-bare `python3` from a consumer install topology (`<repo>/.anvil/lib/figures/
+bare `python3` from a consumer install topology (`<repo>/.anvil/anvil/lib/figures/
 palette.json`). The Python-import variant (`from anvil.lib.figures.palette
 import apply, ANVIL_NAVY, ANVIL_INK; apply()`) is a one-line substitution if
 your environment has Anvil on `sys.path`; see the table in section 3 for when

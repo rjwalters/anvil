@@ -2,7 +2,7 @@
 
 This is a one-page reference for the Marp configuration the deck skill
 assumes. The framework-level pin lives at `anvil/lib/marp/config.yml` (in an
-installed consumer repo: `.anvil/lib/marp/config.yml`); the per-document
+installed consumer repo: `.anvil/anvil/lib/marp/config.yml`); the per-document
 pin lives in `templates/deck.md.j2`. This file is for the deck author who
 just wants to know which figure path to pick and how to render the result.
 
@@ -158,7 +158,7 @@ Three flags are load-bearing:
   `--html` is kept for genuine raw-HTML slides and config parity.
 - `--config-file anvil/lib/marp/config.yml` pins the framework-shared
   options (`html`, `allowLocalFiles`, theme search path). Consumer repos
-  resolve this to `.anvil/lib/marp/config.yml`.
+  resolve this to `.anvil/anvil/lib/marp/config.yml`.
 - `--allow-local-files` lets Marp inline `![](figures/...)` references.
   Without it, every embedded PNG renders as a broken-image icon. This is the
   flag that matters for the mermaid PNGs `mmdc` produces.

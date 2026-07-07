@@ -13,7 +13,7 @@
  *      \setbeamercolor values.
  *   4. Flesh out the four SLOT: sections from your .sty's frame templates.
  *   5. Render with:  marp deck.md --pdf --html --allow-local-files \
- *        --config-file .anvil/lib/marp/config.yml \
+ *        --config-file .anvil/anvil/lib/marp/config.yml \
  *        --theme-set .anvil/skills/deck/templates/<your-theme>.css
  *
  * The full porting recipe (beamer-concept mapping table, registration,
