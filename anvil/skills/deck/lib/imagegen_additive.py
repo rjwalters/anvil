@@ -159,10 +159,15 @@ def gate_should_run(
     try:
         journal = read_journal(p)
     except JournalError:
-        # A corrupt journal is treated as "no entries" — the design
-        # critic's additive-ness pass is a no-op. The corrupt-journal
-        # condition is surfaced by ``deck-audit`` (which has the
-        # attribution-contract verdict), not here.
+        # A *genuinely* corrupt journal (invalid JSON, non-object root,
+        # missing/mistyped required field) is treated as "no entries" —
+        # the design critic's additive-ness pass is a no-op. The
+        # corrupt-journal condition is surfaced by ``deck-audit`` (which
+        # has the attribution-contract verdict), not here. Note: unknown
+        # *per-entry* fields (e.g. a consumer's ``generated_at``) do NOT
+        # raise — ``read_journal`` tolerates and preserves them (issue
+        # #621), so an extended-but-valid journal runs the gate normally
+        # rather than degrading to False.
         return False
     return len(journal) > 0
 
