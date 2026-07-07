@@ -29,6 +29,7 @@ _SKILL_ROOT = _HERE.parent
 DECK_DESIGN = _SKILL_ROOT / "commands" / "deck-design.md"
 DECK_AUDIT = _SKILL_ROOT / "commands" / "deck-audit.md"
 DECK_REVISE = _SKILL_ROOT / "commands" / "deck-revise.md"
+DECK_IMAGEGEN = _SKILL_ROOT / "commands" / "deck-imagegen.md"
 SKILL_MD = _SKILL_ROOT / "SKILL.md"
 
 FINDING_TYPE = "non-additive-generative-image"
@@ -100,6 +101,40 @@ def test_deck_design_documents_non_waivable_attribution_composition() -> None:
     assert "stacked" in body.lower(), (
         "deck-design.md should explain that the additive-ness check and "
         "the fabrication-attribution contract are STACKED (non-alternative)."
+    )
+
+
+def test_deck_design_documents_tolerant_reader_for_extension_journals() -> None:
+    """Issue #621: the step 7b prose must document that a consumer-extension
+    journal (unknown per-entry fields, e.g. ``generated_at``) still runs the
+    gate rather than degrading to 'no attested slots.'"""
+    body = _read(DECK_DESIGN)
+    assert "tolerant reader" in body.lower(), (
+        "deck-design.md step 7b should describe read_journal as a tolerant "
+        "reader (issue #621) so extension journals do not degrade the gate."
+    )
+    assert "#621" in body, (
+        "deck-design.md should cite issue #621 for the tolerant-reader "
+        "contract on consumer-extension journals."
+    )
+
+
+# ---------------------------------------------------------------------------
+# deck-imagegen.md
+# ---------------------------------------------------------------------------
+
+
+def test_deck_imagegen_documents_tolerant_reader_contract() -> None:
+    """Issue #621: deck-imagegen.md (journal consumer) must document the
+    tolerant-reader read contract for unknown per-entry fields."""
+    body = _read(DECK_IMAGEGEN)
+    assert "tolerant reader" in body.lower(), (
+        "deck-imagegen.md should document that read_journal is a tolerant "
+        "reader — unknown per-entry fields are preserved, not rejected."
+    )
+    assert "#621" in body, (
+        "deck-imagegen.md should cite issue #621 for the tolerant-reader "
+        "read contract."
     )
 
 

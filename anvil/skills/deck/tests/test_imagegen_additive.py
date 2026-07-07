@@ -20,6 +20,7 @@ import json
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 
 
@@ -192,6 +193,70 @@ class TestGateShouldRun(unittest.TestCase):
             jp = Path(tmp) / "_prompts.json"
             jp.write_text("not valid json {{{", encoding="utf-8")
             self.assertFalse(gate_should_run("generative-eligible", jp))
+
+    def test_consumer_extension_journal_runs_gate(self) -> None:
+        """Regression for issue #621: a consumer-written journal whose
+        entries carry an unknown ``generated_at`` field must NOT degrade
+        the gate to False. Before the tolerant-reader fix, ``read_journal``
+        raised ``JournalError`` on the unknown field and ``gate_should_run``
+        caught it and returned False, so an attested, journaled slot was
+        reported as 'no attested slots.'"""
+        import json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            jp = Path(tmp) / "_prompts.json"
+            jp.write_text(
+                json.dumps(
+                    {
+                        "hero.png": {
+                            "prompt": "hero scene",
+                            "style": "editorial-photography",
+                            "backend": "studio.imagine",
+                            "generated_at": "2026-07-06T12:00:00Z",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self.assertTrue(
+                    gate_should_run("generative-eligible", jp)
+                )
+
+    def test_consumer_extension_journal_collects_slots(self) -> None:
+        """The per-slot bundle must be enumerated for an extension journal,
+        with the unknown field preserved on the journal entry."""
+        import json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            jp = tmp_path / "_prompts.json"
+            gen_dir = tmp_path / "generated"
+            gen_dir.mkdir()
+            (gen_dir / "hero.png").write_bytes(b"fake-png-bytes")
+            jp.write_text(
+                json.dumps(
+                    {
+                        "hero.png": {
+                            "prompt": "hero scene",
+                            "style": "editorial-photography",
+                            "backend": "studio.imagine",
+                            "generated_at": "2026-07-06T12:00:00Z",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                slots = collect_generative_slots(jp, gen_dir)
+            self.assertEqual(len(slots), 1)
+            entry = slots[0].journal_entry
+            assert entry is not None  # for mypy
+            self.assertEqual(
+                entry.extra["generated_at"], "2026-07-06T12:00:00Z"
+            )
 
 
 # ---------------------------------------------------------------------------

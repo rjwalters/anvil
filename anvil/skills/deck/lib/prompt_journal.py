@@ -28,6 +28,27 @@ The on-disk JSON is a flat mapping of PNG filename → per-slot dict:
 Required per-slot fields: ``prompt``, ``style``, ``backend``.
 Optional per-slot fields: ``steps``, ``model``, ``seed``.
 
+Unknown per-slot fields (tolerant-reader contract, issue #621)
+--------------------------------------------------------------
+
+Any per-slot key *outside* the required/optional set is **tolerated,
+not rejected**. Unknown fields are collected into a frozen ``extra``
+mapping on :class:`JournalEntry`, re-emitted verbatim by ``to_dict()``
+(so a read → write round-trip is lossless), and surface a
+``warnings.warn`` naming the offending fields + slot. This is the
+graceful-degradation precedent used elsewhere in the framework
+(``_read_anvil_json``, malformed-override fallbacks): consumer-written
+journals under the #124 adapter contract routinely carry extra
+provenance (e.g. a ``generated_at`` timestamp per entry), and rejecting
+them fail-closed silently broke the deck-design additive-ness gate
+(step 7b, #562/#574), which caught the resulting ``JournalError`` and
+degraded to "no attested slots." Required-field validation stays fatal
+— a missing or mistyped ``prompt`` / ``style`` / ``backend`` still
+raises :class:`JournalError`, preserving the typo-detection signal for
+the fields that actually gate reproduction. The schema may still be
+versioned explicitly via the reserved top-level ``_schema_version``
+slot (see "Schema evolution" below).
+
 The top-level filename keys are intentionally plain strings (no nesting,
 no array-of-records shape) because the journal's primary access pattern
 is "given a PNG filename, what was the dispatch that produced it?" —
@@ -75,8 +96,10 @@ detect "this journal was written under v1, upgrade in place."
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+import warnings
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping
 
 __all__ = (
@@ -102,6 +125,11 @@ OPTIONAL_FIELDS: tuple[str, ...] = ("steps", "model", "seed")
 # Reserved top-level forward-compat slot. Not required at v0.
 SCHEMA_VERSION_KEY: str = "_schema_version"
 
+# Shared immutable default for the ``extra`` field. Reusing one frozen
+# empty mapping is safe because it can never be mutated; it keeps the
+# common (no-unknown-fields) entry allocation-free.
+_EMPTY_EXTRA: Mapping[str, Any] = MappingProxyType({})
+
 
 class JournalError(ValueError):
     """Raised when a journal file is malformed or violates the schema.
@@ -125,6 +153,13 @@ class JournalEntry:
     / ``seed`` capture provider-specific knobs that ``deck-revise`` MAY
     need to detect a no-op change.
 
+    ``extra`` holds any per-slot keys outside the required/optional set
+    (tolerant-reader contract, issue #621). It defaults to an empty
+    frozen mapping and is re-emitted verbatim by :meth:`to_dict`, so a
+    consumer's provenance fields (e.g. ``generated_at``) survive a
+    read → write round-trip byte-for-byte instead of being silently
+    stripped by an anvil rewrite.
+
     The dataclass is frozen so a single entry cannot be mutated in place
     — the journal mutation primitive is "build a new dict, call
     write_journal." This mirrors the immutable-version-dir convention
@@ -138,13 +173,18 @@ class JournalEntry:
     steps: int | None = None
     model: str | None = None
     seed: int | None = None
+    extra: Mapping[str, Any] = field(default=_EMPTY_EXTRA)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the entry to the on-disk dict shape.
 
         Optional fields with value ``None`` are omitted so the resulting
         JSON stays compact (and a round-trip read does not introduce a
-        spurious ``"steps": null`` slot).
+        spurious ``"steps": null`` slot). Unknown fields captured in
+        ``extra`` are re-emitted verbatim so a read → write round-trip is
+        lossless (issue #621). Recognized keys take precedence — a
+        consumer cannot shadow ``prompt`` / ``steps`` / etc. via
+        ``extra``.
         """
         out: dict[str, Any] = {
             "prompt": self.prompt,
@@ -155,6 +195,14 @@ class JournalEntry:
             value = getattr(self, opt)
             if value is not None:
                 out[opt] = value
+        # Re-emit tolerated unknown fields. ``from_dict`` only ever
+        # populates ``extra`` with keys disjoint from the known set, so
+        # this cannot clobber a required/optional field; the guard below
+        # keeps a hand-constructed entry honest.
+        known = set(REQUIRED_FIELDS) | set(OPTIONAL_FIELDS)
+        for key, value in self.extra.items():
+            if key not in known:
+                out[key] = value
         return out
 
     @classmethod
@@ -183,17 +231,26 @@ class JournalEntry:
                     f"must be a string, got {type(data[required]).__name__}",
                     field=required,
                 )
-        # Unknown-field rejection. A typo like "stepps" or "model_name"
-        # must fail closed so the operator notices, rather than being
-        # silently dropped on write.
+        # Tolerant reader (issue #621). Unknown per-slot keys are
+        # collected into ``extra`` and preserved on round-trip rather
+        # than rejected. Consumer-written journals under the #124 adapter
+        # contract carry provenance fields (e.g. ``generated_at``) that
+        # the framework does not own; fail-closing on them silently broke
+        # the deck-design additive-ness gate (step 7b, #562/#574). A
+        # warning still fires so a genuine typo like "stepps" surfaces to
+        # the operator — the typo-detection signal is preserved, just
+        # non-fatal. Required-field validation above stays fatal.
         known = set(REQUIRED_FIELDS) | set(OPTIONAL_FIELDS)
         unknown = sorted(set(data.keys()) - known)
+        extra: Mapping[str, Any] = _EMPTY_EXTRA
         if unknown:
-            raise JournalError(
-                f"journal entry for {filename!r} has unknown field(s): "
+            warnings.warn(
+                f"journal entry for {filename!r} has unknown field(s) "
+                f"(tolerated, preserved on write): "
                 f"{', '.join(repr(k) for k in unknown)}",
-                field=unknown[0],
+                stacklevel=2,
             )
+            extra = MappingProxyType({k: data[k] for k in unknown})
         return cls(
             prompt=data["prompt"],
             style=data["style"],
@@ -201,6 +258,7 @@ class JournalEntry:
             steps=data.get("steps"),
             model=data.get("model"),
             seed=data.get("seed"),
+            extra=extra,
         )
 
 
