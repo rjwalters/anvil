@@ -55,6 +55,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
        --config-file anvil/lib/marp/config.yml \
        --theme-set anvil/skills/deck/assets/anvil-deck.css \
        --allow-local-files \
+       --no-stdin \
        --output <thread>.{N}/deck.pdf
      ```
      `--html` and `--config-file anvil/lib/marp/config.yml` are required so the rendered PDF matches what `deck-figures` produces — without them, inline fenced ```mermaid blocks drop silently and the design critic critiques a deck that the operator never sees in production.

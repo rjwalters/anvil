@@ -306,8 +306,8 @@ Tradeoff rationale (Marp vs alternatives):
 **Default deliverables**:
 - Source: `<thread>.{N}/deck.md` (Marp markdown).
 - Speaker notes: `<thread>.{N}/speaker-notes.md` (parallel structure, one section per slide).
-- Render: `<thread>.{N}/deck.pdf` (via `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --theme-set <theme>`).
-- Optional handoff export: `<thread>.{N}/deck.pptx` (via `marp deck.md --pptx --html --config-file anvil/lib/marp/config.yml`), opt-in.
+- Render: `<thread>.{N}/deck.pdf` (via `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --theme-set <theme> --no-stdin`).
+- Optional handoff export: `<thread>.{N}/deck.pptx` (via `marp deck.md --pptx --html --config-file anvil/lib/marp/config.yml --no-stdin`), opt-in.
 - Theme: `anvil/skills/deck/assets/anvil-deck.css` — clean, neutral, fundraising-appropriate (large headings, generous whitespace, restrained palette). Consumers override via `.anvil/skills/deck/templates/<their-theme>.css`.
 - Imagery style presets: `anvil/skills/deck/assets/imagery-style-presets.md` — backend-agnostic preset library (`editorial-photography`, `studio-product`, `documentary`, `diagram`, `moodboard`, `raw`) consumed by `deck-imagegen` when a thread opts into generative imagery via `imagery_policy: generative-eligible`. See the file for the composition contract and worked examples per preset.
 

@@ -122,6 +122,7 @@ def test_marp_invokes_config_file_flag(tmp_path, monkeypatch):
 
     def fake_run(cmd, **kw):
         captured["cmd"] = cmd
+        captured["kw"] = kw
         return subprocess.CompletedProcess(
             args=cmd, returncode=0, stdout="", stderr=""
         )
@@ -136,6 +137,10 @@ def test_marp_invokes_config_file_flag(tmp_path, monkeypatch):
     assert "--html" in captured["cmd"]
     assert "--pdf" in captured["cmd"]
     assert "--allow-local-files" in captured["cmd"]
+    # #620: belt-and-suspenders against marp blocking on stdin in non-TTY
+    # contexts — --no-stdin on the argv AND stdin=DEVNULL on the subprocess.
+    assert "--no-stdin" in captured["cmd"]
+    assert captured["kw"].get("stdin") == subprocess.DEVNULL
 
 
 def test_marp_honors_explicit_config_override(tmp_path, monkeypatch):

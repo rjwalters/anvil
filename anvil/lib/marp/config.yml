@@ -9,7 +9,12 @@
 #     --pdf \
 #     --html \
 #     --config-file anvil/lib/marp/config.yml \
+#     --no-stdin \
 #     --output <thread>.{N}/deck.pdf
+#
+# The --no-stdin flag keeps marp-cli from blocking on an open stdin pipe in
+# non-TTY / agent-driven contexts (#620); it is a CLI-only flag and has no
+# config-file equivalent, so it lives here as an example, not an options key.
 #
 # In an installed consumer repo this path resolves to
 # .anvil/lib/marp/config.yml (the install script copies anvil/lib/ wholesale).
