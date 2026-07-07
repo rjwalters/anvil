@@ -6,16 +6,22 @@ zero starter grounding documents, so a consumer adopting voice grounding faced
 a blank page. This issue ships two de-personalized templates
 (``anvil/templates/voice/STYLE_GUIDE.template.md`` and
 ``VOCABULARY.template.md``) plus an installer scaffold stage (Stage 7.9) that
-drops them at the consumer root as ``STYLE_GUIDE.md`` / ``VOCABULARY.md`` when
-a voice-consuming skill (``essay`` or ``memo``) is selected.
+drops them under ``.anvil/voice/`` as ``.anvil/voice/STYLE_GUIDE.md`` /
+``.anvil/voice/VOCABULARY.md`` when a voice-consuming skill (``essay`` or
+``memo``) is selected. Issue #617 relocated the scaffold destination from the
+consumer root to the ``.anvil/voice/`` hierarchy (root-level docs read as
+*code* style guidance and cluttered the repo root); the resolver is
+path-agnostic so no library change was required.
 
 The scaffold contract (mirrors the Stage 7.8 starter-theme precedent):
 
   * Gated on ``essay`` or ``memo`` being among the selected skills.
-  * Per-file skip-if-exists: an existing ``STYLE_GUIDE.md`` (or
-    ``VOCABULARY.md``) at the consumer root is PRESERVED untouched — per
-    file, not all-or-nothing.
-  * NEVER overwrites a grounding doc (warn-and-skip).
+  * Per-file skip-if-exists checks BOTH the new ``.anvil/voice/`` location and
+    the pre-#617 consumer-root location: an existing
+    ``.anvil/voice/STYLE_GUIDE.md`` (or a root-level ``STYLE_GUIDE.md`` left by
+    a pre-#617 install) is PRESERVED untouched — per file, not all-or-nothing.
+  * NEVER overwrites a grounding doc (warn-and-skip); a pre-#617 root doc
+    suppresses the new-location scaffold so an upgrade never drops a duplicate.
   * ``--dry-run`` reports the would-scaffold action and writes nothing.
   * Reuses the existing ``voice:`` grammar — the installer prints the YAML
     snippet to paste rather than auto-editing ``BRIEF.md``.
@@ -34,6 +40,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
+
+# Post-#617 scaffold destination: the ``.anvil/voice/`` hierarchy under the
+# consumer root (relative form matches what the operator declares in BRIEF.md).
+VOICE_DST_REL = Path(".anvil") / "voice"
 
 VOICE_SRC = REPO_ROOT / "anvil" / "templates" / "voice"
 STYLE_TEMPLATE = VOICE_SRC / "STYLE_GUIDE.template.md"
@@ -181,7 +191,7 @@ def test_vocabulary_references_optional_vocab_tool_as_additive() -> None:
 
 
 def test_fresh_install_scaffolds_voice_docs_with_memo(tmp_path: Path) -> None:
-    """``--skills=memo`` scaffolds STYLE_GUIDE.md / VOCABULARY.md at root."""
+    """``--skills=memo`` scaffolds the voice docs under ``.anvil/voice/``."""
 
     target = tmp_path / "memo-target"
     target.mkdir()
@@ -189,12 +199,25 @@ def test_fresh_install_scaffolds_voice_docs_with_memo(tmp_path: Path) -> None:
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
 
-    style = target / "STYLE_GUIDE.md"
-    vocab = target / "VOCABULARY.md"
-    words = target / "VOCABULARY.words.txt"
+    style = target / VOICE_DST_REL / "STYLE_GUIDE.md"
+    vocab = target / VOICE_DST_REL / "VOCABULARY.md"
+    words = target / VOICE_DST_REL / "VOCABULARY.words.txt"
     assert style.is_file(), f"did not scaffold {style}; stdout:\n{result.stdout}"
     assert vocab.is_file(), f"did not scaffold {vocab}; stdout:\n{result.stdout}"
     assert words.is_file(), f"did not scaffold {words}; stdout:\n{result.stdout}"
+    # Regression guard (#617): the old consumer-root paths must NOT be created.
+    assert not (target / "STYLE_GUIDE.md").exists(), (
+        "fresh install created a root-level STYLE_GUIDE.md — the scaffold must "
+        f"live under .anvil/voice/ post-#617; stdout:\n{result.stdout}"
+    )
+    assert not (target / "VOCABULARY.md").exists(), (
+        "fresh install created a root-level VOCABULARY.md — the scaffold must "
+        f"live under .anvil/voice/ post-#617; stdout:\n{result.stdout}"
+    )
+    assert not (target / "VOCABULARY.words.txt").exists(), (
+        "fresh install created a root-level VOCABULARY.words.txt — the scaffold "
+        f"must live under .anvil/voice/ post-#617; stdout:\n{result.stdout}"
+    )
 
     # Byte-faithful copy of the shipped templates (the `.template` infix is
     # stripped from the destination filename, content is identical).
@@ -221,14 +244,16 @@ def test_fresh_install_scaffolds_voice_docs_with_essay(tmp_path: Path) -> None:
     result = _run("--skills=essay", str(target))
     _assert_ok(result)
 
-    assert (target / "STYLE_GUIDE.md").is_file(), (
-        f"essay install did not scaffold STYLE_GUIDE.md; stdout:\n{result.stdout}"
+    assert (target / VOICE_DST_REL / "STYLE_GUIDE.md").is_file(), (
+        f"essay install did not scaffold .anvil/voice/STYLE_GUIDE.md; "
+        f"stdout:\n{result.stdout}"
     )
-    assert (target / "VOCABULARY.md").is_file(), (
-        f"essay install did not scaffold VOCABULARY.md; stdout:\n{result.stdout}"
+    assert (target / VOICE_DST_REL / "VOCABULARY.md").is_file(), (
+        f"essay install did not scaffold .anvil/voice/VOCABULARY.md; "
+        f"stdout:\n{result.stdout}"
     )
-    assert (target / "VOCABULARY.words.txt").is_file(), (
-        f"essay install did not scaffold VOCABULARY.words.txt; "
+    assert (target / VOICE_DST_REL / "VOCABULARY.words.txt").is_file(), (
+        f"essay install did not scaffold .anvil/voice/VOCABULARY.words.txt; "
         f"stdout:\n{result.stdout}"
     )
 
@@ -242,15 +267,15 @@ def test_install_without_voice_skill_does_not_scaffold(tmp_path: Path) -> None:
     result = _run("--skills=pub", str(target))
     _assert_ok(result)
 
-    assert not (target / "STYLE_GUIDE.md").exists(), (
+    assert not (target / VOICE_DST_REL / "STYLE_GUIDE.md").exists(), (
         "scaffolded STYLE_GUIDE.md even though no voice-consuming skill was "
         f"selected; stdout:\n{result.stdout}"
     )
-    assert not (target / "VOCABULARY.md").exists(), (
+    assert not (target / VOICE_DST_REL / "VOCABULARY.md").exists(), (
         "scaffolded VOCABULARY.md even though no voice-consuming skill was "
         f"selected; stdout:\n{result.stdout}"
     )
-    assert not (target / "VOCABULARY.words.txt").exists(), (
+    assert not (target / VOICE_DST_REL / "VOCABULARY.words.txt").exists(), (
         "scaffolded VOCABULARY.words.txt even though no voice-consuming skill "
         f"was selected; stdout:\n{result.stdout}"
     )
@@ -272,8 +297,8 @@ def test_reinstall_is_idempotent_no_duplicate_no_error(tmp_path: Path) -> None:
 
     first = _run("--skills=memo", str(target))
     _assert_ok(first)
-    style = target / "STYLE_GUIDE.md"
-    words = target / "VOCABULARY.words.txt"
+    style = target / VOICE_DST_REL / "STYLE_GUIDE.md"
+    words = target / VOICE_DST_REL / "VOCABULARY.words.txt"
     first_content = style.read_text(encoding="utf-8")
     first_words = words.read_text(encoding="utf-8")
 
@@ -292,24 +317,28 @@ def test_reinstall_is_idempotent_no_duplicate_no_error(tmp_path: Path) -> None:
 
 
 def test_existing_grounding_doc_is_never_clobbered(tmp_path: Path) -> None:
-    """A pre-existing STYLE_GUIDE.md is preserved verbatim across install."""
+    """A pre-existing .anvil/voice/STYLE_GUIDE.md is preserved verbatim."""
 
     target = tmp_path / "clobber-target"
-    target.mkdir()
+    (target / VOICE_DST_REL).mkdir(parents=True)
 
     sentinel = "# My hand-authored style guide\n\nDo not touch this.\n"
-    (target / "STYLE_GUIDE.md").write_text(sentinel, encoding="utf-8")
+    (target / VOICE_DST_REL / "STYLE_GUIDE.md").write_text(sentinel, encoding="utf-8")
     words_sentinel = "my-own-precision-word\nanother-one\n"
-    (target / "VOCABULARY.words.txt").write_text(words_sentinel, encoding="utf-8")
+    (target / VOICE_DST_REL / "VOCABULARY.words.txt").write_text(
+        words_sentinel, encoding="utf-8"
+    )
 
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
 
-    assert (target / "STYLE_GUIDE.md").read_text(encoding="utf-8") == sentinel, (
+    assert (
+        target / VOICE_DST_REL / "STYLE_GUIDE.md"
+    ).read_text(encoding="utf-8") == sentinel, (
         "installer clobbered a pre-existing hand-authored STYLE_GUIDE.md"
     )
     assert (
-        target / "VOCABULARY.words.txt"
+        target / VOICE_DST_REL / "VOCABULARY.words.txt"
     ).read_text(encoding="utf-8") == words_sentinel, (
         "installer clobbered a pre-existing hand-authored VOCABULARY.words.txt"
     )
@@ -319,36 +348,77 @@ def test_skip_is_per_file_not_all_or_nothing(tmp_path: Path) -> None:
     """A custom STYLE_GUIDE.md does not block VOCABULARY.md from scaffolding."""
 
     target = tmp_path / "per-file-target"
-    target.mkdir()
+    (target / VOICE_DST_REL).mkdir(parents=True)
 
     sentinel = "# custom style guide\n"
-    (target / "STYLE_GUIDE.md").write_text(sentinel, encoding="utf-8")
+    (target / VOICE_DST_REL / "STYLE_GUIDE.md").write_text(sentinel, encoding="utf-8")
     # A custom word list must likewise not block the docs from scaffolding.
     words_sentinel = "custom-word\n"
-    (target / "VOCABULARY.words.txt").write_text(words_sentinel, encoding="utf-8")
+    (target / VOICE_DST_REL / "VOCABULARY.words.txt").write_text(
+        words_sentinel, encoding="utf-8"
+    )
 
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
 
     # Custom STYLE_GUIDE.md preserved...
-    assert (target / "STYLE_GUIDE.md").read_text(encoding="utf-8") == sentinel, (
-        "custom STYLE_GUIDE.md was overwritten"
-    )
+    assert (
+        target / VOICE_DST_REL / "STYLE_GUIDE.md"
+    ).read_text(encoding="utf-8") == sentinel, "custom STYLE_GUIDE.md was overwritten"
     # ...custom VOCABULARY.words.txt preserved...
     assert (
-        target / "VOCABULARY.words.txt"
+        target / VOICE_DST_REL / "VOCABULARY.words.txt"
     ).read_text(encoding="utf-8") == words_sentinel, (
         "custom VOCABULARY.words.txt was overwritten"
     )
     # ...and VOCABULARY.md STILL scaffolded (per-file, not all-or-nothing).
-    assert (target / "VOCABULARY.md").is_file(), (
+    assert (target / VOICE_DST_REL / "VOCABULARY.md").is_file(), (
         "VOCABULARY.md was not scaffolded — the skip must be per-file, not "
         f"all-or-nothing; stdout:\n{result.stdout}"
     )
-    assert (target / "VOCABULARY.md").read_text(
+    assert (target / VOICE_DST_REL / "VOCABULARY.md").read_text(
         encoding="utf-8"
     ) == VOCAB_TEMPLATE.read_text(encoding="utf-8"), (
         "scaffolded VOCABULARY.md differs from the shipped template"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Migration guard (#617): a pre-#617 root doc suppresses the new scaffold
+# ---------------------------------------------------------------------------
+
+
+def test_pre617_root_doc_suppresses_new_scaffold(tmp_path: Path) -> None:
+    """A root-level STYLE_GUIDE.md (pre-#617 install, possibly user-edited) is
+    preserved at root and suppresses the new ``.anvil/voice/`` scaffold so an
+    upgrade never drops a confusing duplicate."""
+
+    target = tmp_path / "migration-target"
+    target.mkdir()
+
+    sentinel = "# pre-#617 hand-authored style guide\n\nKeep me at root.\n"
+    (target / "STYLE_GUIDE.md").write_text(sentinel, encoding="utf-8")
+
+    result = _run("--skills=memo", str(target))
+    _assert_ok(result)
+
+    # The old root doc is preserved verbatim.
+    assert (target / "STYLE_GUIDE.md").read_text(encoding="utf-8") == sentinel, (
+        "installer clobbered a pre-#617 root-level STYLE_GUIDE.md"
+    )
+    # ...and the new-location scaffold is SUPPRESSED (no duplicate).
+    assert not (target / VOICE_DST_REL / "STYLE_GUIDE.md").exists(), (
+        "installer scaffolded a duplicate .anvil/voice/STYLE_GUIDE.md beside a "
+        f"pre-#617 root doc; stdout:\n{result.stdout}"
+    )
+    # The preservation note explains why the new scaffold was skipped.
+    assert "pre-#617" in result.stdout, (
+        f"expected the pre-#617 migration preservation note; got:\n{result.stdout}"
+    )
+    # Per-file: the OTHER docs still scaffold to the new location.
+    assert (target / VOICE_DST_REL / "VOCABULARY.md").is_file(), (
+        "VOCABULARY.md was not scaffolded to .anvil/voice/ — the migration "
+        f"guard must be per-file; stdout:\n{result.stdout}"
     )
 
 
@@ -371,29 +441,31 @@ def test_dry_run_reports_and_writes_nothing(tmp_path: Path) -> None:
     )
     _assert_ok(result)
 
-    assert "[dry-run] scaffold voice-grounding doc at STYLE_GUIDE.md" in (
-        result.stdout
-    ), (
-        "expected the '[dry-run] scaffold voice-grounding doc at STYLE_GUIDE.md "
-        f"...' action line; got:\n{result.stdout}"
-    )
-    assert "[dry-run] scaffold voice-grounding doc at VOCABULARY.words.txt" in (
-        result.stdout
+    assert (
+        "[dry-run] scaffold voice-grounding doc at .anvil/voice/STYLE_GUIDE.md"
+        in result.stdout
     ), (
         "expected the '[dry-run] scaffold voice-grounding doc at "
-        f"VOCABULARY.words.txt ...' action line; got:\n{result.stdout}"
+        f".anvil/voice/STYLE_GUIDE.md ...' action line; got:\n{result.stdout}"
     )
-    assert not (target / "STYLE_GUIDE.md").exists(), (
+    assert (
+        "[dry-run] scaffold voice-grounding doc at .anvil/voice/VOCABULARY.words.txt"
+        in result.stdout
+    ), (
+        "expected the '[dry-run] scaffold voice-grounding doc at "
+        f".anvil/voice/VOCABULARY.words.txt ...' action line; got:\n{result.stdout}"
+    )
+    assert not (target / VOICE_DST_REL / "STYLE_GUIDE.md").exists(), (
         "--dry-run wrote STYLE_GUIDE.md to the target"
     )
-    assert not (target / "VOCABULARY.md").exists(), (
+    assert not (target / VOICE_DST_REL / "VOCABULARY.md").exists(), (
         "--dry-run wrote VOCABULARY.md to the target"
     )
-    assert not (target / "VOCABULARY.words.txt").exists(), (
+    assert not (target / VOICE_DST_REL / "VOCABULARY.words.txt").exists(), (
         "--dry-run wrote VOCABULARY.words.txt to the target"
     )
     # The post-action confirmation must not fire under --dry-run.
-    assert "ok: STYLE_GUIDE.md scaffolded" not in result.stdout, (
+    assert "ok: .anvil/voice/STYLE_GUIDE.md scaffolded" not in result.stdout, (
         f"--dry-run emitted the lying 'ok: ... scaffolded' confirmation; "
         f"got:\n{result.stdout}"
     )
@@ -414,12 +486,13 @@ def test_summary_prints_voice_block_snippet(tmp_path: Path) -> None:
     _assert_ok(result)
     stdout = result.stdout
 
-    # The reused grammar's keys must appear so the operator can wire it.
+    # The reused grammar's keys must appear so the operator can wire it, now
+    # pointing at the .anvil/voice/ destination (issue #617).
     assert "voice:" in stdout
-    assert "style_guide: STYLE_GUIDE.md" in stdout, (
+    assert "style_guide: .anvil/voice/STYLE_GUIDE.md" in stdout, (
         f"Stage 11 hint missing the style_guide wiring; got:\n{stdout}"
     )
-    assert "vocabulary: VOCABULARY.md" in stdout, (
+    assert "vocabulary: .anvil/voice/VOCABULARY.md" in stdout, (
         f"Stage 11 hint missing the vocabulary wiring; got:\n{stdout}"
     )
 
@@ -449,7 +522,7 @@ def test_no_voice_hint_when_no_voice_skill(tmp_path: Path) -> None:
     result = _run("--skills=pub", str(target))
     _assert_ok(result)
 
-    assert "style_guide: STYLE_GUIDE.md" not in result.stdout, (
+    assert "style_guide: .anvil/voice/STYLE_GUIDE.md" not in result.stdout, (
         f"voice hint printed even though no voice skill was selected; "
         f"got:\n{result.stdout}"
     )

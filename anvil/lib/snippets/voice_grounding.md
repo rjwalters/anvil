@@ -53,10 +53,14 @@ de-personalized starting points (schema, not content — every
 author-specific example, stance, anti-stance, and standing claim is a
 marked `<!-- replace me -->` placeholder; no real author beliefs ship).
 A consumer adopting voice grounding does not start from a blank page:
-`scripts/install-anvil.sh` scaffolds them to the consumer root as
-`STYLE_GUIDE.md` / `VOCABULARY.md` / `VALUES.local.md` (per-file
-skip-if-exists, never clobbering an existing grounding doc) when a
-voice-consuming skill (`essay` / `memo`) is selected. **`VALUES.md` is
+`scripts/install-anvil.sh` scaffolds them under `.anvil/voice/` as
+`.anvil/voice/STYLE_GUIDE.md` / `.anvil/voice/VOCABULARY.md` /
+`.anvil/voice/VALUES.local.md` (per-file skip-if-exists, never clobbering
+an existing grounding doc — a pre-#617 root-level copy is also preserved
+and suppresses the new scaffold) when a voice-consuming skill (`essay` /
+`memo`) is selected. The docs resolve against the consumer root, so a
+declared `.anvil/voice/STYLE_GUIDE.md` loads exactly as the older
+root-level path did. **`VALUES.md` is
 private by default** (issue #578): it carries first-person stances /
 anti-stances / standing, so it scaffolds to a gitignored
 `VALUES.local.md` (the `*.local.md` path #577 ships) rather than a

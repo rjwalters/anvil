@@ -19,8 +19,10 @@ The contract this test enforces:
     placeholder.
   * The header's ``voice:`` example shows the PRIVATE wiring
     (``values: VALUES.local.md``), not a committed path.
-  * Stage 7.9 scaffolds ``VALUES.template.md → VALUES.local.md`` (NOT a
-    committed ``VALUES.md``), covered by the ``*.local.md`` gitignore line.
+  * Stage 7.9 scaffolds ``VALUES.template.md → .anvil/voice/VALUES.local.md``
+    (NOT a committed ``VALUES.md``), covered by the ``*.local.md`` gitignore
+    line — which matches the ``.local.md`` suffix anywhere in the tree, so the
+    post-#617 ``.anvil/voice/`` relocation needs no new pattern.
   * Per-file skip-if-exists / ``--dry-run`` / never-clobber, like its siblings.
   * The template is cross-linked to the rhetoric lint (#463) and the
     example-coherence / numeric-consistency gates, and referenced from
@@ -37,6 +39,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
+
+# Post-#617 scaffold destination under the consumer root.
+VOICE_DST_REL = Path(".anvil") / "voice"
 
 VOICE_SRC = REPO_ROOT / "anvil" / "templates" / "voice"
 VALUES_TEMPLATE = VOICE_SRC / "VALUES.template.md"
@@ -182,14 +187,20 @@ def test_scaffolds_values_local_not_committed_values(tmp_path: Path) -> None:
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
 
-    local = target / "VALUES.local.md"
-    committed = target / "VALUES.md"
+    local = target / VOICE_DST_REL / "VALUES.local.md"
+    committed = target / VOICE_DST_REL / "VALUES.md"
     assert local.is_file(), (
-        f"did not scaffold the private VALUES.local.md; stdout:\n{result.stdout}"
+        f"did not scaffold the private .anvil/voice/VALUES.local.md; "
+        f"stdout:\n{result.stdout}"
     )
     assert not committed.exists(), (
         "scaffolded a COMMITTED VALUES.md — the values doc must be private by "
         "default (VALUES.local.md only)"
+    )
+    # Regression guard (#617): the old consumer-root path must NOT be created.
+    assert not (target / "VALUES.local.md").exists(), (
+        "fresh install created a root-level VALUES.local.md — the values doc "
+        f"must scaffold under .anvil/voice/ post-#617; stdout:\n{result.stdout}"
     )
     # Byte-faithful copy of the shipped template.
     assert local.read_text(encoding="utf-8") == VALUES_TEMPLATE.read_text(
@@ -214,9 +225,12 @@ def test_scaffolded_values_local_is_gitignored(tmp_path: Path) -> None:
     assert "*.local.md" in lines, (
         f"*.local.md not in .gitignore — VALUES.local.md is not protected: {lines}"
     )
-    # And git actually ignores it (the authoritative check).
+    # And git actually ignores the relocated path (the authoritative check).
+    # The ``*.local.md`` pattern (no leading slash) matches the ``.local.md``
+    # suffix anywhere in the tree, so ``.anvil/voice/VALUES.local.md`` is
+    # covered without a new pattern.
     check = subprocess.run(
-        ["git", "check-ignore", "VALUES.local.md"],
+        ["git", "check-ignore", ".anvil/voice/VALUES.local.md"],
         capture_output=True,
         text=True,
         cwd=target,
@@ -237,7 +251,7 @@ def test_no_values_scaffold_without_voice_skill(tmp_path: Path) -> None:
     result = _run("--skills=pub", str(target))
     _assert_ok(result)
 
-    assert not (target / "VALUES.local.md").exists(), (
+    assert not (target / VOICE_DST_REL / "VALUES.local.md").exists(), (
         "scaffolded VALUES.local.md even though no voice-consuming skill was "
         f"selected; stdout:\n{result.stdout}"
     )
@@ -253,7 +267,7 @@ def test_reinstall_preserves_existing_values_local(tmp_path: Path) -> None:
     target.mkdir()
 
     _assert_ok(_run("--skills=memo", str(target)))
-    local = target / "VALUES.local.md"
+    local = target / VOICE_DST_REL / "VALUES.local.md"
     sentinel = "# my private values\n\nMy real stances live here.\n"
     local.write_text(sentinel, encoding="utf-8")
 
@@ -267,14 +281,18 @@ def test_reinstall_preserves_existing_values_local(tmp_path: Path) -> None:
 def test_skip_is_per_file_values_does_not_block_others(tmp_path: Path) -> None:
     """A custom VALUES.local.md does not block STYLE_GUIDE.md from scaffolding."""
     target = tmp_path / "values-per-file"
-    target.mkdir()
-    (target / "VALUES.local.md").write_text("# custom\n", encoding="utf-8")
+    (target / VOICE_DST_REL).mkdir(parents=True)
+    (target / VOICE_DST_REL / "VALUES.local.md").write_text(
+        "# custom\n", encoding="utf-8"
+    )
 
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
 
-    assert (target / "VALUES.local.md").read_text(encoding="utf-8") == "# custom\n"
-    assert (target / "STYLE_GUIDE.md").is_file(), (
+    assert (
+        target / VOICE_DST_REL / "VALUES.local.md"
+    ).read_text(encoding="utf-8") == "# custom\n"
+    assert (target / VOICE_DST_REL / "STYLE_GUIDE.md").is_file(), (
         "STYLE_GUIDE.md not scaffolded — the skip must be per-file"
     )
 
@@ -291,10 +309,11 @@ def test_dry_run_does_not_write_values_local(tmp_path: Path) -> None:
     )
     _assert_ok(result)
 
-    assert "[dry-run] scaffold voice-grounding doc at VALUES.local.md" in (
-        result.stdout
+    assert (
+        "[dry-run] scaffold voice-grounding doc at .anvil/voice/VALUES.local.md"
+        in result.stdout
     ), f"expected the dry-run VALUES.local.md action line; got:\n{result.stdout}"
-    assert not (target / "VALUES.local.md").exists(), (
+    assert not (target / VOICE_DST_REL / "VALUES.local.md").exists(), (
         "--dry-run wrote VALUES.local.md to the target"
     )
 
@@ -306,7 +325,7 @@ def test_summary_hint_shows_private_values_wiring(tmp_path: Path) -> None:
 
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
-    assert "values: VALUES.local.md" in result.stdout, (
+    assert "values: .anvil/voice/VALUES.local.md" in result.stdout, (
         f"Stage 11 hint missing the private values wiring; got:\n{result.stdout}"
     )
 
