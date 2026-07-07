@@ -9,7 +9,7 @@
   doc in a project BRIEF.md `voice:` block:
 
       voice:
-        style_guide: STYLE_GUIDE.md
+        style_guide: .anvil/voice/STYLE_GUIDE.md
 
   See anvil/templates/voice/README.md for the four-doc taxonomy and the
   full wiring instructions.

@@ -25,9 +25,9 @@ top-level key in the project `BRIEF.md` frontmatter (parsed by
 
 ```yaml
 voice:
-  style_guide: STYLE_GUIDE.md        # optional — register / cadence rules
-  vocabulary: VOCABULARY.md          # optional — AI-tell guidance (judgment side only)
-  values: VALUES.md                  # optional — stances / anti-stances / standing /
+  style_guide: .anvil/voice/STYLE_GUIDE.md   # optional — register / cadence rules
+  vocabulary: .anvil/voice/VOCABULARY.md     # optional — AI-tell guidance (judgment side only)
+  values: .anvil/voice/VALUES.md             # optional — stances / anti-stances / standing /
                                      #            voice signatures / failure modes
   corpus: writing-corpus/**/*.md     # optional glob — published exemplars quoted
                                      #                 as voice ground truth

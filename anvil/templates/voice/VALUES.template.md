@@ -20,7 +20,7 @@
   BRIEF.md `voice:` block exactly like any committed doc:
 
       voice:
-        values: VALUES.local.md        # private — resolves, never committed
+        values: .anvil/voice/VALUES.local.md   # private — resolves, never committed
 
   A gitignored declared doc resolves and grounds drafting/review
   IDENTICALLY to a committed one (resolution is filesystem-driven and

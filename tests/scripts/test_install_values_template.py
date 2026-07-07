@@ -154,9 +154,11 @@ def test_values_template_is_depersonalized() -> None:
 def test_values_template_header_shows_private_wiring() -> None:
     """The header's voice: example uses the PRIVATE path, not a committed one."""
     text = VALUES_TEMPLATE.read_text(encoding="utf-8")
-    assert "values: VALUES.local.md" in text, (
-        "VALUES template header must show the private 'values: VALUES.local.md' "
-        "wiring (private by default), not a committed VALUES.md path"
+    assert "values: .anvil/voice/VALUES.local.md" in text, (
+        "VALUES template header must show the private "
+        "'values: .anvil/voice/VALUES.local.md' wiring (private by default, "
+        "resolved at the post-#617 scaffold destination), not a committed "
+        "VALUES.md path"
     )
 
 
