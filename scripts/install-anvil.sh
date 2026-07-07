@@ -374,12 +374,16 @@ dir_hash() {
 #
 # Paths are relative to the lib root (anvil/lib/ in source, .anvil/anvil/lib/
 # at the destination). Confirmed against `anvil/lib/*/` asset files at
-# implementation time: only the memo skill ships consumer-override assets.
-# Adding a new skill-asset override tier means adding its files here.
+# implementation time: the memo skill ships consumer-brandable template
+# assets, and `figures/mermaid-theme.json` is the shared diagram theme
+# consumers patch to match their brand palette (issue #634 — the studio
+# patches it locally). Adding a new skill-asset override tier means adding
+# its files here.
 LIB_OVERRIDE_TARGETS=(
   "memo/styles.css"
   "memo/template.html"
   "memo/template.tex"
+  "figures/mermaid-theme.json"
 )
 
 # Compute a stable content hash over ONLY the lib override-target files
