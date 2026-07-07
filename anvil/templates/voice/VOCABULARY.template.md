@@ -17,7 +17,7 @@
   Declare it in a project BRIEF.md `voice:` block:
 
       voice:
-        vocabulary: VOCABULARY.md
+        vocabulary: .anvil/voice/VOCABULARY.md
 
   See anvil/templates/voice/README.md for the four-doc taxonomy and the
   full wiring instructions.

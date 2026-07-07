@@ -41,9 +41,11 @@ drafter / reviewer / reviser contracts).
 stances, anti-stances, and standing** — the half of voice grounding most
 authors do NOT want committed into a shared or public repo. It therefore
 scaffolds **private by default**: the installer copies it to
-`VALUES.local.md` (not a committed `VALUES.md`), and the `*.local.md`
-.gitignore line the scaffolder already adds (issue #577) keeps it out of
-commits automatically. Its header shows the private wiring
+`.anvil/voice/VALUES.local.md` (not a committed `VALUES.md`), and the
+`*.local.md` .gitignore line the scaffolder already adds (issue #577) —
+which matches the `.local.md` suffix anywhere in the tree, so it covers
+the relocated `.anvil/voice/VALUES.local.md` with no new pattern — keeps
+it out of commits automatically. Its header shows the private wiring
 (`values: VALUES.local.md`). A gitignored declared doc resolves and
 grounds drafting/review identically to a committed one — see
 "Private grounding" below.
@@ -91,25 +93,28 @@ starting points. Before you rely on them:
 
 ## Declaring them in a project BRIEF.md
 
-Once the docs exist at your consumer root (or a project root), activate
-them by declaring the `voice:` block in the project `BRIEF.md`
+Once the docs exist under `.anvil/voice/` (or at a project root),
+activate them by declaring the `voice:` block in the project `BRIEF.md`
 frontmatter. This reuses the existing grammar
 (`anvil/lib/project_brief.py::VoiceDocs` / `resolve_voice_docs`) — there
 is no separate config surface:
 
 ```yaml
 voice:
-  style_guide: STYLE_GUIDE.md      # register / cadence rules
-  vocabulary: VOCABULARY.md        # AI-tell guidance (judgment side)
-  # values:   VALUES.md            # (optional; see issue #578)
-  # corpus:   writing-corpus/**/*.md  # (optional glob over published exemplars)
+  style_guide: .anvil/voice/STYLE_GUIDE.md   # register / cadence rules
+  vocabulary: .anvil/voice/VOCABULARY.md     # AI-tell guidance (judgment side)
+  # values:   .anvil/voice/VALUES.local.md   # (private; see issue #578)
+  # corpus:   writing-corpus/**/*.md          # (optional glob over published exemplars)
 ```
 
 Resolution is **project-root first, then consumer root** (the directory
-carrying the `.anvil/` install marker). Voice docs are usually
-persona-level repo-root artifacts shared across every project in the
-consumer repo, so dropping them at the consumer root is the common case;
-a project ghostwriting in a different persona can shadow them locally.
+carrying the `.anvil/` install marker). The resolver is path-agnostic —
+it resolves a declared `.anvil/voice/STYLE_GUIDE.md` against the consumer
+root exactly as it resolved a bare `STYLE_GUIDE.md` before #617. Voice
+docs are usually persona-level artifacts shared across every project in
+the consumer repo, so keeping them under the repo's `.anvil/voice/` is
+the common case; a project ghostwriting in a different persona can shadow
+them with a project-root path.
 
 A declared-but-missing file does **not** crash — it surfaces as a `major`
 review finding directing you to create or fix the file. The point of the
@@ -118,19 +123,28 @@ never fires for a fresh adopter.
 
 ## Scaffolding into a consumer
 
-`scripts/install-anvil.sh` scaffolds these templates to the **consumer
-root** as `STYLE_GUIDE.md` / `VOCABULARY.md` / `VALUES.local.md`
-(stripping the `.template` infix; the values doc keeps a `.local.md`
-suffix so it stays private — see below) when a voice-consuming skill
-(`essay` or `memo`) is among the selected skills. The stage:
+`scripts/install-anvil.sh` scaffolds these templates under
+**`.anvil/voice/`** as `.anvil/voice/STYLE_GUIDE.md` /
+`.anvil/voice/VOCABULARY.md` / `.anvil/voice/VALUES.local.md` (stripping
+the `.template` infix; the values doc keeps a `.local.md` suffix so it
+stays private — see below) when a voice-consuming skill (`essay` or
+`memo`) is among the selected skills. Issue #617 moved the destination
+off the consumer root — a root-level `STYLE_GUIDE.md` reads as *code*
+style guidance to a contributor who does not know Anvil, and every other
+Anvil-owned file already lives under `.anvil/`. The stage:
 
 - is **idempotent** — running the installer twice never errors and never
   produces a second copy;
-- **never clobbers** an existing grounding doc — if `STYLE_GUIDE.md`,
-  `VOCABULARY.md`, or `VALUES.local.md` already exists at the consumer
-  root, the installer warns and skips that file, **per file** (a custom
-  `STYLE_GUIDE.md` does not block `VOCABULARY.md` or `VALUES.local.md`
-  from scaffolding);
+- **never clobbers** an existing grounding doc — if
+  `.anvil/voice/STYLE_GUIDE.md`, `.anvil/voice/VOCABULARY.md`, or
+  `.anvil/voice/VALUES.local.md` already exists, the installer warns and
+  skips that file, **per file** (a custom `STYLE_GUIDE.md` does not block
+  `VOCABULARY.md` or `VALUES.local.md` from scaffolding);
+- **migrates cleanly from a pre-#617 install** — if a voice doc still
+  lives at the old consumer-root location (possibly user-edited), the
+  installer preserves it there and does **not** scaffold a duplicate
+  under `.anvil/voice/`; point the `voice:` block at the existing root
+  path, or move the file under `.anvil/voice/` yourself;
 - is **`--dry-run` aware** — it reports the would-scaffold action and
   writes nothing;
 - does **not** auto-edit your `BRIEF.md`. The installer prints the exact
