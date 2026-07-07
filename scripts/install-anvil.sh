@@ -1271,18 +1271,27 @@ fi
 # blank page — anvil shipped zero starter grounding documents. Stage 7.9 drops
 # the two ship-now, de-personalized templates
 # (anvil/templates/voice/STYLE_GUIDE.template.md and VOCABULARY.template.md)
-# at the CONSUMER ROOT as STYLE_GUIDE.md / VOCABULARY.md (stripping the
-# `.template` infix). Voice docs are persona-level repo-root artifacts shared
-# across every project in the consumer repo, which is exactly where
-# resolve_voice_docs's consumer-root fallback looks.
+# under .anvil/voice/ as .anvil/voice/STYLE_GUIDE.md / .anvil/voice/VOCABULARY.md
+# (stripping the `.template` infix). Issue #617 relocated the scaffold
+# destination from the CONSUMER ROOT to the `.anvil/voice/` hierarchy so the
+# voice docs stop cluttering the repo root (a root-level STYLE_GUIDE.md reads
+# as *code* style guidance to a contributor who does not know Anvil) and live
+# alongside every other Anvil-owned file (.anvil/themes/, .anvil/skills/,
+# .anvil/CLAUDE.md). resolve_voice_docs is fully path-agnostic — its
+# consumer-root fallback resolves a declared `.anvil/voice/STYLE_GUIDE.md`
+# exactly as it resolved the old root path — so only the installer default and
+# the docs change; no library or skill-command edits are required.
 #
 # Contract (mirrors Stage 7.8; the idempotent skip-if-exists model):
 #   * Gated on a voice-consuming skill (`essay` or `memo`) being in
 #     SELECTED_SKILLS — the docs are only useful to a skill that grounds in
 #     them.
-#   * Per-file skip-if-exists: if STYLE_GUIDE.md (or VOCABULARY.md) already
-#     exists at the consumer root, it is PRESERVED untouched and the stage
-#     notes the skip — per file, not all-or-nothing. A hand-authored
+#   * Per-file skip-if-exists checks BOTH the new .anvil/voice/ location AND
+#     the pre-#617 root location: if .anvil/voice/STYLE_GUIDE.md (or an old
+#     root STYLE_GUIDE.md left by a pre-#617 install) already exists, it is
+#     PRESERVED untouched and the stage notes the skip — per file, not
+#     all-or-nothing. The dual check keeps an upgrade from scaffolding a
+#     confusing duplicate beside a user-edited root doc. A hand-authored
 #     STYLE_GUIDE.md does not block VOCABULARY.md from scaffolding.
 #   * NEVER overwrites an existing grounding doc (warn-and-skip). The
 #     scaffold is inert until a project BRIEF declares the `voice:` block;
@@ -1305,7 +1314,7 @@ fi
 # (append_to_gitignore_idempotent above) so a private VALUES.local.md never gets
 # committed by mistake. VALUES.md's own template/schema is #578, a downstream
 # consumer of this already-shipped private path.
-info "Stage 7.9: scaffold starter voice-grounding docs (anvil/templates/voice -> consumer root)"
+info "Stage 7.9: scaffold starter voice-grounding docs (anvil/templates/voice -> .anvil/voice/)"
 SRC_VOICE_DIR="$ANVIL_ROOT/anvil/templates/voice"
 VOICE_SKILL_SELECTED=false
 for s in "${SELECTED_SKILLS[@]}"; do
@@ -1339,15 +1348,25 @@ else
     voice_src_name="${voice_pair%%:*}"
     voice_dst_name="${voice_pair##*:}"
     voice_src="$SRC_VOICE_DIR/$voice_src_name"
-    voice_dst="$TARGET/$voice_dst_name"
+    # Canonical post-#617 destination lives under .anvil/voice/. The relative
+    # form (voice_dst_rel) is what the operator sees in action lines / skip
+    # notes / the pasteable BRIEF snippet, so it matches what they declare.
+    voice_dst_rel=".anvil/voice/$voice_dst_name"
+    voice_dst="$TARGET/$voice_dst_rel"
+    # Pre-#617 installs scaffolded to the consumer root. A root-level doc there
+    # may be user-edited — the migration guard preserves it and suppresses the
+    # new-location scaffold so an upgrade never drops a confusing duplicate.
+    voice_dst_old="$TARGET/$voice_dst_name"
     if [[ ! -f "$voice_src" ]]; then
       note "source voice template not found: $voice_src (skipping)"
     elif [[ -e "$voice_dst" ]]; then
-      note "existing $voice_dst_name detected — preserving (the installer never overwrites a grounding doc)"
+      note "existing $voice_dst_rel detected — preserving (the installer never overwrites a grounding doc)"
+    elif [[ -e "$voice_dst_old" ]]; then
+      note "existing root-level $voice_dst_name detected (pre-#617 install) — preserving at root, not re-scaffolding to $voice_dst_rel"
     else
-      do_action "scaffold voice-grounding doc at $voice_dst_name (consumer-owned; tune the <!-- replace me --> placeholders)" \
+      do_action "scaffold voice-grounding doc at $voice_dst_rel (consumer-owned; tune the <!-- replace me --> placeholders)" \
         copy_file_with_parents "$voice_src" "$voice_dst"
-      [[ "$DRY_RUN" == true ]] || { ok "$voice_dst_name scaffolded"; VOICE_SCAFFOLDED_ANY=true; }
+      [[ "$DRY_RUN" == true ]] || { ok "$voice_dst_rel scaffolded"; VOICE_SCAFFOLDED_ANY=true; }
     fi
   done
 
@@ -1638,28 +1657,29 @@ else
     echo "             CAUTION: the in-place copy is overwritten on every re-install/"
     echo "             upgrade — prefer the theme tier for durable overrides."
   fi
-  # Voice-grounding hint (issue #576): the scaffolded STYLE_GUIDE.md /
-  # VOCABULARY.md are inert until a project BRIEF declares the `voice:` block.
-  # We deliberately do NOT auto-edit the consumer's BRIEF — print the exact
-  # YAML snippet to paste so the wiring stays explicit.
+  # Voice-grounding hint (issue #576): the scaffolded voice docs are inert
+  # until a project BRIEF declares the `voice:` block. We deliberately do NOT
+  # auto-edit the consumer's BRIEF — print the exact YAML snippet to paste so
+  # the wiring stays explicit. Paths use the .anvil/voice/ prefix (issue #617).
   if [[ "$VOICE_SKILL_SELECTED" == true ]]; then
     echo ""
-    note "voice grounding: starter STYLE_GUIDE.md / VOCABULARY.md / VALUES.local.md scaffolded at the consumer root."
+    note "voice grounding: starter STYLE_GUIDE.md / VOCABULARY.md / VALUES.local.md scaffolded under .anvil/voice/."
     echo "         They ship as templates — fill in the <!-- replace me --> placeholders with"
     echo "         examples (and your own first-person stances, for VALUES) before relying on"
     echo "         them, then activate per project by adding this to the project BRIEF.md"
     echo "         frontmatter:"
     echo "             voice:"
-    echo "               style_guide: STYLE_GUIDE.md"
-    echo "               vocabulary: VOCABULARY.md"
-    echo "               values: VALUES.local.md   # private — resolves, never committed"
-    echo "         An existing STYLE_GUIDE.md / VOCABULARY.md / VALUES.local.md is never"
-    echo "         overwritten (per-file skip). See anvil/templates/voice/README.md for the"
-    echo "         four-doc taxonomy."
+    echo "               style_guide: .anvil/voice/STYLE_GUIDE.md"
+    echo "               vocabulary: .anvil/voice/VOCABULARY.md"
+    echo "               values: .anvil/voice/VALUES.local.md   # private — resolves, never committed"
+    echo "         An existing .anvil/voice/STYLE_GUIDE.md / VOCABULARY.md / VALUES.local.md is"
+    echo "         never overwritten (per-file skip; a pre-#617 root-level doc is likewise"
+    echo "         preserved and suppresses the new scaffold). See"
+    echo "         anvil/templates/voice/README.md for the four-doc taxonomy."
     echo ""
-    echo "         Starter word list scaffolded at VOCABULARY.words.txt (sibling of"
-    echo "         VOCABULARY.md). 'python -m anvil.lib.vocab_reminder' resolves it"
-    echo "         automatically; grow or replace the list with your own precision words."
+    echo "         Starter word list scaffolded at .anvil/voice/VOCABULARY.words.txt (sibling"
+    echo "         of .anvil/voice/VOCABULARY.md). 'python -m anvil.lib.vocab_reminder' resolves"
+    echo "         it automatically; grow or replace the list with your own precision words."
     echo ""
     echo "         Private grounding (issues #577, #578): VALUES carries first-person stances"
     echo "         most authors do NOT want committed, so it scaffolds PRIVATE BY DEFAULT to a"
