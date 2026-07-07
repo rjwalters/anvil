@@ -58,6 +58,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
        --theme-set anvil/skills/slides/templates/anvil-slides-theme.css \
        --allow-local-files \
        --pdf-notes \
+       --no-stdin \
        --output <thread>.{N}.handout/handout.pdf
      ```
      - 4-up: `pdfjam --nup 2x2 --landscape --suffix 4up handout.pdf`

@@ -83,8 +83,8 @@ The drafter is **forbidden from inventing logos or generating product screenshot
 
 Source is Marp markdown. The framework-level renderer pin (`CLAUDE.md` Conventions) is `Markdown + Marp`; Beamer LaTeX is a consumer override only.
 
-- PDF render: `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --theme-set anvil-deck.css --allow-local-files`
-- Optional PPTX export for handoff: `marp deck.md --pptx --html --config-file anvil/lib/marp/config.yml --theme-set anvil-deck.css`
+- PDF render: `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --theme-set anvil-deck.css --allow-local-files --no-stdin`
+- Optional PPTX export for handoff: `marp deck.md --pptx --html --config-file anvil/lib/marp/config.yml --theme-set anvil-deck.css --no-stdin`
 - The `deck-figures` command runs the render after all referenced figures exist.
 
 ## Lifecycle in one paragraph

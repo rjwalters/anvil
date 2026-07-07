@@ -140,8 +140,15 @@ marp <thread>.{N}/deck.md \
   --config-file anvil/lib/marp/config.yml \
   --theme-set anvil/skills/deck/assets/anvil-deck.css \
   --allow-local-files \
+  --no-stdin \
   --output <thread>.{N}/deck.pdf
 ```
+
+`--no-stdin` keeps marp-cli from blocking on an open stdin pipe in non-TTY /
+agent-driven contexts, where it otherwise prints `Currently waiting data from
+stdin stream` and hangs (issue #620). Anvil's canonical Python render path
+(`anvil.lib.render.render_marp_to_pdf`) also passes `stdin=subprocess.DEVNULL`
+for the same reason.
 
 Three flags are load-bearing:
 

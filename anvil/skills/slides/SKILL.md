@@ -164,7 +164,7 @@ Slides are authored as a single `deck.md` Marp document. One slide per `---` blo
 - MathJax math (Marp v3 default): `$\nabla \cdot E = \rho / \varepsilon_0$` inline; `$$ ... $$` display. The math engine is pinned to `mathjax` in both the per-document frontmatter (`templates/deck.md.j2`) and the CLI config (`anvil/lib/marp/config.yml`).
 - Mermaid diagrams are pre-rendered to PNG via `mmdc` (`figures/<name>.mmd` → `figures/<name>.png`) and referenced as `![alt](figures/<name>.png)`. NOTE (verified, issue #65): inline fenced ```mermaid blocks do NOT render as diagrams in the canonical `--pdf` output — they emit as raw monospace code. `html: true` only passes raw HTML through; it does not execute mermaid.js during Marp's PDF render. `mmdc` is therefore required for any deck with a diagram. See `assets/marp-renderer.md` for the worked example.
 
-**Rendering**: `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --allow-local-files` produces a slide PDF (and an HTML preview). The skill does not assume Marp is installed at runtime — the drafter writes valid Marp markdown; the rendering step is the consumer's responsibility (or `slides-handout`'s, which does require Marp for PDF export).
+**Rendering**: `marp deck.md --pdf --html --config-file anvil/lib/marp/config.yml --allow-local-files --no-stdin` produces a slide PDF (and an HTML preview). The skill does not assume Marp is installed at runtime — the drafter writes valid Marp markdown; the rendering step is the consumer's responsibility (or `slides-handout`'s, which does require Marp for PDF export).
 
 **Why Marp** (anvil framework decision, locked in CLAUDE.md):
 1. Markdown is the lingua franca of anvil — all artifact bodies are markdown for diff/audit reasons.

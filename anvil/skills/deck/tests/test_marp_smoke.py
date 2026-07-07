@@ -168,10 +168,19 @@ def _render_marp_pdf(source: Path, out_pdf: Path) -> subprocess.CompletedProcess
         "--config-file",
         str(_MARP_CONFIG),
         "--allow-local-files",
+        # #620: keep marp from blocking on an open stdin pipe when the smoke
+        # test runs in a non-TTY / CI context.
+        "--no-stdin",
         "-o",
         str(out_pdf),
     ]
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    )
 
 
 @unittest.skipUnless(
