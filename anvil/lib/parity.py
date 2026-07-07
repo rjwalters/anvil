@@ -764,6 +764,79 @@ def _build_message(token: str, side: str, line_no: int, rule: str) -> str:
     return _build_message_deck_side(token, side, line_no)
 
 
+# Figure corpus (issue #623) ---------------------------------------------------
+
+#: Raw numeric-substring extractor shared by the figure corpus builder and the
+#: per-token numeric stripper. Matches integer / decimal / thousands-separated
+#: runs (``2``, ``2.50``, ``26.6``, ``2,500``) but never a bare sign or unit.
+#: Deliberately format-agnostic: applied to raw CSV text it finds cell values
+#: regardless of surrounding ``$`` / ``%`` / label decoration.
+_FIGURE_NUMERIC_RE = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _extract_figure_corpus(deck_version_dir: Path) -> frozenset[str]:
+    """Read raw numeric values out of ``figures/src/*.csv`` under a deck dir.
+
+    Issue #623: dense economic tables are the *designed* home for numbers on a
+    figure-heavy deck — the ``deck-design`` rubric rewards moving a P&L table
+    into a chart, and those charts are rendered by ``deck-figures`` from
+    ``figures/src/*.csv``. The text-only parity lint cannot see numbers that
+    live inside a rendered PNG, so it false-promotes them to
+    ``only_in_memo_economic`` ("economic substance dropped"). This helper gives
+    the classifier a second match surface: the CSV sources that the figures
+    (and the auditor's re-run) already trace to 1:1.
+
+    Walks ``deck_version_dir / "figures" / "src"`` for ``*.csv`` files, reads
+    each as text, and unions every numeric substring (``re.findall`` over
+    :data:`_FIGURE_NUMERIC_RE`) into a frozenset of raw numeric strings
+    (``{"2.50", "3.25", "26.6"}``). Stdlib only — no CSV parsing, just raw
+    substring extraction so a formatted cell (``$2.50``) still yields ``2.50``.
+
+    Graceful by contract: returns :func:`frozenset` (empty) when the directory
+    is missing, no CSVs exist, or any file is unreadable. An empty corpus makes
+    the downstream classifier byte-identical to its pre-#623 behavior.
+    """
+    if not isinstance(deck_version_dir, Path):
+        deck_version_dir = Path(deck_version_dir)
+    src_dir = deck_version_dir / "figures" / "src"
+    if not src_dir.is_dir():
+        return frozenset()
+    corpus: set[str] = set()
+    try:
+        csv_paths = sorted(src_dir.glob("*.csv"))
+    except OSError:
+        return frozenset()
+    for csv_path in csv_paths:
+        try:
+            text = csv_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # A single unreadable CSV must not sink the whole corpus — the
+            # graceful-degradation contract is per-file, not per-directory.
+            continue
+        for m in _FIGURE_NUMERIC_RE.finditer(text):
+            corpus.add(m.group(0))
+    return frozenset(corpus)
+
+
+def _strip_token_numeric(token: str) -> list[str]:
+    """Expose the raw numeric component(s) of a parity token.
+
+    Strips currency / percent / unit decoration to surface the bare numbers so
+    a token can be tested against the figure corpus built by
+    :func:`_extract_figure_corpus`:
+
+    - ``"$2.50"`` → ``["2.50"]``
+    - ``"26.6%"`` → ``["26.6"]``
+    - ``"50-60%"`` → ``["50", "60"]`` (range → both endpoints)
+    - ``"8 pilots"`` → ``["8"]``
+    - ``"FTC"`` → ``[]`` (acronym — no numeric component)
+
+    Returns an empty list for numeric-free tokens (acronyms, quarters); those
+    are never promotion-eligible anyway, so the empty list is a safe no-op.
+    """
+    return _FIGURE_NUMERIC_RE.findall(token)
+
+
 # Load-bearingness classifier (issue #553) -------------------------------------
 
 
@@ -771,6 +844,7 @@ def _classify_economic_tokens(
     only_in_memo_tokens: set[str],
     memo_hits: list[_Hit],
     memo_source: str,
+    figure_corpus: frozenset[str] = frozenset(),
 ) -> set[str]:
     """Promote a strict subset of ``only_in_memo`` tokens to the
     load-bearing-economic class (issue #553).
@@ -795,6 +869,19 @@ def _classify_economic_tokens(
     disable directives on the memo line are scrubbed before the
     co-occurrence check so the directive's inner rule name does not
     surface as fake vocab.
+
+    Figure-carried suppression (issue #623): ``figure_corpus`` is the set
+    of raw numeric strings pulled from the deck's ``figures/src/*.csv``
+    sources (see :func:`_extract_figure_corpus`). When a token would
+    otherwise be promoted but any of its numeric components
+    (:func:`_strip_token_numeric`) appears in ``figure_corpus``, promotion
+    is **skipped** — the number is present in the deck via a rendered
+    chart, so its economic substance was not dropped. The token still
+    surfaces as an undifferentiated ``only_in_memo`` finding (the caller
+    layers the economic finding additively, so a skipped promotion simply
+    omits the sharper class). An empty ``figure_corpus`` (the default, and
+    the memo-side wrapper's only path) makes this a no-op — behavior is
+    byte-identical to the pre-#623 classifier.
     """
     if not only_in_memo_tokens:
         return set()
@@ -844,8 +931,16 @@ def _classify_economic_tokens(
             continue
         if h.rule_label not in _ECONOMIC_ELIGIBLE_RULE_LABELS:
             continue
-        if _line_has_context(h.line):
-            promoted.add(h.token)
+        if not _line_has_context(h.line):
+            continue
+        # Figure-carried suppression (issue #623): if the token's numeric
+        # value lives in the deck's figures/src CSVs, the number is present
+        # on the slide via a chart — do NOT escalate to the economic class.
+        if figure_corpus and any(
+            n in figure_corpus for n in _strip_token_numeric(h.token)
+        ):
+            continue
+        promoted.add(h.token)
     return promoted
 
 
@@ -857,6 +952,7 @@ def lint_source(
     memo_source: str,
     *,
     rule: str = "deck_memo_parity",
+    figure_corpus: frozenset[str] = frozenset(),
 ) -> LintResult:
     """Run the parity lint over two in-memory body strings.
 
@@ -864,6 +960,15 @@ def lint_source(
     deck-side ``lint_source(deck_source, memo_source)`` call is
     byte-compatible. Memo-side wrapper passes ``rule="memo_deck_parity"``
     via its thin re-export.
+
+    ``figure_corpus`` (issue #623) is an optional set of raw numeric
+    strings pulled from the deck's ``figures/src/*.csv`` sources. It is
+    threaded into the economic classifier to suppress false
+    ``only_in_memo_economic`` promotions for numbers that are present on
+    the deck via a rendered chart. Defaulting to an empty frozenset keeps
+    this call byte-identical to its pre-#623 form for every existing
+    consumer (the citation-clear canary anchor calls this API directly with
+    no figure corpus).
 
     This is the unit-testable core; the wrappers
     (``lint_deck_memo_parity`` / ``lint_memo_deck_parity``) handle the
@@ -905,7 +1010,7 @@ def lint_source(
     # symmetrically (a suppressed only_in_memo token's promoted finding
     # is also info, not warning).
     economic_promoted = _classify_economic_tokens(
-        only_in_memo_tokens, memo_hits, memo_source
+        only_in_memo_tokens, memo_hits, memo_source, figure_corpus
     )
 
     for token in sorted(only_in_memo_tokens):
@@ -1023,7 +1128,17 @@ def lint_deck_memo_parity(
     deck_source = deck_path.read_text(encoding="utf-8")
     memo_source = memo_path.read_text(encoding="utf-8")
 
-    result = lint_source(deck_source, memo_source, rule="deck_memo_parity")
+    # Issue #623: consult the deck's figures/src CSVs as a second match
+    # surface so figure-carried numbers are not false-promoted to
+    # only_in_memo_economic. Graceful-empty when no figures/src/ exists.
+    figure_corpus = _extract_figure_corpus(deck_version_dir)
+
+    result = lint_source(
+        deck_source,
+        memo_source,
+        rule="deck_memo_parity",
+        figure_corpus=figure_corpus,
+    )
     result.memo_sibling = str(memo_version_dir.resolve())
     return result
 
