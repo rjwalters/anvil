@@ -47,6 +47,19 @@ Anvil-specific design choices vs. upstream
   ``<!-- anvil-lint-disable: slide-content-overflow -->`` suppresses the
   rule for that one slide; the finding is downgraded to ``info`` so the
   reviser still sees that the slide is dense but ``advance`` is not blocked.
+- **Aspect- and CSS-aware capacity model (issue #622).** Two refinements
+  brought the source-side estimate into agreement with the rendered PDF on
+  keyword-less decks (the default drafter output), where the flat charges
+  over-fired at ~75%. (1) A keyword-less standalone image whose file is
+  locally resolvable relative to the deck is charged its *width-normalized
+  rendered height* (read from the PNG's IHDR via stdlib ``struct`` — no new
+  dependency), capped at the flat ``image_units`` fallback: a wide-aspect
+  mermaid PNG renders far shorter than a square one. (2) A ``<div class="X">``
+  whose class is defined ``display:flex`` / ``display:grid`` in the
+  frontmatter ``style:`` block has its children re-costed and scaled by
+  ``flex_container_cost_factor`` (columns render side-by-side, not stacked).
+  Both refinements only *reduce* charges; they add no new error sources.
+  Any layout the heuristic still mis-scores keeps the escape hatch above.
 
 Anvil-specific scope
 --------------------
@@ -101,6 +114,7 @@ import …`` directly.
 from __future__ import annotations
 
 import re
+import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -223,6 +237,20 @@ class Geometry:
     # the existing ``lint_deck(path, geometry=Geometry(...))`` parameter.
     italic_supporting_line_max_words: int = 18
     italic_supporting_line_max_chars: int = 108
+
+    # Cost multiplier applied to the accumulated sequential cost of content
+    # inside a frontmatter-CSS flex/grid container (issue #622). The
+    # sequential capacity model stacks every element's vertical cost, but a
+    # ``display:flex`` / ``display:grid`` container renders its children
+    # side-by-side (sharing horizontal space) — so the true vertical extent
+    # is a fraction of the stacked sum. ``0.5`` assumes two roughly-equal
+    # columns (the ``title-row`` / two-column idiom that inherited from
+    # 40/40 decks and drove the seed-deck.1 slides-1-and-13 false positives).
+    # A consumer with three-column layouts can push this lower via the
+    # ``lint_deck(path, geometry=Geometry(...))`` override; the per-slide
+    # ``<!-- anvil-lint-disable: slide-content-overflow -->`` escape hatch
+    # remains the override for any layout the heuristic still gets wrong.
+    flex_container_cost_factor: float = 0.5
 
 
 _DEFAULT_GEOMETRY = Geometry()
@@ -480,8 +508,112 @@ _BLOCKQUOTE_RE = re.compile(r"^\s*>")
 _TABLE_SEP_RE = re.compile(r"^\s*\|?[\s:|-]+\|[\s:|-]*$")
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 
+# A ``<div ... class="X Y Z">`` opening tag (issue #622). The captured group
+# is the raw class attribute value (possibly space-separated multi-class);
+# callers intersect it against the frontmatter-declared flex/grid class set.
+_DIV_CLASS_OPEN_RE = re.compile(
+    r"<div\b[^>]*\bclass\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE
+)
+# Any ``<div`` open / ``</div>`` close token, for depth tracking.
+_DIV_OPEN_TOKEN_RE = re.compile(r"<div\b", re.IGNORECASE)
+_DIV_CLOSE_TOKEN_RE = re.compile(r"</div\s*>", re.IGNORECASE)
 
-def _image_cost_units(alt_text: str, geo: Geometry) -> tuple[float, str]:
+# A URL-scheme prefix (``https://``, ``http://``, ``ftp://``, …) or a
+# ``data:`` URI — image references we must NOT try to resolve on the local
+# filesystem (issue #622).
+_URL_SCHEME_RE = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.\-]*://|data:)")
+
+# Frontmatter-CSS class whose ruleset declares a flex/grid display mode
+# (issue #622). Matches ``.two-col { ... display: flex ... }`` etc. — only
+# the class name is captured; the full CSS is not parsed.
+_FLEX_CLASS_RE = re.compile(
+    r"\.([\w-]+)\s*\{[^}]*display\s*:\s*(?:inline-flex|inline-grid|flex|grid)\b",
+    re.IGNORECASE,
+)
+
+#: 8-byte PNG file signature (the fixed magic prefix of every PNG file).
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _read_png_dimensions(path: Path) -> tuple[int, int] | None:
+    """Read a PNG's pixel (width, height) from its IHDR chunk, stdlib-only.
+
+    The PNG spec fixes the layout of the first 24 bytes: an 8-byte signature,
+    a 4-byte IHDR length, the 4-byte ``IHDR`` chunk type, then the 4-byte
+    width and 4-byte height (big-endian unsigned). We only need those 24
+    bytes — no image decode, no Pillow. Returns ``None`` (never raises) on any
+    failure: short read, wrong signature, unpack error. See issue #622.
+    """
+    try:
+        with open(path, "rb") as fh:
+            header = fh.read(24)
+        if len(header) < 24 or header[:8] != _PNG_SIGNATURE:
+            return None
+        width, height = struct.unpack(">II", header[16:24])
+        return (int(width), int(height))
+    except (OSError, struct.error, ValueError):
+        return None
+
+
+def _resolve_image_dimensions(
+    image_path: str, deck_path: Path
+) -> tuple[int, int] | None:
+    """Resolve an image reference relative to the deck file and read its size.
+
+    Returns ``(width, height)`` in pixels, or ``None`` on any failure:
+    URL/data-URI scheme (not a local file), unresolvable path, missing file,
+    unsupported format (only PNG is parsed — mermaid output is always PNG),
+    or a parse error. All failure modes fall back to the flat image charge in
+    the caller. See issue #622.
+    """
+    try:
+        if not image_path or _URL_SCHEME_RE.match(image_path):
+            return None
+        resolved = (deck_path.parent / image_path).resolve()
+        if not resolved.is_file():
+            return None
+        return _read_png_dimensions(resolved)
+    except (OSError, ValueError):
+        return None
+
+
+def _extract_frontmatter(source: str) -> str:
+    """Return the raw text between the opening and closing ``---`` fences.
+
+    Empty string when the source has no YAML frontmatter. Used to scan the
+    deck-wide ``style:`` CSS block for flex/grid class definitions (#622).
+    """
+    lines = source.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+    for j in range(1, len(lines)):
+        if lines[j].strip() == "---":
+            return "\n".join(lines[1:j])
+    return ""
+
+
+def _collect_flex_class_names(source: str) -> frozenset[str]:
+    """Extract class names whose frontmatter CSS ruleset declares flex/grid.
+
+    A ``display:flex`` / ``display:grid`` (and the ``inline-`` variants)
+    container renders its children side-by-side, so the sequential capacity
+    model over-counts a slide that stacks two columns. We scan only the YAML
+    frontmatter ``style:`` block (read once per ``lint_source`` call) with a
+    lightweight regex — no CSS parser dependency. See issue #622.
+    """
+    frontmatter = _extract_frontmatter(source)
+    if not frontmatter:
+        return frozenset()
+    return frozenset(m.group(1) for m in _FLEX_CLASS_RE.finditer(frontmatter))
+
+
+def _image_cost_units(
+    alt_text: str,
+    geo: Geometry,
+    *,
+    image_path: str | None = None,
+    deck_path: Path | None = None,
+) -> tuple[float, str]:
     """Estimate the vertical body-flow cost of a Marp image from its alt-string.
 
     Returns a ``(units, label)`` tuple. The label is a short tag used by the
@@ -504,8 +636,17 @@ def _image_cost_units(alt_text: str, geo: Geometry) -> tuple[float, str]:
       no ``h:`` is present; a width hint <50% is a weak proxy for "small
       image" and downgrades the cost to ``geo.image_small_units``. This is
       the legacy behaviour preserved verbatim.
-    - **No keyword** — falls back to ``geo.image_units`` (the full-width
-      assumption — unchanged for unannotated standalone-image blocks).
+    - **No keyword** — when the image file is locally resolvable relative to
+      ``deck_path`` (issue #622), read its pixel dimensions and charge the
+      *width-normalized rendered height* (``height × content_width / width``,
+      converted to line units and capped at ``geo.image_units``). A
+      wide-aspect PNG (e.g. a 3096×684 mermaid flow chart) renders far
+      shorter than the flat full-width assumption, so the flat 7.0u fallback
+      over-fired on keyword-less decks. When the path is not resolvable
+      (``deck_path=None``, a URL, a missing file, a non-PNG, or a parse
+      error) the charge gracefully falls back to ``geo.image_units`` — the
+      full-width assumption, unchanged for unannotated standalone-image
+      blocks.
 
     Issue #562 / canary friction: the GoodBoy deck used ``![bg right:55%]``
     hero panels and ``![h:230px]`` clamped figures heavily. The pre-#562
@@ -518,7 +659,11 @@ def _image_cost_units(alt_text: str, geo: Geometry) -> tuple[float, str]:
     what the renderer actually produces.
     """
     if not alt_text:
-        return (geo.image_units, "image")
+        # No alt-string at all — no keywords possible. Still attempt the
+        # aspect-aware refinement (issue #622): ``![](wide.png)`` is exactly
+        # the keyword-less default-drafter shape that over-fired the flat
+        # charge on wide-aspect PNGs.
+        return _keywordless_image_cost(geo, image_path, deck_path)
 
     # Pad the alt-string with leading/trailing whitespace so the keyword
     # regexes (which use ``(?:^|\s)`` anchors to enforce token boundaries)
@@ -564,14 +709,79 @@ def _image_cost_units(alt_text: str, geo: Geometry) -> tuple[float, str]:
         except ValueError:
             pass
 
-    # No size keyword and no `bg` keyword: full-width assumption.
+    # No size keyword and no `bg` keyword: fall through to the aspect-aware
+    # refinement (or the flat full-width assumption).
+    return _keywordless_image_cost(geo, image_path, deck_path)
+
+
+def _keywordless_image_cost(
+    geo: Geometry, image_path: str | None, deck_path: Path | None
+) -> tuple[float, str]:
+    """Cost of a standalone image that carries no Marp sizing keyword.
+
+    Before falling back to the flat full-width assumption
+    (``geo.image_units``), try to refine the charge using the image's actual
+    pixel aspect ratio (issue #622): a wide-aspect PNG rendered to the
+    content width is much shorter than a square one, so the flat 7.0u charge
+    over-fired on keyword-less decks. Only attempted when the image is a
+    locally-resolvable PNG relative to ``deck_path``; any failure (no path,
+    URL, missing file, non-PNG, parse error, zero dimension) falls through to
+    the legacy flat charge.
+    """
+    if image_path and deck_path is not None:
+        dims = _resolve_image_dimensions(image_path, deck_path)
+        if dims is not None:
+            width_px, height_px = dims
+            if width_px > 0 and height_px > 0:
+                # The deck CSS uses the same padding on all four sides, so the
+                # top/bottom padding constant doubles as the left/right value
+                # for the effective content width.
+                content_width_px = (
+                    geo.slide_width_px
+                    - geo.top_padding_px
+                    - geo.bottom_padding_px
+                )
+                rendered_height_px = height_px * (content_width_px / width_px)
+                units = rendered_height_px / float(geo.body_line_height_px)
+                units = min(geo.image_units, max(0.5, units))
+                return (units, f"image({width_px}x{height_px})")
+
+    # Full-width assumption (path not resolvable or refinement unavailable).
     return (geo.image_units, "image")
 
 
-def _estimate_slide_cost(slide: _Slide, geo: Geometry) -> _CostBreakdown:
+def _estimate_slide_cost(
+    slide: _Slide,
+    geo: Geometry,
+    *,
+    flex_class_names: frozenset[str] = frozenset(),
+    deck_path: Path | None = None,
+) -> _CostBreakdown:
     """Estimate the slide's vertical-line-unit cost from its markdown source."""
+    return _accumulate_line_costs(
+        slide.body.splitlines(),
+        geo,
+        flex_class_names=flex_class_names,
+        deck_path=deck_path,
+    )
+
+
+def _accumulate_line_costs(
+    lines: list[str],
+    geo: Geometry,
+    *,
+    flex_class_names: frozenset[str] = frozenset(),
+    deck_path: Path | None = None,
+) -> _CostBreakdown:
+    """Accumulate the vertical-line-unit cost of a run of markdown lines.
+
+    Split out from ``_estimate_slide_cost`` (issue #622) so a flex/grid
+    container's children can be re-costed recursively: the container's inner
+    lines are estimated with the same model, then the accumulated total is
+    scaled by ``geo.flex_container_cost_factor`` to reflect side-by-side
+    (rather than stacked) rendering.
+    """
     breakdown = _CostBreakdown()
-    lines = slide.body.splitlines()
     i = 0
     n = len(lines)
     in_fence = False
@@ -587,6 +797,46 @@ def _estimate_slide_cost(slide: _Slide, geo: Geometry) -> _CostBreakdown:
         if _DIRECTIVE_COMMENT_RE.match(raw_line):
             i += 1
             continue
+
+        # Flex/grid container (issue #622): a `<div class="X">` where X (or
+        # one of its space-separated classes) is defined `display:flex|grid`
+        # in the frontmatter `style:` block renders its children side-by-side.
+        # Accumulate the inner lines' cost recursively and charge only
+        # `flex_container_cost_factor` of it (the columns share vertical
+        # extent rather than stacking). The opening and closing `<div>`/
+        # `</div>` tag lines are consumed here so they are not later
+        # mis-charged as body paragraphs.
+        if flex_class_names and not in_fence:
+            m_div = _DIV_CLASS_OPEN_RE.search(raw_line)
+            if m_div and (set(m_div.group(1).split()) & flex_class_names):
+                # Walk forward to the matching `</div>`, tracking nesting
+                # depth. If no close is found, the container runs to the end
+                # of the slide (safe approximation for Marp's HTML handling).
+                depth = 1
+                j = i + 1
+                inner_lines: list[str] = []
+                while j < n:
+                    line_j = lines[j]
+                    depth += len(_DIV_OPEN_TOKEN_RE.findall(line_j))
+                    depth -= len(_DIV_CLOSE_TOKEN_RE.findall(line_j))
+                    if depth <= 0:
+                        break  # this line closes our container
+                    inner_lines.append(line_j)
+                    j += 1
+                sub = _accumulate_line_costs(
+                    inner_lines,
+                    geo,
+                    flex_class_names=flex_class_names,
+                    deck_path=deck_path,
+                )
+                breakdown.add(
+                    "flex-container",
+                    sub.total_units * geo.flex_container_cost_factor,
+                )
+                i = j + 1
+                seen_first_block = True
+                just_added_paragraph_break = False
+                continue
 
         # Track fenced code blocks (don't try to interpret their contents).
         if not in_fence and _FENCED_OPEN_RE.match(raw_line):
@@ -708,7 +958,11 @@ def _estimate_slide_cost(slide: _Slide, geo: Geometry) -> _CostBreakdown:
             # back to the legacy width-only heuristic. Issue #562.
             m_alt = _IMAGE_ALT_RE.search(raw_line)
             alt = m_alt.group("alt") if m_alt else ""
-            units, label = _image_cost_units(alt, geo)
+            m_path = _IMAGE_RE.search(raw_line)
+            img_path = m_path.group(1) if m_path else None
+            units, label = _image_cost_units(
+                alt, geo, image_path=img_path, deck_path=deck_path
+            )
             breakdown.add(label, units)
             i += 1
             seen_first_block = True
@@ -982,10 +1236,18 @@ def lint_source(
     *,
     geometry: Geometry | None = None,
     rules: tuple[str, ...] = PORTED_RULES,
+    deck_path: Path | None = None,
 ) -> LintResult:
     """Run the lint over an in-memory Marp markdown source string.
 
     This is the unit-testable core; ``lint_deck`` is a thin file wrapper.
+
+    ``deck_path`` (issue #622), when provided, is the on-disk location of the
+    source file. It lets the ``slide-content-overflow`` capacity model resolve
+    keyword-less image references relative to the deck and charge their true
+    (width-normalized) rendered height instead of the flat full-width
+    assumption. Passing ``None`` (the default, and the in-memory call path)
+    preserves the pre-#622 behavior exactly.
     """
     geo = geometry or _DEFAULT_GEOMETRY
     result = LintResult()
@@ -994,6 +1256,11 @@ def lint_source(
     run_inline_display = "inline-display-style-dropped" in rules
     if not (run_overflow or run_italic or run_inline_display):
         return result
+
+    # Deck-wide frontmatter CSS flex/grid class names (issue #622), parsed
+    # once. Empty frozenset when there is no frontmatter `style:` block or no
+    # flex/grid class — in which case the flex-container cost path is inert.
+    flex_class_names = _collect_flex_class_names(source)
 
     slides = _split_slides(source)
     for slide in slides:
@@ -1034,7 +1301,9 @@ def lint_source(
 
         suppressed = "slide-content-overflow" in disabled_rules
 
-        breakdown = _estimate_slide_cost(slide, geo)
+        breakdown = _estimate_slide_cost(
+            slide, geo, flex_class_names=flex_class_names, deck_path=deck_path
+        )
 
         # Anti-pattern penalty: H1 + H2 on the same slide (#25 repro).
         heading_set = set(breakdown.heading_levels)
@@ -1105,7 +1374,7 @@ def lint_deck(path: Path, *, geometry: Geometry | None = None) -> LintResult:
     if not isinstance(path, Path):
         path = Path(path)
     source = path.read_text(encoding="utf-8")
-    return lint_source(source, geometry=geometry)
+    return lint_source(source, geometry=geometry, deck_path=path)
 
 
 __all__ = [

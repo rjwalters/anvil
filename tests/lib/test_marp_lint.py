@@ -41,6 +41,11 @@ def test_anvil_lib_marp_lint_imports() -> None:
     assert "inline-display-style-dropped" in PORTED_RULES
     assert isinstance(UPSTREAM_SHA, str) and len(UPSTREAM_SHA) >= 7
 
+    # Issue #622 — the CSS-flex-awareness cost factor is a public Geometry
+    # field with the documented default.
+    assert hasattr(Geometry(), "flex_container_cost_factor")
+    assert Geometry().flex_container_cost_factor == 0.5
+
 
 def test_deck_skill_reexport_is_thin() -> None:
     """``anvil.skills.deck.lib.marp_lint`` re-exports identity-equal symbols.

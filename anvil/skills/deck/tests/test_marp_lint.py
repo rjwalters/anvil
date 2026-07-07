@@ -22,6 +22,8 @@ or ``pytest anvil/skills/deck/tests/``.
 
 from __future__ import annotations
 
+import struct
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -29,6 +31,22 @@ from anvil.lib.marp_lint import lint_deck, lint_source, Finding, LintResult
 
 _HERE = Path(__file__).resolve().parent
 _FIXTURES = _HERE / "fixtures" / "marp_lint"
+
+
+def _write_png_header(path: Path, width: int, height: int) -> None:
+    """Write a minimal PNG file whose IHDR declares ``width`` × ``height``.
+
+    ``anvil.lib.marp_lint._read_png_dimensions`` reads only the first 24
+    bytes (8-byte signature + IHDR length/type + big-endian width/height), so
+    a header-only file is sufficient to exercise the aspect-aware image
+    charge (issue #622) without generating megabytes of pixel data.
+    """
+    with open(path, "wb") as fh:
+        fh.write(b"\x89PNG\r\n\x1a\n")
+        fh.write(struct.pack(">I", 13))  # IHDR chunk length
+        fh.write(b"IHDR")
+        fh.write(struct.pack(">II", width, height))
+        fh.write(b"\x08\x02\x00\x00\x00")  # bit depth, color type, etc.
 
 
 class TestOverflowFigurePlusBullets(unittest.TestCase):
@@ -695,6 +713,347 @@ class TestImageCostUnits(unittest.TestCase):
         geo = Geometry()
         units, label = _image_cost_units("", geo)
         self.assertEqual(units, geo.image_units)
+
+
+class TestWideAspectImageCharge(unittest.TestCase):
+    """Issue #622 — a keyword-less wide-aspect PNG is charged its true height.
+
+    Pre-#622 a standalone ``![](fig.png)`` with no ``bg``/``h:``/``w:`` keyword
+    was charged the flat ``image_units = 7.0u`` regardless of aspect ratio.
+    A wide-aspect mermaid PNG (e.g. a 3096×684 flow chart, ~4.5:1) renders at
+    only ~258px in a 1168px content area — ~6.5u — and a very-wide 10:1 chart
+    renders at ~3u. Charging 7.0u for those over-fired the overflow gate on
+    keyword-less decks (the default drafter output). Post-#622 the charge is
+    the width-normalized rendered height, capped at 7.0u, when the image is a
+    locally-resolvable PNG relative to the deck file.
+    """
+
+    def test_wide_aspect_png_charge_below_flat(self) -> None:
+        """AC1 — 3096×684 PNG at full content width charges ≈6.5u (< 7.0u)."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        with tempfile.TemporaryDirectory() as tmp:
+            deck_dir = Path(tmp)
+            _write_png_header(deck_dir / "wide.png", 3096, 684)
+            units, label = _image_cost_units(
+                "",
+                Geometry(),
+                image_path="wide.png",
+                deck_path=deck_dir / "deck.md",
+            )
+        # 684 * (1168 / 3096) / 40 ≈ 6.45u
+        self.assertAlmostEqual(units, 6.45, places=1)
+        self.assertLess(units, Geometry().image_units)
+        self.assertIn("3096x684", label)
+
+    def test_wide_aspect_png_slide_no_overflow(self) -> None:
+        """AC1 — a slide carrying only the wide PNG produces no overflow."""
+        with tempfile.TemporaryDirectory() as tmp:
+            deck_dir = Path(tmp)
+            _write_png_header(deck_dir / "wide.png", 3096, 684)
+            deck = deck_dir / "deck.md"
+            deck.write_text(
+                "---\nmarp: true\nsize: 16:9\n---\n\n"
+                "## Architecture\n\n![](wide.png)\n",
+                encoding="utf-8",
+            )
+            result = lint_deck(deck)
+        overflow = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow, [])
+
+    def test_very_wide_png_reduction_is_load_bearing(self) -> None:
+        """A 10:1 PNG + bullets that overflow at 7.0u stay clean at ~3u.
+
+        This proves the aspect refinement actually changes the verdict, not
+        just the reported number: the same slide overflows when the image is
+        unresolvable (flat 7.0u) but fits when the wide PNG is measured.
+        """
+        body = (
+            "---\nmarp: true\nsize: 16:9\n---\n\n"
+            "## Flow\n\n![](flow.png)\n\n"
+            "- First point that wraps around the budget enough to count here\n"
+            "- Second point that wraps around the budget enough to count here\n"
+            "- Third point that wraps around the budget enough to count here\n"
+            "- Fourth point that wraps around the budget enough to count here\n"
+            "- Fifth point that wraps around the budget enough to count here\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            deck_dir = Path(tmp)
+            _write_png_header(deck_dir / "flow.png", 3000, 300)  # 10:1
+            deck = deck_dir / "deck.md"
+            deck.write_text(body, encoding="utf-8")
+            resolved = lint_deck(deck)
+        # With the flat 7.0u charge (no deck_path), the same slide overflows.
+        unresolved = lint_source(body)
+        self.assertEqual(
+            [f for f in resolved.errors if f.rule == "slide-content-overflow"],
+            [],
+            "wide PNG measured → slide fits",
+        )
+        self.assertGreaterEqual(
+            len([f for f in unresolved.errors if f.rule == "slide-content-overflow"]),
+            1,
+            "flat 7.0u charge → same slide overflows",
+        )
+
+    def test_deck_path_none_falls_back_to_flat(self) -> None:
+        """AC2 — ``deck_path=None`` keeps the legacy flat 7.0u charge."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        units, label = _image_cost_units(
+            "", Geometry(), image_path="wide.png", deck_path=None
+        )
+        self.assertEqual(units, Geometry().image_units)
+        self.assertEqual(label, "image")
+
+    def test_missing_file_falls_back_to_flat(self) -> None:
+        """AC2/AC3 — an unresolvable image path falls back to 7.0u."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        with tempfile.TemporaryDirectory() as tmp:
+            units, _ = _image_cost_units(
+                "",
+                Geometry(),
+                image_path="does-not-exist.png",
+                deck_path=Path(tmp) / "deck.md",
+            )
+        self.assertEqual(units, Geometry().image_units)
+
+    def test_corrupt_png_falls_back_to_flat(self) -> None:
+        """AC3 — a file with a bad signature falls back without raising."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "bad.png"
+            bad.write_bytes(b"this is not a valid png header at all really")
+            units, _ = _image_cost_units(
+                "", Geometry(), image_path="bad.png", deck_path=Path(tmp) / "deck.md"
+            )
+        self.assertEqual(units, Geometry().image_units)
+
+    def test_jpeg_falls_back_to_flat(self) -> None:
+        """AC3 — a JPEG (no parser implemented) falls back to 7.0u."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        with tempfile.TemporaryDirectory() as tmp:
+            jpg = Path(tmp) / "photo.jpg"
+            # JPEG SOI marker + junk — not a PNG signature.
+            jpg.write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 32)
+            units, _ = _image_cost_units(
+                "", Geometry(), image_path="photo.jpg", deck_path=Path(tmp) / "deck.md"
+            )
+        self.assertEqual(units, Geometry().image_units)
+
+    def test_url_scheme_falls_back_to_flat(self) -> None:
+        """Edge case — an ``https://`` image reference is not resolved."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        with tempfile.TemporaryDirectory() as tmp:
+            units, _ = _image_cost_units(
+                "",
+                Geometry(),
+                image_path="https://example.com/wide.png",
+                deck_path=Path(tmp) / "deck.md",
+            )
+        self.assertEqual(units, Geometry().image_units)
+
+    def test_zero_dimension_png_falls_back(self) -> None:
+        """Edge case — a PNG whose IHDR declares 0 width guards division."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_png_header(Path(tmp) / "z.png", 0, 0)
+            units, label = _image_cost_units(
+                "", Geometry(), image_path="z.png", deck_path=Path(tmp) / "deck.md"
+            )
+        self.assertEqual(units, Geometry().image_units)
+        self.assertEqual(label, "image")
+
+    def test_path_traversal_reference_resolves(self) -> None:
+        """Edge case — a ``../figures/fig.png`` reference resolves upward."""
+        from anvil.lib.marp_lint import Geometry, _image_cost_units
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "figures").mkdir()
+            (root / "thread").mkdir()
+            _write_png_header(root / "figures" / "fig.png", 3096, 684)
+            units, label = _image_cost_units(
+                "",
+                Geometry(),
+                image_path="../figures/fig.png",
+                deck_path=root / "thread" / "deck.md",
+            )
+        self.assertAlmostEqual(units, 6.45, places=1)
+
+
+class TestFlexContainerCostHalving(unittest.TestCase):
+    """Issue #622 — a frontmatter-CSS flex/grid container is cost-halved.
+
+    A ``<div class="two-col">`` whose ``two-col`` class is defined
+    ``display:flex`` in the frontmatter ``style:`` block renders its children
+    side-by-side. The sequential capacity model stacks them and over-counts;
+    post-#622 the container's inner cost is scaled by
+    ``flex_container_cost_factor`` (default 0.5). This eliminated the
+    seed-deck.1 slides-1-and-13 false positives.
+    """
+
+    def test_flex_fixture_no_overflow(self) -> None:
+        """AC4 — the two-column fixture produces no overflow finding."""
+        result = lint_deck(_FIXTURES / "flex_container_two_col.md")
+        overflow = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow, [])
+
+    def test_same_content_without_flex_class_overflows(self) -> None:
+        """The halving is load-bearing: drop the flex class → the slide errors.
+
+        Same body, but the ``.two-col`` ruleset no longer declares
+        ``display:flex`` — the container is invisible to the heuristic and
+        the stacked columns blow the budget.
+        """
+        source = (_FIXTURES / "flex_container_two_col.md").read_text(
+            encoding="utf-8"
+        )
+        no_flex = source.replace("display: flex; ", "")
+        result = lint_source(no_flex)
+        overflow = [
+            f for f in result.errors if f.rule == "slide-content-overflow"
+        ]
+        self.assertGreaterEqual(len(overflow), 1)
+
+    def test_grid_display_also_halves(self) -> None:
+        """A ``display:grid`` class is treated the same as ``display:flex``."""
+        source = """---
+marp: true
+size: 16:9
+html: true
+style: |
+  .cols { display: grid; grid-template-columns: 1fr 1fr; }
+---
+
+## Grid overview
+
+<div class="cols">
+
+### Left
+
+- Alpha bullet on the left column that is reasonably wordy here
+- Beta bullet on the left column that is reasonably wordy here
+- Gamma bullet on the left column that is reasonably wordy here
+- Delta bullet on the left column that is reasonably wordy here
+
+### Right
+
+- Alpha bullet on the right column that is reasonably wordy here
+- Beta bullet on the right column that is reasonably wordy here
+- Gamma bullet on the right column that is reasonably wordy here
+- Delta bullet on the right column that is reasonably wordy here
+
+</div>
+"""
+        result = lint_source(source)
+        overflow = [
+            f for f in result.errors if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow, [])
+
+    def test_flex_escape_hatch_still_downgrades(self) -> None:
+        """AC5 — the escape hatch still downgrades a flex slide that overflows.
+
+        A flex container whose halved cost STILL exceeds the budget, with the
+        per-slide ``anvil-lint-disable`` directive, must downgrade to ``info``.
+        """
+        # Build a flex container so dense that even 0.5× overflows, then
+        # suppress it.
+        big_cols = "\n".join(
+            f"- Bullet number {k} carrying enough words to wrap the budget line here"
+            for k in range(20)
+        )
+        source = f"""---
+marp: true
+size: 16:9
+html: true
+style: |
+  .two-col {{ display: flex; }}
+---
+
+<!-- anvil-lint-disable: slide-content-overflow -->
+
+## Dense flex
+
+<div class="two-col">
+
+{big_cols}
+
+</div>
+"""
+        result = lint_source(source)
+        self.assertEqual(
+            [f for f in result.errors if f.rule == "slide-content-overflow"], []
+        )
+        infos = [f for f in result.infos if f.rule == "slide-content-overflow"]
+        self.assertEqual(len(infos), 1)
+        self.assertEqual(infos[0].severity, "info")
+
+
+class TestFlexContainerCostFactorGeometry(unittest.TestCase):
+    """Issue #622 — the new ``Geometry.flex_container_cost_factor`` field."""
+
+    def test_default_factor(self) -> None:
+        from anvil.lib.marp_lint import Geometry
+        self.assertEqual(Geometry().flex_container_cost_factor, 0.5)
+
+    def test_custom_factor_applied(self) -> None:
+        """A lower factor charges even less of the container's stacked cost."""
+        from anvil.lib.marp_lint import Geometry
+        source = (_FIXTURES / "flex_container_two_col.md").read_text(
+            encoding="utf-8"
+        )
+        # A factor of 0.0 means the container contributes nothing — definitely
+        # no overflow.
+        result = lint_source(source, geometry=Geometry(flex_container_cost_factor=0.0))
+        self.assertEqual(
+            [f for f in result.errors if f.rule == "slide-content-overflow"], []
+        )
+
+
+class TestLintSourceBackwardsCompatible(unittest.TestCase):
+    """AC8 — ``lint_source`` behavior is byte-identical for keyword/no-image inputs."""
+
+    def test_keyword_annotated_images_unchanged_without_deck_path(self) -> None:
+        source = """---
+marp: true
+size: 16:9
+---
+
+# Hero
+
+![bg right:55%](figures/hero.png)
+
+![h:230px](figures/clamped.png)
+
+- One bullet
+"""
+        # deck_path present vs absent must not change a keyword-only deck.
+        with tempfile.TemporaryDirectory() as tmp:
+            deck = Path(tmp) / "deck.md"
+            deck.write_text(source, encoding="utf-8")
+            with_path = lint_deck(deck)
+        without_path = lint_source(source)
+        self.assertEqual(
+            [f.to_dict() for f in with_path.errors],
+            [f.to_dict() for f in without_path.errors],
+        )
+        self.assertEqual(
+            [f.to_dict() for f in with_path.warnings],
+            [f.to_dict() for f in without_path.warnings],
+        )
 
 
 if __name__ == "__main__":
