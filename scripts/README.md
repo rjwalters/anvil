@@ -31,7 +31,7 @@ that coexists with Loom in the same consumer repo.
 2. Resolve and validate `TARGET` (expand `~`, `cd && pwd`); git is **not** required (anvil is forge-optional).
 3. Active-install guard: existing `.anvil/` triggers upgrade mode; otherwise fresh install.
 4. Read source skill manifest from `anvil/skills/*/SKILL.md`; filter by `--skills=`; validate fast.
-5. Copy `anvil/lib/` -> `.anvil/lib/` (always-overwrite framework code).
+5. Copy `anvil/lib/` -> `.anvil/anvil/lib/` (always-overwrite framework code).
 6. Copy `anvil/roles/` -> `.anvil/roles/` (always-overwrite framework code).
 7. For each selected skill: byte-diff against source; skip if consumer-modified (unless `--force`);
    otherwise install canonical body at `.anvil/skills/<name>/` and regenerate the thin Claude

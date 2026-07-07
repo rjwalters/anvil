@@ -32,7 +32,7 @@ Design contract (settled at #445 curation; do NOT re-litigate)
   #516) once ``anvil:ip-uspto-provisional``'s inventorship-lite pass became
   the second consumer (lib-promotion convention). Both consumers invoke
   this module by direct file path at
-  ``anvil/lib/inventorship_evidence.py`` (``.anvil/lib/...`` in an
+  ``anvil/lib/inventorship_evidence.py`` (``.anvil/anvil/lib/...`` in an
   installed consumer repo): ``anvil:ip-uspto``'s ``--evidence`` mode and
   the provisional's ``ip-uspto-provisional-inventorship`` lite pass. The
   ip-uspto skill's ``inventorship_interview.py`` also loads
