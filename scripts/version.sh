@@ -14,6 +14,8 @@
 # Currently covers CLAUDE.md and pyproject.toml. To extend when a new
 # version-bearing file lands, add it to VERSION_FILES below and add matching
 # case-arms to both get_version_from_file() and set_version().
+# The --tag paths additionally stage CHANGELOG.md when present, so the
+# release-notes promotion rides the tagged release commit (#638).
 #
 # The list / check / bump <level> --tag interface conforms to the upstream
 # Loom v0.10.4 release.md scripts/version.sh contract (#590).
@@ -138,6 +140,10 @@ case "${1:-show}" in
     if [[ "${3:-}" == "--tag" ]]; then
       cd "$REPO_ROOT"
       git add "${VERSION_FILES[@]}"
+      # Release convention promotes `## [Unreleased]` in CHANGELOG.md as part
+      # of the same release step — stage it so the tagged commit ships with it
+      # (#638). `if` form so an absent file can't trip `set -e`.
+      if [ -f "CHANGELOG.md" ]; then git add CHANGELOG.md; fi
       git commit -m "chore: bump version to $new"
       git tag "v$new"
       echo "Committed and tagged v$new"
@@ -150,6 +156,10 @@ case "${1:-show}" in
     if [[ "${3:-}" == "--tag" ]]; then
       cd "$REPO_ROOT"
       git add "${VERSION_FILES[@]}"
+      # Release convention promotes `## [Unreleased]` in CHANGELOG.md as part
+      # of the same release step — stage it so the tagged commit ships with it
+      # (#638). `if` form so an absent file can't trip `set -e`.
+      if [ -f "CHANGELOG.md" ]; then git add CHANGELOG.md; fi
       git commit -m "chore: release v$new"
       git tag "v$new"
       echo "Committed and tagged v$new"
