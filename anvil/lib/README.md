@@ -222,7 +222,7 @@ copy diverge, the snippet wins.
 ## Install-time copying
 
 The install script (`scripts/install-anvil.sh`) copies `anvil/lib/` to
-`<consumer>/.anvil/lib/` in stage 5 (`copy framework code`). Both the
+`<consumer>/.anvil/anvil/lib/` in stage 5 (`copy framework code`). Both the
 markdown snippets and the Python modules land alongside each other; the
 consumer repo's commands reference them by the `.anvil/anvil/lib/snippets/<name>.md`
 relative path.
