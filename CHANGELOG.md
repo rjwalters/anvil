@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-07-07
+
+### Added
+
+- **Per-skill install staleness tracking** (#633/#635): the install manifest gains a
+  `skill_versions` block parallel to `skill_hashes`; skipped-override warnings now
+  report "last installed: vX, current: vY" and the baseline survives across runs.
+- **Cross-file rubric-threshold consistency lint** (#618/#631): framework test
+  asserting rubric totals/thresholds agree across each skill's rubric, commands,
+  and SKILL.md.
+- **Blog-parity: figure-carried economic false-promotion suppression** (#626):
+  parity checks consult a `figures/src` CSV corpus so numbers carried by figures
+  don't false-promote as ungrounded prose claims.
+
+### Changed
+
+- **Voice-grounding scaffold moved under `.anvil/voice/`** (#617/#632): Stage 7.9
+  no longer writes STYLE_GUIDE.md / VOCABULARY.md / VOCABULARY.words.txt /
+  VALUES.local.md to the consumer repo root; pre-existing root-level docs are
+  preserved and suppress the new-location scaffold so upgrades never duplicate.
+
+### Fixed
+
+- **Consumer-path resolution to `.anvil/anvil/lib/`** (#625, #634/#636): command
+  specs, snippets, and marp/figures asset docs all reference the canonical
+  post-#230 consumer path; `render.py` marp-config and mermaid-theme defaults are
+  now `__file__`-relative (correct from both a source checkout and a consumer
+  repo); `figures/mermaid-theme.json` gains installer override protection.
+- **Marp stdin hang** (#629): render helpers pass `--no-stdin` / DEVNULL so marp
+  never blocks in non-TTY contexts.
+- **Overflow lint accuracy** (#627): the marp overflow charge is aspect-ratio- and
+  CSS-flex-aware.
+- **Mermaid v11 edge-label legibility** (#628): the pinned theme forces dark
+  edge-label text.
+- **Deck prompt-journal tolerance** (#630): the reader ignores unknown per-entry
+  fields instead of failing.
+
 ## [0.7.0] — 2026-07-03
 
 ### Summary
