@@ -473,6 +473,39 @@ read_recorded_lib_hash() {
     || true
 }
 
+# Read a recorded per-skill install version from an existing manifest. Returns
+# the empty string if the manifest, the `skill_versions` block, or the
+# requested skill entry is absent (the "legacy manifest, no recorded version"
+# case — a pre-#633 install, or a skill installed before this field existed).
+# Callers display "unknown" for the empty result. Issue #633.
+#
+# Mirrors `read_recorded_hash` exactly, but reads the `skill_versions` block
+# instead of `skill_hashes` and matches a dotted SemVer value (`0.7.0`) rather
+# than a hex digest. Pure-bash grep/sed (no jq dependency); `|| true` guards
+# both no-match branches so a missing block/entry returns "" instead of
+# tripping `set -euo pipefail`.
+#
+#   "skill_versions": {"memo": "0.8.0", "deck": "0.4.0"}
+read_recorded_version() {
+  local manifest="$1" skill="$2"
+  [[ -f "$manifest" ]] || { echo ""; return; }
+  local block
+  block="$(tr '\n' ' ' < "$manifest" \
+    | grep -oE '"skill_versions"[[:space:]]*:[[:space:]]*\{[^}]*\}' \
+    | head -n1)" || true
+  [[ -n "$block" ]] || { echo ""; return; }
+  # `|| true` guards the no-match branch: a `skill_versions` block present but
+  # missing an entry for the queried skill (partial/legacy manifest) must
+  # return "" rather than propagate grep's exit 1 under pipefail — the same
+  # guard read_recorded_hash uses for the identical scenario.
+  printf '%s' "$block" \
+    | tr ',' '\n' \
+    | grep -E "\"$skill\"[[:space:]]*:[[:space:]]*\"[0-9][^\"]*\"" \
+    | head -n1 \
+    | sed -E "s/.*\"$skill\"[[:space:]]*:[[:space:]]*\"([0-9][^\"]*)\".*/\1/" \
+    || true
+}
+
 # Copy a directory tree's CONTENTS (not the wrapper dir) into dest, creating
 # dest if needed. `cp -R src/. dest` copies contents while preserving the dest
 # directory itself. All paths are passed as bash positional args (no shell
@@ -624,6 +657,13 @@ write_guide() {
 # touched the install" (auto-upgrade safe) from "consumer modified the
 # install" (preserve modifications unless --force). See issue #152.
 #
+# The `skill_versions` block records, per skill, the `anvil_version` of the run
+# that last ACTUALLY installed that skill's body (parallel to `skill_hashes`).
+# On a skip run the prior value is carried forward, so the top-level
+# `anvil_version` overwrite does not erase a frozen skill's install provenance.
+# This lets the next upgrade report "last installed: vX, current: vY" for every
+# skipped-override skill instead of a bare skip list. See issue #633.
+#
 # `layout_version` records which on-disk shape the installer wrote (issue
 # #230): 1 = pre-#230 (.anvil/lib + .anvil/skills/<name>/lib),
 # 2 = post-#230 (.anvil/anvil/ importable mirror + .anvil/pyproject.toml).
@@ -655,7 +695,8 @@ write_manifest() {
   local target_dir="$1" manifest_path="$2"
   local anvil_version="$3" anvil_source="$4" install_date="$5"
   local installed_json="$6" skipped_json="$7" hashes_json="$8"
-  local layout_version="${9:-2}" lib_hash="${10:-}"
+  local versions_json="$9"
+  local layout_version="${10:-2}" lib_hash="${11:-}"
   mkdir -p "$target_dir/.anvil"
   cat > "$manifest_path" <<MANIFEST_EOF
 {
@@ -666,6 +707,7 @@ write_manifest() {
   "installed_skills": $installed_json,
   "skipped_overrides": $skipped_json,
   "skill_hashes": $hashes_json,
+  "skill_versions": $versions_json,
   "lib_hash": "$lib_hash"
 }
 MANIFEST_EOF
@@ -792,6 +834,34 @@ set_skill_hash() {
   done
   SKILL_HASH_KEYS+=("$skill")
   SKILL_HASH_VALUES+=("$hash")
+}
+
+# Per-skill "as-installed" Anvil version. Keys are skill names, values are the
+# `ANVIL_VERSION` string of the installer run that last ACTUALLY installed that
+# skill's body. Recorded under `skill_versions` in the manifest (parallel to
+# `skill_hashes`) so a subsequent re-install that SKIPS a consumer-modified
+# skill can report how many releases behind the frozen copy is — the top-level
+# `anvil_version` scalar is overwritten every run and cannot answer this for a
+# skill that was last installed several releases earlier (issue #633).
+#
+# Same Bash-3.x parallel-array shape as SKILL_HASH_KEYS/VALUES (no associative
+# arrays on the macOS default shell).
+SKILL_VERSION_KEYS=()
+SKILL_VERSION_VALUES=()
+
+# Append a (skill, version) entry to the parallel-array version table.
+# Overwrites an existing entry for `skill` if present (the recorded version
+# should reflect the most recent successful install for that skill).
+set_skill_version() {
+  local skill="$1" version="$2" i
+  for ((i = 0; i < ${#SKILL_VERSION_KEYS[@]}; i++)); do
+    if [[ "${SKILL_VERSION_KEYS[$i]}" == "$skill" ]]; then
+      SKILL_VERSION_VALUES[$i]="$version"
+      return
+    fi
+  done
+  SKILL_VERSION_KEYS+=("$skill")
+  SKILL_VERSION_VALUES+=("$version")
 }
 
 # Manifest path is also referenced by Stage 7 (for the recorded-hash lookup)
@@ -1098,7 +1168,8 @@ for skill in "${SELECTED_SKILLS[@]}"; do
         # Legacy install (manifest pre-dates the hash-tracking change, or the
         # manifest is missing entirely). Fall back to today's conservative
         # behavior: assume consumer-modified and require --force.
-        warn "skipped: consumer-modified .anvil/skills/$skill (legacy install, no recorded hash; re-run with --force to overwrite — future installs will auto-detect)"
+        prior_version="$(read_recorded_version "$MANIFEST" "$skill")"
+        warn "skipped: consumer-modified .anvil/skills/$skill (last installed: ${prior_version:-unknown}, current: v$ANVIL_VERSION; legacy install, no recorded hash; re-run with --force to overwrite — future installs will auto-detect)"
         SKIPPED_OVERRIDES+=("$skill")
         # Importable lib mirror is always installed even when the body
         # is skipped — it's unconditional code, not an override target.
@@ -1116,7 +1187,8 @@ for skill in "${SELECTED_SKILLS[@]}"; do
       else
         # Recorded hash exists and differs from the current dst hash → the
         # consumer actually modified the install. Preserve their work.
-        warn "skipped: consumer-modified .anvil/skills/$skill (re-run with --force to overwrite)"
+        prior_version="$(read_recorded_version "$MANIFEST" "$skill")"
+        warn "skipped: consumer-modified .anvil/skills/$skill (last installed: ${prior_version:-unknown}, current: v$ANVIL_VERSION; re-run with --force to overwrite)"
         SKIPPED_OVERRIDES+=("$skill")
         if [[ -d "$src_skill_lib" ]]; then
           do_action "install $dst_skill_pylib from $src_skill_lib (importable mirror)" \
@@ -1165,6 +1237,10 @@ for skill in "${SELECTED_SKILLS[@]}"; do
   # manifest is not written in dry-run mode either; see Stage 9 do_action
   # wrapper).
   set_skill_hash "$skill" "$(dir_hash_body_only "$src_skill")"
+  # Record the Anvil version this skill was actually installed under, parallel
+  # to the hash. On a later skip run this is what read_recorded_version reads
+  # back to report staleness ("last installed: vX") — issue #633.
+  set_skill_version "$skill" "$ANVIL_VERSION"
   # Suppress post-action confirmation under --dry-run (issue #81). The
   # INSTALLED_SKILLS array is still populated so the Stage 11 summary can
   # accurately report what a real run WOULD install (relabel branch below).
@@ -1518,6 +1594,14 @@ for skipped in ${SKIPPED_OVERRIDES[@]+"${SKIPPED_OVERRIDES[@]}"}; do
   if [[ -n "$prior" ]]; then
     set_skill_hash "$skipped" "$prior"
   fi
+  # Carry forward the prior install version too (issue #633). A skipped skill
+  # was NOT re-installed this run, so its version must stay pinned to the run
+  # that last actually installed it — otherwise the next upgrade loses the
+  # staleness baseline and reports "last installed: unknown".
+  prior_ver="$(read_recorded_version "$MANIFEST" "$skipped")"
+  if [[ -n "$prior_ver" ]]; then
+    set_skill_version "$skipped" "$prior_ver"
+  fi
 done
 
 json_object_from_skill_hashes() {
@@ -1530,13 +1614,26 @@ json_object_from_skill_hashes() {
   printf '}'
 }
 
+# Build the `skill_versions` JSON object from the parallel-array version table.
+# Mirrors json_object_from_skill_hashes; empty table emits `{}`. Issue #633.
+json_object_from_skill_versions() {
+  local first=true i
+  printf '{'
+  for ((i = 0; i < ${#SKILL_VERSION_KEYS[@]}; i++)); do
+    if $first; then first=false; else printf ', '; fi
+    printf '"%s": "%s"' "${SKILL_VERSION_KEYS[$i]}" "${SKILL_VERSION_VALUES[$i]}"
+  done
+  printf '}'
+}
+
 INSTALLED_JSON="$(json_array_from_list ${INSTALLED_SKILLS[@]+"${INSTALLED_SKILLS[@]}"})"
 SKIPPED_JSON="$(json_array_from_list ${SKIPPED_OVERRIDES[@]+"${SKIPPED_OVERRIDES[@]}"})"
 HASHES_JSON="$(json_object_from_skill_hashes)"
+VERSIONS_JSON="$(json_object_from_skill_versions)"
 
 do_action "write $MANIFEST" \
   write_manifest "$TARGET" "$MANIFEST" "$ANVIL_VERSION" "$ANVIL_ROOT" "$INSTALL_DATE" \
-                 "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON" "2" "$LIB_HASH"
+                 "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON" "$VERSIONS_JSON" "2" "$LIB_HASH"
 
 # ----- Stage 10: renderer dependency check ----------------------------------
 # Report which renderer binaries are present so a fresh install does not claim
