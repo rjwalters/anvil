@@ -62,10 +62,17 @@ There is **no** `_review.json`, **no** `_meta.json` rubric stamps, and **no** cr
    - **Spelling variant**: a near-match (e.g., differing middle initial / hyphenation) across sources → advisory `possible spelling variant — counsel to confirm same person`.
    - When a source set is **empty** (spec names no inventors; no counsel package yet), record it as *not yet populated* — **never** a missing/extra finding against an unpopulated source.
 
-5. **(Optional) Evidence mode (`--evidence [<repo>]`).** Mine advisory reduction-to-practice evidence from the implementation repo's git history using the **promoted shared lib** `anvil/lib/inventorship_evidence.py` (promoted from `ip-uspto/lib/` in issue #516; `.anvil/lib/inventorship_evidence.py` in an installed consumer repo). Invoke it by direct file path (the skill dir is hyphenated, so there is no dotted `python -m` path):
+5. **(Optional) Evidence mode (`--evidence [<repo>]`).** Mine advisory reduction-to-practice evidence from the implementation repo's git history using the **promoted shared lib** `anvil/lib/inventorship_evidence.py` (promoted from `ip-uspto/lib/` in issue #516; resolves to `.anvil/anvil/lib/inventorship_evidence.py` in an installed consumer repo). The module lives in the `anvil.lib` package, so it runs via `python -m anvil.lib.inventorship_evidence` (through `uv run --project .anvil` in a consumer install):
 
    ```bash
-   python3 anvil/lib/inventorship_evidence.py \
+   # From a consumer repo (uv-runnable install per issue #230):
+   uv run --project .anvil python -m anvil.lib.inventorship_evidence \
+     <thread>/inventorship-evidence/inventorship_map.json \
+     --repo <repo_path> \
+     --write-evidence <thread>/inventorship-evidence/evidence.jsonl
+
+   # Or from the anvil source repo (development):
+   python -m anvil.lib.inventorship_evidence \
      <thread>/inventorship-evidence/inventorship_map.json \
      --repo <repo_path> \
      --write-evidence <thread>/inventorship-evidence/evidence.jsonl
@@ -96,7 +103,7 @@ The report is regenerated on each run (it is a read-only snapshot of the current
 
 ## Git sync (opt-in, off by default)
 
-Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
 
 This phase's specifics:
 

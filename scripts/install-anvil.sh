@@ -940,10 +940,16 @@ fi
 # directory is no longer load-bearing for any imported code path.
 if [[ -d "$TARGET/.anvil/lib" ]]; then
   warn "legacy framework dir detected: $TARGET/.anvil/lib (pre-#230 install layout)"
-  echo "         The post-#230 import path is .anvil/anvil/lib/ (now installed)."
+  echo "         The post-#230 layout resolves ALL framework code and assets"
+  echo "         under .anvil/anvil/lib/ (now installed). Every 'anvil/lib/*'"
+  echo "         path in the command specs — snippets/, marp/config.yml,"
+  echo "         figures/, and the 'python -m anvil.lib.*' invocations — maps to"
+  echo "         .anvil/anvil/lib/ in this repo, NOT the legacy .anvil/lib/."
+  echo "         The legacy dir is no longer on any import path; leaving it in"
+  echo "         place makes agents/critics rediscover the indirection (issue #624)."
   echo "         If you hand-edited files in .anvil/lib/ (e.g. memo styles.css),"
-  echo "         port them to the matching path under .anvil/anvil/lib/ and"
-  echo "         remove .anvil/lib/ to avoid confusion."
+  echo "         port them to the matching path under .anvil/anvil/lib/ and then"
+  echo "         remove .anvil/lib/ to remove the ambiguity."
 fi
 
 # ----- Stage 6: copy roles --------------------------------------------------

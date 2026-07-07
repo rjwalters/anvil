@@ -153,10 +153,17 @@ The map associates each matrix row key (feature IDs under basis A, claim element
 
 ### Step E2 — Deterministic mining (`inventorship_evidence.py`)
 
-Run the promoted shared lib by direct file path (`inventorship_evidence.py` was promoted to `anvil/lib/` in issue #516 once the provisional's inventorship-lite pass became its second consumer; the calling skill dir is hyphenated, so command prose references the file path rather than a dotted `python -m` path; in an installed consumer repo the path is `.anvil/lib/inventorship_evidence.py`):
+Run the promoted shared lib via its module entry point (`inventorship_evidence.py` was promoted to `anvil/lib/` in issue #516 once the provisional's inventorship-lite pass became its second consumer; the module lives in the `anvil.lib` package — not the hyphenated skill dir — so it runs via `python -m anvil.lib.inventorship_evidence`, resolving to `.anvil/anvil/lib/inventorship_evidence.py` in an installed consumer repo):
 
 ```bash
-python3 anvil/lib/inventorship_evidence.py \
+# From a consumer repo (uv-runnable install per issue #230):
+uv run --project .anvil python -m anvil.lib.inventorship_evidence \
+  <thread>/inventorship-evidence/inventorship_map.json \
+  --repo <repo_path> \
+  --write-evidence <thread>/inventorship-evidence/evidence.jsonl
+
+# Or from the anvil source repo (development):
+python -m anvil.lib.inventorship_evidence \
   <thread>/inventorship-evidence/inventorship_map.json \
   --repo <repo_path> \
   --write-evidence <thread>/inventorship-evidence/evidence.jsonl
@@ -325,7 +332,7 @@ After the claim set stabilizes (during AUDITED → FINALIZED transition), re-run
 
 ## Git sync (opt-in, off by default)
 
-Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
 
 This phase's specifics:
 

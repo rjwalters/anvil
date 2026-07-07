@@ -14,7 +14,7 @@ Both presentation skills consume this guide identically — the overlay
 paths differ (`.anvil/skills/deck/templates/` vs.
 `.anvil/skills/slides/templates/`), everything else is shared. In an
 installed consumer repo this file resolves to
-`.anvil/lib/snippets/brand-theme-porting.md`.
+`.anvil/anvil/lib/snippets/brand-theme-porting.md`.
 
 ## Five-minute smoke test (starter theme)
 

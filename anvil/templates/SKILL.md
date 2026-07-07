@@ -215,7 +215,7 @@ Every **write-bearing** command in a new skill (version-dir-writing
 phases AND critic-sidecar-writing commands; read-only orchestrator /
 status views are exempt) SHOULD end with the conditional per-phase git
 commit step documented in `anvil/lib/snippets/git_sync.md`
-(`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): when
+(`.anvil/anvil/lib/snippets/git_sync.md` in an installed consumer repo): when
 the consumer repo carries `.anvil/config.json` with
 `git.commit_per_phase: true`, stage only the dirs the phase wrote and
 commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, pushing when
