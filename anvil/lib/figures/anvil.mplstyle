@@ -14,6 +14,10 @@
 # --- Typography: match the deck theme's Helvetica family. matplotlib silently
 #     substitutes the next available family if HelveticaNeue/Helvetica is
 #     absent (e.g. on Linux CI), so the listed fallbacks keep this from erroring.
+#     NOTE (benign): on a stock macOS/Linux + matplotlib install the unresolvable
+#     spellings emit `findfont: Font family '...' not found` warnings before the
+#     chain falls back to DejaVu Sans. These are cosmetic fallback noise, not an
+#     error — the concrete-chain fallback (see below) is working as intended.
 #
 #     IMPORTANT — per-glyph Unicode fallback (matplotlib 3.6+):
 #     `font.family` MUST be a concrete list of family names, NOT the
