@@ -230,6 +230,7 @@ Nested under the thread root `<thread>/`:
      --config-file anvil/lib/marp/config.yml \
      --theme-set anvil/skills/deck/assets/anvil-deck.css \
      --allow-local-files \
+     --no-stdin \
      --output <thread>.{N}/deck.pdf
    ```
    - `--html` lets raw HTML in the source survive into the rendered output. Note: it does **not** make inline ```mermaid fences render as diagrams in the PDF (verified false — see the correctness note in step 4); diagrams must go through the `mmdc → PNG` path. `--html` is still kept for raw-HTML slides and for parity with the framework config (`anvil/lib/marp/config.yml`).
@@ -246,6 +247,7 @@ Nested under the thread root `<thread>/`:
        --config-file anvil/lib/marp/config.yml \
        --theme-set anvil/skills/deck/assets/anvil-deck.css \
        --allow-local-files \
+       --no-stdin \
        --output <thread>.{N}/deck.pptx
      ```
    - Default behavior is PDF-only; PPTX is opt-in because PowerPoint export is a handoff feature, not a review-loop artifact.

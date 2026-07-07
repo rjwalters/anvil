@@ -134,12 +134,20 @@ def render_marp_to_pdf(
         "--config-file",
         str(config_path),
         "--allow-local-files",
+        # --no-stdin (belt) + stdin=DEVNULL (suspenders): in non-TTY/agent
+        # contexts stdin is often an open pipe, and marp-cli otherwise prints
+        # "Currently waiting data from stdin stream" and blocks forever (#620).
+        "--no-stdin",
         "--output",
         str(out_pdf),
     ]
 
     result = subprocess.run(
-        cmd, capture_output=True, text=True, check=False
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        stdin=subprocess.DEVNULL,
     )
     if result.returncode != 0:
         raise RenderError(
