@@ -30,6 +30,8 @@ from anvil.lib.parity import (
     RULES_DECK,
     RULES_MEMO,
     UNIT_VOCABULARY,
+    _extract_figure_corpus,
+    _strip_token_numeric,
     lint_deck_memo_parity,
     lint_memo_deck_parity,
     lint_parity,
@@ -683,6 +685,188 @@ def test_phase_a_severity_preserved():
         assert f.severity != "error"
     # The result-level errors list MUST remain empty in v0.
     assert result.errors == []
+
+
+# ---------------------------------------------------------------------------
+# Figure-carried suppression — figures/src/*.csv corpus (issue #623)
+# ---------------------------------------------------------------------------
+
+
+def test_strip_token_numeric_extracts_raw_components():
+    """``_strip_token_numeric`` exposes the bare numeric component(s) of a
+    parity token, stripping currency / percent / unit decoration."""
+    assert _strip_token_numeric("$2.50") == ["2.50"]
+    assert _strip_token_numeric("26.6%") == ["26.6"]
+    assert _strip_token_numeric("50-60%") == ["50", "60"]
+    assert _strip_token_numeric("8 pilots") == ["8"]
+    # Acronyms carry no numeric component.
+    assert _strip_token_numeric("FTC") == []
+    # Thousands-separated money keeps its separator run intact.
+    assert _strip_token_numeric("$2,500") == ["2,500"]
+
+
+def test_extract_figure_corpus_graceful_on_missing_dir(tmp_path: Path):
+    """No ``figures/src/`` directory → empty frozenset (graceful path)."""
+    deck_version_dir = tmp_path / "thread.1"
+    deck_version_dir.mkdir()
+    assert _extract_figure_corpus(deck_version_dir) == frozenset()
+    # A wholly nonexistent path is also graceful (never raises).
+    assert _extract_figure_corpus(tmp_path / "nonexistent") == frozenset()
+
+
+def test_extract_figure_corpus_reads_csv_numeric_values(tmp_path: Path):
+    """The corpus is the union of raw numeric substrings across every
+    ``figures/src/*.csv`` file, even when cells are currency-formatted."""
+    src_dir = tmp_path / "thread.1" / "figures" / "src"
+    src_dir.mkdir(parents=True)
+    (src_dir / "per-line-econ.csv").write_text(
+        "line,cost\nseat,$2.50\nplatform,3.25\n", encoding="utf-8"
+    )
+    (src_dir / "sensitivity.csv").write_text(
+        "case,margin\nbear,26.6\nbase,31.0\n", encoding="utf-8"
+    )
+    corpus = _extract_figure_corpus(tmp_path / "thread.1")
+    # Currency decoration stripped: `$2.50` cell yields `2.50`.
+    assert "2.50" in corpus
+    assert "3.25" in corpus
+    assert "26.6" in corpus
+    assert "31.0" in corpus
+
+
+def test_figure_corpus_suppresses_economic_promotion():
+    """A memo money token whose numeric value lives in the deck's figure
+    corpus is NOT promoted to ``only_in_memo_economic`` — the number is
+    present on the slide via a chart. The undifferentiated ``only_in_memo``
+    finding is still emitted (suppression removes only the sharper class).
+    """
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: ~$2.50 contribution margin per seat at 8% attach.\n"
+    )
+    deck_body = "# Deck\n\n![P&L chart](figures/fig_econ.png)\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        figure_corpus=frozenset({"2.50"}),
+    )
+
+    # Promotion suppressed — the number is figure-carried.
+    assert "$2.50" not in result.only_in_memo_economic, (
+        "a token whose numeric value is in the figure corpus must NOT be "
+        f"promoted; got only_in_memo_economic={result.only_in_memo_economic!r}"
+    )
+    # The undifferentiated finding is preserved (additive-surfacing invariant).
+    assert "$2.50" in result.only_in_memo, (
+        "the base only_in_memo finding must survive figure-carried suppression"
+    )
+
+
+def test_figure_corpus_does_not_suppress_if_numeric_absent():
+    """When the figure corpus does NOT contain the token's numeric value,
+    the promotion fires exactly as it does with no corpus at all."""
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: ~$2.50 contribution margin per seat at 8% attach.\n"
+    )
+    deck_body = "# Deck\n\n![P&L chart](figures/fig_econ.png)\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        figure_corpus=frozenset({"3.00"}),
+    )
+
+    assert "$2.50" in result.only_in_memo_economic, (
+        "with the token's numeric ABSENT from the corpus, promotion must "
+        f"fire; got only_in_memo_economic={result.only_in_memo_economic!r}"
+    )
+
+
+def test_lint_source_no_figure_corpus_is_byte_identical():
+    """Backward-compat anchor: ``lint_source`` with no ``figure_corpus``
+    kwarg produces exactly the same result as passing the empty default."""
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Unit economics: ~$2.50 contribution margin per seat at 8% attach.\n"
+    )
+    deck_body = "# Deck\n\nNo economics slide.\n"
+
+    without_kwarg = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+    with_empty = lint_source(
+        deck_body, memo_body, rule="deck_memo_parity", figure_corpus=frozenset()
+    )
+
+    assert without_kwarg.only_in_memo_economic == with_empty.only_in_memo_economic
+    assert without_kwarg.only_in_memo == with_empty.only_in_memo
+    # The promotion still fires — the empty corpus is a true no-op.
+    assert "$2.50" in without_kwarg.only_in_memo_economic
+
+
+def test_lint_deck_memo_parity_reads_figures_src_csv(tmp_path: Path):
+    """Integration: ``lint_deck_memo_parity`` auto-discovers the deck's
+    ``figures/src/*.csv`` and suppresses the figure-carried promotion end
+    to end (the seed-deck.1 canary shape)."""
+    # Deck version dir with a figure source carrying the P&L number.
+    deck_version_dir = tmp_path / "seed-deck" / "seed-deck.1"
+    src_dir = deck_version_dir / "figures" / "src"
+    src_dir.mkdir(parents=True)
+    (deck_version_dir / "deck.md").write_text(
+        "# Deck\n\n![Per-line economics](figures/fig_per_line_econ.png)\n",
+        encoding="utf-8",
+    )
+    (src_dir / "per-line-econ.csv").write_text(
+        "line,margin\nseat,2.50\n", encoding="utf-8"
+    )
+
+    # Sibling memo version dir; body filename echoes the memo thread slug.
+    memo_thread = tmp_path / "seed-memo"
+    memo_version_dir = memo_thread / "seed-memo.1"
+    memo_version_dir.mkdir(parents=True)
+    (memo_version_dir / "seed-memo.md").write_text(
+        "# Memo\n\nUnit economics: ~$2.50 contribution margin per seat.\n",
+        encoding="utf-8",
+    )
+
+    result = lint_deck_memo_parity(deck_version_dir, memo_version_dir)
+
+    assert result.skipped is False
+    # Figure-carried: the P&L number lives in per-line-econ.csv → no promotion.
+    assert "$2.50" not in result.only_in_memo_economic, (
+        "lint_deck_memo_parity must consult figures/src/*.csv and suppress the "
+        f"figure-carried promotion; got {result.only_in_memo_economic!r}"
+    )
+    # But the base drift finding is still surfaced.
+    assert "$2.50" in result.only_in_memo
+
+
+def test_lint_deck_memo_parity_no_figures_dir_promotes_normally(tmp_path: Path):
+    """Byte-identical-to-v0 anchor: a deck version dir with no
+    ``figures/src/`` promotes the economic token exactly as before."""
+    deck_version_dir = tmp_path / "seed-deck" / "seed-deck.1"
+    deck_version_dir.mkdir(parents=True)
+    (deck_version_dir / "deck.md").write_text(
+        "# Deck\n\nNo economics slide in this version.\n", encoding="utf-8"
+    )
+
+    memo_thread = tmp_path / "seed-memo"
+    memo_version_dir = memo_thread / "seed-memo.1"
+    memo_version_dir.mkdir(parents=True)
+    (memo_version_dir / "seed-memo.md").write_text(
+        "# Memo\n\nUnit economics: ~$2.50 contribution margin per seat.\n",
+        encoding="utf-8",
+    )
+
+    result = lint_deck_memo_parity(deck_version_dir, memo_version_dir)
+
+    assert result.skipped is False
+    # No figures/src/ → empty corpus → promotion fires as in v0.
+    assert "$2.50" in result.only_in_memo_economic
 
 
 # ---------------------------------------------------------------------------
