@@ -160,6 +160,44 @@ def test_deck_review_doc_references_issue_553():
     )
 
 
+def test_deck_review_doc_documents_figure_carried_csv_lookup():
+    """Issue #623: the step 5d prose must document that a token whose
+    numeric value appears in a `figures/src/*.csv` source is NOT promoted
+    to `only_in_memo_economic` — the figure-carried suppression contract.
+    """
+    text = _read(DECK_REVIEW_DOC)
+    assert "figures/src" in text, (
+        "deck-review.md must document the `figures/src/*.csv` figure-corpus "
+        "lookup that suppresses false economic promotions (issue #623)."
+    )
+
+
+def test_deck_review_doc_names_figure_corpus_helpers():
+    """The prose must name the two runtime helpers so a maintainer can
+    trace the CSV-lookup contract from the command file to the lib.
+    """
+    text = _read(DECK_REVIEW_DOC)
+    assert "_extract_figure_corpus" in text, (
+        "deck-review.md must reference `_extract_figure_corpus` (issue #623)."
+    )
+    assert "_strip_token_numeric" in text, (
+        "deck-review.md must reference `_strip_token_numeric` (issue #623)."
+    )
+
+
+def test_deck_review_doc_references_issue_623():
+    """Audit trail: the issue number must appear in the deck-review doc so
+    a future maintainer can follow the figure-carried contract back to the
+    curator brief.
+    """
+    text = _read(DECK_REVIEW_DOC)
+    assert "#623" in text, (
+        "deck-review.md must reference issue #623 in the deck_memo_parity "
+        "step 5d prose for audit-trail traceability of the figure-carried "
+        "suppression contract."
+    )
+
+
 def test_memo_review_doc_schema_carries_only_in_memo_economic_key():
     """Schema parity: the memo-side schema example must carry the new
     `only_in_memo_economic` key so a downstream consumer aggregating
