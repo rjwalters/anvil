@@ -9,9 +9,9 @@ Precedence under test::
     <consumer>/.anvil/themes/<theme>/memo/<asset>
         >  framework default at anvil/lib/memo/<asset>
 
-The middle "consumer single-tenant override" tier (the legacy
-``<consumer>/.anvil/lib/memo/<asset>`` path) is no longer load-bearing
-post-#230 — the install layout puts anvil itself under
+The middle "consumer single-tenant override" tier (the ``memo/<asset>``
+subtree of the legacy consumer ``.anvil/lib/`` directory) is no longer
+load-bearing post-#230 — the install layout puts anvil itself under
 ``<consumer>/.anvil/anvil/lib/memo/`` and the framework-default lookup
 resolves there automatically. So Phase A only tests two tiers: per-
 theme override + framework default. (When the canary adopts the

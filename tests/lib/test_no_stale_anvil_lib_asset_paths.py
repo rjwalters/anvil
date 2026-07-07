@@ -1,5 +1,6 @@
 """Doc-pin guard: no shipped file documents the legacy ``.anvil/lib/`` asset
-consumer path for the ``marp/`` or ``figures/`` trees (issue #634).
+consumer path for the ``marp/``, ``figures/``, ``snippets/``, or ``memo/``
+trees (issues #634, #639).
 
 Post-#230 (layout_version 2), the installer copies ``anvil/lib/`` →
 ``.anvil/anvil/lib/`` in a consumer repo. The legacy ``.anvil/lib/`` directory
@@ -20,10 +21,11 @@ reintroduces the shorter-looking path) can't silently regress a documented
 invocation back to a directory a fresh install does not create.
 
 Scope: the guard forbids the *consumer* forms ``.anvil/lib/marp/``,
-``.anvil/lib/figures/``, and ``.anvil/lib/snippets/`` (leading dot — the
-on-disk consumer path) across the shipped trees plus the top-level README.
-The source-tree forms ``anvil/lib/marp/`` / ``anvil/lib/figures/`` /
-``anvil/lib/snippets/`` (no leading dot — a reference to a path within the
+``.anvil/lib/figures/``, ``.anvil/lib/snippets/``, and ``.anvil/lib/memo/``
+(leading dot — the on-disk consumer path) across the shipped trees plus the
+top-level README and ``scripts/README.md``. The source-tree forms
+``anvil/lib/marp/`` / ``anvil/lib/figures/`` / ``anvil/lib/snippets/`` /
+``anvil/lib/memo/`` (no leading dot — a reference to a path within the
 anvil source checkout, or a Python module import) are legitimate and are NOT
 matched by these patterns.
 """
@@ -47,15 +49,28 @@ FORBIDDEN_STRINGS = (
     ".anvil/lib/marp/",
     ".anvil/lib/figures/",
     ".anvil/lib/snippets/",
+    ".anvil/lib/memo/",
 )
 
 # Text-ish shipped files under the two trees an agent/critic reads and executes
 # literally. Covers command specs, skill docs, templates, and asset headers.
 SCAN_ROOTS = ("anvil/skills", "anvil/lib")
 # Top-level consumer-facing docs outside the shipped trees. README.md walked a
-# consumer through a legacy snippet path until the v0.7.1 cleanup.
-EXTRA_FILES = ("README.md",)
-SCAN_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".css", ".j2", ".json", ".txt"}
+# consumer through a legacy snippet path until the v0.7.1 cleanup;
+# scripts/README.md described the installer's stage-5 copy destination as
+# '.anvil/lib/' until issue #639.
+EXTRA_FILES = ("README.md", "scripts/README.md")
+SCAN_SUFFIXES = {
+    ".md",
+    ".py",
+    ".yml",
+    ".yaml",
+    ".css",
+    ".j2",
+    ".json",
+    ".txt",
+    ".tex",
+}
 
 
 def _scanned_files() -> List[Path]:
@@ -78,10 +93,11 @@ def _file_ids() -> List[str]:
 
 @pytest.mark.parametrize("path", _scanned_files(), ids=_file_ids())
 def test_file_has_no_legacy_anvil_lib_asset_path(path: Path):
-    """Regression guard (issue #634): a shipped file MUST NOT document the
-    legacy ``.anvil/lib/marp/`` or ``.anvil/lib/figures/`` consumer path. A
-    fresh post-#230 install populates ``.anvil/anvil/lib/`` — the legacy dir is
-    never created, so any such reference points an agent at a nonexistent path.
+    """Regression guard (issues #634, #639): a shipped file MUST NOT document
+    a legacy ``.anvil/lib/<subtree>/`` consumer path (``marp/``, ``figures/``,
+    ``snippets/``, ``memo/``). A fresh post-#230 install populates
+    ``.anvil/anvil/lib/`` — the legacy dir is never created, so any such
+    reference points an agent at a nonexistent path.
     """
     text = path.read_text(encoding="utf-8")
     for needle in FORBIDDEN_STRINGS:
@@ -89,7 +105,7 @@ def test_file_has_no_legacy_anvil_lib_asset_path(path: Path):
             f"{path.relative_to(REPO_ROOT)} references the legacy consumer "
             f"asset path {needle!r}. A fresh post-#230 install populates "
             f"'.anvil/anvil/lib/' — use '.anvil/anvil{needle}' instead "
-            f"(issue #634)."
+            f"(issues #634, #639)."
         )
 
 
@@ -102,7 +118,8 @@ def test_no_file_references_legacy_anvil_lib_asset_path_aggregate():
         if any(needle in text for needle in FORBIDDEN_STRINGS):
             offenders.append(str(path.relative_to(REPO_ROOT)))
     assert offenders == [], (
-        "files must not reference the legacy '.anvil/lib/marp/' or "
-        f"'.anvil/lib/figures/' consumer asset paths (issue #634); the "
-        f"canonical consumer tree is '.anvil/anvil/lib/'. Offenders: {offenders}"
+        "files must not reference the legacy '.anvil/lib/marp/', "
+        "'.anvil/lib/figures/', '.anvil/lib/snippets/', or '.anvil/lib/memo/' "
+        f"consumer asset paths (issues #634, #639); the canonical consumer "
+        f"tree is '.anvil/anvil/lib/'. Offenders: {offenders}"
     )
