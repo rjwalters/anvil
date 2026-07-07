@@ -17,7 +17,7 @@
 # config-file equivalent, so it lives here as an example, not an options key.
 #
 # In an installed consumer repo this path resolves to
-# .anvil/lib/marp/config.yml (the install script copies anvil/lib/ wholesale).
+# .anvil/anvil/lib/marp/config.yml (the install script copies anvil/lib/ wholesale).
 #
 # This file is the CLI-side companion to the per-document frontmatter pin.
 # Per-deck frontmatter still pins `math: mathjax` and `html: true` explicitly

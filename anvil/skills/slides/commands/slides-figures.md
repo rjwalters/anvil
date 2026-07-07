@@ -138,7 +138,7 @@ for shell-driven figurers.
   mermaid theme (`theme: base` + navy `themeVariables`) so diagrams render
   on the slides brand palette (navy nodes, muted-grey edges, Helvetica) by
   default instead of the stock lavender/pink theme. In an installed consumer
-  repo this resolves to `.anvil/lib/figures/mermaid-theme.json` (the
+  repo this resolves to `.anvil/anvil/lib/figures/mermaid-theme.json` (the
   installer copies `anvil/lib/` wholesale, same as `marp/config.yml`). The
   theme is lib-level so it serves both `anvil:slides` and `anvil:deck`. A
   consumer who overrides the slides theme can pass their own `-c <file>`.

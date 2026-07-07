@@ -53,8 +53,22 @@ def test_module_exports_four_renderers():
 
 
 def test_default_marp_config_path_matches_pin():
-    """AC1: the default Marp config path matches the framework pin (#32)."""
-    assert DEFAULT_MARP_CONFIG == Path("anvil/lib/marp/config.yml")
+    """AC1: the default Marp config path resolves beside the render module
+    (#32, #634). It must be ``__file__``-relative — NOT cwd-relative — so it
+    resolves to a real file whether the process runs from the anvil source
+    checkout or a consumer repo root where the module lives at
+    ``.anvil/anvil/lib/render.py``.
+    """
+    import anvil.lib.render as render_mod
+
+    module_dir = Path(render_mod.__file__).parent
+    assert DEFAULT_MARP_CONFIG == module_dir / "marp" / "config.yml"
+    # Consumer-install AC: the default must point at a file that actually
+    # exists (here the source checkout stands in for the installed tree).
+    assert DEFAULT_MARP_CONFIG.exists(), (
+        f"default Marp config {DEFAULT_MARP_CONFIG} does not exist; a "
+        "cwd-relative default would break every consumer render call"
+    )
 
 
 def test_each_renderer_has_a_docstring():
@@ -398,11 +412,21 @@ def test_render_mermaid_to_png_is_exported() -> None:
 
 
 def test_default_mermaid_theme_path_matches_pin() -> None:
-    """The default theme pin resolves under ``anvil/lib/figures/``."""
+    """The default theme pin resolves beside the render module (#634).
+
+    Like the Marp config default, it must be ``__file__``-relative so it
+    resolves to a real file from a consumer repo root (module at
+    ``.anvil/anvil/lib/render.py``, theme at
+    ``.anvil/anvil/lib/figures/mermaid-theme.json``), not cwd-relative.
+    """
+    import anvil.lib.render as render_mod
     from anvil.lib.render import DEFAULT_MERMAID_THEME
 
-    assert DEFAULT_MERMAID_THEME == Path(
-        "anvil/lib/figures/mermaid-theme.json"
+    module_dir = Path(render_mod.__file__).parent
+    assert DEFAULT_MERMAID_THEME == module_dir / "figures" / "mermaid-theme.json"
+    assert DEFAULT_MERMAID_THEME.exists(), (
+        f"default mermaid theme {DEFAULT_MERMAID_THEME} does not exist; a "
+        "cwd-relative default would break every consumer diagram render"
     )
 
 

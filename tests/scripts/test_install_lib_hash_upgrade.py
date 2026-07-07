@@ -46,8 +46,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
 
 # The documented lib override-target assets (LIB_OVERRIDE_TARGETS in the
-# installer). The memo skill is the only one shipping consumer-override assets.
+# installer): the memo brandable templates plus the shared mermaid diagram
+# theme (issue #634 — consumers patch it to match their palette).
 OVERRIDE_ASSET = Path(".anvil") / "anvil" / "lib" / "memo" / "styles.css"
+# The shared mermaid theme override target (issue #634).
+MERMAID_THEME = Path(".anvil") / "anvil" / "lib" / "figures" / "mermaid-theme.json"
 # A non-override framework lib file: must ALWAYS upgrade (the carve-out).
 FRAMEWORK_LIB_FILE = Path(".anvil") / "anvil" / "lib" / "render_gate.py"
 # The import anchor: must ALWAYS upgrade.
@@ -119,7 +122,12 @@ def _lib_override_hash(lib_root: Path) -> str:
     in Python) so the test asserts byte-identity with the manifest value.
     """
 
-    targets = ["memo/styles.css", "memo/template.html", "memo/template.tex"]
+    targets = [
+        "memo/styles.css",
+        "memo/template.html",
+        "memo/template.tex",
+        "figures/mermaid-theme.json",
+    ]
     existing = [t for t in targets if (lib_root / t).is_file()]
     assert existing, f"no override targets exist under {lib_root}"
     # printf '<paths>\0' | sort -z | xargs -0 shasum -a 256 | shasum -a 256
@@ -408,6 +416,108 @@ def test_framework_code_always_upgrades_carveout(tmp_path: Path) -> None:
     init_text = (target / ANVIL_INIT).read_text()
     assert "# upstream init change" in init_text, (
         "anvil/__init__.py was left stale on the skip path — carve-out violated"
+    )
+
+
+def test_fresh_install_populates_mermaid_theme(tmp_path: Path) -> None:
+    """Fresh install populates ``.anvil/anvil/lib/figures/mermaid-theme.json``.
+
+    Issue #634: the shared mermaid theme must ship under the importable
+    ``.anvil/anvil/lib/`` tree (not the legacy ``.anvil/lib/``) and be covered
+    by the recorded ``lib_hash`` so subsequent installs can detect consumer
+    edits.
+    """
+
+    target = tmp_path / "mermaid-fresh-target"
+    target.mkdir()
+
+    result = _run("-y", "--skills=deck", str(target))
+    assert result.returncode == 0, (
+        f"install failed:\n--- stdout ---\n{result.stdout}\n"
+        f"--- stderr ---\n{result.stderr}"
+    )
+
+    theme = target / MERMAID_THEME
+    assert theme.is_file(), (
+        f"fresh install did not populate the mermaid theme at {theme}"
+    )
+    # The theme participates in the recorded override hash.
+    assert _read_manifest(target)["lib_hash"] == _lib_override_hash(
+        target / ".anvil" / "anvil" / "lib"
+    ), "lib_hash does not cover the mermaid theme override target"
+
+
+def test_consumer_modified_mermaid_theme_skips_with_warning(tmp_path: Path) -> None:
+    """A hand-edited mermaid theme is skipped-with-warning and preserved.
+
+    Issue #634: the studio patches ``mermaid-theme.json`` locally to match its
+    brand palette. That edit must survive the next ``install-anvil.sh`` run (no
+    ``--force``) with the same skip-with-warning discipline memo templates
+    enjoy, while framework code still upgrades (the carve-out).
+    """
+
+    target = tmp_path / "mermaid-modified-target"
+    target.mkdir()
+
+    first = _run("-y", "--skills=deck", str(target))
+    assert first.returncode == 0, first.stderr
+
+    theme = target / MERMAID_THEME
+    consumer_text = theme.read_text().replace("}", '  ,"__brand__":true}', 1)
+    theme.write_text(consumer_text)
+
+    # Source also moves forward so dst differs from source for an honest test.
+    fake_anvil = _copy_anvil_checkout(tmp_path / "fake-anvil")
+    src_theme = fake_anvil / "anvil" / "lib" / "figures" / "mermaid-theme.json"
+    src_theme.write_text(src_theme.read_text() + "\n")
+    src_fw = fake_anvil / "anvil" / "lib" / "render_gate.py"
+    src_fw.write_text(src_fw.read_text() + "\n# upstream framework change\n")
+
+    second = _run_from_fake_anvil(fake_anvil, "-y", "--skills=deck", str(target))
+    assert second.returncode == 0, second.stderr
+
+    combined = second.stdout + second.stderr
+    assert "skipped: consumer-modified .anvil/anvil/lib" in combined, (
+        f"consumer-modified mermaid theme did not trigger the skip warning:\n{combined}"
+    )
+
+    # The consumer's brand edit must survive.
+    assert "__brand__" in theme.read_text(), (
+        "consumer mermaid theme was overwritten despite the skip warning"
+    )
+    # Carve-out: framework code STILL upgraded.
+    assert "# upstream framework change" in (target / FRAMEWORK_LIB_FILE).read_text(), (
+        "mermaid-theme skip path left framework lib code stale (carve-out violated)"
+    )
+
+
+def test_force_overwrites_modified_mermaid_theme(tmp_path: Path) -> None:
+    """``--force`` overwrites a consumer-modified mermaid theme and re-records."""
+
+    target = tmp_path / "mermaid-force-target"
+    target.mkdir()
+
+    first = _run("-y", "--skills=deck", str(target))
+    assert first.returncode == 0, first.stderr
+
+    theme = target / MERMAID_THEME
+    theme.write_text(theme.read_text().replace("}", '  ,"__brand__":true}', 1))
+
+    fake_anvil = _copy_anvil_checkout(tmp_path / "fake-anvil")
+    src_theme = fake_anvil / "anvil" / "lib" / "figures" / "mermaid-theme.json"
+    src_theme.write_text(src_theme.read_text() + "\n")
+
+    second = _run_from_fake_anvil(
+        fake_anvil, "-y", "--force", "--skills=deck", str(target)
+    )
+    assert second.returncode == 0, second.stderr
+
+    assert "__brand__" not in theme.read_text(), (
+        "--force did not overwrite the consumer's mermaid theme edit"
+    )
+    manifest = _read_manifest(target)
+    assert manifest["lib_hash"] == _lib_override_hash(fake_anvil / "anvil" / "lib"), (
+        "post-force lib_hash does not match the new source override hash"
     )
 
 

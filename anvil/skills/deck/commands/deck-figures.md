@@ -143,7 +143,7 @@ Nested under the thread root `<thread>/`:
      mermaid theme (`theme: base` + navy `themeVariables`) so diagrams render
      on the deck brand palette (navy nodes, muted-grey edges, Helvetica) by
      default instead of the stock lavender/pink theme. In an installed consumer
-     repo this resolves to `.anvil/lib/figures/mermaid-theme.json` (the
+     repo this resolves to `.anvil/anvil/lib/figures/mermaid-theme.json` (the
      installer copies `anvil/lib/` wholesale, same as `marp/config.yml`). The
      theme is lib-level so it serves both `anvil:deck` and `anvil:slides`. A
      consumer who overrides the deck theme can pass their own `-c <file>`.
@@ -161,7 +161,7 @@ Nested under the thread root `<thread>/`:
      greys with zero per-series effort — no hand-matching hex values to the CSS
      theme. Authors writing explicit per-series colors import the named tokens
      (`from anvil.lib.figures.palette import ANVIL_NAVY, ANVIL_MUTED, ...`). In
-     an installed consumer repo the import resolves under `.anvil/lib/figures/`
+     an installed consumer repo the import resolves under `.anvil/anvil/lib/figures/`
      (the installer copies `anvil/lib/` wholesale, same as `marp/config.yml`).
    - Standard script shape:
      ```python
@@ -234,7 +234,7 @@ Nested under the thread root `<thread>/`:
      --output <thread>.{N}/deck.pdf
    ```
    - `--html` lets raw HTML in the source survive into the rendered output. Note: it does **not** make inline ```mermaid fences render as diagrams in the PDF (verified false — see the correctness note in step 4); diagrams must go through the `mmdc → PNG` path. `--html` is still kept for raw-HTML slides and for parity with the framework config (`anvil/lib/marp/config.yml`).
-   - `--config-file anvil/lib/marp/config.yml` pins the framework-shared Marp options (`html`, `allowLocalFiles`, theme search path). In an installed consumer repo this resolves to `.anvil/lib/marp/config.yml`. The explicit `--html`, `--theme-set`, and `--allow-local-files` flags are kept as belt-and-suspenders so the CLI still does the right thing when the config file is missing or has been overridden.
+   - `--config-file anvil/lib/marp/config.yml` pins the framework-shared Marp options (`html`, `allowLocalFiles`, theme search path). In an installed consumer repo this resolves to `.anvil/anvil/lib/marp/config.yml`. The explicit `--html`, `--theme-set`, and `--allow-local-files` flags are kept as belt-and-suspenders so the CLI still does the right thing when the config file is missing or has been overridden.
    - `--allow-local-files` is required for Marp to inline local image references.
    - If `marp` is missing: write a stub `<thread>.{N}/deck.pdf-FAILED.md` describing the missing dependency. Exit `phases.figures.state = failed` (the orchestrator surfaces this).
    - If render succeeds but produces zero pages (rare; usually indicates a malformed Marp directive): log `[blocker]` and exit failed.
