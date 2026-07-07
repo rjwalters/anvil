@@ -9,7 +9,7 @@ description: Pre-draft (or re-run) external-substrate critic for the deck skill.
 **Reads**: `<thread>/BRIEF.md`, `<thread>/refs/` (any operator-supplied source material: founder transcripts, exported financials, website exports, prior decks, market reports, analyst PDFs, regulatory filings). For a re-run after a reviewer flags missing substrate: also the latest `<thread>.{N}/deck.md` and any `<thread>.{N}.review/comments.md` / `<thread>.{N}.market/findings.md` entries tagged as market / TAM / competitive-positioning concerns.
 **Writes**: `<thread>/<thread>.0.perspective/` (initial, pre-draft) or `<thread>/<thread>.{N}.perspective/` (re-run after revision `N`) — the perspective sibling is nested under the thread root per the artifact contract. Bare `<thread>.{N}/` / `<thread>.{N}.perspective/` references below are shorthand for these nested paths.
 
-This command is the optional pre-draft step described in `SKILL.md` for the deck skill. It is a **sibling critic**, not a phase that gates the state machine. The drafter consumes the initial perspective; the reviser consumes any re-run perspective alongside `.review/`, `.market/`, `.narrative/`, `.design/`, and `.audit/`. The framework contract for the perspective shape lives in `anvil/lib/snippets/perspective.md` (in an installed consumer repo: `.anvil/lib/snippets/perspective.md`); this command is the deck-skill instantiation of that contract.
+This command is the optional pre-draft step described in `SKILL.md` for the deck skill. It is a **sibling critic**, not a phase that gates the state machine. The drafter consumes the initial perspective; the reviser consumes any re-run perspective alongside `.review/`, `.market/`, `.narrative/`, `.design/`, and `.audit/`. The framework contract for the perspective shape lives in `anvil/lib/snippets/perspective.md` (in an installed consumer repo: `.anvil/anvil/lib/snippets/perspective.md`); this command is the deck-skill instantiation of that contract.
 
 `deck-perspective` is the canary-skill consumer of the perspective primitive promoted in #143/#148. It mirrors `anvil/skills/pub/commands/pub-litsearch.md` (the load-bearing existing precedent that the perspective primitive generalizes), tuned for pitch-deck substrate: market signals, competitor decks, comparable financings, and regulatory context — NOT academic literature.
 
@@ -226,7 +226,7 @@ Perspective outputs (`notes.md` + `candidates.md`) are read narratively by the d
 
 ## Git sync (opt-in, off by default)
 
-Per `anvil/lib/snippets/git_sync.md` (`.anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
+Per `anvil/lib/snippets/git_sync.md` (`.anvil/anvil/lib/snippets/git_sync.md` in an installed consumer repo): if `.anvil/config.json` exists and `git.commit_per_phase` is `true`, end this phase: stage only the dirs this phase wrote, commit as `anvil(<skill>/<phase>): <thread>.{N} [<state>]`, push if `git.push` is `true`. Git failures warn and continue — never fail the phase. When the config or knob is absent, skip this step entirely (default off).
 
 This phase's specifics:
 
