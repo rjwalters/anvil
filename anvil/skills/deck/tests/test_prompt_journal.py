@@ -24,7 +24,9 @@ import json
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
+from types import MappingProxyType
 
 
 # The deck skill keeps lib modules under its own ``lib/`` per the curator
@@ -373,9 +375,18 @@ class TestReadJournalMissingRequired(unittest.TestCase):
 
 
 class TestReadJournalUnknownField(unittest.TestCase):
-    """Unknown per-slot field is rejected (typo defense)."""
+    """Unknown per-slot fields are tolerated + preserved + warned (issue #621).
 
-    def test_unknown_field_raises(self) -> None:
+    Consumer-written journals under the #124 adapter contract carry
+    provenance fields (e.g. ``generated_at``) that anvil does not own.
+    The tolerant reader collects them into ``extra`` rather than
+    fail-closing, which previously broke the deck-design additive-ness
+    gate (step 7b, #562/#574). A warning still fires so a genuine typo
+    surfaces to the operator.
+    """
+
+    def test_unknown_field_does_not_raise(self) -> None:
+        """The repro shape from issue #621: a ``generated_at`` timestamp."""
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "_prompts.json"
             path.write_text(
@@ -385,15 +396,131 @@ class TestReadJournalUnknownField(unittest.TestCase):
                             "prompt": "p",
                             "style": "s",
                             "backend": "b",
-                            "stepps": 6,  # typo of "steps"
+                            "generated_at": "2026-07-06T12:00:00Z",
                         }
                     }
                 ),
                 encoding="utf-8",
             )
-            with self.assertRaises(JournalError) as ctx:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                out = read_journal(path)
+            self.assertIn("slide_01_hero.png", out)
+            entry = out["slide_01_hero.png"]
+            self.assertEqual(
+                entry.extra["generated_at"], "2026-07-06T12:00:00Z"
+            )
+            # Required/optional fields are unaffected.
+            self.assertEqual(entry.prompt, "p")
+            self.assertIsNone(entry.steps)
+
+    def test_unknown_field_emits_warning_naming_fields_and_slot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "_prompts.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "slide_01_hero.png": {
+                            "prompt": "p",
+                            "style": "s",
+                            "backend": "b",
+                            "generated_at": "2026-07-06T12:00:00Z",
+                            "stepps": 6,  # a genuine typo — still surfaced
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
                 read_journal(path)
-            self.assertEqual(ctx.exception.field, "stepps")
+            self.assertEqual(len(caught), 1)
+            msg = str(caught[0].message)
+            # The warning names both unknown fields and the slot.
+            self.assertIn("slide_01_hero.png", msg)
+            self.assertIn("generated_at", msg)
+            self.assertIn("stepps", msg)
+
+    def test_known_only_entry_emits_no_warning(self) -> None:
+        """No unknown fields → no spurious warning."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "_prompts.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "slide_01_hero.png": {
+                            "prompt": "p",
+                            "style": "s",
+                            "backend": "b",
+                            "steps": 6,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                out = read_journal(path)
+            self.assertEqual(len(caught), 0)
+            self.assertEqual(out["slide_01_hero.png"].extra, {})
+
+    def test_unknown_field_preserved_on_round_trip(self) -> None:
+        """read → write → read preserves unknown fields (byte-content-wise)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "_prompts.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "slide_01_hero.png": {
+                            "prompt": "p",
+                            "style": "s",
+                            "backend": "b",
+                            "steps": 6,
+                            "generated_at": "2026-07-06T12:00:00Z",
+                            "backend_params": {"guidance": 3.5},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                original = read_journal(path)
+                out_path = Path(tmp) / "_prompts.out.json"
+                write_journal(out_path, original)
+                roundtripped = read_journal(out_path)
+            self.assertEqual(roundtripped, original)
+            # The unknown fields survive verbatim in the written JSON.
+            written = json.loads(out_path.read_text(encoding="utf-8"))
+            slot = written["slide_01_hero.png"]
+            self.assertEqual(slot["generated_at"], "2026-07-06T12:00:00Z")
+            self.assertEqual(slot["backend_params"], {"guidance": 3.5})
+
+    def test_to_dict_round_trips_unknown_fields(self) -> None:
+        """A JournalEntry carrying ``extra`` re-emits it via to_dict()."""
+        entry = JournalEntry(
+            prompt="p",
+            style="s",
+            backend="b",
+            extra=MappingProxyType({"generated_at": "2026-07-06T12:00:00Z"}),
+        )
+        out = entry.to_dict()
+        self.assertEqual(out["generated_at"], "2026-07-06T12:00:00Z")
+        self.assertEqual(out["prompt"], "p")
+
+    def test_extra_cannot_shadow_known_fields(self) -> None:
+        """``extra`` keys that collide with known fields are ignored on write."""
+        entry = JournalEntry(
+            prompt="real",
+            style="s",
+            backend="b",
+            steps=6,
+            # Malicious/hand-built extra trying to shadow known fields.
+            extra=MappingProxyType({"prompt": "spoof", "steps": 99}),
+        )
+        out = entry.to_dict()
+        self.assertEqual(out["prompt"], "real")
+        self.assertEqual(out["steps"], 6)
 
 
 # ---------------------------------------------------------------------------
