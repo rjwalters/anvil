@@ -1,6 +1,6 @@
 ---
 name: deck-imagegen-onboarding
-description: Consumer onboarding walkthrough for `deck-imagegen` adapters. Five-minute smoke test with the shipped placeholder backend, the three importability layouts for the `<module>:<attr>` spec, the adapter-owned short-lived-token auth bootstrap pattern for cloud backends, the failure/retry semantics recap, and a porting checklist for consumers with an existing in-house image worker.
+description: Consumer onboarding walkthrough for `deck-imagegen` adapters. Five-minute smoke test with the shipped placeholder backend, the two importability layouts for the `<module>:<attr>` spec, the adapter-owned short-lived-token auth bootstrap pattern for cloud backends, the failure/retry semantics recap, and a porting checklist for consumers with an existing in-house image worker.
 ---
 
 # deck-imagegen-onboarding — Consumer adapter walkthrough
@@ -24,7 +24,7 @@ Anvil ships exactly one backend: a deterministic placeholder-PNG generator whose
    }
    ```
 
-   This dotted path resolves when the directory containing `anvil/` (your repo root, in a standard install) is on `sys.path` — which it is whenever commands run from the repo root. If your install relocates the skill (e.g., an `.anvil/lib/` overlay copy), see "Importability" below for the path variants.
+   This dotted path resolves when the directory containing `anvil/` (your repo root in a development checkout; `.anvil/anvil/` in a consumer install) is on `sys.path` — which it is whenever commands run from the repo root. If the import fails in your environment, see "Importability" below for the supported layouts.
 
 2. **Opt the thread in.** In `<thread>/BRIEF.md` frontmatter:
 
@@ -55,11 +55,10 @@ When you can complete this loop, swap the `backend =` line for your own adapter 
 
 ## Importability — where your adapter module can live
 
-The `backend = "<module>:<attr>"` spec is resolved with `importlib.import_module(<module>)` **in the venv/interpreter that runs the `deck-imagegen` command**, followed by `getattr` for `<attr>`. Three layouts work:
+The `backend = "<module>:<attr>"` spec is resolved with `importlib.import_module(<module>)` **in the venv/interpreter that runs the `deck-imagegen` command**, followed by `getattr` for `<attr>`. Two layouts work:
 
 1. **Installed package** (recommended for teams): your adapter ships in a package installed into the venv (`pip install my-imagery-adapter`), registered as e.g. `my_imagery_adapter.backend:FluxBackend`. Most robust — no path manipulation.
 2. **Repo-local module on `PYTHONPATH`**: a module file in your repo (e.g., `tools/imagery_adapter.py` with `tools/__init__.py`, registered as `tools.imagery_adapter:Backend`), importable because the repo root is the working directory / on `PYTHONPATH`. Simplest for a single-repo studio.
-3. **`.anvil/lib/` overlay copy**: drop the module into your consumer overlay (e.g., `.anvil/lib/imagery_adapter.py`) and ensure that directory is on `PYTHONPATH` for the command session; register as `imagery_adapter:Backend`. Use this when you want the adapter versioned with your anvil overlay rather than your application code.
 
 Misconfiguration produces a specific `ImagegenError`, surfaced verbatim by the command — match the message to the fix:
 
