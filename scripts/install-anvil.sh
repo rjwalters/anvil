@@ -1258,29 +1258,99 @@ done
 # tools) + a short system-prompt body delegating to the canonical command
 # under .anvil/skills/<skill>/commands/<command>.md.
 #
-# Copy mode: blanket replace_tree from source. Agents are NOT consumer-
-# override targets (the canonical body lives in the source command file the
-# agent points at; the agent shim only declares registry metadata). The
-# `--force` flag is therefore not needed for the agents/ copy — every install
-# refreshes the full agent set. Skills, by contrast, ARE override targets
-# (consumers can patch templates/, rubric.md, etc.), which is why Stage 7
-# carries the override-detection decision matrix.
+# Copy mode: per-file copy from source, scoped to SELECTED_SKILLS. Agents are
+# NOT consumer-override targets (the canonical body lives in the source command
+# file the agent points at; the agent shim only declares registry metadata).
+# The `--force` flag is therefore not needed for the agents/ copy — every
+# install refreshes the selected agent set. Skills, by contrast, ARE override
+# targets (consumers can patch templates/, rubric.md, etc.), which is why
+# Stage 7 carries the override-detection decision matrix.
 #
-# Filter behavior: the agents/ copy is NOT scoped by --skills=. The full
-# agent registry ships even when the operator pins a strict skill subset
-# (e.g., --skills=memo). Rationale: a skill-pinned install can still spawn
-# agents for non-installed skills if the consumer is running the source
-# checkout side-by-side; the agent shims are cheap and parsing failures (no
-# command body to follow) would surface immediately when dispatched. The
-# canary's actual fan-out pattern always installs the full skill set, so the
-# narrowed-install case is purely a documentation / dev path.
+# Filter behavior (issue #662): the agents/ copy IS scoped by --skills=. Agent
+# filenames follow anvil-<skill>-<phase>.md, and each <skill> matches a
+# directory under anvil/skills/ (the same ALL_SKILLS enumeration Stage 4
+# builds). A --skills=pub install therefore installs only the 5 anvil-pub-*.md
+# shims, not the full 54-file registry — matching the strict-subset framing of
+# the flag itself. (A prior comment here claimed the copy was NOT scoped by
+# --skills=, on the rationale that a skill-pinned install might spawn agents for
+# non-installed skills. The tractatus canary contradicted that: --skills=pub is
+# a real fan-out pattern, and the agent-picker noise from 49 unusable shims is
+# real friction — not a "documentation / dev path.")
+#
+# Longest-prefix-match hazard: `ip-uspto` and `ip-uspto-provisional` share a
+# filename prefix, so a naive substring/glob filter would leak
+# anvil-ip-uspto-provisional-*.md into an `ip-uspto`-only install. The resolver
+# below strips the `anvil-` prefix and `.md` suffix, then finds the LONGEST
+# skill name in ALL_SKILLS that is a `-`-delimited prefix of what remains
+# (rest == skill || rest starts with "$skill-"). Exact-equality on the
+# `-`-delimited segment — never a substring test. (Stage 4's own comment flags
+# this same sibling-prefix hazard for sort ordering.)
+#
+# Shared/unprefixed agents: any agent file whose name does not resolve to a
+# known skill prefix is copied UNCONDITIONALLY (with a note), so a future
+# shared/framework agent doesn't silently regress into this same filtering bug.
+# No such file exists today (all 54 map to one of the 11 artifact-class skills).
+#
+# NOTE (out of scope, issue #662): re-running the installer with a *narrower*
+# --skills= set after a wider install does NOT prune previously-installed,
+# now-out-of-scope agent files under .claude/agents/. Agents aren't hash-tracked
+# / override-detected like skills are, and silently deleting consumer-visible
+# files on a --skills= narrowing is a larger behavior change than the reported
+# bug. Flagged as a known follow-up.
 info "Stage 7.5: copy Anvil subagent definitions (anvil/agents -> .claude/agents)"
 SRC_AGENTS="$ANVIL_ROOT/anvil/agents"
 DST_AGENTS="$TARGET/.claude/agents"
 INSTALLED_AGENTS_COUNT=0
+
+# Resolve an agent filename to the skill it belongs to, using longest-prefix,
+# `-`-delimited matching against ALL_SKILLS. Echoes the resolved skill name, or
+# nothing if the file maps to no known skill (a shared/unprefixed agent).
+agent_skill_for() {
+  local base="$1"          # e.g. anvil-ip-uspto-provisional-drafter.md
+  local rest="${base#anvil-}"
+  rest="${rest%.md}"       # e.g. ip-uspto-provisional-drafter
+  local best="" avail
+  for avail in "${ALL_SKILLS[@]}"; do
+    if [[ "$rest" == "$avail" || "$rest" == "$avail-"* ]]; then
+      # Prefer the longest matching skill name so `ip-uspto-provisional-*`
+      # resolves to `ip-uspto-provisional`, not the shorter `ip-uspto`.
+      if [[ ${#avail} -gt ${#best} ]]; then
+        best="$avail"
+      fi
+    fi
+  done
+  printf '%s' "$best"
+}
+
+# Return 0 if $1 is in SELECTED_SKILLS, 1 otherwise.
+skill_selected() {
+  local needle="$1" s
+  for s in "${SELECTED_SKILLS[@]}"; do
+    [[ "$s" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
 if [[ -d "$SRC_AGENTS" ]]; then
-  # Count source agents up front so the action label is honest under --dry-run.
-  AGENT_COUNT="$(find "$SRC_AGENTS" -maxdepth 1 -name 'anvil-*.md' -type f 2>/dev/null | wc -l | tr -d '[:space:]')"
+  # Build the filtered file list up front so the action count is honest under
+  # --dry-run (issue #81) — computed from the SELECTED_SKILLS-scoped set, not
+  # the full glob.
+  AGENTS_TO_INSTALL=()
+  while IFS= read -r -d '' agent_file; do
+    base="$(basename "$agent_file")"
+    skill="$(agent_skill_for "$base")"
+    if [[ -z "$skill" ]]; then
+      # Shared/unprefixed agent: no known skill owns it. Copy unconditionally
+      # so a future shared agent doesn't get filtered out. No such file exists
+      # today; the note makes the defensive branch observable if one is added.
+      note "agent '$base' maps to no known skill; installing unconditionally (shared/framework agent)"
+      AGENTS_TO_INSTALL+=("$agent_file")
+    elif skill_selected "$skill"; then
+      AGENTS_TO_INSTALL+=("$agent_file")
+    fi
+  done < <(find "$SRC_AGENTS" -maxdepth 1 -name 'anvil-*.md' -type f -print0 | LC_ALL=C sort -z)
+
+  AGENT_COUNT="${#AGENTS_TO_INSTALL[@]}"
   if [[ "$AGENT_COUNT" -gt 0 ]]; then
     if [[ "$DRY_RUN" == true ]]; then
       # Dry-run: no side effects on disk. Only the planned action line is
@@ -1289,17 +1359,18 @@ if [[ -d "$SRC_AGENTS" ]]; then
     else
       # Per-file copy (not replace_tree) so we don't blow away any non-anvil
       # agents the consumer has added under .claude/agents/ (e.g., loom-*
-      # agents from a sibling Loom install). Pattern-match on `anvil-*.md`
-      # restricts the install footprint to the Anvil-owned namespace.
+      # agents from a sibling Loom install), or anvil agents for skills the
+      # consumer selected in a previous (wider) install (see out-of-scope note
+      # above).
       mkdir -p "$DST_AGENTS"
-      while IFS= read -r -d '' agent_file; do
+      for agent_file in "${AGENTS_TO_INSTALL[@]}"; do
         cp "$agent_file" "$DST_AGENTS/"
         INSTALLED_AGENTS_COUNT=$((INSTALLED_AGENTS_COUNT + 1))
-      done < <(find "$SRC_AGENTS" -maxdepth 1 -name 'anvil-*.md' -type f -print0)
+      done
       ok "$INSTALLED_AGENTS_COUNT subagent registration(s) installed at $DST_AGENTS"
     fi
   else
-    note "no anvil-*.md files found under $SRC_AGENTS (skipping)"
+    note "no anvil-*.md files matched the selected skills under $SRC_AGENTS (skipping)"
   fi
 else
   note "source agents dir not found: $SRC_AGENTS (skipping; pre-#377 source checkout?)"
