@@ -119,3 +119,15 @@ def test_evidence_check_imports_cleanly() -> None:
     assert callable(ec.check_version_dir)
     assert callable(ec.check_scoring_text)
     assert callable(ec.classify_justification)
+
+
+def test_tex_includes_imports_cleanly() -> None:
+    r"""``anvil.lib.tex_includes`` must import with base deps only.
+
+    The ``\input``/``\include`` resolver (issue #643) is pure stdlib —
+    no third-party imports. If one ever sneaks in, this fails immediately.
+    """
+    import anvil.lib.tex_includes as ti
+
+    assert callable(ti.resolve_tex_inputs)
+    assert hasattr(ti, "ResolvedTex")

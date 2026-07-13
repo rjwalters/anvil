@@ -889,6 +889,22 @@ def check_version_dir(
     body = _body_path(version_dir)
     body_text = body.read_text(encoding="utf-8")
 
+    # Multi-file LaTeX threads (issue #643): a pub ``main.tex`` that
+    # ``\input``/``\include``s section files has its real content in the
+    # children. Without this expansion a reviewer who (correctly, per
+    # pub-review.md step 4) reads the full resolved body and quotes a
+    # child section would trip a false ``fabricated_evidence`` finding —
+    # the quote is verbatim from ``sections/intro.tex`` but absent from the
+    # ~90-line ``main.tex`` shell. Expand ``.tex`` bodies to the resolved
+    # tree so quote-verification checks against the same document the
+    # reviewer scored. Non-``.tex`` bodies (markdown skills) are unchanged.
+    if body.suffix == ".tex":
+        from anvil.lib.tex_includes import resolve_tex_inputs
+
+        resolved = resolve_tex_inputs(body)
+        if len(resolved.files) > 1:
+            body_text = resolved.body
+
     if scoring is not None:
         scoring = Path(scoring)
         if not scoring.is_file():
