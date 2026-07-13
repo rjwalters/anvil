@@ -556,6 +556,90 @@ class TestDashFolding:
         codes = {f.code for f in result.findings}
         assert FABRICATED_EVIDENCE in codes
 
+    @pytest.mark.parametrize(
+        "body_name,child_rel",
+        [
+            ("installation.tex", "figures/site-plan.tex"),
+            ("proposal.tex", "figures/topology.tex"),
+        ],
+    )
+    def test_tex_body_quote_from_input_child_passes_per_skill(
+        self, tmp_path: Path, body_name: str, child_rel: str
+    ) -> None:
+        # Issue #653 (follow-up to #643): installation / proposal both ship a
+        # first-class \input{figures/<name>.tex} TikZ-standalone convention, so
+        # their review commands now read the RESOLVED body. The verifier side
+        # (check_version_dir) already handles any .tex body generically via
+        # FIXED_BODY_NAMES + resolve_tex_inputs — this locks that coverage in
+        # per-skill (the pre-existing guard only exercised main.tex).
+        version_dir = tmp_path / "thread" / "thread.1"
+        (version_dir / "figures").mkdir(parents=True)
+        (version_dir / body_name).write_text(
+            "\\documentclass{article}\n\\begin{document}\n"
+            f"\\input{{{child_rel[:-4]}}}\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+        (version_dir / child_rel).write_text(
+            "% TikZ standalone site/topology diagram\n"
+            "The circulation loop routes visitors past the north gallery.\n",
+            encoding="utf-8",
+        )
+        review = version_dir.parent / "thread.1.review"
+        review.mkdir()
+        (review / "scoring.md").write_text(
+            scoring_table(
+                [
+                    (
+                        "Spatial resolution",
+                        6,
+                        5,
+                        '"circulation loop routes visitors past the north gallery"',
+                    )
+                ]
+            ),
+            encoding="utf-8",
+        )
+        result = check_version_dir(version_dir)
+        assert result.body_path == body_name
+        assert result.passed(), (
+            f"quote drawn from an \\input-ed child of {body_name} must "
+            "validate against the resolved body (issue #653/#643), not be "
+            "flagged fabricated"
+        )
+
+    def test_datasheet_single_file_thread_unchanged(self, tmp_path: Path) -> None:
+        # Issue #653: datasheet is \includegraphics-only (no in-body \input
+        # convention), so its review reads datasheet.tex alone — documented
+        # safe. The verifier's generic .tex handling must still behave
+        # byte-identically for a single-file datasheet body: a real quote
+        # passes, and the existing detection chain resolves datasheet.tex.
+        version_dir = tmp_path / "chip" / "chip.1"
+        version_dir.mkdir(parents=True)
+        (version_dir / "datasheet.tex").write_text(
+            "\\section{General Description}\n"
+            "The AX101 integrates a 16-lane MIPI receiver and an on-die ISP.\n",
+            encoding="utf-8",
+        )
+        review = version_dir.parent / "chip.1.review"
+        review.mkdir()
+        (review / "scoring.md").write_text(
+            scoring_table(
+                [
+                    (
+                        "Completeness",
+                        6,
+                        5,
+                        '"16-lane MIPI receiver and an on-die ISP"',
+                    )
+                ]
+            ),
+            encoding="utf-8",
+        )
+        result = check_version_dir(version_dir)
+        assert result.body_path == "datasheet.tex"
+        assert result.passed()
+
 
 class TestCheckScoringText:
     def test_mixed_table(self) -> None:
