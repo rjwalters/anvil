@@ -492,6 +492,70 @@ class TestDashFolding:
         result = check_version_dir(version_dir)
         assert result.passed()
 
+    def test_tex_body_quote_from_input_child_passes(self, tmp_path: Path) -> None:
+        # Issue #643: a pub multi-file thread's body lives in \input-ed
+        # section files. A reviewer quoting a child section must validate
+        # against the RESOLVED body, not the ~90-line main.tex shell —
+        # otherwise a legitimate quote trips a false fabricated_evidence.
+        version_dir = tmp_path / "paper" / "paper.1"
+        (version_dir / "sections").mkdir(parents=True)
+        (version_dir / "main.tex").write_text(
+            "\\documentclass{article}\n\\begin{document}\n"
+            "\\input{sections/method}\n"
+            "\\end{document}\n",
+            encoding="utf-8",
+        )
+        (version_dir / "sections" / "method.tex").write_text(
+            "\\section{Method}\n"
+            "We evaluate on a held-out corpus of 4,200 documents.\n",
+            encoding="utf-8",
+        )
+        review = version_dir.parent / "paper.1.review"
+        review.mkdir()
+        (review / "scoring.md").write_text(
+            scoring_table(
+                [
+                    (
+                        "Methodology",
+                        6,
+                        5,
+                        '"held-out corpus of 4,200 documents"',
+                    )
+                ]
+            ),
+            encoding="utf-8",
+        )
+        result = check_version_dir(version_dir)
+        # The quote is verbatim from sections/method.tex — it must pass
+        # because the resolved body includes the \input child.
+        assert result.passed(), (
+            "quote drawn from an \\input-ed child must validate against the "
+            "resolved body (issue #643), not be flagged fabricated"
+        )
+
+    def test_tex_single_file_thread_unchanged(self, tmp_path: Path) -> None:
+        # Regression: a single-file thread (no \input/\include) behaves
+        # byte-identically to the pre-#643 main.tex-only check — a fabricated
+        # quote is still caught.
+        version_dir = tmp_path / "paper" / "paper.1"
+        version_dir.mkdir(parents=True)
+        (version_dir / "main.tex").write_text(
+            "\\section{Method}\nThe real body text lives here.\n",
+            encoding="utf-8",
+        )
+        review = version_dir.parent / "paper.1.review"
+        review.mkdir()
+        (review / "scoring.md").write_text(
+            scoring_table(
+                [("Methodology", 6, 5, '"a quote that is nowhere in the body"')]
+            ),
+            encoding="utf-8",
+        )
+        result = check_version_dir(version_dir)
+        assert not result.passed()
+        codes = {f.code for f in result.findings}
+        assert FABRICATED_EVIDENCE in codes
+
 
 class TestCheckScoringText:
     def test_mixed_table(self) -> None:
@@ -842,7 +906,16 @@ def test_review_doc_wires_the_self_check(
     ).read_text(encoding="utf-8")
     # Edit 1: the quote sub-bullet in the scoring step.
     assert "Quoted-evidence requirement (issue #464 / #475)" in doc
-    assert f"verbatim quote from `{body}`" in doc
+    if skill == "pub":
+        # Issue #643: pub is the multi-file LaTeX skill; the quote rule was
+        # broadened from "verbatim quote from `main.tex`" to "verbatim quote
+        # from the resolved body" (main.tex OR its \input/\include children).
+        # The load-bearing claim is still that a verbatim quote is required
+        # and the body source is named.
+        assert "verbatim quote from the resolved body" in doc
+        assert "`main.tex`" in doc
+    else:
+        assert f"verbatim quote from `{body}`" in doc
     assert "no instance of <X> found" in doc
     assert "Elision with `...` / `…` is permitted" in doc
     assert "ELISION_WINDOW_CHARS" in doc
