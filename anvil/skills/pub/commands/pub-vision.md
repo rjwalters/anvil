@@ -46,7 +46,7 @@ Other vision findings surface as `Finding` items with severity `major` / `minor`
 - **Thread slug** (positional argument).
 - **Latest version directory**: highest `N` with `<thread>.{N}/main.tex` (or `main.md`).
 - **Rendered PDF**: `<thread>.{N}/paper.pdf`.
-  - If `main.tex` is the source, the PDF is produced by the standard `pdflatex` + `bibtex` cycle that `pub-audit` already runs (see `pub-audit.md`); the vision critic reuses that `paper.pdf` when present and current.
+  - If `main.tex` is the source, the PDF is produced by the convergence-loop compile that `pub-audit` already runs (`pdflatex`/`bibtex` rerun to the "Label(s) may have changed. Rerun" fixpoint, capped at 5 `pdflatex` passes — see `pub-audit.md` step 4); the vision critic reuses that `paper.pdf` when present and current.
   - If the source is Markdown (`main.md`), or no `pdflatex`-built PDF exists, the critic renders via `anvil.lib.render.render_pandoc_to_pdf(source_md, out_pdf)`.
 - **Per-page PNGs**: produced by `anvil.lib.render.render_pdf_to_pngs(pdf, out_dir, dpi=200)` from the PDF. Pub uses **200 DPI** by default (vs the deck's 150) — fine-grained axis-label and small-caption legibility evaluation needs the extra resolution at print scale.
 - **VLM**: Anthropic SDK by default; consumers without an API key inject a callback per `anvil/lib/vision.py`.
@@ -104,7 +104,7 @@ Other vision findings surface as `Finding` items with severity `major` / `minor`
 3. **Ensure `paper.pdf` exists**:
    - If `<thread>.{N}/paper.pdf` exists and is newer than the source (`main.tex` and any `figures/` it includes), use it.
    - Otherwise render it:
-     - **LaTeX source**: run the `pdflatex main && bibtex main && pdflatex main && pdflatex main` cycle (the same one `pub-audit` runs) and copy/rename the result to `paper.pdf`. A non-zero exit is surfaced as a finding (the prose/audit critics will also catch the build failure).
+     - **LaTeX source**: run the convergence-loop compile (the same one `pub-audit` runs — `pdflatex`/`bibtex`, then rerun `pdflatex` to the "Label(s) may have changed. Rerun" fixpoint, capped at 5 `pdflatex` passes; see `pub-audit.md` step 4) and copy/rename the result to `paper.pdf`. A non-zero exit is surfaced as a finding (the prose/audit critics will also catch the build failure).
      - **Markdown source**: call `anvil.lib.render.render_pandoc_to_pdf(main_md, out_pdf)`.
 
 4. **Render per-page PNGs**:

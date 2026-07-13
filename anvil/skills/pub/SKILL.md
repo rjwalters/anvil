@@ -216,7 +216,7 @@ See `commands/pub-litsearch.md` § "Opt-in web search" and `commands/pub-review.
 2. Spot-check that cited papers actually support the surrounding claim (the auditor reads `<thread>/refs/` for any author-supplied source PDFs / notes; for citations whose source is not on disk, the auditor flags them as "claim-support unverified — source not on disk" rather than fabricating a verification).
 3. Flag claims that should have a citation but do not.
 4. Flag numerical values in the text (Tables, Sec. results) that disagree with figures/tables.
-5. Verify the LaTeX compiles: run `pdflatex main && bibtex main && pdflatex main && pdflatex main` (or equivalent) and capture the log. A non-zero exit OR any unresolved `??` citation in the rendered PDF is a critical flag.
+5. Verify the LaTeX compiles: run `pdflatex`/`bibtex`, then rerun `pdflatex` to the "Label(s) may have changed. Rerun" fixpoint, capped at 5 total `pdflatex` passes (latexmk-style convergence loop — see `commands/pub-audit.md` step 4; or equivalent) and capture the log. A non-zero exit, any unresolved `??` citation in the rendered PDF, OR non-convergence at the 5-pass cap is a critical flag.
 
 **`pub-figures`.** Writes into the current `<thread>.{N}/figures/` directory (not a sibling — figures are part of the artifact). The figurer SHOULD NOT invent data. Source scripts go in `figures/src/`; rendered outputs go in `figures/`. Conventions:
 - **TikZ / PGFPlots** (`.tex` files in `figures/`) — for diagrams and small plots; vector-native in the compiled PDF, included via `\input{figures/diagram-1.tex}`.
