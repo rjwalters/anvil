@@ -46,7 +46,7 @@ The review sibling directory is **read-only once written**. Revisions consume it
   _meta.json         { critic, scorecard_kind: "human-verdict", started, finished, model, schema_version, rubric_id, rubric_total, advance_threshold }
   _progress.json     Phase state for the reviewer (phase: review)
   _gate.json         (optional) Render-gate result payload (GateResult.to_json), written when
-                     paper.pdf + compile-log.txt are present (step 4b). CI-inspection only.
+                     main.pdf + compile-log.txt are present (step 4b). CI-inspection only.
   _artifact_verify.json (optional) External-artifact verification result (issue #663), written
                      when <thread>/.anvil.json declares an `artifact_verify` block (step 4f).
                      Raw per-command stdout/stderr capture for CI/operator inspection. ADVISORY
@@ -85,12 +85,12 @@ A manual/agent review session with no orchestrating Python process cannot hold t
 4b. **Run render-gate (pre-flight)** — mirrors `deck-review.md` step 5b:
    - Invoke `anvil/lib/render_gate.py`'s `gate(...)` against the paper PDF. Mirror the `marp_lint.py` integration shape used in `deck-review.md` step 5b (a deterministic pre-flight that emits a typed `Review` with `kind=tool_evidence` plus a sibling `_gate.json` for CI inspection — see `anvil/lib/render_gate.py` module docstring).
    - **Inputs:**
-     - `pdf_path`: `<thread>.{N}/paper.pdf` — produced by `pub-audit`'s `pdflatex && bibtex && pdflatex && pdflatex` cycle.
+     - `pdf_path`: `<thread>.{N}/main.pdf` — produced by `pub-audit`'s `pdflatex && bibtex && pdflatex && pdflatex` cycle (default LaTeX output naming derives the PDF stem from the `main.tex` entry point; there is no `-jobname`/rename step, so the on-disk artifact is `main.pdf`, matching `anvil/lib/render_gate.py::compile_and_gate`'s `<tex-stem>.pdf` convention).
      - `log_path`: `<thread>.{N}.audit/compile-log.txt` — captured by `pub-audit` (see `commands/pub-audit.md`).
      - `source_paths`: the resolved-file list from step 4's `resolve_tex_inputs(<thread>.{N}/main.tex)` — i.e., `ResolvedTex.files` (`main.tex` first, then every `\input`/`\include` child in document order). This is the SAME resolver step 4 already ran; reuse its result rather than re-walking. Do NOT pass `[<thread>.{N}/main.tex]` alone — the render-gate placeholder scan must see the children's text too, or a `\.MISSING` / TODO marker left in a section file goes undetected (issue #643).
      - `page_cap=None` — paper length is venue-dependent; the generic gate does not enforce a cap. (A consumer with a hard venue cap can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`.)
      - `overfull_threshold_pt=5.0`, `placeholder_patterns=None` (use `DEFAULT_PLACEHOLDER_PATTERNS`).
-   - **Audit-first ordering (fail-open)**: when `paper.pdf` and `compile-log.txt` are **absent** (i.e., this `pub-review` was invoked before `pub-audit`), the gate fails open with a clear stdout message (`pub-review: render-gate skipped — paper.pdf / compile-log.txt not present; run pub-audit first`). The review proceeds normally without gate enforcement. The strict "audit must run first" ordering is intentionally out of scope here (a separate state-machine change).
+   - **Audit-first ordering (fail-open)**: when `main.pdf` and `compile-log.txt` are **absent** (i.e., this `pub-review` was invoked before `pub-audit`), the gate fails open with a clear stdout message (`pub-review: render-gate skipped — main.pdf / compile-log.txt not present; run pub-audit first`). The review proceeds normally without gate enforcement. The strict "audit must run first" ordering is intentionally out of scope here (a separate state-machine change).
    - Write the `GateResult.to_json()` payload to `<thread>.{N}.review/_gate.json` for CI inspection.
    - Cache the `GateResult` for the `_summary.md` `render_gate` block and the critical-flag wiring in step 7.
    - When `GateResult.passed=False`, append one entry per failed gate dimension to `critical_flag_notes` in `_review.json` (type prefix: `render_gate_<dim>`), via `GateResult.to_review(...).critical_flags`. The aggregator then forces `Verdict.BLOCK` per the standard `anvil/lib/critics.py::compute_verdict` path; no schema change needed.
