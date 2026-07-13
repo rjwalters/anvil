@@ -442,6 +442,65 @@ in this skill. Steps:
    untouched and the conversion is recorded as failed (failures isolate
    per sidecar).
 
+   **Non-Python-driver ordering (fail-open, manual fallback)** — issue
+   #645: this whole `--apply` conversion runs **inside**
+   `orchestrate.run_adopt_review(...)`, a Python driver that holds the
+   `staged_sidecar` context manager open across the moved-aside → stage →
+   swap sequence, so the code path is code-enforced by default. The clause
+   below is the fallback for a **driver-less agent session** that reproduces
+   this conversion by hand (no orchestrating Python process to hold the
+   `with` block open across its own editing-tool writes). It applies to
+   **both** apply sites in this skill: this Phase 3a stub conversion and the
+   Phase 3b scored-rescore write in §9b step 3 (both reuse the same
+   staged/backup/swap pattern). Two tiers, in preference order:
+
+   1. **Primary — `python -m anvil.lib.sidecar` CLI shim** (the common
+      case; wraps the *exact same* `staged_sidecar` code, so the
+      manifest check + single atomic `Path.rename` are code-enforced, not
+      agent discipline). For the sidecar dir `<slug>.{N}.<tag>/` being
+      converted:
+      - `python -m anvil.lib.sidecar stage <slug>.{N}.<tag>` — but note this
+        primitive **refuses to overwrite an existing final dir**
+        (`FileExistsError`), whereas this conversion **replaces a live dir
+        in place**. So the moved-aside contract is preserved by hand first:
+        `mv <slug>.{N}.<tag> <slug>.{N}.<tag>.bak` (the "moved aside"
+        original), THEN `stage <slug>.{N}.<tag>` to open a fresh staging
+        path, write the full replacement (verbatim `review.md` copied back
+        from the `.bak` + the new `_review.json` + `_meta.json`) into it.
+      - `python -m anvil.lib.sidecar commit <slug>.{N}.<tag> --required review.md,_review.json,_meta.json`
+        → verifies the manifest, then atomically renames staging → final.
+        **Nonzero exit (1) leaves the staging dir in place with no partial
+        final dir** if any required file is missing; on success remove the
+        `<slug>.{N}.<tag>.bak` moved-aside original. On any failure, restore
+        it (`mv <slug>.{N}.<tag>.bak <slug>.{N}.<tag>`) so the sidecar is
+        left **byte-identical** — matching the "original dir is restored
+        untouched" isolation guarantee above.
+      - Stale-staging sweep analog: `python -m anvil.lib.sidecar cleanup <slug>.{N}.<tag>`.
+   2. **Last resort — manual `mv`-based staging** when even `python`/`uv`
+      is unavailable. Reproduce the contract by hand: (a) `mv
+      <slug>.{N}.<tag> <slug>.{N}.<tag>.bak` to move the live original
+      aside; (b) `mkdir <slug>.{N}.<tag>.staging` and write **every**
+      replacement file into it (`review.md` copied byte-identical from the
+      `.bak`, then the new `_review.json`, then `_meta.json` **last**);
+      (c) confirm all three files are present, **then** `mv
+      <slug>.{N}.<tag>.staging <slug>.{N}.<tag>` as the **last** step (a
+      same-filesystem dir rename is atomic, matching `Path.rename`), and
+      remove the `.bak`. On any mid-write failure, `rm -rf` the staging dir
+      and `mv <slug>.{N}.<tag>.bak <slug>.{N}.<tag>` to restore the original
+      untouched. **Record the fallback durably** so a reader can tell
+      atomicity was reproduced by hand rather than tool-verified: stamp the
+      converted `_meta.json` with `"atomicity_fallback": "manual-mv"`
+      alongside its `source: foreign-adopted` marker. Absent this note the
+      manual swap is indistinguishable from an unsafe direct write.
+
+   Both tiers land a byte-identical on-disk result to the driver-held
+   `staged_sidecar` path (verbatim `review.md`, additive new files, original
+   restored on any failure); they exist only to give a Python-less session a
+   code-enforced (tier 1) or contract-faithful (tier 2) route to the same
+   atomicity guarantee. When `run_adopt_review` runs under a Python driver
+   (the default), it uses `staged_sidecar` directly and the CLI shim is not
+   needed.
+
 5. **Idempotence**: re-running finds no `review.md`-only sidecar and is
    a successful no-op (even under `--apply`). An empty-`scores` stub
    passes `_has_recognizable_review` and feeds `aggregate`, contributing
@@ -494,6 +553,16 @@ operator gate is binding — a rescore NEVER runs silently. Steps:
    harness writes the scored review **per-sidecar atomically** via
    `anvil/lib/sidecar.py::staged_sidecar` (reusing Phase 3a's
    staged/backup/swap pattern), so `review.md` stays **byte-identical**.
+   **Non-Python-driver ordering (fail-open, manual fallback)** — issue
+   #645: because this reuses Phase 3a's staged/backup/swap pattern, the
+   two-tier CLI-shim / manual-`mv` fallback documented at §9 step 4 (the
+   `python -m anvil.lib.sidecar stage/commit/cleanup` shim, then the manual
+   moved-aside `mv` last resort with a durable `atomicity_fallback:
+   manual-mv` stamp) applies verbatim to this scored-rescore write for a
+   driver-less agent session; the only difference is the replacement
+   `_review.json` is the **scored** review (below) rather than the unscored
+   stub. When `run_adopt_review` runs under a Python driver (the default),
+   it holds `staged_sidecar` open directly and the shim is not needed.
    Each write:
    - replaces `_review.json` with a **scored** `Review`: populated
      `scores` / `findings` / `critical_flags`, `total` = sum of non-null
