@@ -143,12 +143,21 @@ The reviewer writes a `verdict.md` at the top of the review sibling dir with:
   verdict.md           Top-level decision (see above)
   scoring.md           Per-dimension score + justification
   comments.md          Line-level comments keyed to main.tex sections
-  _review.json         Generic /44 scorecard (canonical critic JSON; see anvil/lib/review_schema.py).
-  _review.venue.json   (optional) Venue advisory overlay scorecard, written
-                       when <thread>/.anvil.json sets a `venue` field that
-                       resolves to a known venue YAML. Same JSON schema as
-                       _review.json; informational only.
+  findings.md          Cross-section observations + rubric version transition subsection
+  _review.json         Canonical critic JSON (anvil/lib/review_schema.py) — generic /44
+                       scorecard, rubric: "anvil-pub-v2". Drives the convergence gate.
+  _review.venue.json   (optional) Venue advisory overlay scorecard, written when
+                       <thread>/.anvil.json sets a `venue` field that resolves to a
+                       known venue YAML. Same JSON schema as _review.json; ADVISORY
+                       ONLY (informational; does not change the convergence gate).
+  _summary.md          JSON-in-markdown scorecard carrying the top-level `rubric` block +
+                       dimensions; sibling to _review.json for cross-version score comparison.
+  _meta.json           { critic, scorecard_kind: "human-verdict", started, finished, model,
+                       schema_version, rubric_id, rubric_total, advance_threshold }
+  _progress.json       Phase state for the reviewer (phase: review)
 ```
+
+All 8 files (`verdict.md`, `scoring.md`, `comments.md`, `findings.md`, `_review.json`, `_summary.md`, `_meta.json`, `_progress.json`) are written atomically via `anvil/lib/sidecar.py::staged_sidecar`; the reviewer dir does not exist in the final path until the full manifest is complete (see `commands/pub-review.md` step 3). `_review.venue.json` is the lone documented-optional file (conditional on a declared venue), written inside the same staging dir but not in the required-files manifest.
 
 The reviewer dir is **read-only once written** (state: `done` in its own `_progress.json`). Revisions consume it without modifying it.
 
