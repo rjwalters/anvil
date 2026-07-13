@@ -85,7 +85,12 @@ The per-thread config supports the following optional fields:
 ```json
 {
   "max_iterations": 4,
-  "venue": "neurips"
+  "venue": "neurips",
+  "artifact_verify": {
+    "commands": ["lake build", "lake exe check_theorems"],
+    "cwd": "proof/",
+    "timeout_s": 300
+  }
 }
 ```
 
@@ -93,6 +98,7 @@ The per-thread config supports the following optional fields:
 |---|---|---|---|
 | `max_iterations` | int | 4 | Iteration cap (see above). |
 | `venue` | string | none | Target venue slug. When set, `pub-review` also scores the paper against the matching venue YAML and writes `_review.venue.json` alongside `_review.json`. Advisory only; does not change the /44 gate. See "Venue overlays" below. |
+| `artifact_verify` | object | none | Optional external-artifact verification gate (issue #663). When declared, `pub-review` runs each command in `commands` (a list of command strings) in the resolved `cwd` (thread-relative or absolute; defaults to the thread root) under a per-command `timeout_s` budget (default 300s). A failed command (non-zero exit or timeout) emits an `artifact_verify_*` critical flag that blocks the review. When absent, behavior is byte-identical to today. See "External-artifact verification" below. |
 
 ### Venue overlays (advisory)
 
@@ -125,6 +131,20 @@ When `venue` is set but no matching YAML is found in any tier, the reviewer emit
 #### Adding a consumer venue
 
 A consumer who wants to ship a custom venue (e.g., ICLR) drops a `Rubric`-shaped YAML into one of the two override tiers above. The YAML must validate against the `Rubric` schema in `anvil/lib/rubric.py` with `advisory: true`. See the shipped `rubrics/neurips.yaml` as a worked example. Set `venue: <slug>` in `<thread>/.anvil.json` to activate.
+
+### External-artifact verification (opt-in, fail-open) — issue #663
+
+`anvil:pub`'s render gate + numeric-consistency checker verify the *paper* artifact; the reproducibility rubric dimension (dim 5) scores whether replication *info is present*. Neither runs the **external artifact** a paper's central claim rests on — a companion Lean 4 proof repository that must `lake build` clean, a benchmark harness that must reproduce a headline number, a dataset whose checksum must match. A review pass can score a paper highly and advance it to READY while the artifact backing its central claim is silently broken (the motivating canary incident: a paper ACCEPTed with a headline theorem that did not actually hold, caught only later by manually running `lake build`).
+
+A consumer opts a thread in by declaring an `artifact_verify` block in `<thread>/.anvil.json` (schema table above). `pub-review` step 4f then runs each declared command as a deterministic pre-scoring gate — **run the artifact, not just the PDF**. This extends the *existing* "Build / compile failure" critical-flag class (`rubric.md`) to cover external companion artifacts; it is **not** a new rubric dimension and the rubric total stays /44.
+
+The contract mirrors the venue-overlay discovery/fail-open shape exactly (fail-open when undeclared, one-line stdout warning when declared-but-unresolvable):
+
+- **Absent** (the default for every existing thread): no subprocess call, no `_artifact_verify.json` file, no finding — behavior is **byte-identical** to a pre-#663 review. This is the load-bearing fail-open contract.
+- **Declared and resolvable**: each command in `commands` runs via `subprocess.run` in the resolved `cwd` (thread-relative or absolute; defaults to the thread root) under `timeout_s` (default 300s), subprocess-only with no new Python dependency. ALL commands run — an earlier failure does not short-circuit the rest — so a reviewer sees every failing step in one pass. A failed command (non-zero exit OR timeout) emits a `CriticalFlag` with `type` prefix `artifact_verify_<n>` (`<n>` is the 0-based command index) that routes through the unchanged `anvil/lib/critics.py::compute_verdict` path and forces `Verdict.BLOCK` — no aggregator or schema change.
+- **Declared but unresolvable** (missing / non-directory `cwd`, or a command whose executable is not launchable): the gate **fails open** — a one-line stdout warning + a `major` finding in `comments.md`, and the review proceeds. A broken declaration is a defect worth surfacing, but it must not be indistinguishable from "the reviewer never checked" — so it does NOT block and does NOT silently pass as "verified".
+
+The gate's raw stdout/stderr capture is written to `<thread>.{N}.review/_artifact_verify.json` (mirroring the render gate's `_gate.json`) for CI/operator inspection — a conditional output, NOT in the review's required-files manifest. The skill-local implementation lives at `anvil/skills/pub/lib/artifact_verify.py` (`discover_artifact_verify`, `verify`, `ArtifactVerifyResult.to_review()`/`to_critical_flags()`), modeled on `anvil/lib/render_gate.py`'s `GateResult` shape but scoped to pub per the "wait for the second consumer before generalizing" rule.
 
 ### Area Chair pattern (AI-Scientist) maps to existing N-critics-one-reviser
 
