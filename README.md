@@ -4,7 +4,7 @@
 
 Anvil orchestrates iterative drafting, review, and revision of long-form artifacts — investment memos, patent applications, research papers, pitch decks, technical reports, art installations, customer proposals, short-form essays. Each artifact lives in an immutable versioned directory; review passes write to read-only sibling directories; revisions consume both and produce the next version. The version history *is* the audit trail.
 
-**Status:** v0.5.0. Installable. Fifteen skills shipped. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
+**Status:** v0.7.1. Installable — see the Skills table below for the current list. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
 
 **Sibling project:** [Loom](https://github.com/rjwalters/loom) does this for code (issues, PRs, forge coordination). Anvil does this for prose-and-graphics artifacts (filesystem coordination, no forge required). Both can be installed in the same repository.
 
@@ -27,6 +27,8 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 | `anvil:rubric-rebackport` | One-shot bridge tool: stamps or rescores legacy /40 reviews under the per-review rubric version stamping contract (`rubric_id` / `rubric_total` / `advance_threshold`) | In-place `_meta.json` stamping / rescore sidecars |
 | `anvil:project-share` | Recurring packaging tool: collects each thread's `.latest`-resolved source + PDF + assets + refs and the shared research pool into one shareable, provenance-stamped folder | `SHARE/` export (+ optional zip) |
 | `anvil:project-scout` | Strictly read-only discovery tool: walks a repo tree and classifies anvil-adoptable document clusters (already-migrated / legacy-migratable / bare threads / loose documents / foreign grammar), naming the recommended next command per cluster | Markdown adoption report (+ optional JSON sidecar) |
+| `anvil:project-photos` | Strictly read-only provenance tool: reads a human-authored numbering doc for a scanned-photo archive and emits a deterministic manifest map (original capture → stable name + archive item IDs + rotation hint + multi-item flag, plus a missing-captures list) — byte-identical re-runs, image manipulation stays consumer-native | `manifest.json` provenance map |
+| `anvil:project-book` | Recurring assembly tool: stages the `.latest`-resolved version of every chapter thread into a consumer-owned master LaTeX document, two-pass compiles it into one book, and writes a per-thread convergence report (state / score / audit + next command) | `book.tex` → PDF + per-thread `BOOK_REPORT.md` |
 
 Each skill ships a complete lifecycle (`draft → review → revise → audit → figures`, with some variants), a tunable 8-dimension scoring rubric, opinionated templates, and a worked example thread. Consumers extend them per-project via `.anvil/skills/<name>/` in the consumer repo.
 

@@ -1,12 +1,12 @@
-"""Integration test: ``./scripts/version.sh set X.Y.Z`` must update BOTH version-bearing files.
+"""Integration test: ``./scripts/version.sh set X.Y.Z`` must update ALL version-bearing files.
 
 Issue #109: ``VERSION_FILES`` historically contained only ``CLAUDE.md``;
-``pyproject.toml`` was added in the same fix. This test guarantees that
-``set X.Y.Z`` exercised end-to-end — copying the real script + the real
-two version files into a tmp dir layout that mirrors the repo, then
-invoking ``bash scripts/version.sh set 9.9.9`` against it — touches both
-files. Afterwards it re-runs ``check`` in the tmp dir and asserts exit 0
-to prove the new two-file ``check`` agrees.
+``pyproject.toml`` was added in the same fix. Issue #661 added ``README.md``.
+This test guarantees that ``set X.Y.Z`` exercised end-to-end — copying the
+real script + the real version files into a tmp dir layout that mirrors the
+repo, then invoking ``bash scripts/version.sh set 9.9.9`` against it — touches
+every managed file. Afterwards it re-runs ``check`` in the tmp dir and asserts
+exit 0 to prove the multi-file ``check`` agrees.
 
 Subprocess-based (no Python-side mocking of the shell logic); follows the
 pattern from ``tests/scripts/test_install_quoting.py`` (#80) and
@@ -30,12 +30,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 VERSION_SH = REPO_ROOT / "scripts" / "version.sh"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
+README_MD = REPO_ROOT / "README.md"
 
 NEW_VERSION = "9.9.9"
 
 
 def _mirror_repo(tmp_path: Path) -> Path:
-    """Copy ``scripts/version.sh`` + the two version files into ``tmp_path``.
+    """Copy ``scripts/version.sh`` + the version-bearing files into ``tmp_path``.
 
     Returns the tmp-dir REPO_ROOT (i.e. ``tmp_path`` itself).
     """
@@ -43,6 +44,7 @@ def _mirror_repo(tmp_path: Path) -> Path:
     shutil.copy(VERSION_SH, tmp_path / "scripts" / "version.sh")
     shutil.copy(CLAUDE_MD, tmp_path / "CLAUDE.md")
     shutil.copy(PYPROJECT, tmp_path / "pyproject.toml")
+    shutil.copy(README_MD, tmp_path / "README.md")
     # Make sure the copied script is executable (shutil.copy preserves bits,
     # but be explicit so the test is independent of the source-tree perms).
     (tmp_path / "scripts" / "version.sh").chmod(0o755)
@@ -74,17 +76,24 @@ def _pyproject_version(pyproject: Path) -> str:
     return match.group(1)
 
 
+def _readme_version(readme: Path) -> str:
+    match = re.search(r"\*\*Status:\*\* v(\d+\.\d+\.\d+)", readme.read_text())
+    assert match is not None, f"could not parse status-line version from {readme}"
+    return match.group(1)
+
+
 def test_version_set_updates_both_files(tmp_path: Path) -> None:
-    """``./scripts/version.sh set 9.9.9`` writes the new version into both files."""
+    """``./scripts/version.sh set 9.9.9`` writes the new version into every managed file."""
     root = _mirror_repo(tmp_path)
     script = root / "scripts" / "version.sh"
 
-    # Sanity: before running set, both files agree on the current version.
+    # Sanity: before running set, all files agree on the current version.
     pre_claude = _claude_version(root / "CLAUDE.md")
     pre_pyproj = _pyproject_version(root / "pyproject.toml")
-    assert pre_claude == pre_pyproj, (
+    pre_readme = _readme_version(root / "README.md")
+    assert pre_claude == pre_pyproj == pre_readme, (
         f"test-setup precondition failed: copied files already disagree "
-        f"({pre_claude} vs {pre_pyproj})"
+        f"({pre_claude} vs {pre_pyproj} vs {pre_readme})"
     )
 
     result = _run(["bash", str(script), "set", NEW_VERSION], cwd=root)
@@ -95,11 +104,15 @@ def test_version_set_updates_both_files(tmp_path: Path) -> None:
 
     post_claude = _claude_version(root / "CLAUDE.md")
     post_pyproj = _pyproject_version(root / "pyproject.toml")
+    post_readme = _readme_version(root / "README.md")
     assert post_claude == NEW_VERSION, (
         f"CLAUDE.md not updated by `set`: got {post_claude!r}, expected {NEW_VERSION!r}"
     )
     assert post_pyproj == NEW_VERSION, (
         f"pyproject.toml not updated by `set`: got {post_pyproj!r}, expected {NEW_VERSION!r}"
+    )
+    assert post_readme == NEW_VERSION, (
+        f"README.md not updated by `set`: got {post_readme!r}, expected {NEW_VERSION!r}"
     )
 
 
@@ -124,6 +137,7 @@ def test_version_check_passes_after_set(tmp_path: Path) -> None:
     # assertion would catch it even if exit code happened to be 0.
     assert "CLAUDE.md" in check_result.stdout
     assert "pyproject.toml" in check_result.stdout
+    assert "README.md" in check_result.stdout
     assert NEW_VERSION in check_result.stdout
 
 

@@ -11,8 +11,8 @@
 #   ./scripts/version.sh bump minor --tag   # Bump minor + commit + tag
 #   ./scripts/version.sh bump major --tag   # Bump major + commit + tag
 #
-# Currently covers CLAUDE.md and pyproject.toml. To extend when a new
-# version-bearing file lands, add it to VERSION_FILES below and add matching
+# Currently covers CLAUDE.md, pyproject.toml, and README.md. To extend when a
+# new version-bearing file lands, add it to VERSION_FILES below and add matching
 # case-arms to both get_version_from_file() and set_version().
 # The --tag paths additionally stage CHANGELOG.md when present, so the
 # release-notes promotion rides the tagged release commit (#638).
@@ -26,6 +26,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION_FILES=(
   "CLAUDE.md"
   "pyproject.toml"
+  "README.md"
 )
 
 get_version() {
@@ -44,6 +45,14 @@ get_version_from_file() {
       # immune to a future nested-table `version = "..."` string elsewhere in
       # the file (e.g. a `[tool.foo]` block).
       grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"$' "$REPO_ROOT/$file" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
+      ;;
+    README.md)
+      # Anchored on the `**Status:** vX.Y.Z` status-line prefix so it can't
+      # accidentally match an unrelated `vX.Y.Z`-shaped substring elsewhere
+      # in the file (e.g. a version mentioned inside a skill description),
+      # mirroring the tight-anchoring precedent of the pyproject.toml arm.
+      grep -oE '\*\*Status:\*\* v[0-9]+\.[0-9]+\.[0-9]+' "$REPO_ROOT/$file" \
         | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
       ;;
     *)
@@ -92,6 +101,14 @@ set_version() {
         # gets rewritten; any future nested-table `version = "..."` is left
         # alone. Mirrors the regex in get_version_from_file() above.
         sed -i.bak -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+"$/version = "'"$new"'"/' "$REPO_ROOT/$file"
+        rm "$REPO_ROOT/$file.bak"
+        ;;
+      README.md)
+        # Anchored tightly on the `**Status:** vX.Y.Z` status-line prefix so
+        # the rewrite touches only the opening status line, never a
+        # `vX.Y.Z`-looking substring elsewhere in the file. Mirrors the
+        # get_version_from_file() README arm above.
+        sed -i.bak -E 's/\*\*Status:\*\* v[0-9]+\.[0-9]+\.[0-9]+/**Status:** v'"$new"'/' "$REPO_ROOT/$file"
         rm "$REPO_ROOT/$file.bak"
         ;;
     esac

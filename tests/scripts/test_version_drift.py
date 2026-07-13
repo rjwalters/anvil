@@ -1,11 +1,16 @@
-"""Drift-guard test: ``CLAUDE.md`` and ``pyproject.toml`` must agree on Anvil's version.
+"""Drift-guard test: ``CLAUDE.md``, ``pyproject.toml``, and ``README.md`` must agree on Anvil's version.
 
-Issue #109: anvil has two version-bearing files — ``CLAUDE.md``'s
+Issue #109: anvil has version-bearing files — ``CLAUDE.md``'s
 ``**Anvil Version**: X.Y.Z`` line, and ``pyproject.toml``'s top-level
 ``[project]`` ``version = "X.Y.Z"`` line. ``scripts/version.sh set X.Y.Z``
-is the only supported way to bump both at once; this test backstops it in CI
+is the only supported way to bump them at once; this test backstops it in CI
 so a one-file-only manual edit (or a broken ``version.sh``) cannot land
 unnoticed.
+
+Issue #661 added ``README.md``'s ``**Status:** vX.Y.Z`` status line to
+``version.sh``'s managed set (its ``VERSION_FILES`` array and the matching
+``get_version_from_file`` / ``set_version`` case-arms), so this test parses
+that line too and asserts it agrees with ``CLAUDE.md``.
 
 This test parses both files INDEPENDENTLY (pure Python regex, no shell-out
 to ``scripts/version.sh``) — otherwise the test would be tautological, since
@@ -28,6 +33,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
+README_MD = REPO_ROOT / "README.md"
 
 
 def _claude_version() -> str:
@@ -58,19 +64,37 @@ def _pyproject_version() -> str:
     return match.group(1)
 
 
-def test_anvil_version_files_in_sync() -> None:
-    """``CLAUDE.md`` and ``pyproject.toml`` must hold the same version string.
+def _readme_version() -> str:
+    """Parse the ``**Status:** vX.Y.Z`` status line from ``README.md``.
 
-    Failure message names BOTH file paths AND BOTH parsed values, so the
+    Anchored on the ``**Status:** v`` prefix so it only matches the opening
+    status line, never an unrelated ``vX.Y.Z``-shaped substring elsewhere in
+    the file (e.g. a version mentioned inside a skill description). Mirrors the
+    tight-anchoring precedent of ``version.sh``'s README case-arm (#661).
+    """
+    text = README_MD.read_text()
+    match = re.search(r"\*\*Status:\*\* v(\d+\.\d+\.\d+)", text)
+    assert match is not None, (
+        f"could not parse '**Status:** vX.Y.Z' status line from {README_MD}"
+    )
+    return match.group(1)
+
+
+def test_anvil_version_files_in_sync() -> None:
+    """``CLAUDE.md``, ``pyproject.toml``, and ``README.md`` must hold the same version string.
+
+    Failure message names ALL file paths AND ALL parsed values, so the
     operator immediately sees which file drifted from which.
     """
     claude = _claude_version()
     pyproj = _pyproject_version()
-    assert claude == pyproj, (
-        f"version drift between Anvil's two version-bearing files:\n"
+    readme = _readme_version()
+    assert claude == pyproj == readme, (
+        f"version drift between Anvil's version-bearing files:\n"
         f"  {CLAUDE_MD} -> '{claude}'\n"
         f"  {PYPROJECT} -> '{pyproj}'\n"
-        f"Both files MUST agree. Run `./scripts/version.sh check` locally and use "
-        f"`./scripts/version.sh set <X.Y.Z>` to update both atomically — never "
-        f"edit either file by hand."
+        f"  {README_MD} -> '{readme}'\n"
+        f"All files MUST agree. Run `./scripts/version.sh check` locally and use "
+        f"`./scripts/version.sh set <X.Y.Z>` to update them atomically — never "
+        f"edit any of them by hand."
     )
