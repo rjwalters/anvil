@@ -41,6 +41,9 @@ canary reproducer that exposed the missing base-dep declaration).
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 
 def test_anvil_lib_imports_cleanly() -> None:
     """``import anvil.lib`` must succeed.
@@ -131,3 +134,78 @@ def test_tex_includes_imports_cleanly() -> None:
 
     assert callable(ti.resolve_tex_inputs)
     assert hasattr(ti, "ResolvedTex")
+
+
+def test_sidecar_dash_m_invocation_is_warning_free() -> None:
+    """``python -m anvil.lib.sidecar`` must not emit a ``RuntimeWarning``.
+
+    Regression armor for issue #673. When ``anvil/lib/__init__.py`` eagerly
+    ran ``from anvil.lib.sidecar import (...)``, the submodule was registered
+    in ``sys.modules`` during package init, so ``runpy`` warned on every
+    ``python -m anvil.lib.sidecar`` invocation::
+
+        <frozen runpy>:130: RuntimeWarning: 'anvil.lib.sidecar' found in
+        sys.modules after import of package 'anvil.lib', but prior to
+        execution of 'anvil.lib.sidecar'; this may result in unpredictable
+        behaviour
+
+    The fix makes the re-export lazy via a PEP 562 ``__getattr__`` so the
+    submodule stays out of ``sys.modules`` until first attribute access.
+
+    This test runs the ``-m`` shim in a fresh interpreter with
+    ``-W error::RuntimeWarning`` so any re-introduced eager sidecar import
+    turns the warning into a non-zero exit, and additionally asserts the
+    warning text is absent from stderr regardless of exit code.
+    """
+    proc = subprocess.run(
+        [sys.executable, "-W", "error::RuntimeWarning", "-m", "anvil.lib.sidecar", "--help"],
+        capture_output=True,
+        text=True,
+    )
+
+    assert proc.returncode == 0, (
+        "`python -W error::RuntimeWarning -m anvil.lib.sidecar --help` exited "
+        f"{proc.returncode} — a RuntimeWarning was likely raised as an error.\n"
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )
+    assert "RuntimeWarning" not in proc.stderr, (
+        "`python -m anvil.lib.sidecar` emitted a RuntimeWarning on stderr — "
+        "an eager `from anvil.lib.sidecar import ...` was likely reintroduced "
+        f"in anvil/lib/__init__.py.\nstderr:\n{proc.stderr}"
+    )
+    assert "found in sys.modules" not in proc.stderr
+
+
+def test_sidecar_reexports_are_lazy_and_correct() -> None:
+    """The sidecar re-exports resolve lazily but identically to the source.
+
+    ``from anvil.lib import staged_sidecar`` (and the other five names) must
+    return the *same objects* as ``from anvil.lib.sidecar import ...``, and
+    an unrelated unknown attribute must raise a normal ``AttributeError``
+    (not silently return ``None``) so ``hasattr()`` / static analysis behave.
+    """
+    import anvil.lib
+    import anvil.lib.sidecar as sidecar_mod
+
+    for name in (
+        "STAGING_SUFFIX",
+        "SidecarIncompleteError",
+        "cleanup_one_staging",
+        "cleanup_stale_staging",
+        "staged_sidecar",
+        "staging_path_for",
+    ):
+        assert getattr(anvil.lib, name) is getattr(sidecar_mod, name), (
+            f"anvil.lib.{name} is not the same object as anvil.lib.sidecar.{name}"
+        )
+        assert name in anvil.lib.__all__
+
+    try:
+        anvil.lib.definitely_not_a_real_attribute  # type: ignore[attr-defined]
+    except AttributeError:
+        pass
+    else:  # pragma: no cover - defensive
+        raise AssertionError(
+            "anvil.lib.__getattr__ did not raise AttributeError for an "
+            "unknown attribute name"
+        )
