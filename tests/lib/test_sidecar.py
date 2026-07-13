@@ -42,6 +42,9 @@ from anvil.lib.sidecar import (
     SidecarIncompleteError,
     cleanup_one_staging,
     cleanup_stale_staging,
+    commit_staged,
+    main,
+    stage_enter,
     staged_sidecar,
     staging_path_for,
 )
@@ -655,3 +658,212 @@ def test_canary_replay_all_proper_subsets_undiscovered_and_swept(tmp_path):
     assert len(removed) == len(synthesized_staging_dirs)
     for staging in synthesized_staging_dirs:
         assert not staging.exists()
+
+
+# ---------------------------------------------------------------------------
+# Split stage_enter / commit_staged surface (issue #645)
+# ---------------------------------------------------------------------------
+
+
+def test_stage_enter_then_commit_staged_round_trip(tmp_path):
+    """stage_enter creates the staging dir; commit_staged verifies the
+    manifest and atomically renames — the two-process analog of
+    staged_sidecar, used by the CLI.
+    """
+    final = tmp_path / "thread.3.review"
+
+    staging = stage_enter(final)
+    assert staging.exists()
+    assert staging == staging_path_for(final)
+    assert not final.exists()
+
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+
+    committed = commit_staged(final, MEMO_REVIEW_REQUIRED)
+    assert committed == final
+    assert final.exists()
+    assert not staging.exists()
+    for name in MEMO_REVIEW_REQUIRED:
+        assert (final / name).exists()
+
+
+def test_stage_enter_refuses_if_final_exists(tmp_path):
+    final = tmp_path / "thread.3.review"
+    final.mkdir()
+    with pytest.raises(FileExistsError):
+        stage_enter(final)
+
+
+def test_stage_enter_wipes_prior_staging_dir(tmp_path):
+    """A leftover staging dir from a prior interrupt is wiped on re-entry
+    (matches staged_sidecar's forward-progress contract).
+    """
+    final = tmp_path / "thread.3.review"
+    staging = staging_path_for(final)
+    staging.mkdir(parents=True)
+    (staging / "stale.md").write_text("from a prior crash")
+
+    returned = stage_enter(final)
+    assert returned == staging
+    assert not (staging / "stale.md").exists()
+
+
+def test_commit_staged_missing_required_raises_and_preserves(tmp_path):
+    final = tmp_path / "thread.3.review"
+    staging = stage_enter(final)
+    _write_all(staging, ["verdict.md", "scoring.md"])
+
+    with pytest.raises(SidecarIncompleteError) as excinfo:
+        commit_staged(final, MEMO_REVIEW_REQUIRED)
+
+    # Final dir not created; staging dir preserved for forensics.
+    assert not final.exists()
+    assert staging.exists()
+    assert (staging / "verdict.md").exists()
+    assert "_meta.json" in str(excinfo.value)
+
+
+def test_commit_staged_missing_staging_dir_raises(tmp_path):
+    """commit_staged with no staging dir present raises FileNotFoundError."""
+    final = tmp_path / "thread.3.review"
+    with pytest.raises(FileNotFoundError):
+        commit_staged(final, ("verdict.md",))
+
+
+def test_commit_staged_refuses_if_final_exists(tmp_path):
+    """If final_dir appeared between stage and commit, refuse the rename."""
+    final = tmp_path / "thread.3.review"
+    staging = stage_enter(final)
+    (staging / "verdict.md").write_text("ok")
+    # A concurrent writer landed the final dir first.
+    final.mkdir()
+
+    with pytest.raises(FileExistsError):
+        commit_staged(final, ("verdict.md",))
+    # Staging dir preserved (not renamed over the existing final).
+    assert staging.exists()
+
+
+# ---------------------------------------------------------------------------
+# CLI surface — main() (issue #645)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_stage_prints_staging_path_and_exit_zero(tmp_path, capsys):
+    final = tmp_path / "thread.3.review"
+    rc = main(["stage", str(final)])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out == str(staging_path_for(final))
+    assert staging_path_for(final).exists()
+
+
+def test_cli_stage_refuses_existing_final_exit_three(tmp_path, capsys):
+    final = tmp_path / "thread.3.review"
+    final.mkdir()
+    rc = main(["stage", str(final)])
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "already exists" in err
+
+
+def test_cli_stage_write_commit_happy_path(tmp_path, capsys):
+    """The documented manual recipe: stage → write required files into the
+    printed path → commit → atomic rename lands the complete final dir.
+    """
+    final = tmp_path / "thread.3.review"
+
+    assert main(["stage", str(final)]) == 0
+    staging = Path(capsys.readouterr().out.strip())
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+
+    rc = main(["commit", str(final), "--required", ",".join(MEMO_REVIEW_REQUIRED)])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out == str(final)
+    assert final.exists()
+    assert not staging.exists()
+    for name in MEMO_REVIEW_REQUIRED:
+        assert (final / name).exists()
+
+
+def test_cli_commit_missing_required_exit_one_preserves_staging(
+    tmp_path, capsys
+):
+    """commit with a missing required file exits 1 (the SidecarIncomplete
+    analog) and leaves the staging dir in place — no partial final dir.
+    """
+    final = tmp_path / "thread.3.review"
+    main(["stage", str(final)])
+    staging = Path(capsys.readouterr().out.strip())
+    _write_all(staging, ["verdict.md", "scoring.md"])
+
+    rc = main(
+        ["commit", str(final), "--required", "verdict.md,scoring.md,_meta.json"]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "_meta.json" in err
+    # No partial final dir; staging preserved for forensics.
+    assert not final.exists()
+    assert staging.exists()
+
+
+def test_cli_commit_missing_staging_exit_three(tmp_path, capsys):
+    """commit before any stage exits 3 (precondition/invocation error)."""
+    final = tmp_path / "thread.3.review"
+    rc = main(["commit", str(final), "--required", "verdict.md"])
+    assert rc == 3
+
+
+def test_cli_commit_refuses_existing_final_exit_three(tmp_path, capsys):
+    final = tmp_path / "thread.3.review"
+    main(["stage", str(final)])
+    staging = Path(capsys.readouterr().out.strip())
+    (staging / "verdict.md").write_text("ok")
+    final.mkdir()
+
+    rc = main(["commit", str(final), "--required", "verdict.md"])
+    assert rc == 3
+    assert staging.exists()
+
+
+def test_cli_commit_required_tolerates_whitespace_and_empties(tmp_path, capsys):
+    """The --required parser strips whitespace and ignores empty segments
+    (e.g. a trailing comma).
+    """
+    final = tmp_path / "thread.3.review"
+    main(["stage", str(final)])
+    staging = Path(capsys.readouterr().out.strip())
+    (staging / "verdict.md").write_text("v")
+    (staging / "scoring.md").write_text("s")
+
+    rc = main(
+        ["commit", str(final), "--required", " verdict.md , scoring.md ,"]
+    )
+    assert rc == 0
+    assert final.exists()
+
+
+def test_cli_cleanup_removes_staging_and_is_idempotent(tmp_path, capsys):
+    final = tmp_path / "thread.3.review"
+    main(["stage", str(final)])
+    capsys.readouterr()  # drain stage output
+    staging = staging_path_for(final)
+    assert staging.exists()
+
+    rc = main(["cleanup", str(final)])
+    assert rc == 0
+    assert "removed staging dir" in capsys.readouterr().out
+    assert not staging.exists()
+
+    # Idempotent second call: still exit 0, reports nothing removed.
+    rc = main(["cleanup", str(final)])
+    assert rc == 0
+    assert "no staging dir to remove" in capsys.readouterr().out
+
+
+def test_cli_missing_subcommand_errors(tmp_path):
+    """Invoking with no subcommand is an argparse error (SystemExit)."""
+    with pytest.raises(SystemExit):
+        main([])
