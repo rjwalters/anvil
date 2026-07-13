@@ -1,0 +1,10 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024)
+entering extended mode
+(./paper.tex
+Overfull \hbox (11.2pt too wide) in paragraph at lines 88--90
+[]\OT1/cmr/m/n/10 First render of the same paragraph before a content edit.
+Overfull \hbox (37.5pt too wide) in paragraph at lines 88--90
+[]\OT1/cmr/m/n/10 Second render of the same line after a mid-run edit resize.
+[1]
+Output written on paper.pdf (1 pages, 9876 bytes).
+Transcript written on paper.log.
