@@ -52,3 +52,18 @@ def test_installation_review_doc_describes_atomic_rename_contract():
 def test_installation_review_doc_references_issue_350():
     text = _read()
     assert "#350" in text
+
+
+def test_installation_review_doc_documents_non_python_driver_fallback():
+    """Guard the #645 two-tier non-Python-driver fallback clause (#655).
+
+    Every critic-writing doc that mandates `staged_sidecar` must also document
+    the fail-open manual fallback: tier 1 = the `python -m anvil.lib.sidecar`
+    CLI shim; tier 2 = the manual `mv`-based staging with a durable
+    `atomicity_fallback: manual-mv` stamp.
+    """
+    text = _read()
+    assert "Non-Python-driver ordering" in text
+    assert "python -m anvil.lib.sidecar" in text
+    assert "manual" in text.lower() and ("mv" in text or "`mv`" in text)
+    assert "atomicity_fallback" in text or "manual-mv" in text
