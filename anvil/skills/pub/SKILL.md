@@ -229,7 +229,7 @@ The auditor (`pub-audit`) may re-run scripts in `figures/src/` to verify rendere
 
 ## Templates / assets
 
-- **Default LaTeX class**: `templates/anvil-paper.cls` — minimal generic single-column class with `\title`, `\author`, `\abstract`, standard sectioning, and `\bibliographystyle{plainnat}` baked in. Compiles cleanly with `pdflatex` + `bibtex` from a fresh checkout, no venue-specific assumptions. Supports an `anonymous` option (`\documentclass[anonymous]{anvil-paper}`) that suppresses author/affiliation rendering for double-blind submission.
+- **Default LaTeX class**: `templates/anvil-paper.cls` — minimal generic single-column class with `\title`, `\author`, `\abstract`, standard sectioning, and `\bibliographystyle{plainnat}` baked in. Compiles cleanly with `pdflatex` + `bibtex` from a fresh checkout, no venue-specific assumptions. Supports an `anonymous` option (`\documentclass[anonymous]{anvil-paper}`) that suppresses author/affiliation rendering for double-blind submission, and a `numeric` option (`\documentclass[numeric]{anvil-paper}`) that switches citations from the default author-year `(Author, Year)` style to numeric `[7]`-style — the two options compose (`\documentclass[numeric,anonymous]{anvil-paper}`).
 - **Bibliography**: BibTeX (`.bib`) is the primary format, with `natbib` for citation commands (`\citep{}`, `\citet{}`). Most venues accept either BibTeX or biblatex; BibTeX has wider tooling compatibility.
 - **Venue overrides**: NeurIPS, IEEE, ACM, arXiv, etc. are handled by the standard anvil override mechanism — the consumer drops `neurips_2024.sty` (or equivalent) into `.anvil/skills/pub/templates/` in their own repo and the brief instructs the drafter to switch the documentclass line (e.g., `\documentclass{neurips_2024}`). This skill ships **no venue style files** (licensing + staleness concerns).
 - **Entry-point template**: `templates/main.tex.j2` — Jinja2-style placeholder document with frontmatter hooks (`{{title}}`, `{{author}}`, `{{abstract}}`) and section skeletons (`\section{Introduction}`, etc.). The drafter substitutes from the brief and elaborates.
@@ -258,6 +258,18 @@ This skill ships opinionated defaults. Consumers are expected to override libera
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any dealbreaker a sophisticated reader would catch" instruction.
 - `templates/<venue>.cls` or `templates/<venue>.sty` — Venue-specific style files. The brief tells the drafter to use them.
 - `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted.
+
+## Migrating an existing paper
+
+Bringing a pre-existing, hand-authored LaTeX paper into the `pub` grammar is a **first-class, sanctioned workflow** — not a workaround. There are three supported class choices, all on equal footing; pick the cheapest one that preserves your paper's rendered output:
+
+1. **`\documentclass{anvil-paper}` (default).** Use when the paper has no load-bearing preamble and its citations are author-year. You get margins, `microtype`, colored `hyperref`, and caption styling for free.
+2. **`\documentclass[numeric]{anvil-paper}`.** Use when the *only* blocker is citation style — the paper renders numeric `[7]`-style citations. The `numeric` option swaps natbib into numeric mode (`\citep`/`\citet` unchanged) while keeping all of anvil-paper's other styling. This is strictly cheaper than a full keep-original-class migration, so prefer it when nothing but the citation style collides. Compose with `anonymous` if double-blind (`\documentclass[numeric,anonymous]{anvil-paper}`).
+3. **Keep the paper's original `\documentclass` (e.g. `\documentclass{article}`) and its preamble verbatim.** Use when the preamble itself collides with anvil-paper — custom theorem environments, `xcolor`/`hyperref`/`caption`/`amsthm` package-option clashes, or a citation style anvil-paper does not support even with `numeric`. Set `documentclass: article` (or the paper's original class) in the brief frontmatter and keep the paper's preamble in `main.tex` unchanged. This is a **sanctioned path on equal footing with the venue-style-file override**, not a deviation to note apologetically.
+
+**The lifecycle is class-agnostic.** `draft → review → revise → audit → figures`, the /44 rubric scoring, and the `render_gate.py` pre-flight all operate on the compiled artifact — **none of them inspect or require `anvil-paper.cls` specifically**, and no rubric dimension penalizes not using it. Keeping your own class costs you the free styling anvil-paper provides, nothing else.
+
+**Decision guidance:** use `\documentclass[numeric]{anvil-paper}` when only the citation style is the blocker; keep the original `\documentclass` verbatim when the preamble itself collides (theorem environments, package-option clashes, or highly customized macros). See `commands/pub-draft.md` § "Documentclass overrides" for how the brief frontmatter selects the class.
 
 ## Anonymous / double-blind submission
 
