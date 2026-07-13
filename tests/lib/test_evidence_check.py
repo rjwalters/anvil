@@ -791,6 +791,108 @@ class TestBodyResolution:
             check_version_dir(tmp_path / "nope" / "nope.1")
 
 
+# The canary's legacy paper.tex body carries a quotable span so a
+# matching justification validates against the overridden body.
+PAPER_TEX_BODY = (
+    "\\section{Method}\n"
+    "We ablate the encoder depth across four settings and report the "
+    "median across five seeds.\n"
+)
+PAPER_TEX_JUST = '"ablate the encoder depth across four settings"'
+
+
+def _paper_tex_scoring(version_dir: Path) -> Path:
+    """Write a critic-sibling scoring.md whose quote is verbatim from PAPER_TEX_BODY."""
+    review = version_dir.parent / f"{version_dir.name}.review"
+    review.mkdir()
+    (review / "scoring.md").write_text(
+        scoring_table([("Methodology", 6, 5, PAPER_TEX_JUST)]),
+        encoding="utf-8",
+    )
+    return review / "scoring.md"
+
+
+class TestBodyOverride:
+    """The #670 body-path override — ``body=`` kwarg + CLI ``--body``.
+
+    ``evidence_check`` has no sidecar / ``--write-review`` (per its
+    module docstring); the override just lets the verifier point at a
+    non-canonical entry point (``paper.tex``) and records the resolved
+    portfolio-relative path in ``body_path``.
+    """
+
+    def _legacy_dir(self, tmp_path: Path, body_name: str = "paper.tex") -> Path:
+        version_dir = tmp_path / "tractatus" / "tractatus.1"
+        version_dir.mkdir(parents=True)
+        (version_dir / body_name).write_text(PAPER_TEX_BODY, encoding="utf-8")
+        return version_dir
+
+    def test_relative_override_locates_non_canonical_body(self, tmp_path: Path) -> None:
+        version_dir = self._legacy_dir(tmp_path)
+        _paper_tex_scoring(version_dir)
+        result = check_version_dir(version_dir, body=Path("paper.tex"))
+        assert result.body_path == "paper.tex"
+        assert result.passed()
+
+    def test_no_override_still_hard_fails_on_legacy_thread(self, tmp_path: Path) -> None:
+        # Without the override, paper.tex is outside the discovery chain.
+        version_dir = self._legacy_dir(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            check_version_dir(version_dir)
+
+    def test_absolute_override_outside_version_dir(self, tmp_path: Path) -> None:
+        version_dir = self._legacy_dir(tmp_path, body_name="placeholder.tex")
+        _paper_tex_scoring(version_dir)
+        scratch = tmp_path / "tractatus" / "scratch"
+        scratch.mkdir(parents=True)
+        staged = scratch / "paper.tex"
+        staged.write_text(PAPER_TEX_BODY, encoding="utf-8")
+        result = check_version_dir(version_dir, body=staged)
+        # Outside version_dir but under portfolio root (tmp_path).
+        assert result.body_path == "tractatus/scratch/paper.tex"
+        assert result.passed()
+
+    def test_missing_override_raises_naming_the_override(self, tmp_path: Path) -> None:
+        version_dir = self._legacy_dir(tmp_path)
+        with pytest.raises(FileNotFoundError) as excinfo:
+            check_version_dir(version_dir, body=Path("does-not-exist.tex"))
+        assert "does-not-exist.tex" in str(excinfo.value)
+
+    def test_cli_body_flag_locates_non_canonical_body(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        version_dir = self._legacy_dir(tmp_path)
+        _paper_tex_scoring(version_dir)
+        rc = main([str(version_dir), "--body", "paper.tex"])
+        assert rc == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["body_path"] == "paper.tex"
+        assert payload["pass"] is True
+
+    def test_cli_missing_override_exit_code_two(self, tmp_path: Path) -> None:
+        version_dir = self._legacy_dir(tmp_path)
+        assert main([str(version_dir), "--body", "nope.tex"]) == 2
+
+    def test_body_and_scoring_combine(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        # The canary shape: --scoring <path> --body paper.tex validates
+        # quoted evidence against paper.tex directly.
+        version_dir = self._legacy_dir(tmp_path)
+        staging = version_dir.parent / f".{version_dir.name}.review.tmp"
+        staging.mkdir()
+        scoring = staging / "scoring.md"
+        scoring.write_text(
+            scoring_table([("Methodology", 6, 5, FABRICATED_JUST)]),
+            encoding="utf-8",
+        )
+        rc = main([str(version_dir), "--scoring", str(scoring), "--body", "paper.tex"])
+        assert rc == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["body_path"] == "paper.tex"
+        assert payload["findings"][0]["code"] == FABRICATED_EVIDENCE
+
+
 class TestDiscovery:
     def test_discovers_all_critic_siblings(self, tmp_path: Path) -> None:
         version_dir = make_memo_version_dir(tmp_path)
