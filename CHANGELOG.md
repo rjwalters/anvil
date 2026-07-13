@@ -2,6 +2,96 @@
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-13
+
+### Summary
+
+The **tractatus canary wave**: anvil's first external install into a
+machine-checked Lean 4 papers repo (rjwalters/tractatus, `--skills=pub`)
+surfaced eleven friction reports in one day, and this release closes all of
+them. The arc is three-fold — (1) **run the artifact, not just the PDF**:
+pub-review gains a consumer-extensible external-artifact verification gate
+(build the companion proof repo, check quoted theorems against source) and
+multi-file `\input`/`\include` threads become first-class in review; (2)
+**compile-contract truth**: the pub compile cycle becomes a latexmk-style
+convergence loop instead of a fixed pass count, the render-gate input is
+named by its real entry-point-derived name (`main.pdf`), overfull boxes
+dedupe across multi-pass logs, and pub-audit's git-sync scope now stages the
+PDF it produces; (3) **install ergonomics for strict-subset consumers**: the
+agents copy is scoped by `--skills=`, `.anvil/.gitignore` ships in the box,
+the sidecar CLI runs warning-free, and adopted-in-place legacy threads get a
+`--body` override in both content detectors.
+
+### Added
+
+- **External-artifact verification gate for pub-review** (#663/#665): opt-in
+  `artifact_verify` block in `.anvil.json` runs consumer-declared commands
+  (e.g. `lake build`) before scoring; failures surface as fabrication-class
+  critical flags through the unmodified `Verdict.BLOCK` machinery; broken
+  declarations fail open as major findings. Byte-identical when undeclared;
+  discovery mirrors the venue-overlay contract.
+- **Multi-file LaTeX threads first-class in pub review** (#654): `\input`/
+  `\include` resolution via the `tex_includes` resolver wired through
+  review content-reads.
+- **Sidecar CLI for driver-less staging** (#652): `python -m anvil.lib.sidecar
+  stage|commit|cleanup` — crash-safe critic-sibling writes without a Python
+  driver.
+- **`--body` path override for adopted-in-place threads** (#670/#679):
+  `numeric_consistency` and `evidence_check` accept an explicit body path
+  (legacy entry points like `paper.tex`); default discovery byte-identical;
+  the numeric sidecar records the override portfolio-relative.
+- **`numeric` class option for anvil-paper.cls** (#671/#680): swaps natbib
+  authoryear → `[numbers,sort&compress]` for content-identical migration of
+  numeric-cite papers (authoryear stays the default; compile-verified with
+  `plainnat` across both modes); SKILL.md gains a "Migrating an existing
+  paper" section elevating keep-original-class to a first-class path.
+- **Installer ships `.anvil/.gitignore`** (#674/#683): new Stage 8.6 writes a
+  self-contained ignore file (`__pycache__/`, `*.py[cod]`, `.venv/`) —
+  skip-if-exists, dry-run honest; README documents per-worktree
+  `uv sync --project .anvil` pre-sync and `UV_LINK_MODE=copy`.
+
+### Changed
+
+- **Pub compile contract: convergence loop, not fixed count** (#669/#678):
+  `pdflatex → bibtex → pdflatex ×2` floor, then rerun while LaTeX emits
+  "Label(s) may have changed. Rerun" (max 5 passes, latexmk semantics);
+  non-convergence at the cap is a critical flag; optional `.aux`-diff
+  cross-check documented. pub-vision/pub-review/SKILL.md defer to pub-audit
+  step 4 as the single source of truth.
+- **pub-audit git-sync scope stages its compiled PDF** (#672/#681): the
+  staging target now explicitly includes `<thread>.{N}/main.pdf` alongside
+  the audit sidecar (never the wholesale version dir); `git_sync.md` snippet
+  documents the dual-role command shape for future skills.
+
+### Fixed
+
+- **Installer agent copy scoped by `--skills=`** (#662/#666): Stage 7.5 no
+  longer copies all 54 agent files on a single-skill install (5 for
+  `--skills=pub`); longest-prefix matching keeps `ip-uspto` /
+  `ip-uspto-provisional` siblings separate; unknown-prefix agents still copy
+  unconditionally.
+- **Sidecar runpy RuntimeWarning silenced** (#673/#682): `anvil/lib/__init__.py`
+  re-exports sidecar primitives lazily (PEP 562), so every
+  `python -m anvil.lib.sidecar` invocation is warning-free; public re-export
+  contract preserved; zero doc changes.
+- **Overfull-box over-count on multi-pass logs** (#668/#677): `render_gate`
+  dedupes by `(line, amount, kind)` — 18-for-6 canary inflation gone;
+  line-less hits never collapse; verdicts unaffected.
+- **Render-gate input named by its real artifact** (#667/#676): pub-review
+  step 4b and SKILL.md say `main.pdf` (the entry-point-derived name
+  pub-audit actually produces), ending the spurious fail-open/fail-closed
+  ambiguity.
+- **README status line under version.sh management** (#661/#675): README.md
+  joins the managed version-file set (drift now caught by `version.sh
+  check`); skill count dropped from prose; Skills table filled to all 17
+  (adds `project-photos`, `project-book`).
+- **version.sh `--tag` stages CHANGELOG.md** (#638/#641).
+- Consumer-path migration finish + doc-pin guard widening (#642); critic-doc
+  consistency batch: sidecar fallback rollout (#658), findings.md scope
+  (#664), stale counts/cross-refs (#659), orchestrator output-guard
+  collisions (#651), fail-open uv-gated fallback (#650), rubric/manifest
+  reconciliation (#649), tex_includes wiring for installation/proposal (#657).
+
 ## [0.7.1] — 2026-07-07
 
 ### Added
