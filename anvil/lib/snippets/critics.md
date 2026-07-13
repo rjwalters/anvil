@@ -282,7 +282,9 @@ each skill's `## Output layout` section and passed to
 so the atomic rename fails (and the review never lands) if any of them is not
 written. `findings.md` in particular is the hard-required review-manifest file
 for `pub`, `deck`, `slides`, `ip-uspto`, `ip-uspto-provisional`, and
-`datasheet` (see `scorecard_kind.md` §`machine-summary`).
+`datasheet` (see `scorecard_kind.md`; note these skills split across both
+`scorecard_kind` values — see the paragraph below for which kind each emits
+`findings.md` under).
 
 **The collision.** Some agent-orchestrator harnesses pattern-match subagent
 output *by filename* — a "return findings as text, do not write a report file"
