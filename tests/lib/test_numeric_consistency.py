@@ -658,3 +658,107 @@ class TestCli:
         sidecar = version_dir.parent / "acme-seed.1.numeric" / "_review.json"
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
         assert len(payload["critical_flags"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# AC: --body override for adopted-in-place legacy threads (issue #670)
+# ---------------------------------------------------------------------------
+
+
+def make_legacy_version_dir(
+    tmp_path: Path, body: str, *, body_name: str = "paper.tex", slug: str = "tractatus"
+) -> Path:
+    """Build a legacy thread whose entry point isn't <slug>.md/main.tex.
+
+    The version dir contains only a non-canonical body file (e.g.
+    ``paper.tex``) — the exact canary shape (#670) where the default
+    ``<slug>.md`` → ``main.tex`` discovery chain hard-fails.
+    """
+    version_dir = tmp_path / slug / f"{slug}.1"
+    version_dir.mkdir(parents=True)
+    (version_dir / body_name).write_text(body, encoding="utf-8")
+    return version_dir
+
+
+class TestBodyOverride:
+    """The #670 body-path override — library kwarg + CLI ``--body``."""
+
+    def test_relative_override_locates_non_canonical_body(self, tmp_path: Path) -> None:
+        # paper.tex inside the version dir; no <slug>.md / main.tex present.
+        version_dir = make_legacy_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        result = check_numeric_consistency(version_dir, body=Path("paper.tex"))
+        # Same detector semantics as the canonical fixture.
+        assert result.passed() is False
+        assert len(result.findings) == 2
+        # Inside version_dir → bare filename recorded (back-compat shape).
+        assert result.body_path == "paper.tex"
+
+    def test_no_override_still_hard_fails_on_legacy_thread(self, tmp_path: Path) -> None:
+        # Confirms the override is doing real work: without it, the
+        # discovery chain raises exactly as before.
+        version_dir = make_legacy_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        with pytest.raises(FileNotFoundError):
+            check_numeric_consistency(version_dir)
+
+    def test_absolute_override_outside_version_dir(self, tmp_path: Path) -> None:
+        # The canary's scratch/staging location: an absolute path that
+        # lives outside the version dir but inside the portfolio tree.
+        version_dir = make_legacy_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        scratch = tmp_path / "tractatus" / "scratch"
+        scratch.mkdir(parents=True)
+        staged = scratch / "paper.tex"
+        staged.write_text(SPREAD_FAILURE_BODY, encoding="utf-8")
+        result = check_numeric_consistency(version_dir, body=staged)
+        assert len(result.findings) == 2
+        # Outside version_dir but under the portfolio root
+        # (version_dir.parent.parent == tmp_path) → portfolio-relative.
+        assert result.body_path == "tractatus/scratch/paper.tex"
+
+    def test_missing_override_raises_naming_the_override(self, tmp_path: Path) -> None:
+        version_dir = make_legacy_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        with pytest.raises(FileNotFoundError) as excinfo:
+            check_numeric_consistency(version_dir, body=Path("does-not-exist.tex"))
+        assert "does-not-exist.tex" in str(excinfo.value)
+
+    def test_cli_body_flag_locates_non_canonical_body(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        version_dir = make_legacy_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        rc = main([str(version_dir), "--body", "paper.tex"])
+        assert rc == 1
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["body_path"] == "paper.tex"
+        assert len(payload["findings"]) == 2
+
+    def test_cli_missing_override_exit_code_two(self, tmp_path: Path) -> None:
+        version_dir = make_legacy_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        assert main([str(version_dir), "--body", "nope.tex"]) == 2
+
+    def test_write_review_records_portfolio_relative_override(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        # The canary's headline fix: --write-review + --body outside the
+        # version dir stamps the portfolio-relative path, not a scratch
+        # artifact, so the sidecar no longer has to be skipped.
+        version_dir = make_legacy_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        scratch = tmp_path / "tractatus" / "scratch"
+        scratch.mkdir(parents=True)
+        staged = scratch / "paper.tex"
+        staged.write_text(SPREAD_FAILURE_BODY, encoding="utf-8")
+        rc = main([str(version_dir), "--write-review", "--body", str(staged)])
+        assert rc == 1
+        sidecar = version_dir.parent / "tractatus.1.numeric" / "_review.json"
+        assert sidecar.is_file()
+        payload = json.loads(sidecar.read_text(encoding="utf-8"))
+        # evidence_span on each finding embeds body_path — must be the
+        # portfolio-relative override, never the scratch absolute path.
+        spans = [f["evidence_span"] for f in payload["findings"]]
+        assert all(s.startswith("tractatus/scratch/paper.tex:") for s in spans)
+        assert not any(str(tmp_path) in s for s in spans)
+
+    def test_back_compat_body_path_unchanged_for_canonical(self, tmp_path: Path) -> None:
+        # Explicit back-compat guard: the no-override path over a
+        # canonical <slug>.md thread still records the bare filename.
+        version_dir = make_memo_version_dir(tmp_path, SPREAD_FAILURE_BODY)
+        result = check_numeric_consistency(version_dir)
+        assert result.body_path == "acme-seed.md"
