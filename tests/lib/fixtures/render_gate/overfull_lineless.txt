@@ -1,0 +1,10 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024)
+entering extended mode
+(./paper.tex
+Overfull \hbox (18.4pt too wide) in alignment at position 0
+[]\OT1/cmr/m/n/10 A wide alignment cell with no captured line span here.
+Overfull \vbox (22.1pt too high) has occurred while \output is active
+Overfull \hbox (9.6pt too wide) has occurred while \output is active
+[1] [2]
+Output written on paper.pdf (2 pages, 12345 bytes).
+Transcript written on paper.log.

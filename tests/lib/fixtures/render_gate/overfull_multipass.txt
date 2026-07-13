@@ -1,0 +1,49 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024)
+entering extended mode
+=== PASS 1: pdflatex paper.tex ===
+(./paper.tex
+Overfull \hbox (12.3pt too wide) in paragraph at lines 42--45
+[]\OT1/cmr/m/n/10 This is a much wider line that exceeds the page width.
+Overfull \hbox (28.9pt too wide) in paragraph at lines 118--121
+[]\OT1/cmr/m/n/10 A second wide line spilling past the right margin here.
+Overfull \vbox (8.7pt too high) detected at line 77
+Overfull \hbox (45.6pt too wide) in paragraph at lines 203--207
+[]\OT1/cmr/m/n/10 A very wide table row that runs well past the text block.
+Overfull \vbox (14.2pt too high) detected at line 260
+Overfull \hbox (6.1pt too wide) in paragraph at lines 331--332
+[]\OT1/cmr/m/n/10 A modestly wide line just over the tolerance threshold.
+[1] [2] [3]
+Output written on paper.pdf (3 pages, 23456 bytes).
+=== PASS 2: bibtex paper ===
+This is BibTeX, Version 0.99d (TeX Live 2024)
+The top-level auxiliary file: paper.aux
+Database file #1: refs.bib
+=== PASS 3: pdflatex paper.tex ===
+(./paper.tex
+Overfull \hbox (12.3pt too wide) in paragraph at lines 42--45
+[]\OT1/cmr/m/n/10 This is a much wider line that exceeds the page width.
+Overfull \hbox (28.9pt too wide) in paragraph at lines 118--121
+[]\OT1/cmr/m/n/10 A second wide line spilling past the right margin here.
+Overfull \vbox (8.7pt too high) detected at line 77
+Overfull \hbox (45.6pt too wide) in paragraph at lines 203--207
+[]\OT1/cmr/m/n/10 A very wide table row that runs well past the text block.
+Overfull \vbox (14.2pt too high) detected at line 260
+Overfull \hbox (6.1pt too wide) in paragraph at lines 331--332
+[]\OT1/cmr/m/n/10 A modestly wide line just over the tolerance threshold.
+[1] [2] [3]
+Output written on paper.pdf (3 pages, 23456 bytes).
+=== PASS 4: pdflatex paper.tex ===
+(./paper.tex
+Overfull \hbox (12.3pt too wide) in paragraph at lines 42--45
+[]\OT1/cmr/m/n/10 This is a much wider line that exceeds the page width.
+Overfull \hbox (28.9pt too wide) in paragraph at lines 118--121
+[]\OT1/cmr/m/n/10 A second wide line spilling past the right margin here.
+Overfull \vbox (8.7pt too high) detected at line 77
+Overfull \hbox (45.6pt too wide) in paragraph at lines 203--207
+[]\OT1/cmr/m/n/10 A very wide table row that runs well past the text block.
+Overfull \vbox (14.2pt too high) detected at line 260
+Overfull \hbox (6.1pt too wide) in paragraph at lines 331--332
+[]\OT1/cmr/m/n/10 A modestly wide line just over the tolerance threshold.
+[1] [2] [3]
+Output written on paper.pdf (3 pages, 23456 bytes).
+Transcript written on paper.log.

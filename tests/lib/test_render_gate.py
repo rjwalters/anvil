@@ -93,6 +93,41 @@ def overfull_sphere_canary_log() -> Path:
 
 
 @pytest.fixture
+def overfull_multipass_log() -> Path:
+    """Multi-pass concatenation regression fixture (issue #668).
+
+    Simulates ``pub-audit``'s ``compile-log.txt``: a full
+    ``pdflatex → bibtex → pdflatex → pdflatex`` cycle where three of the
+    four invocations re-emit the same overfull warnings. 6 unique boxes
+    (4 hbox + 2 vbox, all above the 5.0pt default threshold) each appear
+    3 times → 18 raw regex matches that must dedupe to 6 hits.
+    """
+    return FIXTURES / "overfull_multipass.txt"
+
+
+@pytest.fixture
+def overfull_lineless_log() -> Path:
+    """Line-less warnings fixture (issue #668 edge case).
+
+    Three distinct overfull warnings whose text lacks an ``at line(s) N``
+    span (alignment / ``\\output is active`` variants), so the regex
+    line-span group is ``None``. These must NOT collapse into one hit.
+    """
+    return FIXTURES / "overfull_lineless.txt"
+
+
+@pytest.fixture
+def overfull_same_line_diff_amount_log() -> Path:
+    """Same-line, different-amount fixture (issue #668 edge case).
+
+    Two hits at the same source line (88) with different amounts
+    (11.2pt, 37.5pt) — the dedupe key is the full ``(line, amount_pt,
+    kind)`` tuple, so these are two distinct hits, not one.
+    """
+    return FIXTURES / "overfull_same_line_diff_amount.txt"
+
+
+@pytest.fixture
 def compile_failure_log() -> Path:
     return FIXTURES / "compile_failure.txt"
 
@@ -273,6 +308,94 @@ def test_overfull_sphere_canary_shape(
     assert len(r_ip.overfull_boxes) == 13
     assert r_ip.passed is False
     assert DIM_OVERFULL in r_ip.failed_gates
+
+
+def test_overfull_multipass_log_deduplicates(
+    empty_pdf, fake_pdfinfo_3pages_path, overfull_multipass_log
+):
+    """Multi-pass log dedupe regression (issue #668): 18 raw hits → 6 unique.
+
+    ``pub-audit`` concatenates the full ``pdflatex → bibtex → pdflatex →
+    pdflatex`` cycle into one ``compile-log.txt``; three ``pdflatex``
+    passes re-emit the same 6 overfull warnings, so a flat regex scan
+    finds 18 matches for 6 real boxes (the exact 18-vs-6 canary from
+    tractatus v2). The parser must dedupe by ``(line, amount_pt, kind)``
+    down to 6, and ``gate()``'s failure reason must report 6, not 18.
+    """
+    r = gate(
+        empty_pdf,
+        log_path=overfull_multipass_log,
+        page_cap=None,
+        overfull_threshold_pt=5.0,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+    )
+    # 6 unique boxes despite each appearing 3 times in the concatenated log.
+    assert len(r.overfull_boxes) == 6
+    # Verdict is presence-based and unaffected: still fails, still flags.
+    assert r.passed is False
+    assert DIM_OVERFULL in r.failed_gates
+    # 4 hbox + 2 vbox after dedupe.
+    kinds = [b["kind"] for b in r.overfull_boxes]
+    assert kinds.count("hbox") == 4
+    assert kinds.count("vbox") == 2
+    # First occurrence wins → line/amount reflect the first pass's text.
+    lines = sorted(b["line"] for b in r.overfull_boxes)
+    assert lines == [42, 77, 118, 203, 260, 331]
+    # The reviser-facing reason string reports the deduped count, not 18.
+    overfull_reason = next(
+        reason for reason in r.reasons if DIM_OVERFULL in reason
+    )
+    assert "6 overfull box(es)" in overfull_reason
+    assert "18 overfull box(es)" not in overfull_reason
+    # One GateFinding per unique box (not per raw regex match).
+    overfull_findings = [f for f in r.findings if f.gate == DIM_OVERFULL]
+    assert len(overfull_findings) == 6
+
+
+def test_overfull_lineless_hits_not_collapsed(
+    empty_pdf, fake_pdfinfo_3pages_path, overfull_lineless_log
+):
+    """Line-less warnings survive as distinct hits (issue #668 edge case).
+
+    Overfull warnings without an ``at line(s) N`` span capture ``line ==
+    None``. The dedupe must NOT collapse all line-less hits into one — a
+    genuinely line-less log with several distinct warnings would otherwise
+    degenerate to a single entry.
+    """
+    r = gate(
+        empty_pdf,
+        log_path=overfull_lineless_log,
+        page_cap=None,
+        overfull_threshold_pt=5.0,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+    )
+    # All three distinct line-less warnings survive.
+    assert len(r.overfull_boxes) == 3
+    assert all(b["line"] is None for b in r.overfull_boxes)
+    assert r.passed is False
+    assert DIM_OVERFULL in r.failed_gates
+
+
+def test_overfull_same_line_diff_amount_not_deduped(
+    empty_pdf, fake_pdfinfo_3pages_path, overfull_same_line_diff_amount_log
+):
+    """Same line, different amount → two hits (issue #668 edge case).
+
+    The dedupe key is the full ``(line, amount_pt, kind)`` tuple, not
+    ``line`` alone: two hits at line 88 with 11.2pt and 37.5pt are
+    distinct and must both survive.
+    """
+    r = gate(
+        empty_pdf,
+        log_path=overfull_same_line_diff_amount_log,
+        page_cap=None,
+        overfull_threshold_pt=5.0,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+    )
+    assert len(r.overfull_boxes) == 2
+    assert {b["line"] for b in r.overfull_boxes} == {88}
+    amounts = sorted(b["amount_pt"] for b in r.overfull_boxes)
+    assert amounts == pytest.approx([11.2, 37.5])
 
 
 # -----------------------------------------------------------------------------
