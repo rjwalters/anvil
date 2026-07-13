@@ -59,7 +59,7 @@ After installation you invoke the skills from Claude Code in the consumer repo �
 
 The installer is designed to coexist with whatever already lives at the consumer root. Its full write footprint is:
 
-- `.anvil/` — the framework + skills, self-contained, with its own `pyproject.toml`. `uv sync --project .anvil` resolves against that file only, so the anvil venv stays independent of the monorepo's own uv project (root `pyproject.toml` / `uv.lock` are never read or written).
+- `.anvil/` — the framework + skills, self-contained, with its own `pyproject.toml`. `uv sync --project .anvil` resolves against that file only, so the anvil venv stays independent of the monorepo's own uv project (root `pyproject.toml` / `uv.lock` are never read or written). It also ships a self-contained `.anvil/.gitignore` (patterns `__pycache__/`, `*.py[cod]`, `.venv/`) so the Python bytecode caches and the uv venv the framework generates never dirty `git status`; that file is written once (skip-if-exists) and your root `.gitignore` is never touched.
 - `.claude/skills/anvil-<skill>/` and `.claude/agents/anvil-*.md` — per-skill directories and per-file copies, namespaced so pre-existing skills and agents (e.g. `loom-*` entries from a sibling [Loom](https://github.com/rjwalters/loom) install) are untouched.
 - `CLAUDE.md` — the only root-level file the installer writes. It appends one marker-bounded block (`<!-- BEGIN ANVIL --> … <!-- END ANVIL -->`) after your existing content; re-installs replace that block in place rather than appending a duplicate. Everything outside the markers — including a Loom section — passes through verbatim. (One nuance: if your CLAUDE.md ends in multiple blank lines, the first install normalizes that trailing run to a single blank line before the block.)
 
@@ -79,6 +79,28 @@ uv run --project .anvil python -c "from anvil.lib.render_gate import gate; print
 ```
 
 The generated `.anvil/pyproject.toml` declares the framework's base runtime deps (`pydantic`, `pyyaml`); no manual `uv add` is required. The importable `anvil/` package mirror lives at `<consumer>/.anvil/anvil/`, fully self-contained — the install-time `anvil_source` recorded in `install-metadata.json` is provenance metadata only and is not consulted at runtime. The pre-#230 install layout (`.anvil/lib/` for framework Python) is detected on upgrade and surfaced with a one-line migration warning; no auto-deletion (hand-edited override files there are preserved for the operator to port).
+
+### Running critics from multiple git worktrees
+
+If your orchestration dispatches critics into sibling git worktrees of the same repo (e.g. a [Loom](https://github.com/rjwalters/loom) builder/critic layout where each issue gets its own worktree), two extra setup steps keep the anvil Python path clean:
+
+- **Pre-sync each worktree.** A git worktree has its own checkout of `.anvil/`, so its `.anvil/.venv` starts empty. The first `uv run --project .anvil ...` in a fresh worktree triggers a cold `uv sync` — fine serially, but two critics dispatched into the *same* fresh worktree can race that first sync. Run `uv sync --project .anvil` as an explicit per-worktree setup step (e.g. from your dispatch/setup hook, before invoking any anvil command) rather than relying on lazy first-`uv run` sync:
+
+  ```bash
+  # In each fresh worktree, before dispatching critics:
+  uv sync --project .anvil
+  ```
+
+- **`UV_LINK_MODE=copy` for cross-filesystem worktrees.** When a worktree lives on a different filesystem/volume from the uv cache (e.g. a `worktree.root` pointed at a separate mount), every `uv sync`/`uv run` prints `Failed to hardlink files; falling back to full copy`. Set `UV_LINK_MODE=copy` to make the copy fallback explicit and silence the warning:
+
+  ```bash
+  export UV_LINK_MODE=copy          # env var, per shell/dispatch hook
+  # — or pin it in .anvil/uv.toml / .anvil/pyproject.toml:
+  #   [tool.uv]
+  #   link-mode = "copy"
+  ```
+
+The `.anvil/.gitignore` shipped by the installer already covers the `__pycache__/` and `.venv/` artifacts each worktree generates, so a pre-synced worktree stays clean in `git status`.
 
 ### Memo styling: the starter theme
 

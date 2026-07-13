@@ -35,6 +35,13 @@
 #                                      consumer root pulls the framework's
 #                                      runtime dependencies without referencing
 #                                      the anvil source repo.
+#   .anvil/.gitignore                  Self-contained ignore file (issue #674)
+#                                      suppressing the Python runtime artifacts
+#                                      the .anvil/ footprint generates:
+#                                      `__pycache__/`, `*.py[cod]`, and the
+#                                      `.venv/` created at Stage 10.5. Written
+#                                      once (skip-if-exists); the consumer's
+#                                      root .gitignore is left untouched.
 #   .anvil/roles/                      Generic role definitions (always installed).
 #   .anvil/skills/<name>/              Canonical skill bodies (consumer override
 #                                      target: SKILL.md, commands/, templates/,
@@ -1636,6 +1643,59 @@ info "Stage 8.5: write consumer-side pyproject.toml"
 CONSUMER_PYPROJECT="$TARGET/.anvil/pyproject.toml"
 do_action "write $CONSUMER_PYPROJECT (declares pydantic + pyyaml; anvil/ package)" \
   write_consumer_pyproject "$CONSUMER_PYPROJECT" "$ANVIL_VERSION"
+
+# ----- Stage 8.6: write .anvil/.gitignore (issue #674) ----------------------
+# The installer owns a Python mirror under .anvil/anvil/ and (absent --no-sync)
+# a venv at .anvil/.venv/. Any consumer command that runs `uv run --project
+# .anvil ...` (every critic importing anvil.lib.*) leaves `__pycache__/*.pyc`
+# bytecode caches under .anvil/anvil/**, dirtying `git status` in every
+# worktree, every time. Ship a self-contained .anvil/.gitignore so those
+# runtime artifacts are suppressed.
+#
+# Contract:
+#   * Self-contained under .anvil/ — NOT an append to the consumer's root
+#     .gitignore. The patterns cover the installer's own .anvil/ Python
+#     footprint (bytecode caches + the venv), which has nothing to do with the
+#     consumer's project layout; they are closer in spirit to Stage 8.5's
+#     .anvil/pyproject.toml than to the voice-grounding root-.gitignore append.
+#     Relative patterns inside a tracked nested .gitignore resolve against its
+#     own directory, so `__pycache__/` and `.venv/` here suppress
+#     .anvil/anvil/**/__pycache__/*.pyc and .anvil/.venv/* without touching the
+#     consumer's root .gitignore at all.
+#   * Unconditional — fires on every install regardless of --skills= selection
+#     (unlike the skill-gated Stage 7.9 voice patterns), since every install
+#     creates the .anvil/anvil/ mirror and (absent --no-sync) the .anvil/.venv/.
+#   * Skip-if-exists — matching the Stage 7.8 starter-theme convention: an
+#     installer-owned generated file is written once and left alone if the
+#     consumer has since hand-edited it. This deliberately does NOT reuse
+#     append_to_gitignore_idempotent() (that helper is for appending into a
+#     consumer-owned root file, not for an installer-owned generated file).
+#   * --dry-run reports the would-write action and writes nothing (issue #81).
+info "Stage 8.6: write .anvil/.gitignore (suppress __pycache__ + .venv runtime artifacts)"
+ANVIL_GITIGNORE="$TARGET/.anvil/.gitignore"
+
+write_anvil_gitignore() {
+  local dst="$1"
+  mkdir -p "$(dirname "$dst")"
+  cat > "$dst" <<'EOF'
+# Anvil-owned .gitignore — suppresses the Python runtime artifacts the anvil
+# installer's own .anvil/ footprint generates (bytecode caches under the
+# .anvil/anvil/ mirror + the uv venv at .anvil/.venv/). Patterns are relative
+# to this directory. The installer writes this file once (skip-if-exists), so
+# any local additions you make here survive re-install.
+__pycache__/
+*.py[cod]
+.venv/
+EOF
+}
+
+if [[ -e "$ANVIL_GITIGNORE" ]]; then
+  note "existing .anvil/.gitignore detected — preserving (the installer writes it once, never clobbers a hand-edit)"
+else
+  do_action "write .anvil/.gitignore (ignore __pycache__/ and .venv/ runtime artifacts)" \
+    write_anvil_gitignore "$ANVIL_GITIGNORE"
+  [[ "$DRY_RUN" == true ]] || ok ".anvil/.gitignore written (runtime bytecode + venv stay out of git status)"
+fi
 
 # ----- Stage 9: install manifest --------------------------------------------
 info "Stage 9: write install manifest"
