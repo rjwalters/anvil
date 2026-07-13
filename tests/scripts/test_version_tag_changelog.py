@@ -36,6 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 VERSION_SH = REPO_ROOT / "scripts" / "version.sh"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
+README_MD = REPO_ROOT / "README.md"
 
 CHANGELOG_FIXTURE = """\
 # Changelog
@@ -58,6 +59,7 @@ def _mirror_repo(tmp_path: Path, *, with_changelog: bool) -> Path:
     shutil.copy(VERSION_SH, tmp_path / "scripts" / "version.sh")
     shutil.copy(CLAUDE_MD, tmp_path / "CLAUDE.md")
     shutil.copy(PYPROJECT, tmp_path / "pyproject.toml")
+    shutil.copy(README_MD, tmp_path / "README.md")
     (tmp_path / "scripts" / "version.sh").chmod(0o755)
     if with_changelog:
         (tmp_path / "CHANGELOG.md").write_text(CHANGELOG_FIXTURE)
@@ -133,8 +135,8 @@ def test_bump_tag_stages_dirty_changelog(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CHANGELOG.md", "CLAUDE.md", "pyproject.toml"}, (
-        f"tagged release commit should contain CHANGELOG.md + both version "
+    assert files == {"CHANGELOG.md", "CLAUDE.md", "pyproject.toml", "README.md"}, (
+        f"tagged release commit should contain CHANGELOG.md + all version "
         f"files; got {sorted(files)!r}"
     )
 
@@ -163,8 +165,8 @@ def test_set_tag_stages_dirty_changelog(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CHANGELOG.md", "CLAUDE.md", "pyproject.toml"}, (
-        f"tagged release commit should contain CHANGELOG.md + both version "
+    assert files == {"CHANGELOG.md", "CLAUDE.md", "pyproject.toml", "README.md"}, (
+        f"tagged release commit should contain CHANGELOG.md + all version "
         f"files; got {sorted(files)!r}"
     )
 
@@ -188,9 +190,9 @@ def test_bump_tag_clean_changelog_is_noop(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CLAUDE.md", "pyproject.toml"}, (
+    assert files == {"CLAUDE.md", "pyproject.toml", "README.md"}, (
         f"release commit with a clean CHANGELOG.md should contain only the "
-        f"two version files; got {sorted(files)!r}"
+        f"version files; got {sorted(files)!r}"
     )
 
 
@@ -217,7 +219,7 @@ def test_bump_tag_without_changelog_succeeds(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CLAUDE.md", "pyproject.toml"}
+    assert files == {"CLAUDE.md", "pyproject.toml", "README.md"}
     tags = _run(["git", "tag", "--list"], cwd=root).stdout.split()
     assert f"v{expected}" in tags, (
         f"expected tag v{expected} not found; tags: {tags!r}"
