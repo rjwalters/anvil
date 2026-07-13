@@ -281,8 +281,8 @@ each skill's `## Output layout` section and passed to
 `anvil/lib/sidecar.py::staged_sidecar(final_dir=..., required_files=[...])`,
 so the atomic rename fails (and the review never lands) if any of them is not
 written. `findings.md` in particular is the hard-required review-manifest file
-for `pub`, `deck`, `slides`, `ip-uspto`, `ip-uspto-provisional`, and
-`datasheet` (see `scorecard_kind.md`; note these skills split across both
+for `pub`, `deck`, `slides`, `ip-uspto`, and `ip-uspto-provisional` (see
+`scorecard_kind.md`; note these skills split across both
 `scorecard_kind` values — see the paragraph below for which kind each emits
 `findings.md` under).
 
