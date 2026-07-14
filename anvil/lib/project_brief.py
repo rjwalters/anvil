@@ -2716,6 +2716,45 @@ def _validate_render_template(raw: Any, field_path: str) -> Optional[str]:
     return stripped
 
 
+class CompanionRefTypeError(ValueError):
+    """Raised when a companion-ref field is declared with the wrong type (issue #718).
+
+    A distinguishable ``ValueError`` subclass for the ``spec_ref`` /
+    ``code_ref`` companion-input fields (:func:`_validate_spec_ref` /
+    :func:`_validate_code_ref`) when the declared value is present but not
+    a string (e.g. a YAML list, int, or dict).
+
+    Why a dedicated subclass: the companion-ref resolvers
+    (:func:`resolve_spec_ref` / :func:`resolve_code_ref`) load the BRIEF
+    leniently and blanket-swallow a plain ``ValueError`` to ``None`` (the
+    "BRIEF doesn't parse → tier INACTIVE" path). That blanket swallow
+    cannot distinguish "the whole BRIEF is structurally invalid" from
+    "this one companion-ref field is malformed" — so a malformed
+    ``spec_ref`` / ``code_ref`` was silently reclassified as *absent*,
+    disabling the consistency tier with no operator-visible signal
+    (exactly the state the SKILL.md §Spec-ref / §Code-ref contracts say
+    should never carry a broken-but-undetected declaration).
+
+    Because this subclasses ``ValueError``, every *other* caller of
+    :func:`load_project_brief` (and the strict loader) treats it exactly
+    as before — a malformed companion-ref is still a hard schema error for
+    them. Only the two lenient companion-ref resolvers catch it
+    *specially*, converting it into the existing ``missing: true``
+    structured-defect result (tier ACTIVE, ``major`` finding) rather than
+    swallowing it to ``None`` (tier inactive).
+
+    The ``field`` attribute (``"spec_ref"`` / ``"code_ref"``) lets each
+    resolver recognize a malformed value of *its own* field and ignore an
+    unrelated companion-ref field's malformed value (which should still
+    swallow to ``None`` for it, exactly as any other unrelated BRIEF-parse
+    failure would).
+    """
+
+    def __init__(self, message: str, *, field: str) -> None:
+        super().__init__(message)
+        self.field = field
+
+
 def _validate_spec_ref(raw: Any, field_path: str) -> Optional[str]:
     """Validate a raw ``spec_ref`` value (issue #686).
 
@@ -2733,12 +2772,13 @@ def _validate_spec_ref(raw: Any, field_path: str) -> Optional[str]:
     if raw is None:
         return None
     if not isinstance(raw, str):
-        raise ValueError(
+        raise CompanionRefTypeError(
             f"BRIEF.{field_path} must be a string path/glob; got "
             f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
             f"value as a path relative to the directory containing "
             f"BRIEF.md (e.g., "
-            f"`spec_ref: ../whitepaper/whitepaper.5/whitepaper.md`)."
+            f"`spec_ref: ../whitepaper/whitepaper.5/whitepaper.md`).",
+            field="spec_ref",
         )
     stripped = raw.strip()
     if not stripped:
@@ -2764,12 +2804,13 @@ def _validate_code_ref(raw: Any, field_path: str) -> Optional[str]:
     if raw is None:
         return None
     if not isinstance(raw, str):
-        raise ValueError(
+        raise CompanionRefTypeError(
             f"BRIEF.{field_path} must be a string path/glob; got "
             f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
             f"value as a path relative to the directory containing "
             f"BRIEF.md (e.g., "
-            f"`code_ref: ../../src/**/*.rs`)."
+            f"`code_ref: ../../src/**/*.rs`).",
+            field="code_ref",
         )
     stripped = raw.strip()
     if not stripped:
@@ -4061,10 +4102,20 @@ def resolve_spec_ref(
     finding, degrading gracefully (no crash, no false critical flag; the
     ``customer_context.py`` / ``resolve_voice_docs`` posture).
 
+    A **malformed** ``spec_ref`` (declared but the wrong type — e.g. a
+    YAML list, int, or dict) is NOT the inactive path (issue #718): it is
+    a declared-but-broken declaration, so it comes back as a structured
+    ``missing: true`` :class:`ResolvedSpecRef` (tier ACTIVE, ``major``
+    finding) — the same posture as a declared-but-unresolvable path. The
+    clear type error from :func:`_validate_spec_ref` is preserved in the
+    ``declared`` field so it reaches the operator instead of being
+    silently swallowed.
+
     Returns
     -------
     Optional[ResolvedSpecRef]
-        A resolved entry when the document declares a ``spec_ref``;
+        A resolved entry when the document declares a ``spec_ref`` (or
+        declares one with the wrong type — a ``missing: true`` entry);
         ``None`` when the tier is **INACTIVE**: no BRIEF, malformed /
         structurally invalid BRIEF (lenient swallow, mirroring
         :func:`resolve_voice_docs`), no matching document for ``slug``,
@@ -4073,6 +4124,18 @@ def resolve_spec_ref(
     """
     try:
         brief = load_project_brief(project_dir, consumer_root=consumer_root)
+    except CompanionRefTypeError as exc:
+        # A companion-ref field is declared but the wrong type (issue
+        # #718). If it is a malformed ``spec_ref``, this is a
+        # declared-but-BROKEN declaration — it must ACTIVATE the tier and
+        # surface a ``major`` finding via the existing ``missing: true``
+        # path, NOT silently swallow to ``None`` (the "undeclared → tier
+        # inactive" path). A malformed *other* companion field
+        # (``code_ref``) is unrelated to this resolver; swallow it to
+        # ``None`` exactly as any other BRIEF-parse failure below.
+        if exc.field == "spec_ref":
+            return ResolvedSpecRef(declared=str(exc), missing=True)
+        return None
     except ValueError:
         return None
     if brief is None:
@@ -4270,10 +4333,20 @@ def resolve_code_ref(
     tier still activates and the spec critics surface a ``major`` finding,
     degrading gracefully (no crash, no false critical flag).
 
+    A **malformed** ``code_ref`` (declared but the wrong type — e.g. a
+    YAML list, int, or dict) is NOT the inactive path (issue #718): it is
+    a declared-but-broken declaration, so it comes back as a structured
+    ``missing: true`` :class:`ResolvedCodeRef` (tier ACTIVE, ``major``
+    finding) — the same posture as a declared-but-unresolvable path. The
+    clear type error from :func:`_validate_code_ref` is preserved in the
+    ``declared`` field so it reaches the operator instead of being
+    silently swallowed.
+
     Returns
     -------
     Optional[ResolvedCodeRef]
-        A resolved entry when the document declares a ``code_ref``;
+        A resolved entry when the document declares a ``code_ref`` (or
+        declares one with the wrong type — a ``missing: true`` entry);
         ``None`` when the tier is **INACTIVE**: no BRIEF, malformed BRIEF
         (lenient swallow), no matching document for ``slug``, or that
         document declares no ``code_ref``. Callers branch on ``if
@@ -4281,6 +4354,18 @@ def resolve_code_ref(
     """
     try:
         brief = load_project_brief(project_dir, consumer_root=consumer_root)
+    except CompanionRefTypeError as exc:
+        # A companion-ref field is declared but the wrong type (issue
+        # #718). If it is a malformed ``code_ref``, this is a
+        # declared-but-BROKEN declaration — it must ACTIVATE the tier and
+        # surface a ``major`` finding via the existing ``missing: true``
+        # path, NOT silently swallow to ``None`` (the "undeclared → tier
+        # inactive" path). A malformed *other* companion field
+        # (``spec_ref``) is unrelated to this resolver; swallow it to
+        # ``None`` exactly as any other BRIEF-parse failure below.
+        if exc.field == "code_ref":
+            return ResolvedCodeRef(declared=str(exc), missing=True)
+        return None
     except ValueError:
         return None
     if brief is None:

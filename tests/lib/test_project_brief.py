@@ -20,8 +20,11 @@ import pytest
 from anvil.lib.project_brief import (
     DEFAULT_MAX_ITERATIONS,
     BriefDocument,
+    CompanionRefTypeError,
     ProjectBrief,
     load_project_brief,
+    resolve_code_ref,
+    resolve_spec_ref,
 )
 from anvil.lib.project_discovery import BRIEF_FILENAME
 
@@ -576,3 +579,305 @@ def test_no_anvil_ancestor_skips_consumer_tier(tmp_path: Path) -> None:
         ValueError, match=r"\.anvil/skills/memo/rubric_overlays"
     ):
         load_project_brief(project)
+
+
+# ---------------------------------------------------------------------------
+# Companion-ref resolution: code_ref / spec_ref (issue #718)
+# ---------------------------------------------------------------------------
+#
+# The bug fixed by #718: a *malformed* (wrong-type) code_ref / spec_ref
+# raised a ValueError at BRIEF-parse time that resolve_code_ref /
+# resolve_spec_ref blanket-swallowed into the SAME None result as "no
+# code_ref/spec_ref declared" — silently disabling the consistency tier.
+# The fix: a malformed declared value must resolve to a structured
+# missing=True result (tier ACTIVE, major finding), never None (tier
+# inactive). Only a genuinely ABSENT field, a structurally-unparseable
+# BRIEF, or a malformed *other* companion field yields None.
+
+
+def _write_spec_brief(project: Path, doc_lines: str) -> None:
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        documents:
+          - slug: sp
+            artifact_type: spec
+{doc_lines}
+        """,
+    )
+
+
+def _write_primer_brief(project: Path, doc_lines: str) -> None:
+    _write_brief(
+        project,
+        f"""\
+        project: proj
+        documents:
+          - slug: pr
+            artifact_type: primer
+{doc_lines}
+        """,
+    )
+
+
+# ---- code_ref (spec) --------------------------------------------------------
+
+
+def test_resolve_code_ref_absent_is_inactive(tmp_path: Path) -> None:
+    """No code_ref declared → None (tier INACTIVE), unchanged."""
+    project = tmp_path / "proj"
+    _write_spec_brief(project, "")
+    assert resolve_code_ref(project, "sp") is None
+
+
+def test_resolve_code_ref_null_is_inactive(tmp_path: Path) -> None:
+    """`code_ref:` with an empty RHS (YAML null) → None (undeclared)."""
+    project = tmp_path / "proj"
+    _write_spec_brief(project, "            code_ref:")
+    assert resolve_code_ref(project, "sp") is None
+
+
+def test_resolve_code_ref_valid_resolves_active(tmp_path: Path) -> None:
+    """A valid code_ref pointing at a real file → active, not missing."""
+    project = tmp_path / "proj"
+    (project).mkdir(parents=True, exist_ok=True)
+    (project / "impl.rs").write_text("fn main() {}\n", encoding="utf-8")
+    _write_spec_brief(project, "            code_ref: impl.rs")
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.paths
+    assert resolved.paths[0].endswith("impl.rs")
+
+
+def test_resolve_code_ref_bad_path_is_missing_active(tmp_path: Path) -> None:
+    """Declared-but-unresolvable (bad path) → missing=True (tier ACTIVE)."""
+    project = tmp_path / "proj"
+    _write_spec_brief(project, "            code_ref: nope/missing.rs")
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is True
+
+
+def test_resolve_code_ref_malformed_list_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """THE BUG (#718): a list-form code_ref must NOT degrade to None.
+
+    A malformed (wrong-type) code_ref is a declared-but-broken
+    declaration — it must ACTIVATE the tier via missing=True, exactly like
+    a bad path, not silently disable the consistency tier.
+    """
+    project = tmp_path / "proj"
+    _write_spec_brief(
+        project,
+        "            code_ref:\n"
+        "              - crypto/pq/src/**/*.rs\n"
+        "              - botho/src/block.rs",
+    )
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None, "malformed code_ref must NOT resolve to None"
+    assert resolved.missing is True
+    # The clear type error is surfaced, not swallowed.
+    assert "must be a string path/glob" in resolved.declared
+
+
+def test_resolve_code_ref_malformed_int_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """A non-string scalar (int) code_ref → missing=True (tier ACTIVE)."""
+    project = tmp_path / "proj"
+    _write_spec_brief(project, "            code_ref: 42")
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is True
+
+
+def test_resolve_code_ref_malformed_dict_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """A mapping-form code_ref → missing=True (tier ACTIVE)."""
+    project = tmp_path / "proj"
+    _write_spec_brief(
+        project,
+        "            code_ref:\n              path: src/**/*.rs",
+    )
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is True
+
+
+def test_resolve_code_ref_structurally_invalid_brief_is_none(
+    tmp_path: Path,
+) -> None:
+    """A structurally-unparseable BRIEF still swallows to None (unchanged).
+
+    A malformed *field* must surface (missing=True), but a whole-BRIEF
+    schema failure (here: missing required `documents`) must remain the
+    lenient None swallow — the narrow catch must not widen.
+    """
+    project = tmp_path / "proj"
+    _write_brief(project, "project: proj\n")
+    assert resolve_code_ref(project, "sp") is None
+
+
+def test_resolve_code_ref_ignores_unrelated_malformed_spec_ref(
+    tmp_path: Path,
+) -> None:
+    """A malformed spec_ref must not make resolve_code_ref return missing.
+
+    resolve_code_ref only owns code_ref; an unrelated malformed companion
+    field is swallowed to None for it, exactly like any other BRIEF-parse
+    failure.
+    """
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: sp
+            artifact_type: primer
+            spec_ref:
+              - a.md
+        """,
+    )
+    assert resolve_code_ref(project, "sp") is None
+
+
+# ---- spec_ref (primer) ------------------------------------------------------
+
+
+def test_resolve_spec_ref_absent_is_inactive(tmp_path: Path) -> None:
+    """No spec_ref declared → None (tier INACTIVE), unchanged."""
+    project = tmp_path / "proj"
+    _write_primer_brief(project, "")
+    assert resolve_spec_ref(project, "pr") is None
+
+
+def test_resolve_spec_ref_valid_resolves_active(tmp_path: Path) -> None:
+    """A valid spec_ref pointing at a real file → active, not missing."""
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    _write_primer_brief(project, "            spec_ref: spec.md")
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.paths
+    assert resolved.paths[0].endswith("spec.md")
+
+
+def test_resolve_spec_ref_bad_path_is_missing_active(tmp_path: Path) -> None:
+    """Declared-but-unresolvable (bad path) → missing=True (tier ACTIVE)."""
+    project = tmp_path / "proj"
+    _write_primer_brief(project, "            spec_ref: nope/missing.md")
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is True
+
+
+def test_resolve_spec_ref_malformed_list_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """THE BUG (#718), primer mirror: a list-form spec_ref must NOT be None."""
+    project = tmp_path / "proj"
+    _write_primer_brief(
+        project,
+        "            spec_ref:\n"
+        "              - ../whitepaper/a.md\n"
+        "              - ../whitepaper/b.md",
+    )
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None, "malformed spec_ref must NOT resolve to None"
+    assert resolved.missing is True
+    assert "must be a string path/glob" in resolved.declared
+
+
+def test_resolve_spec_ref_malformed_int_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """A non-string scalar (int) spec_ref → missing=True (tier ACTIVE)."""
+    project = tmp_path / "proj"
+    _write_primer_brief(project, "            spec_ref: 7")
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is True
+
+
+def test_resolve_spec_ref_malformed_dict_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """A mapping-form spec_ref → missing=True (tier ACTIVE)."""
+    project = tmp_path / "proj"
+    _write_primer_brief(
+        project,
+        "            spec_ref:\n              path: spec.md",
+    )
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is True
+
+
+def test_resolve_spec_ref_structurally_invalid_brief_is_none(
+    tmp_path: Path,
+) -> None:
+    """A structurally-unparseable BRIEF still swallows to None (unchanged)."""
+    project = tmp_path / "proj"
+    _write_brief(project, "project: proj\n")
+    assert resolve_spec_ref(project, "pr") is None
+
+
+def test_resolve_spec_ref_ignores_unrelated_malformed_code_ref(
+    tmp_path: Path,
+) -> None:
+    """A malformed code_ref must not make resolve_spec_ref return missing."""
+    project = tmp_path / "proj"
+    _write_brief(
+        project,
+        """\
+        project: proj
+        documents:
+          - slug: pr
+            artifact_type: spec
+            code_ref:
+              - a.rs
+        """,
+    )
+    assert resolve_spec_ref(project, "pr") is None
+
+
+# ---- validator-level: distinct exception type -------------------------------
+
+
+def test_malformed_code_ref_raises_companion_ref_type_error(
+    tmp_path: Path,
+) -> None:
+    """load_project_brief raises the distinct subclass for a bad code_ref.
+
+    The subclass is a ValueError (so every other caller is unchanged), but
+    carries the `field` discriminator the resolvers use.
+    """
+    project = tmp_path / "proj"
+    _write_spec_brief(
+        project, "            code_ref:\n              - a.rs"
+    )
+    with pytest.raises(CompanionRefTypeError) as excinfo:
+        load_project_brief(project)
+    assert excinfo.value.field == "code_ref"
+    assert isinstance(excinfo.value, ValueError)
+
+
+def test_malformed_spec_ref_raises_companion_ref_type_error(
+    tmp_path: Path,
+) -> None:
+    """load_project_brief raises the distinct subclass for a bad spec_ref."""
+    project = tmp_path / "proj"
+    _write_primer_brief(
+        project, "            spec_ref:\n              - a.md"
+    )
+    with pytest.raises(CompanionRefTypeError) as excinfo:
+        load_project_brief(project)
+    assert excinfo.value.field == "spec_ref"
+    assert isinstance(excinfo.value, ValueError)
