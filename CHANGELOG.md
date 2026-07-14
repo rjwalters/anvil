@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+### Added
+
+- **New artifact class `anvil:primer`** (#686): long-form pedagogical
+  explainers — a teach-from-intuition companion to a formal spec (the
+  "Mechanics of MobileCoin" genre). Ships `SKILL.md`, a 9-dim /44
+  pedagogy-dominant rubric (`anvil-primer-v1`; dim 1 *Pedagogical
+  scaffolding / learnability* at weight 7, general ≥35 advance threshold),
+  six lifecycle commands (`primer`, `primer-draft`, `primer-review`,
+  `primer-audit`, `primer-revise`, `primer-figures`), BRIEF + body
+  templates, and skeleton tests. Borrows `anvil:report`'s lifecycle shape
+  (parallel review+audit, markdown source-of-truth + optional PDF via the
+  shared `anvil/lib/render.py` pandoc-first path) as a NEW skill — not a
+  `report` parameterization (per "skill identity = artifact identity").
+- **Optional `spec_ref` companion input** for primer threads: a `BRIEF.md`
+  `documents:` key naming the formal sibling artifact a primer teaches
+  alongside. Resolved project-root-first then consumer-root by the new
+  `anvil/lib/project_brief.py::resolve_spec_ref` / `ResolvedSpecRef`. When
+  active, `primer-audit` uses it as a spec-consistency oracle (the
+  "Contradicts cited spec" critical flag) and `primer-review` runs the
+  duplication check ("Duplicates formal spec section"); absent → the tier
+  is silent/off and both critics record a `major` finding; declared-but-
+  missing → the tier activates but degrades gracefully (a `major` finding,
+  never a crash, never a false critical flag) — the standard #428/#449
+  activation contract.
+- `primer` registered as a skill-identity `artifact_type`
+  (`REGISTERED_ARTIFACT_TYPES` + `SKILL_IDENTITY_ARTIFACT_TYPES` +
+  `ArtifactType.PRIMER`); five `anvil-primer-*` lifecycle agents added to
+  the generated agent registry (source registry 54 → 59). README skill
+  table and CLAUDE.md skill counts bumped (12 artifact classes).
+
+### Deferred (per the #686 v1 scope guard)
+
+- The Botho "Botho from the Basics" worked example (`examples/`, dogfooded
+  via Botho #881 once the shape lands), voice-grounding wiring, a
+  consumer-pluggable figure-adapter registry, and the LaTeX/TikZ figure
+  path — documented in the primer SKILL.md §Deferred.
+
 ## [0.8.0] — 2026-07-13
 
 ### Summary
