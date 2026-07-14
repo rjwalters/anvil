@@ -159,11 +159,13 @@ class TestSkillFrontmatter(unittest.TestCase):
         self.assertIn("Adopting an existing spec", text)
         self.assertIn("first-class", text)
 
-    def test_three_way_verdict_deferred_to_phase_two(self):
+    def test_three_way_verdict_documented(self):
+        # Phase 2 (#707): the three-way verdict + register are documented as
+        # shipped behavior in SKILL.md.
         text = _read("SKILL.md")
-        # The three-way verdict is documented narratively as Phase 2 work.
         self.assertIn("three-way", text.lower())
-        self.assertIn("#707", text)
+        self.assertIn("implementation_contradicts_spec", text)
+        self.assertIn("Implementation-status register", text)
         # Never auto-rewrites the spec toward the code.
         self.assertIn("never", text.lower())
         self.assertIn("vestigial code path", text)
@@ -237,18 +239,20 @@ class TestCodeRefContractInCommands(unittest.TestCase):
         self.assertIn("never raises", text)
         self.assertIn("No false critical flag", text)
 
-    def test_audit_defers_three_way_verdict_to_phase_two(self):
+    def test_audit_ships_three_way_verdict(self):
+        # Phase 2 (#707): the sweep emits the single
+        # implementation_contradicts_spec critical flag carrying a mandatory
+        # three-way Disposition; it never auto-rewrites the spec toward the
+        # code (the safety property).
         text = _read("commands/spec-audit.md")
-        # Phase 1 records a suspected mismatch as a major finding, NOT an
-        # adjudicated critical flag; the three-way verdict is Phase 2.
-        self.assertIn("#707", text)
         self.assertIn("three-way", text.lower())
-        self.assertIn("major finding", text.lower())
-        # Never auto-rewrites the spec toward the code (the safety property).
+        self.assertIn("implementation_contradicts_spec", text)
+        for disposition in ("spec-wrong", "code-wrong", "intentional-gap"):
+            with self.subTest(disposition=disposition):
+                self.assertIn(disposition, text)
+        # Never auto-rewrites the spec toward the code (the near-miss).
         self.assertIn("never", text.lower())
         self.assertIn("vestigial code path", text)
-        # A clear Phase-2 extension point is left in the sweep.
-        self.assertIn("extension point", text.lower())
 
     def test_review_records_major_finding_when_code_ref_undeclared(self):
         text = _read("commands/spec-review.md")
@@ -280,6 +284,132 @@ class TestReviseSafetyProperty(unittest.TestCase):
         self.assertIn("operator", text.lower())
         # An ambiguous mismatch is escalated, not silently reconciled.
         self.assertIn("escalat", text.lower())
+
+
+class TestThreeWayVerdict(unittest.TestCase):
+    """Phase 2 (#707): the three-way audit verdict is documented as command-doc
+    prose + findings/verdict conventions — a single implementation_contradicts_spec
+    critical flag with a mandatory Disposition, NOT a schema change."""
+
+    def test_audit_single_flag_type_with_disposition(self):
+        text = _read("commands/spec-audit.md")
+        # ONE flag type, not three.
+        self.assertIn("implementation_contradicts_spec", text)
+        self.assertIn("Disposition", text)
+        # The three dispositions are carried inside that one flag.
+        for disposition in ("spec-wrong", "code-wrong", "intentional-gap"):
+            with self.subTest(disposition=disposition):
+                self.assertIn(disposition, text)
+        # Explicitly NOT modeled as three CriticalFlag.type values / a schema
+        # change (the near-miss guard).
+        self.assertIn("CriticalFlag.type", text)
+        self.assertIn("three different", text.lower())
+
+    def test_audit_asymmetry_default_is_code_wrong(self):
+        text = _read("commands/spec-audit.md")
+        # Never default to spec-wrong; when uncertain, default to code-wrong.
+        self.assertIn("asymmetry", text.lower())
+        self.assertIn("uncertain", text.lower())
+        # The load-bearing phrasing: escalating a true spec-wrong is cheap,
+        # silently spec-editing a true code-wrong recreates the near-miss.
+        self.assertIn("one", text.lower())
+        self.assertIn("recreate", text.lower())
+
+    def test_audit_code_wrong_emits_operator_escalation_block(self):
+        text = _read("commands/spec-audit.md")
+        self.assertIn("OPERATOR ESCALATION", text)
+        # Escalation includes a suggested consumer-repo issue.
+        self.assertIn("consumer-repo issue", text)
+        self.assertIn("BLOCKS advance", text)
+        # No shell-out automation — filing the issue is a human action.
+        self.assertIn("No shell-out", text)
+        self.assertIn("gh issue create", text)
+
+    def test_audit_summary_has_disposition_counts(self):
+        text = _read("commands/spec-audit.md")
+        self.assertIn("spec_consistency", text)
+        self.assertIn("disposition_counts", text)
+        for key in ("spec_wrong", "code_wrong", "intentional_gap", "unregistered"):
+            with self.subTest(key=key):
+                self.assertIn(key, text)
+
+    def test_audit_intentional_gap_register_suppression(self):
+        text = _read("commands/spec-audit.md")
+        # A registered gap is suppressed (clean pass); an unregistered gap is
+        # flagged (never silently passed, never auto-fixed).
+        self.assertIn("register", text.lower())
+        self.assertIn("suppress", text.lower())
+        self.assertIn("unregistered", text)
+
+
+class TestCodeWrongOverride(unittest.TestCase):
+    """spec-revise exposes a friction-ful --override-code-wrong entry point
+    modeled on memo's --override-no-go."""
+
+    def test_revise_has_override_code_wrong_flag(self):
+        text = _read("commands/spec-revise.md")
+        self.assertIn('--override-code-wrong "<reason>"', text)
+        # Required, non-empty rationale (memo NO-GO shape).
+        self.assertIn('--override-code-wrong ""', text)
+        self.assertIn("whitespace-only", text)
+        self.assertIn("left untouched", text)
+        # Modeled on memo's override.
+        self.assertIn("override-no-go", text)
+
+    def test_revise_routes_disposition_never_blanket_match_code(self):
+        text = _read("commands/spec-revise.md")
+        # The reviser routes by Disposition; code-wrong is escalated, never a
+        # silent spec rewrite.
+        self.assertIn("Disposition", text)
+        self.assertIn("code-wrong", text)
+        self.assertIn("spec-wrong", text)
+        self.assertIn("unregistered", text)
+        self.assertIn("code_wrong_overridden", text)
+
+
+class TestImplementationStatusRegister(unittest.TestCase):
+    """The implementation-status register is a first-class body section
+    (template) + a documented SKILL.md contract, operator/drafter-authored,
+    checked by both critics with an explicit division of labor."""
+
+    def test_skill_documents_register_contract(self):
+        text = _read("SKILL.md")
+        self.assertIn("## Implementation-status register", text)
+        # Live/target/status/tracking columns.
+        for col in ("Live", "Target", "Status", "Tracking"):
+            with self.subTest(column=col):
+                self.assertIn(col, text)
+        # Operator/drafter-authored, NOT auditor-generated.
+        self.assertIn("operator/drafter", text.lower())
+        self.assertIn("not the auditor", text.lower())
+
+    def test_template_has_implementation_status_section(self):
+        text = _read("templates/spec.template.tex")
+        self.assertIn("Implementation status", text)
+        # A real live/target/status/tracking table, not just a placeholder.
+        self.assertIn("Live behavior", text)
+        self.assertIn("Target", text)
+        self.assertIn("target-state", text)
+
+    def test_review_owns_unregistered_target_state_major_finding(self):
+        text = _read("commands/spec-review.md")
+        self.assertIn("5b", text)
+        self.assertIn("target-state", text)
+        self.assertIn("register", text.lower())
+        # It is a MAJOR finding, not a critical flag.
+        self.assertIn("major", text.lower())
+        self.assertIn("not a critical flag", text.lower())
+        # Division of labor with spec-audit is stated explicitly.
+        self.assertIn("Division of labor", text)
+
+    def test_audit_and_review_division_of_labor_is_explicit(self):
+        audit = _read("commands/spec-audit.md")
+        review = _read("commands/spec-review.md")
+        self.assertIn("Division of labor", audit)
+        self.assertIn("Division of labor", review)
+        # Audit is mechanical (code_ref); review is prose judgment.
+        self.assertIn("mechanical", audit.lower())
+        self.assertIn("mechanical", review.lower())
 
 
 class TestFigurePlanContract(unittest.TestCase):
@@ -424,13 +554,15 @@ class TestRubric(unittest.TestCase):
         self.assertIn("Undefined normative term", text)
         self.assertIn("Implementation contradicts normative claim", text)
 
-    def test_three_way_verdict_is_phase_two_forward_reference(self):
-        # The implementation-mismatch flag is documented as a Phase-2 forward
-        # reference, NOT implemented three-way logic in Phase 1.
-        self.assertIn("#707", self.text)
+    def test_three_way_verdict_documented(self):
+        # Phase 2 (#707): the rubric documents the single
+        # implementation_contradicts_spec flag carrying the three-way
+        # Disposition, never an auto-rewrite.
+        self.assertIn("implementation_contradicts_spec", self.text)
         self.assertIn("three-way", self.text.lower())
-        # Phase 1 posture: major finding, never auto-rewrite.
-        self.assertIn("major", self.text.lower())
+        for disposition in ("spec-wrong", "code-wrong", "intentional-gap"):
+            with self.subTest(disposition=disposition):
+                self.assertIn(disposition, self.text)
         self.assertIn("never", self.text.lower())
 
     def test_flag_inactive_when_code_ref_undeclared(self):
