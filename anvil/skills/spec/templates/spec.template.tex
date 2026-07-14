@@ -47,12 +47,28 @@
 % A grep-able constants table makes internal-consistency and (Phase 3)
 % deterministic constant-extraction checks cheap. State each constant once,
 % authoritatively; reference it elsewhere rather than restating a literal.
+%
+% Annotate the AUTHORITATIVE statement of each normative constant with an
+% "% anvil-const:" marker so spec-review's deterministic gate can catch the
+% same named constant stated with a different value in another section (the
+% block-time-floor 3s-vs-5s / ring-size-byte-count drift the gate exists to
+% prevent). The marker works on its own line OR as a trailing table-row
+% comment (everything before the "%" is ignored):
+%
+%   % anvil-const: name=block_time_floor value=3 unit=s
+%
+% Rules (see SKILL.md "Constant-consistency markers"): name= and value= are
+% required; unit= is optional; comparison is exact after minimal normalization
+% (no numeric tolerance); same name + different unit is a separate lower-
+% severity finding; a \newcommand duplicate/conflicting redefinition is caught
+% too. Prose-level (unmarked) drift is NOT caught by the gate — it is left to
+% review judgment and spec-audit.
 \begin{center}
 \begin{tabular}{@{}lll@{}}
 \toprule
 Name & Value & Notes \\
 \midrule
-[CONST\_A] & [value] & [what it governs] \\
+[CONST\_A] & [value] & [what it governs] \\ % anvil-const: name=[CONST_A] value=[value] unit=[unit]
 \bottomrule
 \end{tabular}
 \end{center}
