@@ -103,25 +103,30 @@ class TestFilesExist(unittest.TestCase):
                 )
 
     def test_deferred_scope_absent(self):
-        # Phase 2/3/4 do not ship here: no three-way-verdict module, no
-        # constant-consistency gate, no worked example, no draft-from-scratch
-        # generative command.
+        # Never-in-scope generative/impact commands are absent.
         for stem in ("spec-change-impact", "spec-adopt"):
             with self.subTest(command=stem):
                 self.assertFalse(
                     (_SKILL_ROOT / "commands" / f"{stem}.md").exists(),
-                    f"{stem}.md is deferred/out-of-scope for Phase 1",
+                    f"{stem}.md is deferred/out-of-scope",
                 )
-        # The Phase-3 deterministic constant-consistency gate module is NOT
-        # built in Phase 1.
-        self.assertFalse(
-            (_SKILL_ROOT / "lib" / "constant_consistency.py").exists(),
-            "the constant-consistency gate is Phase 3 scope (#708)",
-        )
-        # The Phase-4 worked example is NOT vendored in Phase 1.
+        # The Phase-4 worked example is NOT vendored yet.
         self.assertFalse(
             (_SKILL_ROOT / "examples").exists(),
             "the botho worked example is Phase 4 scope (#709)",
+        )
+
+    def test_phase3_constant_gate_present(self):
+        # Phase 3 (#708) ships the deterministic constant-consistency gate as a
+        # skill-local module (structural sibling of datasheet's pinmap/buswidth
+        # checks). NOT promoted to anvil/lib/ — skill-local first.
+        self.assertTrue(
+            (_SKILL_ROOT / "lib" / "constant_consistency.py").exists(),
+            "Phase 3 constant-consistency gate module must exist",
+        )
+        self.assertTrue(
+            (_SKILL_ROOT / "lib" / "__init__.py").exists(),
+            "spec lib package needs an __init__.py (packaging convention)",
         )
 
 
