@@ -26,11 +26,20 @@ Cassettes are hand-curated; to add one:
     curl -H "User-Agent: anvil-cite/0.0.1" \\
       "https://export.arxiv.org/api/query?id_list=YYMM.NNNNN" \\
       > tests/lib/cassettes/cite/arxiv-YYMM.NNNNN.xml
+
+    curl -H "User-Agent: anvil-cite/0.0.1" \\
+      "https://api.datacite.org/dois/10.xxx/xxx" \\
+      > tests/lib/cassettes/cite/datacite-10.xxx_xxx.json
+
+DataCite fallback cassettes are hand-curated down to the fields the
+resolver reads (titles / creators / publicationYear / types / url) so
+they stay stable against the live record drifting over time.
 """
 
 from __future__ import annotations
 
 import sys
+import urllib.error
 import urllib.parse
 from pathlib import Path
 from typing import Callable
@@ -40,6 +49,7 @@ import pytest
 
 from anvil.lib.cite import (
     BibRecord,
+    CiteResolutionError,
     Identifier,
     IdentifierKind,
     UnsupportedIdentifierError,
@@ -64,10 +74,26 @@ CASSETTES = Path(__file__).resolve().parent / "cassettes" / "cite"
 # ---------------------------------------------------------------------------
 
 
+def _http_404(url: str) -> urllib.error.HTTPError:
+    """Build an ``HTTPError`` that mimics a registry "DOI not here" 404.
+
+    Both Crossref and DataCite return a 404 for a DOI they do not have
+    registered; the cassette layer raises this when no fixture exists so
+    the fallback / verified-or-dropped paths are exercised without the
+    network.
+    """
+
+    return urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+
+
 def _cassette_for(url: str) -> bytes:
     """Map a URL to the hand-curated cassette bytes.
 
-    Test patches ``urllib.request.urlopen`` to call this helper.
+    Test patches ``urllib.request.urlopen`` to call this helper. A URL
+    whose cassette file is absent raises a 404 ``HTTPError`` — the same
+    signal the live registry sends for an unregistered DOI. This lets the
+    Crossref→DataCite fallback and the double-miss failure path be tested
+    purely from the presence/absence of fixture files.
     """
 
     if url.startswith("https://api.crossref.org/works/"):
@@ -78,6 +104,16 @@ def _cassette_for(url: str) -> bytes:
         # File-naming convention: '/' replaced with '_'.
         safe = doi.replace("/", "_")
         path = CASSETTES / f"crossref-{safe}.json"
+        if not path.exists():
+            raise _http_404(url)
+        return path.read_bytes()
+    if url.startswith("https://api.datacite.org/dois/"):
+        doi = url.rsplit("/dois/", 1)[1]
+        doi = urllib.parse.unquote(doi)
+        safe = doi.replace("/", "_")
+        path = CASSETTES / f"datacite-{safe}.json"
+        if not path.exists():
+            raise _http_404(url)
         return path.read_bytes()
     if url.startswith("https://export.arxiv.org/api/query"):
         query = urllib.parse.urlparse(url).query
@@ -306,6 +342,112 @@ def test_resolve_arxiv_cassette():
     assert record.url == "https://arxiv.org/abs/1706.03762"
     assert record.authors[0] == "Vaswani, Ashish"
     assert len(record.authors) == 8
+
+
+# ---------------------------------------------------------------------------
+# 10a. resolve(DOI) — DataCite fallback on Crossref miss
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_doi_datacite_fallback():
+    """A Zenodo DOI (404 on Crossref) resolves via DataCite."""
+
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.5281/zenodo.4618153")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        record = resolve(ident)
+    # Crossref was tried first (and 404'd), then DataCite.
+    assert any("api.crossref.org" in c for c in spy["calls"])
+    assert any("api.datacite.org" in c for c in spy["calls"])
+    # DataCite software record maps to @misc per its types.bibtex hint.
+    assert record.entry_type == "misc"
+    assert record.title.startswith("Qiskit Metal")
+    assert record.year == 2021
+    assert record.doi == "10.5281/zenodo.4618153"
+    assert record.url == "https://zenodo.org/record/4618153"
+    # familyName/givenName split renders surname-first.
+    assert record.authors[0] == "McConkey, Thomas G"
+    assert record.authors[1] == "Minev, Zlatko"
+    # Organizational creator (name-only, no family/given) renders as-is.
+    assert "Qiskit Metal Development Team" in record.authors
+
+
+def test_resolve_doi_datacite_not_article_or_journal():
+    """DataCite-sourced software records carry no journal/volume fields."""
+
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.5281/zenodo.4618153")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        record = resolve(ident)
+    assert record.journal is None
+    assert record.volume is None
+    assert record.issue is None
+    assert record.eprint is None
+
+
+def test_resolve_doi_missing_from_both_registries_raises():
+    """A DOI unknown to Crossref AND DataCite preserves verified-or-dropped."""
+
+    spy: dict = {}
+    # No cassette exists for this DOI under either registry, so both 404.
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.9999/does.not.exist")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        with pytest.raises(CiteResolutionError):
+            resolve(ident)
+    # Both registries were consulted before giving up.
+    assert any("api.crossref.org" in c for c in spy["calls"])
+    assert any("api.datacite.org" in c for c in spy["calls"])
+
+
+def test_datacite_fallback_cache_roundtrip():
+    """DataCite records cache under the shared doi/ namespace, hit-first."""
+
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.5281/zenodo.4618153")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        resolve(ident)
+        first_calls = len(spy["calls"])
+        assert first_calls >= 2  # Crossref miss + DataCite hit.
+        resolve(ident)
+        # Second resolve is served from cache — no new network calls.
+        assert len(spy["calls"]) == first_calls
+    # Cache file lives under the DOI namespace, not a datacite-specific one.
+    cache_file = cite_mod._cache_path(ident)
+    assert cache_file.exists()
+    assert cache_file.parent.name == "doi"
+    BibRecord.model_validate_json(cache_file.read_text(encoding="utf-8"))
+
+
+def test_datacite_fallback_respects_cache_bypass(monkeypatch):
+    """CITE_CACHE_BYPASS disables read+write for DataCite-sourced records."""
+
+    monkeypatch.setenv("CITE_CACHE_BYPASS", "1")
+    spy: dict = {}
+    ident = Identifier(kind=IdentifierKind.DOI, value="10.5281/zenodo.4618153")
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        resolve(ident)
+        resolve(ident)
+    # No cache short-circuit: the second resolve re-hits both registries.
+    crossref_calls = [c for c in spy["calls"] if "api.crossref.org" in c]
+    datacite_calls = [c for c in spy["calls"] if "api.datacite.org" in c]
+    assert len(crossref_calls) == 2
+    assert len(datacite_calls) == 2
+    assert not cite_mod._cache_path(ident).exists()
+
+
+def test_cite_writes_datacite_entry(tmp_path):
+    """cite() writes a @misc DataCite entry and returns the @key."""
+
+    spy: dict = {}
+    with patch("anvil.lib.cite.urllib.request.urlopen", _make_urlopen(spy)):
+        token = cite("10.5281/zenodo.4618153", tmp_path)
+    text = (tmp_path / "refs.bib").read_text(encoding="utf-8")
+    assert token.startswith("@")
+    assert "@misc{mcconkey2021qiskit," in text
+    assert "doi = {10.5281/zenodo.4618153}," in text
+    assert "url = {https://zenodo.org/record/4618153}," in text
+    # No journal field on a software record.
+    assert "journal" not in text
 
 
 # ---------------------------------------------------------------------------
