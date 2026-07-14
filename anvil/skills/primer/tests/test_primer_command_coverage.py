@@ -100,14 +100,26 @@ class TestFilesExist(unittest.TestCase):
                     (_SKILL_ROOT / rel).exists(), f"missing skill file: {rel}"
                 )
 
-    def test_deferred_scope_absent(self):
-        # v1 defers the worked example, voice wiring, figure-adapter
-        # registry, and LaTeX/TikZ path (issue #686 curation).
-        self.assertFalse(
-            (_SKILL_ROOT / "examples").exists(),
-            "examples/ is deferred scope (the Botho #881 worked example)",
+    def test_worked_example_shipped(self):
+        # The Botho worked example landed in #693 (dogfood complete, botho#881
+        # → PR #900): a trimmed vendored snapshot + a structural-contract
+        # README pinned by test_primer_example_brief_parses.py.
+        self.assertTrue(
+            (_SKILL_ROOT / "examples" / "botho" / "BRIEF.md").is_file(),
+            "the vendored Botho worked example must ship at examples/botho/",
         )
-        # No voice-wiring or figure-adapter commands leaked in.
+        self.assertTrue(
+            (
+                _SKILL_ROOT / "examples" / "expected-thread.N" / "README.md"
+            ).is_file(),
+            "the structural-contract README must ship at "
+            "examples/expected-thread.N/README.md",
+        )
+
+    def test_deferred_scope_absent(self):
+        # #693 shipped the worked example, but voice wiring, the figure-adapter
+        # registry, and the LaTeX/TikZ path remain deferred (issue #686
+        # curation). No voice-wiring or figure-adapter commands leaked in.
         for stem in ("primer-voice", "primer-figure-adapter"):
             with self.subTest(command=stem):
                 self.assertFalse(
