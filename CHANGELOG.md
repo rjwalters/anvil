@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-07-13
+
+### Summary
+
+One new artifact class plus the **upgrade-path reconciliation pass** the
+0.8.0 tractatus canary asked for: `anvil:primer` joins the catalog for
+long-form pedagogical explainers, and the installer now cleans up after
+what pre-0.8.0 installs left behind — stale unscoped agent files are
+pruned on a `--skills=` narrowing, and `.anvil/` artifacts committed
+before the shipped `.gitignore` existed are detected with a remediation
+hint (opt-in `--fix-tracked` to untrack, never auto-committing).
+
 ### Added
 
 - **New artifact class `anvil:primer`** (#686): long-form pedagogical
@@ -31,6 +43,27 @@
   `ArtifactType.PRIMER`); five `anvil-primer-*` lifecycle agents added to
   the generated agent registry (source registry 54 → 59). README skill
   table and CLAUDE.md skill counts bumped (12 artifact classes).
+- **Tracked-artifact detection + `--fix-tracked` installer flag** (#684):
+  after writing `.anvil/.gitignore` (Stage 8.6), the installer now detects
+  files already git-tracked under `.anvil/` that the ignore patterns would
+  suppress (the pre-0.8.0 committed-`__pycache__` upgrade gap) and prints
+  a warn + exact `git rm -r --cached` remediation hint. An explicit
+  `--fix-tracked` performs the untracking itself — index-only, never a
+  commit on the consumer's behalf, working-tree files untouched. Patterns
+  are derived from the written `.gitignore` via `git check-ignore` (no
+  second hard-coded list to drift); graceful no-op on non-git targets;
+  `--dry-run` honest throughout.
+
+### Fixed
+
+- **Stale agent files pruned on a `--skills=` narrowing** (#685): a
+  pre-0.8.0 unscoped install wrote all agent shims to `.claude/agents/`;
+  the 0.8.0 scoped copy (#662/#675) never removed the now-unselected ones,
+  so they kept registering in the consumer's agent picker. Stage 7.5 now
+  prunes anvil-owned agent files whose `agent_skill_for()` resolution is a
+  known skill outside the live selection — per-file removal only, non-anvil
+  (`loom-*`) and unknown-prefix files untouched, no-op for full installs,
+  `--dry-run` honored.
 
 ### Deferred (per the #686 v1 scope guard)
 
