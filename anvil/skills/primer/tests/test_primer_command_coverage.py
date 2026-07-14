@@ -286,6 +286,62 @@ class TestFigurePlanContract(unittest.TestCase):
         self.assertIn("labelformat=empty", text)
 
 
+class TestPolishFlagContract(unittest.TestCase):
+    """The #691 operator-directed revision flag is wired into
+    primer-revise.md + SKILL.md, references the shared snippet, and
+    bypasses ONLY the step-2 combined verdict pre-check."""
+
+    def test_revise_has_cli_flags_section_with_polish(self):
+        text = _read("commands/primer-revise.md")
+        self.assertIn("## CLI flags", text)
+        self.assertIn('### `--polish "<reason>"`', text)
+        # References the shared snippet as the source of truth.
+        self.assertIn("directed_revision.md", text)
+
+    def test_revise_polish_bypasses_step_two_only(self):
+        text = _read("commands/primer-revise.md")
+        # Bypasses the combined verdict pre-check (step 2) only...
+        self.assertIn("Bypasses step 2 ONLY", text)
+        # ...while the dual-critic check (step 1) and iteration cap (step 3)
+        # still apply.
+        self.assertIn("step 1", text)
+        self.assertIn("step 3", text)
+        # Inline bypass note at the step-2 procedure itself.
+        self.assertIn("`--polish` bypass", text)
+
+    def test_revise_polish_required_reason(self):
+        text = _read("commands/primer-revise.md")
+        # Empty / whitespace-only / missing reason rejected; thread untouched.
+        self.assertIn('--polish ""', text)
+        self.assertIn("whitespace-only", text)
+        self.assertIn("left untouched", text)
+
+    def test_revise_polish_no_inherited_credit(self):
+        text = _read("commands/primer-revise.md")
+        self.assertIn("No inherited credit", text)
+        self.assertIn("own rubric merits", text)
+
+    def test_revise_polish_audit_trail_fields(self):
+        text = _read("commands/primer-revise.md")
+        self.assertIn('metadata.revision_mode = "polish"', text)
+        self.assertIn("metadata.revise_force_reason", text)
+        # Audit-trail-only: no state-machine impact.
+        self.assertIn("NO state-machine impact", text)
+
+    def test_revise_default_path_byte_identical(self):
+        text = _read("commands/primer-revise.md")
+        # The default (no-flag) path must be advertised as unchanged.
+        self.assertIn("byte-identical to the pre-#691 shape", text)
+
+    def test_skill_documents_polish_pass(self):
+        text = _read("SKILL.md")
+        self.assertIn("Operator-initiated polish passes", text)
+        self.assertIn("directed_revision.md", text)
+        self.assertIn('--polish "<reason>"', text)
+        # Names the load-bearing invariants at a glance.
+        self.assertIn("No inherited credit", text)
+
+
 class TestRubric(unittest.TestCase):
     """rubric.md declares 9 dims summing to 44, >=35, pedagogy-dominant."""
 
