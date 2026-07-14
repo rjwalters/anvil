@@ -37,7 +37,8 @@ LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures"]
 
 # The artifact-class skills shipped in anvil/skills/ (8 at v0 + datasheet
 # under issue #418 + ip-uspto-provisional under issue #433 + essay under
-# issue #460 + primer under issue #686). Bridge tools
+# issue #460 + primer under issue #686 + spec under issue #697/#706).
+# Bridge tools
 # (project-migrate, rubric-rebackport) and the utility skills
 # (project-share packaging, project-scout discovery) are intentionally
 # excluded — they are human-invocable utilities, not fan-out targets.
@@ -54,6 +55,7 @@ ARTIFACT_SKILLS = [
     "datasheet",
     "essay",
     "primer",
+    "spec",
 ]
 
 # Phase → role display name (used in agent display string).
