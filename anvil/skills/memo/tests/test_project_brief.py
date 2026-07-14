@@ -416,7 +416,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
 
     def test_pitch_deck_rejected_listing_all_registered_values(self) -> None:
         """The studio's informal 'pitch-deck' stays unregistered — the
-        closed-ended error lists all sixteen registered values so the
+        closed-ended error lists all seventeen registered values so the
         operator can self-correct."""
         fm = textwrap.dedent(
             """\
@@ -431,7 +431,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 16)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 17)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -462,6 +462,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.IP_USPTO_PROVISIONAL,
             ArtifactType.ESSAY,
             ArtifactType.DATASHEET,
+            ArtifactType.PRIMER,
         ):
             self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
 
@@ -481,7 +482,10 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
         ``anvil:datasheet`` artifact class — shipped #418/#421 before
         this registry pattern was consistently applied, backfilled so
         rubric-rebackport's BRIEF-route inference has a validated
-        carrier)."""
+        carrier); issues #686/#687 grew it with ``primer`` (the
+        ``anvil:primer`` artifact class — long-form pedagogical
+        explainers own their threads in a shared project BRIEF, same
+        skill-identity shape)."""
         from project_brief import (  # noqa: PLC0415
             SKILL_IDENTITY_ARTIFACT_TYPES,
         )
@@ -499,6 +503,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.IP_USPTO_PROVISIONAL,
                     ArtifactType.ESSAY,
                     ArtifactType.DATASHEET,
+                    ArtifactType.PRIMER,
                 }
             ),
         )
