@@ -1298,12 +1298,20 @@ done
 # shared/framework agent doesn't silently regress into this same filtering bug.
 # No such file exists today (all 54 map to one of the 11 artifact-class skills).
 #
-# NOTE (out of scope, issue #662): re-running the installer with a *narrower*
-# --skills= set after a wider install does NOT prune previously-installed,
-# now-out-of-scope agent files under .claude/agents/. Agents aren't hash-tracked
-# / override-detected like skills are, and silently deleting consumer-visible
-# files on a --skills= narrowing is a larger behavior change than the reported
-# bug. Flagged as a known follow-up.
+# Narrowing prune (issue #685): re-running the installer with a *narrower*
+# --skills= set after a wider install DOES now prune previously-installed,
+# now-out-of-scope agent files under .claude/agents/. The prune pass (below,
+# after the copy loop) removes exactly those `anvil-<skill>-*.md` files that
+# resolve (via agent_skill_for) to a known skill NOT in the current
+# SELECTED_SKILLS. This is safe to do automatically because every such file is
+# an installer-owned artifact: every byte originates from anvil/agents/ in the
+# source repo and is recopied verbatim on each install — there is no
+# consumer-authored content to lose (unlike consumer git state, cf. #684, which
+# stays hint-only). Non-anvil files (e.g. a sibling Loom install's loom-*.md
+# shims) and shared/unprefixed anvil agents (agent_skill_for -> "") are never
+# touched; the prune is per-file, never a directory blow-away. The pass is a
+# no-op on a full/unscoped install (SELECTED_SKILLS == ALL_SKILLS) and honors
+# --dry-run.
 info "Stage 7.5: copy Anvil subagent definitions (anvil/agents -> .claude/agents)"
 SRC_AGENTS="$ANVIL_ROOT/anvil/agents"
 DST_AGENTS="$TARGET/.claude/agents"
@@ -1381,6 +1389,37 @@ if [[ -d "$SRC_AGENTS" ]]; then
   fi
 else
   note "source agents dir not found: $SRC_AGENTS (skipping; pre-#377 source checkout?)"
+fi
+
+# Prune stale agent files (issue #685): remove anything under $DST_AGENTS
+# matching anvil-*.md that resolves (via agent_skill_for) to a KNOWN skill NOT
+# in SELECTED_SKILLS — leftovers from a prior, wider install. Skip entirely on a
+# full/unscoped install (SELECTED_SKILLS == ALL_SKILLS): there is no "unselected
+# skill" concept then, so the pass is a no-op in the common case. The guard
+# mirrors the Stage 9 drift-detection guard (only matters on a narrower-than-full
+# selection). Non-anvil files and shared/unprefixed anvil agents
+# (agent_skill_for -> "") are never touched; removal is per-file, never a
+# directory blow-away.
+if [[ -d "$DST_AGENTS" && ${#SELECTED_SKILLS[@]} -lt ${#ALL_SKILLS[@]} ]]; then
+  STALE_AGENTS=()
+  while IFS= read -r -d '' existing_file; do
+    ebase="$(basename "$existing_file")"
+    eskill="$(agent_skill_for "$ebase")"
+    if [[ -n "$eskill" ]] && ! skill_selected "$eskill"; then
+      STALE_AGENTS+=("$existing_file")
+    fi
+  done < <(find "$DST_AGENTS" -maxdepth 1 -name 'anvil-*.md' -type f -print0 | LC_ALL=C sort -z)
+
+  if [[ ${#STALE_AGENTS[@]} -gt 0 ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      echo "  [dry-run] would remove ${#STALE_AGENTS[@]} stale agent file(s) for unselected skills"
+    else
+      for stale in "${STALE_AGENTS[@]}"; do
+        rm -f "$stale"
+      done
+      note "removed ${#STALE_AGENTS[@]} stale agent file(s) from a prior wider install (skills not in current selection)"
+    fi
+  fi
 fi
 
 # ----- Stage 7.8: scaffold starter theme (issue #471) ------------------------
