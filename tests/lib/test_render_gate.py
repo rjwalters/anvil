@@ -98,7 +98,7 @@ def overfull_sphere_canary_log() -> Path:
 def overfull_multipass_log() -> Path:
     """Multi-pass concatenation regression fixture (issue #668).
 
-    Simulates ``pub-audit``'s ``compile-log.txt``: a full
+    Simulates ``paper-audit``'s ``compile-log.txt``: a full
     ``pdflatex → bibtex → pdflatex → pdflatex`` cycle where three of the
     four invocations re-emit the same overfull warnings. 6 unique boxes
     (4 hbox + 2 vbox, all above the 5.0pt default threshold) each appear
@@ -317,7 +317,7 @@ def test_overfull_multipass_log_deduplicates(
 ):
     """Multi-pass log dedupe regression (issue #668): 18 raw hits → 6 unique.
 
-    ``pub-audit`` concatenates the full ``pdflatex → bibtex → pdflatex →
+    ``paper-audit`` concatenates the full ``pdflatex → bibtex → pdflatex →
     pdflatex`` cycle into one ``compile-log.txt``; three ``pdflatex``
     passes re-emit the same 6 overfull warnings, so a flat regex scan
     finds 18 matches for 6 real boxes (the exact 18-vs-6 canary from

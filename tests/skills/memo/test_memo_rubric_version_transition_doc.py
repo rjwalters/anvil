@@ -197,7 +197,7 @@ def test_scorecard_kind_documents_rubric_id_field():
 def test_scorecard_kind_pins_v2_naming_convention():
     body = _read(SCORECARD_KIND_MD)
     # The snippet documents the convention examples — the memo + proposal
-    # /44 rubric ids are `-v2`, the pub /40 is `-v1`.
+    # /44 rubric ids are `-v2`, the paper /40 is `-v1`.
     assert "anvil-memo-v2" in body
     assert "anvil-proposal-v2" in body or "anvil-pub-v1" in body
 

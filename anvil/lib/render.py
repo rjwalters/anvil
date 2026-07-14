@@ -9,7 +9,7 @@ external tools as subprocess shell-outs:
   primary path; ``pdf2image`` (Python wrapper around the same library) is
   a documented fallback for environments where ``pdftoppm`` is not on
   PATH but the Python wheel is installed.
-- ``pandoc`` for prose Markdown (pub/report) → PDF.
+- ``pandoc`` for prose Markdown (paper/report) → PDF.
 - Nothing — for ``render_matplotlib_figures`` which just enumerates an
   already-rendered ``figures/`` directory.
 
@@ -876,7 +876,7 @@ def _collect_page_pngs(out_dir: Path) -> List[Path]:
 
 
 # ---------------------------------------------------------------------------
-# Pandoc Markdown → PDF (for pub/report)
+# Pandoc Markdown → PDF (for paper/report)
 # ---------------------------------------------------------------------------
 
 
@@ -887,7 +887,7 @@ def render_pandoc_to_pdf(
 ) -> Path:
     """Render a prose Markdown document to PDF via pandoc.
 
-    Used by future ``pub-vision`` and ``report-vision`` critics where the
+    Used by future ``paper-vision`` and ``report-vision`` critics where the
     artifact is a research paper or technical report rather than a deck.
     The Marp path is appropriate for slide artifacts only.
 

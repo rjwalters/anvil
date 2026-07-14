@@ -200,7 +200,7 @@ Consumer skills ship their own CSL when they want one — typically as
 an asset under `.anvil/skills/<skill>/assets/<style>.csl`, picked up
 by the skill's render command. The lib documents the convention but
 does **not** ship any CSL file. APA-7 is the conventional default
-for academic/markdown skills (`pub`, `report`, `memo`); USPTO
+for academic/markdown skills (`paper`, `report`, `memo`); USPTO
 formatting is bespoke and renders without CSL.
 
 ## BibTeX 0.99 field reference

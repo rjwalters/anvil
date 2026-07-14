@@ -31,7 +31,7 @@ The complete authoring lifecycle is supported for eight artifact classes:
 | Skill | Artifact type | Output | Status |
 |---|---|---|---|
 | `anvil:memo` | Investment memos, internal documents | Markdown | Shipped #3 |
-| `anvil:pub` | Research papers (with venue-pinned rubrics) | LaTeX → PDF | Shipped #5, venue overlays #33 |
+| `anvil:paper` | Research papers (with venue-pinned rubrics) | LaTeX → PDF | Shipped #5, venue overlays #33 |
 | `anvil:report` | Customer-facing technical reports (engagement findings, audits, advisories) | Markdown / LaTeX → PDF | Shipped #8 |
 | `anvil:deck` | Investor pitch decks | Marp Markdown → PDF | Shipped #6 |
 | `anvil:slides` | Talk / conference slides + speaker notes | Marp Markdown → PDF | Shipped #7 |
@@ -64,7 +64,7 @@ Each skill ships a complete `draft → review → revise → (audit) → figures
 - **CSS-drift guard** (#74) — unit test that fails CI if `palette.py` constants drift from `anvil-deck.css :root`.
 - **`marp_lint`** (#31) + four named lint rules including `figure-italic-supporting-line-too-long` (#101) — source-side checks before render.
 - **Auto-shrink detector** (#102) — image-based detection of silent Marp fit-to-frame, image-based via existing `pdftoppm` chain + Pillow + numpy.
-- **Per-skill vision critics** (#45, #46, #47, #48) — slides, pub, report, ip-uspto all have rendered-artifact review.
+- **Per-skill vision critics** (#45, #46, #47, #48) — slides, paper, report, ip-uspto all have rendered-artifact review.
 
 ---
 
@@ -93,7 +93,7 @@ Recurring themes likely to drive future issues:
 
 1. **Per-skill `lib/` extraction → `anvil/lib/`.** Several primitives that started skill-local (deck's `marp_lint`, deck's `auto_shrink_detector`, report's `ack.py` / `audit_flags.py` / `pdf_freshness.py`) are candidates for promotion to `anvil/lib/` once a second skill needs them. Trigger: observed duplication, not anticipated need.
 
-2. **Audit-command migrations.** Five skills (`pub`, `report`, `deck`, `slides`, `ip-uspto`) have `*-audit` commands that pre-date the `kind: tool_evidence` codification in #29. Per-skill migrations to emit typed `_review.json` are filed separately.
+2. **Audit-command migrations.** Five skills (`paper`, `report`, `deck`, `slides`, `ip-uspto`) have `*-audit` commands that pre-date the `kind: tool_evidence` codification in #29. Per-skill migrations to emit typed `_review.json` are filed separately.
 
 3. **Memo-side gates.** `anvil:memo` is markdown-first (maintainer decision, #64); a markdown-appropriate length proxy + clean-output gate could ship as the memo analog of `render_gate` if canary friction emerges.
 

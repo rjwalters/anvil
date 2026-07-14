@@ -55,7 +55,7 @@ def test_audit_snippet_documents_critical_flags():
 def test_audit_snippet_has_skill_mapping_table():
     body = _read(SNIPPETS / "audit.md")
     # Five v0 skills ship audit commands; memo is the explicit non-shipper.
-    for skill in ("memo", "pub", "report", "deck", "slides", "ip-uspto"):
+    for skill in ("memo", "paper", "report", "deck", "slides", "ip-uspto"):
         assert skill in body, (
             f"audit.md MUST mention skill '{skill}' in the audit-vs-review "
             f"mapping table"
@@ -150,7 +150,7 @@ def test_directed_revision_snippet_names_current_and_pending_adopters():
         "datasheet",
         "proposal",
         "deck",
-        "pub",
+        "paper",
         "slides",
         "installation",
         "essay",
@@ -241,12 +241,12 @@ def test_rubric_has_judgment_vs_tool_evidence_subsection():
     )
 
 
-def test_rubric_worked_examples_cover_pub_and_ip_uspto():
+def test_rubric_worked_examples_cover_paper_and_ip_uspto():
     body = _read(SNIPPETS / "rubric.md")
     section_idx = body.find("Judgment dimensions vs tool-evidence dimensions")
     assert section_idx >= 0
     section = body[section_idx:]
-    assert "anvil:pub" in section or "`pub" in section or "pub-audit" in section
+    assert "anvil:paper" in section or "`paper" in section or "paper-audit" in section
     assert (
         "anvil:ip-uspto" in section
         or "ip-uspto-audit" in section

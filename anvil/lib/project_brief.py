@@ -95,7 +95,8 @@ Public API
     identifies which skill owns the thread rather than selecting a memo
     rubric overlay subtype. Issue #394 grew the memo-scoped subset with
     the canary-proven ``challenge-memo`` and ``strategy-memo`` genres.
-    Issue #408 added the skill-identity value ``pub`` (research-paper
+    Issue #408 added the skill-identity value ``paper`` (registered as
+    ``pub``, renamed under #694) (research-paper
     threads, the project-migrate BRIEF-synthesis registry gap).
 
 ``MEMO_ARTIFACT_TYPES``
@@ -106,7 +107,7 @@ Public API
 
 ``SKILL_IDENTITY_ARTIFACT_TYPES``
     The skill-identity subset of :class:`ArtifactType` (``deck`` /
-    ``slides`` / ``proposal`` / ``pub``). Memo's overlay dispatch fails
+    ``slides`` / ``proposal`` / ``paper``). Memo's overlay dispatch fails
     loudly for exactly this set (issue #386, re-keyed explicit under
     #394 so consumer-declared memo types don't trip the rejection).
 
@@ -248,7 +249,7 @@ Issue #394 adds a **second validation tier**: an unregistered
 ``<consumer>/.anvil/skills/memo/rubric_overlays/<type>.json``, where
 ``<consumer>`` is the directory carrying the ``.anvil/`` install marker
 (located via :func:`anvil.lib.theme.find_consumer_root`, the same walk
-the theme catalog and the pub skill's consumer venue-rubric tier use).
+the theme catalog and the paper skill's consumer venue-rubric tier use).
 This lets a consumer register memo genres without a framework PR while
 keeping the enum honest — an unknown type with NO consumer overlay
 still fails loudly at parse time. Consumer-declared values are carried
@@ -293,7 +294,7 @@ Skill-local first
 Lives under ``anvil/skills/memo/lib/`` per the CLAUDE.md "skill-local
 first, lib promotion later" pattern. Promotion to ``anvil/lib/`` is queued
 for the second-consumer trigger (likely ``anvil:proposal`` if it adopts
-the project-BRIEF shape, or ``anvil:pub``).
+the project-BRIEF shape, or ``anvil:paper``).
 
 Relationship to ``project_discovery.py``
 ----------------------------------------
@@ -332,7 +333,7 @@ from anvil.lib.theme import find_consumer_root
 # (five seeds per the curator's confirmation comment on #283, plus the
 # canary-proven challenge-memo / strategy-memo registered under #394);
 # the rest are skill-identity values — deck / slides / proposal
-# added under #386, pub added under #408 (a pub-class LaTeX paper
+# added under #386, paper added under #408 (a paper-class LaTeX paper
 # thread in a shared project BRIEF previously had NO registered type,
 # so project-migrate's BRIEF synthesis silently defaulted a research
 # paper to 'investment-memo'), report added under #432 (the vN
@@ -362,6 +363,19 @@ from anvil.lib.theme import find_consumer_root
 #      below (NOT to MEMO_ARTIFACT_TYPES — no memo overlay JSON; memo
 #      commands fail loudly on non-memo types).
 #   2. Documenting it in the owning skill's SKILL.md.
+# Legacy input aliases for renamed artifact types (issue #694). Keyed by
+# the OLD string a consumer BRIEF may still carry; the value is the
+# CANONICAL enum member the parser normalizes to. This keeps existing
+# consumer BRIEFs (authored before a rename) parsing without a manual
+# edit, while the parser emits the canonical typed member going forward.
+#
+# `pub` → `paper`: the `anvil:pub` skill was renamed to `anvil:paper`
+# under #694 (hard rename, no skill-level forwarding alias). A consumer
+# BRIEF with `artifact_type: pub` still parses and normalizes to
+# `ArtifactType.PAPER`. This alias is INPUT-ONLY: nothing emits `"pub"`.
+_ARTIFACT_TYPE_INPUT_ALIASES: Dict[str, "ArtifactType"] = {}
+
+
 REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "investment-memo",
     "position-paper",
@@ -373,7 +387,7 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "deck",
     "slides",
     "proposal",
-    "pub",
+    "paper",
     "report",
     "ip-uspto",
     "ip-uspto-provisional",
@@ -429,12 +443,15 @@ class ArtifactType(str, Enum):
         Skill-identity value (#386): an ``anvil:proposal`` LaTeX
         customer-proposal thread. Not a memo subtype — selects no memo
         rubric overlay.
-    PUB
-        Skill-identity value (#408): an ``anvil:pub`` LaTeX
-        research-paper thread. Not a memo subtype — selects no memo
-        rubric overlay. Registered so project-migrate's BRIEF
-        synthesis can name pub-class ``.tex``-bodied threads instead
-        of silently defaulting them to ``investment-memo``.
+    PAPER
+        Skill-identity value (#408; skill renamed ``pub`` → ``paper``
+        under #694): an ``anvil:paper`` LaTeX research-paper thread. Not
+        a memo subtype — selects no memo rubric overlay. Registered so
+        project-migrate's BRIEF synthesis can name paper-class
+        ``.tex``-bodied threads instead of silently defaulting them to
+        ``investment-memo``. The legacy string ``pub`` is accepted as an
+        input alias (see ``_ARTIFACT_TYPE_INPUT_ALIASES``) so pre-rename
+        consumer BRIEFs keep parsing.
     REPORT
         Skill-identity value (#432): an ``anvil:report`` technical /
         customer-facing report thread. Not a memo subtype — selects no
@@ -442,7 +459,7 @@ class ArtifactType(str, Enum):
         report-dir adoption (``--adopt-vn``) can name the adopted
         thread's owning skill instead of silently defaulting to
         ``investment-memo`` (the same registry-gap shape #408 closed
-        for ``pub``).
+        for ``paper``).
     IP_USPTO
         Skill-identity value (#440): an ``anvil:ip-uspto`` USPTO
         non-provisional patent-application thread. Not a memo subtype —
@@ -508,7 +525,7 @@ class ArtifactType(str, Enum):
     DECK = "deck"
     SLIDES = "slides"
     PROPOSAL = "proposal"
-    PUB = "pub"
+    PAPER = "paper"
     REPORT = "report"
     IP_USPTO = "ip-uspto"
     IP_USPTO_PROVISIONAL = "ip-uspto-provisional"
@@ -518,10 +535,15 @@ class ArtifactType(str, Enum):
     SPEC = "spec"
 
 
+# Populate the legacy input-alias map now that the enum exists (issue
+# #694). See the map's definition above for the input-only contract.
+_ARTIFACT_TYPE_INPUT_ALIASES["pub"] = ArtifactType.PAPER
+
+
 # The memo-scoped subset of the registry: values that select a memo
 # rubric overlay (one overlay JSON per member ships under
 # `anvil/skills/memo/rubric_overlays/`). Skill-identity values (deck /
-# slides / proposal / pub) are deliberately excluded — memo's overlay dispatch
+# slides / proposal / paper) are deliberately excluded — memo's overlay dispatch
 # (`anvil/skills/memo/lib/rubric_overlays.py::select_overlay_for_thread`)
 # raises a clear skill-mismatch error for them instead of silently
 # scoring a non-memo artifact against the memo rubric (#386).
@@ -539,7 +561,8 @@ MEMO_ARTIFACT_TYPES: frozenset = frozenset(
 
 
 # The skill-identity subset of the registry (issue #386, made explicit
-# under #394; ``pub`` added under #408; ``report`` added under #432;
+# under #394; ``paper`` (registered as ``pub`` under #408, renamed #694);
+# ``report`` added under #432;
 # ``ip-uspto`` / ``ip-uspto-provisional`` added under #440; ``essay``
 # added under #460; ``datasheet`` added under #486; ``primer`` added
 # under #686; ``spec`` added under #697/#706):
@@ -557,7 +580,7 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.DECK,
         ArtifactType.SLIDES,
         ArtifactType.PROPOSAL,
-        ArtifactType.PUB,
+        ArtifactType.PAPER,
         ArtifactType.REPORT,
         ArtifactType.IP_USPTO,
         ArtifactType.IP_USPTO_PROVISIONAL,
@@ -574,8 +597,8 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
 # ---------------------------------------------------------------------------
 
 # Relative path (under the consumer root) of the consumer-owned memo
-# rubric-overlay registry. Mirrors the pub skill's consumer venue-rubric
-# tier (`<consumer>/.anvil/skills/pub/rubrics/<venue>.yaml` — see
+# rubric-overlay registry. Mirrors the paper skill's consumer venue-rubric
+# tier (`<consumer>/.anvil/skills/paper/rubrics/<venue>.yaml` — see
 # `anvil/lib/rubric.py::discover_venue_rubric`).
 CONSUMER_MEMO_OVERLAYS_RELPATH: str = ".anvil/skills/memo/rubric_overlays"
 
@@ -1585,7 +1608,7 @@ class BriefDocument(BaseModel):
                   (Dims 3/5/6) are tracked separately at issue X.
     web_search
         Optional consumer-opt-in autonomous web literature search for
-        the ``pub`` skill's ``pub-litsearch`` / ``pub-review`` commands
+        the ``paper`` skill's ``paper-litsearch`` / ``paper-review`` commands
         (issue #424). Strict bool: ``true`` enables web search; absent /
         ``false`` / ``None`` are all equivalent and leave the commands
         byte-identical to their default no-web behavior. Non-bool
@@ -1601,13 +1624,13 @@ class BriefDocument(BaseModel):
         unknown-key rejection. Every web-discovered citation must still
         pass the resolver-verified-or-dropped contract via
         ``anvil/lib/cite.py::resolve()`` — see
-        ``anvil/skills/pub/commands/pub-litsearch.md``.
+        ``anvil/skills/paper/commands/paper-litsearch.md``.
 
         Example::
 
             documents:
               - slug: q3-method
-                artifact_type: pub
+                artifact_type: paper
                 web_search: true
     spec_ref
         Optional companion-input path/glob for the ``anvil:primer`` skill
@@ -2570,6 +2593,12 @@ def _validate_artifact_type(
         return ArtifactType(raw)
     except ValueError:
         pass
+    # Legacy input alias (issue #694): a renamed artifact type may still
+    # appear as its old string in a consumer BRIEF authored before the
+    # rename. Normalize to the canonical enum member. Input-only —
+    # nothing downstream emits the legacy string.
+    if raw in _ARTIFACT_TYPE_INPUT_ALIASES:
+        return _ARTIFACT_TYPE_INPUT_ALIASES[raw]
     if raw in consumer_types:
         return raw
     registered = list(REGISTERED_ARTIFACT_TYPES)
@@ -2920,7 +2949,7 @@ def _validate_web_search(raw: Any, field_path: str) -> Optional[bool]:
     else — including the strings ``"true"`` / ``"yes"`` and the
     integers ``0`` / ``1`` — raises ``ValueError`` with a field-path
     message. The knob opts a thread into autonomous web literature
-    search for ``pub-litsearch`` / ``pub-review``, relaxing an anti-
+    search for ``paper-litsearch`` / ``paper-review``, relaxing an anti-
     hallucination posture, so a silently-coerced truthy value is worse
     than a loud parse failure.
     """

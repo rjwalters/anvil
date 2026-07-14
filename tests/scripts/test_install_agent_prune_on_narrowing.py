@@ -86,27 +86,27 @@ def test_narrowing_reinstall_prunes_deselected_skill_agents(
 ) -> None:
     """A wide install then a narrower re-install removes the dropped skill.
 
-    ``--skills=pub,memo`` writes both skills' shims; a follow-up
-    ``--skills=pub`` must prune the ``anvil-memo-*.md`` files and keep the
-    ``anvil-pub-*.md`` files (still present, refreshed by the copy step).
+    ``--skills=paper,memo`` writes both skills' shims; a follow-up
+    ``--skills=paper`` must prune the ``anvil-memo-*.md`` files and keep the
+    ``anvil-paper-*.md`` files (still present, refreshed by the copy step).
     """
 
     target = tmp_path / "target"
     target.mkdir()
 
-    _assert_ok(_run("--skills=pub,memo", str(target)))
+    _assert_ok(_run("--skills=paper,memo", str(target)))
     wide = _installed_agents(target)
     memo_shims = {a for a in wide if a.startswith("anvil-memo-")}
-    pub_shims = {a for a in wide if a.startswith("anvil-pub-")}
+    pub_shims = {a for a in wide if a.startswith("anvil-paper-")}
     assert memo_shims, "wide install did not write any anvil-memo-* shims"
-    assert pub_shims, "wide install did not write any anvil-pub-* shims"
+    assert pub_shims, "wide install did not write any anvil-paper-* shims"
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     narrowed = _installed_agents(target)
     assert narrowed == pub_shims, (
-        f"narrowing to --skills=pub should leave exactly the pub shims; "
+        f"narrowing to --skills=paper should leave exactly the paper shims; "
         f"got {sorted(narrowed)}"
     )
     assert not (narrowed & memo_shims), (
@@ -130,14 +130,14 @@ def test_prune_leaves_non_anvil_files_untouched(tmp_path: Path) -> None:
     target = tmp_path / "target"
     target.mkdir()
 
-    _assert_ok(_run("--skills=pub,memo", str(target)))
+    _assert_ok(_run("--skills=paper,memo", str(target)))
 
     agents_dir = target / ".claude" / "agents"
     loom_shim = agents_dir / "loom-foo.md"
     loom_content = "loom shim body — must survive the prune\n"
     loom_shim.write_text(loom_content, encoding="utf-8")
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert loom_shim.exists(), "prune removed a non-anvil (loom-*) agent shim"
@@ -170,14 +170,14 @@ def test_prune_leaves_unresolved_anvil_named_files_untouched(
     target = tmp_path / "target"
     target.mkdir()
 
-    _assert_ok(_run("--skills=pub,memo", str(target)))
+    _assert_ok(_run("--skills=paper,memo", str(target)))
 
     agents_dir = target / ".claude" / "agents"
     shared = agents_dir / "anvil-notaskill-helper.md"
     shared_content = "shared/unresolved anvil agent — must not be pruned\n"
     shared.write_text(shared_content, encoding="utf-8")
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert shared.exists(), (
@@ -196,7 +196,7 @@ def test_prune_leaves_unresolved_anvil_named_files_untouched(
 def test_full_install_after_narrowing_prunes_nothing(tmp_path: Path) -> None:
     """A full (no ``--skills=``) install never triggers the prune pass.
 
-    After a narrower ``--skills=pub`` install, widening back to a full install
+    After a narrower ``--skills=paper`` install, widening back to a full install
     must add the rest of the registry and remove nothing — the prune guard
     (``SELECTED_SKILLS == ALL_SKILLS``) makes the pass a no-op.
     """
@@ -204,7 +204,7 @@ def test_full_install_after_narrowing_prunes_nothing(tmp_path: Path) -> None:
     target = tmp_path / "target"
     target.mkdir()
 
-    _assert_ok(_run("--skills=pub", str(target)))
+    _assert_ok(_run("--skills=paper", str(target)))
 
     result = _run(str(target))
     _assert_ok(result)
@@ -214,7 +214,7 @@ def test_full_install_after_narrowing_prunes_nothing(tmp_path: Path) -> None:
         f"full install emitted a prune note (should be a no-op):\n"
         f"{result.stdout}"
     )
-    # The full registry is present (superset of the earlier pub-only set).
+    # The full registry is present (superset of the earlier paper-only set).
     installed = _installed_agents(target)
     assert {a for a in installed if a.startswith("anvil-memo-")}, (
         "widening to a full install did not restore the memo shims"
@@ -234,7 +234,7 @@ def test_dry_run_narrowing_reports_count_and_writes_nothing(
     target = tmp_path / "target"
     target.mkdir()
 
-    _assert_ok(_run("--skills=pub,memo", str(target)))
+    _assert_ok(_run("--skills=paper,memo", str(target)))
     before = _installed_agents(target)
     memo_shims = {a for a in before if a.startswith("anvil-memo-")}
     assert memo_shims, "wide install did not write any anvil-memo-* shims"
@@ -244,7 +244,7 @@ def test_dry_run_narrowing_reports_count_and_writes_nothing(
             "bash",
             str(INSTALLER),
             "--dry-run",
-            "--skills=pub",
+            "--skills=paper",
             str(target),
         ],
         capture_output=True,
@@ -272,15 +272,15 @@ def test_dry_run_narrowing_reports_count_and_writes_nothing(
 
 
 def test_repeated_identical_selection_is_idempotent(tmp_path: Path) -> None:
-    """Two consecutive identical ``--skills=pub`` runs prune 0 files."""
+    """Two consecutive identical ``--skills=paper`` runs prune 0 files."""
 
     target = tmp_path / "target"
     target.mkdir()
 
-    _assert_ok(_run("--skills=pub", str(target)))
+    _assert_ok(_run("--skills=paper", str(target)))
     first = _installed_agents(target)
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
     second = _installed_agents(target)
 
@@ -347,26 +347,26 @@ def test_narrowing_respects_ip_uspto_prefix_collision(tmp_path: Path) -> None:
 
 
 def test_fresh_narrow_install_no_prior_agents_dir(tmp_path: Path) -> None:
-    """A first-time ``--skills=pub`` install (no prior agents dir) works.
+    """A first-time ``--skills=paper`` install (no prior agents dir) works.
 
     The prune pass must be a silent no-op when ``.claude/agents/`` did not
-    pre-exist — not an error — while the copy step still installs the pub set.
+    pre-exist — not an error — while the copy step still installs the paper set.
     """
 
     target = tmp_path / "target"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     installed = _installed_agents(target)
     assert installed == {
-        "anvil-pub-auditor.md",
-        "anvil-pub-drafter.md",
-        "anvil-pub-figurer.md",
-        "anvil-pub-reviewer.md",
-        "anvil-pub-reviser.md",
-    }, f"fresh --skills=pub install produced the wrong set: {sorted(installed)}"
+        "anvil-paper-auditor.md",
+        "anvil-paper-drafter.md",
+        "anvil-paper-figurer.md",
+        "anvil-paper-reviewer.md",
+        "anvil-paper-reviser.md",
+    }, f"fresh --skills=paper install produced the wrong set: {sorted(installed)}"
     assert "stale agent file" not in result.stdout, (
         f"fresh install emitted a prune note:\n{result.stdout}"
     )

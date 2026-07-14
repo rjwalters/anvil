@@ -116,7 +116,7 @@ def test_memo_perspective_documents_sibling_dir_layout():
 
 def test_memo_perspective_has_standard_command_sections():
     body = _read(PERSPECTIVE_MD)
-    # Mirror deck-perspective.md / pub-litsearch.md shape:
+    # Mirror deck-perspective.md / paper-litsearch.md shape:
     # Inputs / Outputs / Procedure / Failure modes / Re-run pattern.
     assert "## Inputs" in body, "memo-perspective.md MUST have an Inputs section"
     assert "## Outputs" in body, "memo-perspective.md MUST have an Outputs section"
