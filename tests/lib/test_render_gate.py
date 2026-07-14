@@ -876,6 +876,80 @@ def test_glyph_verification_clean_render_passes(
     assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
 
 
+@pytest.fixture
+def nbsp_only_source() -> Path:
+    """Source whose only non-ASCII is a stray U+00A0 NBSP (issue #692)."""
+    p = FIXTURES / "nbsp_only_source.md"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdftotext_nbsp_normalized() -> str:
+    """Stub pdftotext that normalized the source NBSP to an ASCII space."""
+    p = FIXTURES / "fake_pdftotext_nbsp_normalized.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+@pytest.fixture
+def url_only_nonascii_source() -> Path:
+    """Source whose non-ASCII lives only in URL targets / comments (issue #692)."""
+    p = FIXTURES / "url_only_nonascii_source.md"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdftotext_url_only() -> str:
+    """Stub pdftotext whose body text carries no non-ASCII (URLs not rendered)."""
+    p = FIXTURES / "fake_pdftotext_url_only.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+def test_glyph_verification_nbsp_normalized_passes(
+    empty_pdf, fake_pdfinfo_3pages_path, nbsp_only_source, fake_pdftotext_nbsp_normalized
+):
+    """A stray Unicode NBSP (U+00A0) that pdftotext normalizes to an ASCII space
+    must NOT trip the glyph gate (issue #692 false-positive vector 1).
+
+    Whitespace normalization is not the glyph-drop failure mode the sweep
+    guards against — Zs-category codepoints are excluded on both sides.
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[nbsp_only_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_nbsp_normalized,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+
+
+def test_glyph_verification_url_only_nonascii_passes(
+    empty_pdf, fake_pdfinfo_3pages_path, url_only_nonascii_source, fake_pdftotext_url_only
+):
+    """Non-ASCII living only in a link/image URL target, HTML comment, or
+    autolink must NOT trip the glyph gate (issue #692 false-positive vector 2).
+
+    Those glyphs are counted in the raw source but never reach the rendered
+    body, so the source sweep excludes non-rendered regions before counting.
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[url_only_nonascii_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_url_only,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+
+
 def test_glyph_verification_skips_gracefully_when_pdftotext_absent(
     empty_pdf, fake_pdfinfo_3pages_path, stix_glyph_drop_source, monkeypatch
 ):

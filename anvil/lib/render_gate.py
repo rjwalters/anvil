@@ -202,6 +202,7 @@ import re
 import shutil
 import struct
 import subprocess
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
@@ -373,6 +374,38 @@ _LATEX_ERROR_RE = re.compile(r"^!.*$", re.MULTILINE)
 # use inline references exclusively (the ``exhibits/…png`` convention), and a
 # reference-style definition would double-count against its use.
 _MD_IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+
+
+# Non-rendered source regions that the glyph-verification source sweep (issue
+# #692) must exclude before counting non-ASCII codepoints. Characters in these
+# regions live in the markdown source but never reach the rendered PDF body
+# text, so counting them source-side produces a false glyph-drop. Order of
+# stripping does not matter — each pattern is independently safe to blank out.
+#   * HTML comments: ``<!-- … -->`` (non-greedy, DOTALL to span newlines).
+#   * Inline-link / image URL targets: the ``(target)`` half of
+#     ``[text](target)`` and ``![alt](target)`` — the visible link *text* is
+#     kept (it renders); only the URL target is dropped. A non-ASCII path
+#     segment (``…/café-page``) never appears in the rendered body.
+#   * Autolinks: ``<https://…>`` angle-bracket URLs.
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_MD_LINK_TARGET_RE = re.compile(r"(!?\[[^\]]*\])\(([^)]*)\)")
+_AUTOLINK_RE = re.compile(r"<([a-zA-Z][a-zA-Z0-9+.-]*:[^>\s]*)>")
+
+
+def _strip_nonrendered_regions(text: str) -> str:
+    """Blank out markdown source regions that never reach the rendered body.
+
+    Removes HTML comments, inline link/image URL *targets* (keeping the
+    visible link text), and angle-bracket autolink URLs. Used by the
+    glyph-verification source sweep so non-ASCII inside a URL path
+    (``[x](https://ex.com/café-page)``) or a comment (``<!-- café -->``) is
+    not miscounted as a dropped body glyph (issue #692).
+    """
+    text = _HTML_COMMENT_RE.sub(" ", text)
+    # Keep the link text (group 1), drop the URL target (group 2).
+    text = _MD_LINK_TARGET_RE.sub(lambda m: m.group(1) + "( )", text)
+    text = _AUTOLINK_RE.sub(" ", text)
+    return text
 
 
 # -----------------------------------------------------------------------------
@@ -811,18 +844,30 @@ def _count_pdf_embedded_images(
 
 
 def _sweep_nonascii_codepoints(text: str) -> "dict[str, int]":
-    """Return a count of every non-ASCII codepoint in ``text``.
+    """Return a count of every non-ASCII *non-whitespace* codepoint in ``text``.
 
     Keyed by the character itself (``ord(ch) > 127``). This is the
     source-driven sweep the issue-#692 glyph check is built on: it enumerates
     the *actual* non-ASCII characters the body uses rather than testing a
     hardcoded allow-list, so unknown-unknowns (the STIX ``≠`` drop) are caught
     by construction.
+
+    Unicode-space codepoints (the ``Zs`` category — U+00A0 NBSP, U+2009 thin
+    space, U+202F narrow NBSP, …) are excluded: ``pdftotext`` normalizes them
+    to an ASCII space in its extraction, so a stray NBSP in the source would
+    otherwise short-count against the PDF and false-block the gate at error
+    severity. Whitespace normalization is not the glyph-drop failure mode this
+    sweep guards against (issue #692).
     """
     counts: dict[str, int] = {}
     for ch in text:
-        if ord(ch) > 127:
-            counts[ch] = counts.get(ch, 0) + 1
+        if ord(ch) <= 127:
+            continue
+        # Skip Unicode separator-spaces: pdftotext collapses them to ASCII
+        # space, so they can never be a real glyph drop.
+        if unicodedata.category(ch) == "Zs":
+            continue
+        counts[ch] = counts.get(ch, 0) + 1
     return counts
 
 
@@ -843,6 +888,13 @@ def _verify_source_glyphs(
     A strict ``==`` would false-positive on that legitimate noise; a short
     count is the only real failure mode.
 
+    Two classes of source non-ASCII are excluded before counting so the gate
+    does not false-block a valid document (issue #692): Unicode separator
+    spaces (``Zs`` — pdftotext normalizes them to ASCII space) and
+    non-rendered source regions (link/image URL targets, HTML comments,
+    autolinks — their glyphs never reach the rendered body). See
+    ``_sweep_nonascii_codepoints`` and ``_strip_nonrendered_regions``.
+
     Each finding: ``{codepoint, name, source_count, pdf_count}`` where
     ``codepoint`` is the ``U+XXXX`` hex form and ``name`` the character
     itself. Only codepoints present in the source participate — extra
@@ -856,6 +908,10 @@ def _verify_source_glyphs(
             text = path.read_text(encoding="utf-8")
         except (UnicodeDecodeError, OSError):
             continue
+        # Exclude non-rendered source regions (link/image URL targets, HTML
+        # comments, autolinks) before the sweep — their non-ASCII never reaches
+        # the rendered body, so counting it would false-flag a glyph drop.
+        text = _strip_nonrendered_regions(text)
         for ch, n in _sweep_nonascii_codepoints(text).items():
             source_counts[ch] = source_counts.get(ch, 0) + n
 
