@@ -120,6 +120,29 @@ A spec's defining constraint is: **every normative claim is true of the implemen
   - Both may fire on the same claim (audit from the code side, review from the prose side); the redundancy is intentional — an unregistered gap should be caught whether or not `code_ref` resolves.
 - **How it is resolved:** `spec-revise` closes an `unregistered` finding by **adding the register row** (drafter/operator content) — NOT by editing the normative claim and NOT by reconciling toward the code. Once the row exists, the next `spec-audit` suppresses the contradiction.
 
+## Constant-consistency markers (deterministic internal-consistency gate, Phase 3 / #708)
+
+A spec's dim 2 (*Internal consistency*) failure mode is the **same named quantity stated two different ways in two places** — the botho canary stated a block-time floor as 3\,s in one section and 5\,s in another, and gave a ring-size / byte-count figure that disagreed with itself across sections. A prose read of either section in isolation looks fine; only a cross-section comparison catches the drift. `spec-review` mechanizes the **marker-driven cheap half** of this via `anvil/skills/spec/lib/constant_consistency.py` (skill-local, pure stdlib; structurally a sibling of datasheet's `pinmap_check.py` / `buswidth_check.py`, and distinct from `anvil/lib/numeric_consistency.py`, which checks arithmetic *claims*, not same-named-constant drift).
+
+**The marker.** Annotate the **authoritative** statement of each normative constant with a one-liner in the `% anvil-bus:` family — either on its own line or as a trailing table-row comment (everything before the `%` is ignored, so it does not break table formatting):
+
+```latex
+% anvil-const: name=block_time_floor value=3 unit=s
+```
+```latex
+Block time floor & 3\,s & \S2.1 \\ % anvil-const: name=block_time_floor value=3 unit=s
+```
+
+**Grammar & semantics:**
+
+- `name=` and `value=` are **required**; `unit=` is optional. A marker missing `name=` or `value=` is a `malformed-declaration` finding — a broken integrity marker is itself a defect (mirrors `buswidth_check.py`), not a silent skip.
+- Two declarations of the same `name` + same `unit` with **different** (string-normalized) `value` → **`value-mismatch`** → dim-2 deduction **plus** the review-side **Self-contradiction critical flag** (one flag per violation *class*). Comparison is **exact** after minimal normalization (strip `$…$`, LaTeX spacing like `\,`, `,` thousands separators — so `3\,s` / `3 s` / `3s` and `1,024` / `1024` compare equal) — **no numeric tolerance**: a normative constant either matches or is a defect.
+- Two declarations of the same `name` with **different** `unit` → **`unit-mismatch`** (a lower-severity `major` finding + dim-2 deduction, **not** a critical flag) — `3 s` and `3000 ms` may both be correct; the gate never converts units.
+- A `\newcommand{\X}{body}` (or `\renewcommand`) is treated as an implicit declaration; a **second, conflicting** `\newcommand{\X}{…}` of the same macro name with a different body across the multi-file tree is a `value-mismatch`.
+- **Graceful degradation:** no markers *and* no `\newcommand` anywhere → the gate is inactive (`found=False`), scored as a **dim-2 deduction** on a skill-authored spec (it opted out of its own mechanical integrity check), not a hard failure. Markers are added incrementally as constants are identified — not a prerequisite for a spec to exist.
+
+**v1 limits (deliberate — the judgment half stays with `spec-review` dim 2 + `spec-audit`):** no free-text/prose constant extraction (unmarked "the floor is 3 seconds" here vs "wait at least 5s" there is invisible to the gate); no table-row auto-parsing (annotate the authoritative row with an inline marker); no cross-unit conversion; `\newcommand` covers duplicate-definition conflicts only, not macro-vs-raw-literal drift; no semantic equivalence across differently-*named* constants. Those are review/audit judgment calls, not deterministic-gate calls.
+
 ## State machine
 
 Per-thread state, derived from on-disk evidence (not flags), following the `report`/`primer` parallel-critic shape (`AUDITED` is the terminal state — the two-stage `CUSTOMER-READY` promotion is deliberately NOT adopted). **Phase 2 (#707) introduces NO new terminal state**: the three-way verdict is a blocking critical flag inside the existing `REVIEWED+AUDITED → READY/AUDITED` machine (a `code-wrong` or `unregistered` finding keeps the audit `audit_clean: false`, blocking `READY` exactly as any critical flag does), and the implementation-status register is a body section, not a state. There is no `spec`-side analog of `memo`'s NO-GO terminal — the `code-wrong` escalation is a blocking flag with an operator override, not a terminal sink:
