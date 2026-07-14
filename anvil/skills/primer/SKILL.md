@@ -40,9 +40,14 @@ A **primer thread** is a single long-form explainer authored across one or more 
   <thread>/                    Thread directory (named for the slug)
     refs/                      Optional reference material (sources, transcripts)
     <thread>.1/                First drafted version (immutable once written)
-      <thread>.md              Primer body (filename echoes the slug per #295)
-      exhibits/                Figures produced by primer-figures (mmdc → PNG, etc.)
-      <thread>.pdf             Optional PDF render (produced by primer-figures)
+      <thread>.md              Primer body (filename echoes the slug per #295; contains inline
+                               ![Figure N — caption](exhibits/figN-slug.png) references placed
+                               by the drafter per the #690 figure-plan contract)
+      exhibits/                Figures produced by primer-figures (mmdc → PNG), rendered to
+                               exactly the paths the body references (may run any time after
+                               draft — no AUDITED gate — so review/audit can score them)
+      <thread>.pdf             Optional PDF render (produced by primer-figures) — embeds the
+                               referenced figures
       _progress.json           Phase state for this version
       changelog.md             (revisions only) Maps prior critic notes to changes
     <thread>.1.review/         Reviewer sibling (read-only once written)
@@ -100,7 +105,7 @@ EMPTY → DRAFTED → REVIEWED+AUDITED → REVISED → … → READY → AUDITED
 | `REVIEWED+AUDITED` | BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` exist for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `REVIEWED+AUDITED` state at `N` |
 | `READY` | Latest `REVIEWED+AUDITED` records BOTH `advance: true` (review total ≥35/44) AND a clean audit (no unresolved audit critical flag) |
-| `AUDITED` | Same as `READY` for this skill — the standard anvil terminal state, reached once both critic siblings clear. `primer-figures` may then produce the optional `<thread>.pdf` |
+| `AUDITED` | Same as `READY` for this skill — the standard anvil terminal state, reached once both critic siblings clear. `primer-figures` typically ran earlier (any time after draft, per #690, so the critics could score the figures) and may be re-run here idempotently to refresh the optional `<thread>.pdf` |
 
 Thresholds: **≥35/44 advances** (general tier — educational collateral, NOT the customer-facing ≥39 band used by `report`/`ip-uspto`/`datasheet`). Any critical flag (review-side or audit-side) short-circuits regardless of total — block until addressed. Iteration cap: default `max_iterations: 4`; consumer overrides via the project-BRIEF paired override (`max_iterations` + `iteration_cap_rationale`, the #349 memo contract). Exceeding the cap marks the thread `BLOCKED` (human review).
 
@@ -113,11 +118,13 @@ Thresholds: **≥35/44 advances** (general tier — educational collateral, NOT 
 1. **A `.latest`-resolvable body**: `<thread>/<thread>.{N}/<thread>.md` for the highest `N`; resolution semantics per `anvil/lib/latest_resolution.py::resolve_latest`.
 2. **An AUDITED version**: `<thread>.{N}.review/verdict.md` records `advance: true`, total ≥35/44, zero unresolved review critical flags; `<thread>.{N}.audit/verdict.md` records a clean audit (no unresolved factual or spec-consistency critical flag).
 3. **Stamped critic metadata**: both siblings' `_meta.json` carry `scorecard_kind: "human-verdict"` plus the #346 stamps (`rubric_id: "anvil-primer-v1"`, `rubric_total: 44`, `advance_threshold: 35`).
-4. **An optional PDF**: when `primer-figures` has run, `<thread>.{N}/<thread>.pdf` alongside the markdown (the version dir is self-contained for archival). The markdown remains the source-of-truth.
+4. **An optional PDF with embedded figures**: when `primer-figures` has run, `<thread>.{N}/<thread>.pdf` alongside the markdown (the version dir is self-contained for archival), plus the rendered `exhibits/*.png` at exactly the paths the body references. Because the drafter places `![Figure N — caption](exhibits/…)` references inline at draft time (per #690 — no longer terminal-phase collateral), the PDF actually *contains* its teaching diagrams rather than shipping text-only, and those figures were scored by the review/audit critics (dim 3 / dim 7). The markdown remains the source-of-truth. `primer-figures` is idempotent and may be re-run at the terminal `AUDITED` version to refresh the PDF.
 
 ## Output format
 
-Follows `report`'s **markdown source-of-truth + optional PDF** precedent exactly. `<thread>.md` is the primary artifact (diffable, web-publishable — matching the "Mechanics of MobileCoin" web-HTML precedent); `primer-figures` produces an optional `<thread>.pdf` via the same **pandoc-first / LaTeX-opt-in** path `report` uses, reusing `anvil/lib/render.py` and `anvil/lib/render_gate.py` rather than writing new render plumbing. No third rendering path is invented. Teaching diagrams (message flows, lifecycle diagrams, the end-to-end walkthrough) are produced via the documented `mmdc → PNG` path (`report`/`pub` figure primitives) and land under `<thread>.{N}/exhibits/`.
+Follows `report`'s **markdown source-of-truth + optional PDF** precedent exactly. `<thread>.md` is the primary artifact (diffable, web-publishable — matching the "Mechanics of MobileCoin" web-HTML precedent); `primer-figures` produces an optional `<thread>.pdf` via the same **pandoc-first / LaTeX-opt-in** path `report` uses, reusing `anvil/lib/render.py` and `anvil/lib/render_gate.py` rather than writing new render plumbing. No third rendering path is invented.
+
+Teaching diagrams (message flows, lifecycle diagrams, the end-to-end walkthrough) are produced via the documented `mmdc → PNG` path (`report`/`pub` figure primitives) and land under `<thread>.{N}/exhibits/`. Following the `report` **draft-time figure-placement** precedent (and closing #690): the drafter places the figure *references* inline in the body (`![Figure N — caption](exhibits/figN-slug.png)`) at draft time and records a `figure_plan` in `_progress.json`; `primer-figures` then renders to exactly those referenced paths any time after draft (no `AUDITED` gate). This makes the figures reviewable (dim 3 / dim 7 material) and guarantees the optional PDF actually embeds them, rather than the figures being orphaned terminal-phase collateral referenced by nothing. **Caption convention**: captions carry their own `Figure N —` prefix and the render defaults set `\captionsetup{labelformat=empty}`, so LaTeX/pandoc does not double-number ("Figure N: Figure N — …"); the author numbers, the renderer does not.
 
 ## Command dispatch
 
@@ -128,7 +135,7 @@ Follows `report`'s **markdown source-of-truth + optional PDF** precedent exactly
 | `primer-review <thread>` | reviewer (pedagogy/prose critic) | latest `<thread>.{N}/`, resolved `spec_ref`, `rubric.md` | `<thread>.{N}.review/` |
 | `primer-audit <thread>` | auditor (factual + spec-consistency) | latest `<thread>.{N}/`, resolved `spec_ref`, `rubric.md` | `<thread>.{N}.audit/` |
 | `primer-revise <thread>` | reviser | latest `<thread>.{N}/` + BOTH critic siblings | `<thread>.{N+1}/` with `changelog.md`, or reports `AUDITED` |
-| `primer-figures <thread>` | figurer | latest AUDITED `<thread>.{N}/` | `<thread>.{N}/exhibits/` + optional `<thread>.pdf` |
+| `primer-figures <thread>` | figurer | latest `<thread>.{N}/` (any time after draft — no AUDITED gate, per #690) + `metadata.figure_plan` | `<thread>.{N}/exhibits/` (rendered to the drafter-referenced paths) + optional `<thread>.pdf` |
 
 ## Rubric
 
