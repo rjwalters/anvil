@@ -102,7 +102,7 @@ def test_no_append_when_no_voice_skill(tmp_path: Path) -> None:
     target = tmp_path / "no-voice"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     lines = _gitignore_lines(target)

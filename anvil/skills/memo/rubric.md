@@ -347,7 +347,7 @@ A `CONTRADICTED` finding at `critical` severity is a **critical-flag candidate**
 
 **Phase A ships as reviewer-prose discipline (no Python module).** Following the §"Refs back-check (dim 3)" precedent above — "applied entirely via reviewer judgment — there is no automated `refs/` parsing in v0" — the back-check is encoded as procedure prose in `commands/memo-review.md` step 4e and the rubric prose in this section. The reviewer enumerates summary claims, locates detail sections, classifies the mismatch by verdict tag and severity, and emits the structured block. No detector is invoked.
 
-**Phase B (deferred, optional).** An automated detector at `anvil/skills/memo/lib/summary_detail.py` is a Phase B follow-on, gated on canary signal. The canary-anchor fixture under `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/` carries the expected-block shape so Phase B's detector has a regression anchor on landing. Promotion from skill-local to `anvil/lib/` is a Phase C decision gated on a deck-side or pub-side second consumer per CLAUDE.md §"Skill-local first, lib promotion later".
+**Phase B (deferred, optional).** An automated detector at `anvil/skills/memo/lib/summary_detail.py` is a Phase B follow-on, gated on canary signal. The canary-anchor fixture under `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/` carries the expected-block shape so Phase B's detector has a regression anchor on landing. Promotion from skill-local to `anvil/lib/` is a Phase C decision gated on a deck-side or paper-side second consumer per CLAUDE.md §"Skill-local first, lib promotion later".
 
 ### Related (composition with other back-checks)
 

@@ -3,7 +3,7 @@
 `essay.md` is the read-only portfolio orchestrator: it opens NO `staged_sidecar`
 block of its own (unlike `essay-review.md`, the doer). Per issue #655 it carries
 a short cross-reference to `essay-review`'s full two-tier #645 fallback clause,
-mirroring `pub-review.md`'s own Atomicity cross-reference paragraph. This guard
+mirroring `paper-review.md`'s own Atomicity cross-reference paragraph. This guard
 asserts the cross-reference is present (and, defensively, that the doc does not
 silently start opening a sidecar without the fallback clause).
 """

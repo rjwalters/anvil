@@ -259,12 +259,12 @@ def test_fresh_install_scaffolds_voice_docs_with_essay(tmp_path: Path) -> None:
 
 
 def test_install_without_voice_skill_does_not_scaffold(tmp_path: Path) -> None:
-    """``--skills=pub`` (no voice consumer) scaffolds no grounding docs."""
+    """``--skills=paper`` (no voice consumer) scaffolds no grounding docs."""
 
     target = tmp_path / "no-voice-target"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert not (target / VOICE_DST_REL / "STYLE_GUIDE.md").exists(), (
@@ -519,7 +519,7 @@ def test_no_voice_hint_when_no_voice_skill(tmp_path: Path) -> None:
     target = tmp_path / "no-hint-target"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert "style_guide: .anvil/voice/STYLE_GUIDE.md" not in result.stdout, (

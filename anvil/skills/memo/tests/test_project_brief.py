@@ -365,6 +365,48 @@ class TestUnknownArtifactType(_TmpProjectBase):
 
 
 # ---------------------------------------------------------------------------
+# Legacy input aliases for renamed artifact types (issue #694)
+# ---------------------------------------------------------------------------
+
+
+class TestLegacyArtifactTypeInputAlias(_TmpProjectBase):
+    """Issue #694: the `pub` skill was renamed to `paper`.
+
+    A consumer BRIEF authored before the rename may still carry
+    ``artifact_type: pub``. The parser accepts it as an input alias and
+    normalizes to the canonical ``ArtifactType.PAPER`` — nothing emits
+    the legacy string. New BRIEFs use ``artifact_type: paper`` directly.
+    """
+
+    def _brief_with_type(self, artifact_type: str) -> str:
+        return textwrap.dedent(
+            f"""\
+            project: tiny
+            documents:
+              - slug: my-paper
+                artifact_type: {artifact_type}
+            """
+        ).rstrip()
+
+    def test_legacy_pub_normalizes_to_paper(self) -> None:
+        _write_brief(self.project_dir, self._brief_with_type("pub"))
+        brief = load_project_brief_strict(self.project_dir)
+        doc = brief.document_for_slug("my-paper")
+        self.assertIsNotNone(doc)
+        assert doc is not None
+        self.assertEqual(doc.artifact_type, ArtifactType.PAPER)
+        # Input-only: the normalized value is the canonical string.
+        self.assertEqual(doc.artifact_type.value, "paper")
+
+    def test_canonical_paper_parses_directly(self) -> None:
+        _write_brief(self.project_dir, self._brief_with_type("paper"))
+        brief = load_project_brief_strict(self.project_dir)
+        doc = brief.document_for_slug("my-paper")
+        assert doc is not None
+        self.assertEqual(doc.artifact_type, ArtifactType.PAPER)
+
+
+# ---------------------------------------------------------------------------
 # Skill-identity artifact types (issue #386)
 # ---------------------------------------------------------------------------
 
@@ -456,7 +498,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.DECK,
             ArtifactType.SLIDES,
             ArtifactType.PROPOSAL,
-            ArtifactType.PUB,
+            ArtifactType.PAPER,
             ArtifactType.REPORT,
             ArtifactType.IP_USPTO,
             ArtifactType.IP_USPTO_PROVISIONAL,
@@ -471,7 +513,10 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
         """Issue #394: the #386 guard is re-keyed onto an explicit set.
 
         Issue #408 grew the set with ``pub`` (research-paper threads —
-        the project-migrate BRIEF-synthesis registry gap); issue #432
+        the project-migrate BRIEF-synthesis registry gap; the skill was
+        renamed ``pub`` → ``paper`` under #694, so the enum member is now
+        ``ArtifactType.PAPER`` and the legacy ``pub`` string is an input
+        alias); issue #432
         grew it with ``report`` (the vN report-dir adoption mode's
         inferred type — the same registry-gap shape); issue #440 grew
         it with ``ip-uspto`` / ``ip-uspto-provisional`` (the
@@ -501,7 +546,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.DECK,
                     ArtifactType.SLIDES,
                     ArtifactType.PROPOSAL,
-                    ArtifactType.PUB,
+                    ArtifactType.PAPER,
                     ArtifactType.REPORT,
                     ArtifactType.IP_USPTO,
                     ArtifactType.IP_USPTO_PROVISIONAL,

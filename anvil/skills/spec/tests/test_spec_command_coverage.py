@@ -160,7 +160,7 @@ class TestSkillFrontmatter(unittest.TestCase):
 
     def test_adoption_mode_section_present(self):
         text = _read("SKILL.md")
-        # A pub-style in-skill adoption section, NOT a project-migrate mode.
+        # A paper-style in-skill adoption section, NOT a project-migrate mode.
         self.assertIn("Adopting an existing spec", text)
         self.assertIn("first-class", text)
 

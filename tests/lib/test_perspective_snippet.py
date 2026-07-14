@@ -111,17 +111,17 @@ def test_perspective_snippet_documents_naming_rationale():
     assert "research" in body, (
         "perspective.md MUST explicitly contrast 'perspective' against 'research'"
     )
-    # The disambiguation argument from anvil:pub's domain.
-    assert "anvil:pub" in body or "pub" in body, (
-        "perspective.md MUST cite anvil:pub's 'research papers' domain "
+    # The disambiguation argument from anvil:paper's domain.
+    assert "anvil:paper" in body, (
+        "perspective.md MUST cite anvil:paper's 'research papers' domain "
         "as the disambiguation driver"
     )
 
 
-def test_perspective_snippet_cites_pub_litsearch_as_precedent():
+def test_perspective_snippet_cites_paper_litsearch_as_precedent():
     body = _read(SNIPPETS / "perspective.md")
-    assert "pub-litsearch" in body, (
-        "perspective.md MUST cite pub-litsearch.md as the load-bearing "
+    assert "paper-litsearch" in body, (
+        "perspective.md MUST cite paper-litsearch.md as the load-bearing "
         "existing precedent"
     )
 

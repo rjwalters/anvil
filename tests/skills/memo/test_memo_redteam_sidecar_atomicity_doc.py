@@ -3,7 +3,7 @@
 Created for issue #655 (rollout of the #645 non-Python-driver fallback clause);
 also closes the pre-existing #593 doc-coverage gap for this doc. Mirrors the
 one-file-per-doc `*_sidecar_atomicity_doc.py` shape from the #593 rollout
-(e.g. `tests/skills/pub/test_pub_review_sidecar_atomicity_doc.py`).
+(e.g. `tests/skills/paper/test_paper_review_sidecar_atomicity_doc.py`).
 """
 
 from __future__ import annotations

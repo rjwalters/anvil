@@ -5,7 +5,7 @@ Per issue #189 acceptance criteria: cheap "grep-the-doc" regression
 guard that the rubric calibration co-dependency stays documented in
 the framework snippet (`anvil/lib/snippets/rubric.md`) and that the
 per-skill rubric extensions (deck dims 3+4, memo dim 3, proposal dims
-6+4, pub dim 4) cross-reference the framework primitive coherently —
+6+4, paper dim 4) cross-reference the framework primitive coherently —
 especially the **opportunistic, not punitive** framing that is the
 architect's load-bearing design contract.
 
@@ -36,7 +36,7 @@ PERSPECTIVE_SNIPPET = SNIPPETS / "perspective.md"
 DECK_RUBRIC = SKILLS / "deck" / "rubric.md"
 MEMO_RUBRIC = SKILLS / "memo" / "rubric.md"
 PROPOSAL_RUBRIC = SKILLS / "proposal" / "rubric.md"
-PUB_RUBRIC = SKILLS / "pub" / "rubric.md"
+PAPER_RUBRIC = SKILLS / "paper" / "rubric.md"
 
 
 def _read(p: Path) -> str:
@@ -121,8 +121,8 @@ def test_rubric_snippet_names_v0_adopter_skills():
         "rubric.md MUST name 'proposal' as a v0 adopter of the perspective "
         "interaction (issue #189 AC)"
     )
-    assert "pub" in body, (
-        "rubric.md MUST name 'pub' as a v0 adopter of the perspective "
+    assert "paper" in body, (
+        "rubric.md MUST name 'paper' as a v0 adopter of the perspective "
         "interaction (issue #189 AC)"
     )
 
@@ -421,79 +421,79 @@ def test_proposal_rubric_preserves_refs_back_check_subsection():
 
 
 # ---------------------------------------------------------------------------
-# Per-skill rubric extensions: pub (dim 4)
+# Per-skill rubric extensions: paper (dim 4)
 # ---------------------------------------------------------------------------
 
 
 def test_pub_rubric_has_perspective_substrate_subsection():
-    body = _read(PUB_RUBRIC)
-    # Per issue #189 AC: pub rubric dim 4 codifies the existing implicit
+    body = _read(PAPER_RUBRIC)
+    # Per issue #189 AC: paper rubric dim 4 codifies the existing implicit
     # litsearch rule by adding §"Perspective substrate (dim 4)" subsection.
     assert "Perspective substrate" in body, (
-        "pub/rubric.md MUST contain a 'Perspective substrate' subsection "
+        "paper/rubric.md MUST contain a 'Perspective substrate' subsection "
         "for dim 4 (Related-work positioning) per issue #189 AC"
     )
 
 
 def test_pub_rubric_perspective_subsection_names_dim_4():
-    body = _read(PUB_RUBRIC)
+    body = _read(PAPER_RUBRIC)
     idx = body.find("Perspective substrate")
     assert idx >= 0
     section_end = body.find("\n## ", idx + 5)
     section = body[idx : section_end if section_end > 0 else len(body)]
     assert "dim 4" in section.lower() or "Related-work positioning" in section, (
-        "pub/rubric.md 'Perspective substrate' subsection MUST name dim 4 "
+        "paper/rubric.md 'Perspective substrate' subsection MUST name dim 4 "
         "(Related-work positioning) per issue #189 AC"
     )
 
 
 def test_pub_rubric_perspective_anchors_to_litsearch_precedent():
     """Pub-side perspective is historically named 'litsearch'. The dim 4
-    subsection MUST name pub-litsearch.md as the load-bearing precedent
+    subsection MUST name paper-litsearch.md as the load-bearing precedent
     being codified into the framework-anchored shape."""
-    body = _read(PUB_RUBRIC)
+    body = _read(PAPER_RUBRIC)
     idx = body.find("Perspective substrate")
     assert idx >= 0
     section_end = body.find("\n## ", idx + 5)
     section = body[idx : section_end if section_end > 0 else len(body)]
     assert "litsearch" in section.lower(), (
-        "pub/rubric.md 'Perspective substrate' subsection MUST name litsearch "
+        "paper/rubric.md 'Perspective substrate' subsection MUST name litsearch "
         "as the pre-existing implicit rule being codified (issue #189 AC)"
     )
-    assert "pub-litsearch" in section, (
-        "pub/rubric.md MUST cite pub-litsearch.md as the load-bearing "
+    assert "paper-litsearch" in section, (
+        "paper/rubric.md MUST cite paper-litsearch.md as the load-bearing "
         "precedent (issue #189 AC)"
     )
 
 
 def test_pub_rubric_perspective_anchors_to_framework_snippet():
-    body = _read(PUB_RUBRIC)
+    body = _read(PAPER_RUBRIC)
     idx = body.find("Perspective substrate")
     assert idx >= 0
     section_end = body.find("\n## ", idx + 5)
     section = body[idx : section_end if section_end > 0 else len(body)]
     assert "anvil/lib/snippets/rubric.md" in section, (
-        "pub/rubric.md 'Perspective substrate' subsection MUST anchor to "
+        "paper/rubric.md 'Perspective substrate' subsection MUST anchor to "
         "anvil/lib/snippets/rubric.md (issue #189 AC; cross-skill primitive)"
     )
     assert "anvil/lib/snippets/perspective.md" in section, (
-        "pub/rubric.md 'Perspective substrate' subsection MUST cross-reference "
+        "paper/rubric.md 'Perspective substrate' subsection MUST cross-reference "
         "anvil/lib/snippets/perspective.md (issue #189 AC; cross-skill primitive)"
     )
 
 
 def test_pub_rubric_perspective_documents_opportunistic_not_punitive():
-    body = _read(PUB_RUBRIC)
+    body = _read(PAPER_RUBRIC)
     idx = body.find("Perspective substrate")
     assert idx >= 0
     section_end = body.find("\n## ", idx + 5)
     section = body[idx : section_end if section_end > 0 else len(body)]
     normalized = " ".join(section.lower().split())
     assert "opportunistic" in normalized, (
-        "pub/rubric.md MUST surface the 'opportunistic' framing (issue #189 AC)"
+        "paper/rubric.md MUST surface the 'opportunistic' framing (issue #189 AC)"
     )
     assert "not punitive" in normalized, (
-        "pub/rubric.md MUST surface the 'not punitive' framing (issue #189 AC)"
+        "paper/rubric.md MUST surface the 'not punitive' framing (issue #189 AC)"
     )
 
 
@@ -541,10 +541,10 @@ def test_out_of_scope_skills_do_not_yet_add_perspective_substrate():
 
 
 def test_all_v0_adopters_cross_reference_framework_snippet():
-    """All four v0 adopter skills (deck, memo, proposal, pub) MUST
+    """All four v0 adopter skills (deck, memo, proposal, paper) MUST
     cross-reference anvil/lib/snippets/rubric.md in their Perspective
     substrate subsection."""
-    for skill_path in (DECK_RUBRIC, MEMO_RUBRIC, PROPOSAL_RUBRIC, PUB_RUBRIC):
+    for skill_path in (DECK_RUBRIC, MEMO_RUBRIC, PROPOSAL_RUBRIC, PAPER_RUBRIC):
         body = _read(skill_path)
         idx = body.find("Perspective substrate")
         assert idx >= 0, f"{skill_path} MUST have a Perspective substrate subsection"

@@ -250,7 +250,7 @@ def test_no_values_scaffold_without_voice_skill(tmp_path: Path) -> None:
     target = tmp_path / "no-voice-values"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert not (target / VOICE_DST_REL / "VALUES.local.md").exists(), (

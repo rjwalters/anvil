@@ -156,12 +156,12 @@ def test_fresh_install_scaffolds_starter_theme(tmp_path: Path) -> None:
 
 
 def test_install_without_memo_does_not_scaffold(tmp_path: Path) -> None:
-    """``--skills=pub`` (no memo) installs no starter theme."""
+    """``--skills=paper`` (no memo) installs no starter theme."""
 
     target = tmp_path / "no-memo-target"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert not (target / ".anvil" / "themes").exists(), (
@@ -322,7 +322,7 @@ def test_hint_absent_when_memo_not_selected(tmp_path: Path) -> None:
     target = tmp_path / "no-hint-target"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert "theme: starter" not in result.stdout, (
