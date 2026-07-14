@@ -52,6 +52,7 @@ ARTIFACT_SKILLS = [
     "datasheet",
     "essay",
     "primer",
+    "spec",
 ]
 LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures"]
 PHASE_SUFFIX = {

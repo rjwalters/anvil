@@ -120,6 +120,12 @@ KNOWN_RUBRICS: Dict[Tuple[str, int], RubricIdentity] = {
         "anvil-ip-provisional-v1", 45, 39
     ),
     ("essay", 44): RubricIdentity("anvil-essay-v1", 44, 35),
+    # primer (#686) — the catalog fell behind when 0.8.1 shipped it;
+    # backfilled under #706 (the CatalogDriftGuard's anticipated third
+    # occurrence).
+    ("primer", 44): RubricIdentity("anvil-primer-v1", 44, 35),
+    # spec (#697/#706) — normative-correctness-dominant, audit-grade band.
+    ("spec", 44): RubricIdentity("anvil-spec-v1", 44, 39),
 }
 
 
@@ -140,6 +146,8 @@ CURRENT_RUBRIC_BY_SKILL: Dict[str, RubricIdentity] = {
     "datasheet": KNOWN_RUBRICS[("datasheet", 44)],
     "ip-uspto-provisional": KNOWN_RUBRICS[("ip-uspto-provisional", 45)],
     "essay": KNOWN_RUBRICS[("essay", 44)],
+    "primer": KNOWN_RUBRICS[("primer", 44)],
+    "spec": KNOWN_RUBRICS[("spec", 44)],
 }
 
 

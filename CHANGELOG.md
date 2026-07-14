@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+### Added
+
+- **New artifact class `anvil:spec` (Phase 1 skeleton)** (#697/#706):
+  normative technical specifications — protocol whitepapers, wire-format
+  specs, consensus rules, API contracts — maintained truthfully against
+  their implementation. Ships `SKILL.md`, a 9-dim /44
+  normative-correctness-dominant rubric (`anvil-spec-v1`; dim 1
+  *Normative correctness* at weight 7, ≥39 audit-grade advance threshold),
+  six lifecycle commands (`spec`, `spec-draft`, `spec-review`,
+  `spec-audit`, `spec-revise`, `spec-figures`), BRIEF + LaTeX-body
+  templates, a README, and skeleton tests. Borrows `anvil:report`'s /
+  `anvil:primer`'s lifecycle shape (parallel review+audit, source-of-truth
+  + optional PDF) as a NEW skill — not a parameterization (per "skill
+  identity = artifact identity"). Phase 1 of the #697 epic; the three-way
+  audit verdict + implementation-status register (Phase 2 / #707), the
+  deterministic cross-table constant-consistency gate (Phase 3 / #708),
+  and the botho worked example (Phase 4 / #709) are deferred.
+- **Optional `code_ref` companion input** for spec threads: a `BRIEF.md`
+  `documents:` entry may declare `code_ref` (a path/glob naming the
+  implementation the spec normatively describes — commonly a glob over a
+  multi-file source tree). The mirror image of primer's `spec_ref`,
+  resolved project-root-first then consumer-root by the new
+  `anvil/lib/project_brief.py::resolve_code_ref` / `ResolvedCodeRef`
+  (shipped as a standalone mirror of `resolve_spec_ref`, not a generalized
+  resolver — see the design note in `project_brief.py`). Activation follows
+  the #428/#449 posture: declared+resolves → the spec↔implementation
+  consistency tier is active; absent → silent-off + `major` finding;
+  declared-but-missing → `major` finding, graceful (never a crash, never a
+  false critical flag). `ArtifactType.SPEC` is registered as a
+  skill-identity artifact type (18 registered / 11 skill-identity types).
+
 ## [0.8.1] — 2026-07-13
 
 ### Summary

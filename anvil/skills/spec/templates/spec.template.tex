@@ -1,0 +1,83 @@
+% spec body template — the slug-echo body filename (<slug>.tex, per #295)
+% lives at <thread>.{N}/<slug>.tex. This is a normative specification: every
+% claim is true of the implementation (code_ref) or explicitly marked
+% target-state. A spec's body is LaTeX (SKILL.md §Output format) — multi-file
+% friendly via \input{sections/*.tex}. Delete these comments before authoring.
+% Replace bracketed placeholders.
+%
+% ADOPTION NOTE: if you are adopting an existing multi-file LaTeX spec, you do
+% NOT start from this template — place the existing tree per SKILL.md
+% §"Adopting an existing spec". This skeleton is only for the deferred
+% draft-from-scratch / stub-scaffold case (spec-draft step 4 "Scaffold").
+
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{[System] Specification}
+\author{[Maintainer / team]}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Scope and conformance}
+% What this spec normatively governs. State the RFC 2119 keyword discipline
+% (MUST / SHALL / SHOULD / MAY) once here and use it consistently. Name the
+% implementation this spec describes (the code_ref companion) so a reader
+% knows the source of truth the normative claims are checked against.
+
+\section{Definitions and notation}
+% Define EVERY term used in a normative predicate below. An undefined term
+% used in a MUST/SHALL is the "Undefined normative term" critical flag.
+
+\section{[Component / message / structure]}
+% The normative content. For each constant, struct/field layout, formula, and
+% validity predicate: state it unambiguously and falsifiably (dim 3), and keep
+% it consistent with every other section that states the same quantity (dim 2).
+% Each claim either matches the implementation (code_ref) or is explicitly
+% marked target-state with the gap tracked.
+
+\subsection{Constants}
+% A grep-able constants table makes internal-consistency and (Phase 3)
+% deterministic constant-extraction checks cheap. State each constant once,
+% authoritatively; reference it elsewhere rather than restating a literal.
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Name & Value & Notes \\
+\midrule
+[CONST\_A] & [value] & [what it governs] \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Validity predicates}
+% The formal block/message/state-validity predicates. Every symbol used here
+% must be defined in §Definitions. A predicate must be satisfiable (dim 5).
+
+\section{Implementation status}
+% Live vs. target per component. Where the implementation and the spec
+% diverge, mark it HERE rather than silently rewriting either side. NOTE: the
+% first-class implementation-status register (and its cross-check in the audit)
+% is Phase 2 scope (#707) — this section is the placeholder it formalizes.
+
+\section{Revision history}
+% Versioning discipline (dim 7): a reader must know which version they hold and
+% what changed between versions.
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Version & Date & Summary of normative changes \\
+\midrule
+1 & \today & Initial draft \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

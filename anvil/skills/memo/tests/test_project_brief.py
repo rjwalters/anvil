@@ -416,7 +416,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
 
     def test_pitch_deck_rejected_listing_all_registered_values(self) -> None:
         """The studio's informal 'pitch-deck' stays unregistered — the
-        closed-ended error lists all seventeen registered values so the
+        closed-ended error lists all eighteen registered values so the
         operator can self-correct."""
         fm = textwrap.dedent(
             """\
@@ -431,7 +431,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             load_project_brief_strict(self.project_dir)
         msg = str(cm.exception)
         self.assertIn("pitch-deck", msg)
-        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 17)
+        self.assertEqual(len(REGISTERED_ARTIFACT_TYPES), 18)
         for registered in REGISTERED_ARTIFACT_TYPES:
             self.assertIn(registered, msg)
 
@@ -463,6 +463,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
             ArtifactType.ESSAY,
             ArtifactType.DATASHEET,
             ArtifactType.PRIMER,
+            ArtifactType.SPEC,
         ):
             self.assertNotIn(skill_identity, MEMO_ARTIFACT_TYPES)
 
@@ -485,7 +486,10 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
         carrier); issues #686/#687 grew it with ``primer`` (the
         ``anvil:primer`` artifact class — long-form pedagogical
         explainers own their threads in a shared project BRIEF, same
-        skill-identity shape)."""
+        skill-identity shape); issues #697/#706 grew it with ``spec``
+        (the ``anvil:spec`` artifact class — normative technical
+        specifications maintained against an implementation own their
+        threads in a shared project BRIEF, same skill-identity shape)."""
         from project_brief import (  # noqa: PLC0415
             SKILL_IDENTITY_ARTIFACT_TYPES,
         )
@@ -504,6 +508,7 @@ class TestSkillIdentityArtifactTypes(_TmpProjectBase):
                     ArtifactType.ESSAY,
                     ArtifactType.DATASHEET,
                     ArtifactType.PRIMER,
+                    ArtifactType.SPEC,
                 }
             ),
         )
