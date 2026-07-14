@@ -63,3 +63,7 @@ uv.lock
 .loom/*.sock
 .loom/logs/
 .loom/spawn-loop-state.json
+
+# Worktree-local marker written by .loom/scripts/worktree.sh; per-worktree
+# bookkeeping, never repo content — must never be committed.
+.loom-managed

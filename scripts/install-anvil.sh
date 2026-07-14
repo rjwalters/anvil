@@ -531,6 +531,49 @@ read_recorded_version() {
     || true
 }
 
+# Read the recorded `installed_skills` JSON ARRAY from an existing manifest,
+# emitting one skill name per line (empty output if the manifest or the field
+# is absent). Issue #716 — the Stage 7.6 removed-skill reconciliation prune
+# needs the PRIOR install's skill set to compute the removal candidates as a
+# provenance-checked set difference (previous installed_skills - current
+# selection), NOT a bare disk scan. Reading from the manifest is what makes the
+# prune installer-owned-only: a consumer-authored .anvil/skills/<name>/ that
+# anvil never installed is never in any manifest's installed_skills, so it can
+# never appear in the removal set. This mirrors read_recorded_hash /
+# read_recorded_version (the manifest is the source of truth for "did anvil put
+# this here").
+#
+# `installed_skills` is emitted by write_manifest via json_array_from_list as a
+# flat array of quoted strings, e.g.:
+#   "installed_skills": ["memo", "deck", "paper"]
+# Pure-bash tr/grep/sed (no jq dependency); flatten newlines first so the parse
+# is independent of one-line vs. pretty-printed JSON. `|| true` guards every
+# no-match branch so a legacy/empty manifest returns "" instead of tripping
+# `set -euo pipefail`.
+read_recorded_installed_skills() {
+  local manifest="$1"
+  [[ -f "$manifest" ]] || { echo ""; return; }
+  local block inner
+  # Isolate the `installed_skills` array body: `[...]` up to the first `]`.
+  block="$(tr '\n' ' ' < "$manifest" \
+    | grep -oE '"installed_skills"[[:space:]]*:[[:space:]]*\[[^]]*\]' \
+    | head -n1)" || true
+  [[ -n "$block" ]] || { echo ""; return; }
+  # Strip the `"installed_skills": [` opener and trailing `]` so only the array
+  # contents remain — otherwise the `"installed_skills"` key token itself would
+  # be extracted as a bogus skill name by the quoted-string grep below.
+  inner="$(printf '%s' "$block" \
+    | sed -E 's/^"installed_skills"[[:space:]]*:[[:space:]]*\[//; s/\][[:space:]]*$//')"
+  # Split on commas, then extract each quoted string. An empty array (`[]`)
+  # yields no quoted tokens, so the grep matches nothing and `|| true` keeps
+  # the empty result from killing the installer.
+  printf '%s' "$inner" \
+    | tr ',' '\n' \
+    | grep -oE '"[^"]+"' \
+    | sed -E 's/^"(.*)"$/\1/' \
+    || true
+}
+
 # Copy a directory tree's CONTENTS (not the wrapper dir) into dest, creating
 # dest if needed. `cp -R src/. dest` copies contents while preserving the dest
 # directory itself. All paths are passed as bash positional args (no shell
@@ -1434,6 +1477,120 @@ if [[ -d "$DST_AGENTS" && ${#SELECTED_SKILLS[@]} -lt ${#ALL_SKILLS[@]} ]]; then
         rm -f "$stale"
       done
       note "removed ${#STALE_AGENTS[@]} stale agent file(s) from a prior wider install (skills not in current selection)"
+    fi
+  fi
+fi
+
+# ----- Stage 7.6: prune skills removed from the registry (issue #716) --------
+# The Stage 7.5 agent prune above fires only on a `--skills=` NARROWING
+# (SELECTED_SKILLS < ALL_SKILLS). It is a no-op on a full/default install by
+# construction — which is exactly the gap this stage closes: when a skill is
+# renamed or removed UPSTREAM (e.g. `pub` -> `paper`, dropped from the shipped
+# set in #694), a consumer doing a plain `install-anvil.sh <repo>` (no
+# --skills=) never narrows from their own flag's perspective, so nothing prunes
+# the departed skill's on-disk footprint. The manifest correctly drops the
+# skill from `installed_skills`, but the four on-disk path families survive —
+# including dispatchable `anvil-<name>-*.md` agent shims pointing at command
+# files with no supported skill behind them (the worst part of the split-brain).
+#
+# The authoritative removal signal is a set difference against the PRIOR
+# manifest, NOT a bare disk scan:
+#
+#     REMOVED_SKILLS = previous_installed_skills - SELECTED_SKILLS
+#
+# CRITICAL SAFETY (why we read the manifest, not the disk): a naive
+# `disk_dirs - SELECTED_SKILLS` walk would also match — and delete — a
+# consumer-authored `.anvil/skills/<their-own-doctype>/` that anvil never
+# shipped. Provenance is the distinguishing signal: a name only becomes a
+# removal candidate if it was in a PREVIOUS manifest's `installed_skills` (i.e.
+# anvil itself installed it), read here BEFORE Stage 9 overwrites $MANIFEST.
+# This mirrors the read_recorded_hash / read_recorded_version provenance
+# pattern Stage 7 already uses against the pre-overwrite manifest. A
+# consumer-authored skill is never in any manifest's installed_skills, so it
+# can never enter REMOVED_SKILLS — it survives untouched.
+#
+# For each removed name, all four installer-owned path families are removed
+# (directory blow-away for the three dir families, glob removal for the agent
+# shims — the same agent leg the Stage 7.5 loop uses):
+#   * .anvil/skills/<name>/            (consumer-override skill body)
+#   * .anvil/anvil/skills/<name>/      (importable Python mirror)
+#   * .claude/skills/anvil-<name>/     (Claude registration shim)
+#   * .claude/agents/anvil-<name>-*.md (per-phase agent shims)
+#
+# Guards: skip entirely on a fresh install (no prior $MANIFEST — nothing to
+# reconcile) or when REMOVED_SKILLS is empty (the common case). Runs by default
+# (no opt-in flag), same rationale as #685/#688's flagless auto-prune:
+# installer-owned content only, provenance-checked. Honors --dry-run (reports
+# the names/count that WOULD be pruned, mutates nothing).
+info "Stage 7.6: prune skills removed from the registry since the last install"
+if [[ -f "$MANIFEST" ]]; then
+  PREV_INSTALLED_SKILLS=()
+  while IFS= read -r prev_skill; do
+    [[ -n "$prev_skill" ]] && PREV_INSTALLED_SKILLS+=("$prev_skill")
+  done < <(read_recorded_installed_skills "$MANIFEST")
+
+  REMOVED_SKILLS=()
+  for prev_skill in ${PREV_INSTALLED_SKILLS[@]+"${PREV_INSTALLED_SKILLS[@]}"}; do
+    # A skill previously installed by anvil that is NOT in the current
+    # selection is a removal candidate. `skill_selected` is the same
+    # SELECTED_SKILLS membership test Stage 7.5 uses; because a
+    # renamed/removed-upstream skill is absent from ALL_SKILLS (and thus from
+    # SELECTED_SKILLS on any install shape), it lands here on full and narrowed
+    # installs alike.
+    if ! skill_selected "$prev_skill"; then
+      REMOVED_SKILLS+=("$prev_skill")
+    fi
+  done
+
+  if [[ ${#REMOVED_SKILLS[@]} -gt 0 ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      echo "  [dry-run] would prune ${#REMOVED_SKILLS[@]} removed skill(s) not in the current registry: ${REMOVED_SKILLS[*]}"
+      for removed in "${REMOVED_SKILLS[@]}"; do
+        echo "  [dry-run]   remove .anvil/skills/$removed/, .anvil/anvil/skills/$removed/, .claude/skills/anvil-$removed/, .claude/agents/anvil-$removed-*.md"
+      done
+    else
+      for removed in "${REMOVED_SKILLS[@]}"; do
+        # Three directory families — blow away each if present. Each is
+        # installer-owned (every byte originated from a past anvil source
+        # checkout), and `$removed` is provenance-checked against the prior
+        # manifest above, never a bare disk name.
+        rm -rf "$TARGET/.anvil/skills/$removed"
+        rm -rf "$TARGET/.anvil/anvil/skills/$removed"
+        rm -rf "$TARGET/.claude/skills/anvil-$removed"
+      done
+      # Agent-shim family — resolve each on-disk anvil-*.md back to its owning
+      # skill by LONGEST-PREFIX match, then remove only those whose owner is in
+      # REMOVED_SKILLS. Resolving (rather than a bare `anvil-$removed-*.md`
+      # glob) closes the sibling-prefix hazard: a removed `ip-uspto` must NOT
+      # take out a still-installed `anvil-ip-uspto-provisional-*.md` shim. We
+      # match against the UNION of ALL_SKILLS (still-shipped names) and
+      # REMOVED_SKILLS, so `ip-uspto-provisional-drafter` resolves to the longer
+      # `ip-uspto-provisional` (still shipped) and is spared, while a genuine
+      # `ip-uspto-drafter` resolves to the removed `ip-uspto` and is pruned.
+      # (`agent_skill_for` alone can't be reused verbatim here: it matches only
+      # against ALL_SKILLS, and a removed-upstream skill is by definition absent
+      # from ALL_SKILLS.)
+      if [[ -d "$DST_AGENTS" ]]; then
+        RESOLVE_NAMES=("${ALL_SKILLS[@]}" "${REMOVED_SKILLS[@]}")
+        for existing_file in "$DST_AGENTS"/anvil-*.md; do
+          [[ -e "$existing_file" ]] || continue
+          ebase="$(basename "$existing_file")"
+          rest="${ebase#anvil-}"; rest="${rest%.md}"
+          owner=""
+          for cand in "${RESOLVE_NAMES[@]}"; do
+            if [[ "$rest" == "$cand" || "$rest" == "$cand-"* ]]; then
+              if [[ ${#cand} -gt ${#owner} ]]; then owner="$cand"; fi
+            fi
+          done
+          # Delete only when the resolved owner is one of the removed skills.
+          if [[ -n "$owner" ]]; then
+            for removed in "${REMOVED_SKILLS[@]}"; do
+              if [[ "$owner" == "$removed" ]]; then rm -f "$existing_file"; break; fi
+            done
+          fi
+        done
+      fi
+      note "pruned ${#REMOVED_SKILLS[@]} skill(s) removed from the registry since the last install: ${REMOVED_SKILLS[*]} (all four path families removed)"
     fi
   fi
 fi
