@@ -11,6 +11,11 @@
 #   --check-deps      Check renderer dependencies (marp/pdftoppm/mmdc/pdfjam) and exit
 #   --no-sync         Skip the post-install `uv sync --project .anvil` step
 #                     (useful for offline installs or hosts without uv)
+#   --fix-tracked     Untrack (`git rm -r --cached`, index-only) any files under
+#                     .anvil/ that a pre-0.8.0 install committed before the
+#                     .anvil/.gitignore existed (issue #684). Never commits —
+#                     the staged index change is left for you to commit. Without
+#                     this flag the installer only prints a remediation hint.
 #   -y, --yes         Non-interactive (skip confirmation prompts; also
 #                     auto-enabled when stdin is not a TTY, e.g. CI pipelines
 #                     or `install-anvil.sh . </dev/null`)
@@ -108,7 +113,7 @@ usage() {
   # range covers through the "Layout produced" header line so --help shows
   # the operator-facing surface (flags + examples + brief layout summary)
   # without dumping the long architectural notes that follow.
-  sed -n '2,55p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
 
@@ -124,6 +129,7 @@ DRY_RUN=false
 CHECK_DEPS_ONLY=false
 NON_INTERACTIVE=false
 NO_SYNC=false
+FIX_TRACKED=false
 TARGET=""
 
 while [[ $# -gt 0 ]]; do
@@ -134,6 +140,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run)  DRY_RUN=true; shift ;;
     --check-deps) CHECK_DEPS_ONLY=true; shift ;;
     --no-sync)  NO_SYNC=true; shift ;;
+    --fix-tracked) FIX_TRACKED=true; shift ;;
     -y|--yes)   NON_INTERACTIVE=true; shift ;;
     -h|--help)  usage ;;
     --*)        error "unknown option: $1 (run with --help to see usage)" ;;
@@ -1710,6 +1717,16 @@ do_action "write $CONSUMER_PYPROJECT (declares pydantic + pyyaml; anvil/ package
 #     append_to_gitignore_idempotent() (that helper is for appending into a
 #     consumer-owned root file, not for an installer-owned generated file).
 #   * --dry-run reports the would-write action and writes nothing (issue #81).
+#
+# Stage 8.6b (issue #684) then detects the upgrade-path gap this write cannot
+# close on its own: .gitignore has no effect on paths git ALREADY tracks. A
+# pre-0.8.0 install (before #674/#683 shipped .anvil/.gitignore) may have
+# committed .anvil/anvil/**/__pycache__/*.pyc or .anvil/.venv/* — those keep
+# showing as "modified" in git status on every critic run regardless of the
+# ignore file written above. Detect + hint by default (consumer git state is
+# consumer-owned; anvil has never made a git commit on the consumer's behalf
+# and this fix does not start). --fix-tracked performs the `git rm --cached`
+# (index-only; never commits, never touches the working-tree files).
 info "Stage 8.6: write .anvil/.gitignore (suppress __pycache__ + .venv runtime artifacts)"
 ANVIL_GITIGNORE="$TARGET/.anvil/.gitignore"
 
@@ -1734,6 +1751,46 @@ else
   do_action "write .anvil/.gitignore (ignore __pycache__/ and .venv/ runtime artifacts)" \
     write_anvil_gitignore "$ANVIL_GITIGNORE"
   [[ "$DRY_RUN" == true ]] || ok ".anvil/.gitignore written (runtime bytecode + venv stay out of git status)"
+fi
+
+# ----- Stage 8.6b: detect + hint on already-tracked ignored files (#684) -----
+# Detection is derived from the just-written .anvil/.gitignore's OWN content:
+# we list every path git already tracks under .anvil/, then ask git itself
+# (via `git check-ignore --stdin`) which of those the current ignore rules
+# would suppress. This deliberately avoids a second hard-coded pattern list
+# that could drift from write_anvil_gitignore above — the file on disk is the
+# single source of truth, so if a future issue adds a pattern (e.g.
+# *.egg-info/), detection tracks it for free. `--no-index` avoids requiring a
+# clean index state to run the check.
+#
+# Forge-optional (see the `.git` note around Stage 1): if the target has no
+# .git or `git` is not on PATH, this pass is SKIPPED entirely (not
+# attempted-and-caught) so a non-git install never surfaces a git error.
+if [[ -d "$TARGET/.git" ]] && command -v git >/dev/null 2>&1; then
+  TRACKED_IGNORED=()
+  while IFS= read -r tracked_path; do
+    [[ -n "$tracked_path" ]] && TRACKED_IGNORED+=("$tracked_path")
+  done < <(git -C "$TARGET" ls-files -- .anvil 2>/dev/null \
+             | git -C "$TARGET" check-ignore --stdin --no-index 2>/dev/null || true)
+
+  if [[ ${#TRACKED_IGNORED[@]} -gt 0 ]]; then
+    if [[ "$FIX_TRACKED" == true ]]; then
+      if [[ "$DRY_RUN" == true ]]; then
+        echo "  [dry-run] git rm -r --cached -- ${#TRACKED_IGNORED[@]} tracked file(s) under .anvil/ (index only, no commit)"
+      else
+        git -C "$TARGET" rm -r --cached --quiet -- "${TRACKED_IGNORED[@]}"
+        ok "untracked ${#TRACKED_IGNORED[@]} already-committed .anvil/ runtime artifact(s) (index only — review \`git status\` and commit yourself; anvil never commits on your behalf)"
+      fi
+    else
+      warn "${#TRACKED_IGNORED[@]} tracked file(s) under .anvil/ match the new .gitignore patterns (a pre-0.8.0 install committed them before #674/#683 shipped .anvil/.gitignore)"
+      note "these keep showing as modified in git status on every critic run until untracked. Fix:"
+      hint_list="${TRACKED_IGNORED[*]:0:5}"
+      [[ ${#TRACKED_IGNORED[@]} -gt 5 ]] && hint_list="$hint_list ... (${#TRACKED_IGNORED[@]} total)"
+      note "    git rm -r --cached -- $hint_list"
+      note "    git commit -m 'chore: untrack .anvil runtime artifacts'"
+      note "or re-run install-anvil.sh with --fix-tracked to perform the git rm --cached automatically (the commit is still left to you)."
+    fi
+  fi
 fi
 
 # ----- Stage 9: install manifest --------------------------------------------
