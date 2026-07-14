@@ -60,7 +60,7 @@ Print a markdown table to stdout:
 | new-spec            | -      | EMPTY            | -      | -     | 0/4  | no       | spec-draft new-spec               |
 ```
 
-Follow the table with an `## Anomalies` section if any were detected, and an `## Operator notes` section for threads requiring human review (iteration cap reached, critical flag unresolved across multiple revisions, missing `code_ref` contract surfaced repeatedly, a suspected code/spec mismatch pending the Phase-2 three-way verdict, etc.).
+Follow the table with an `## Anomalies` section if any were detected, and an `## Operator notes` section for threads requiring human review (iteration cap reached, critical flag unresolved across multiple revisions, missing `code_ref` contract surfaced repeatedly, an outstanding `code-wrong` `implementation_contradicts_spec` escalation awaiting an operator decision, an unregistered target-state gap, etc.).
 
 ## Notes
 

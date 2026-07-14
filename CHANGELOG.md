@@ -32,6 +32,39 @@
   declared-but-missing → `major` finding, graceful (never a crash, never a
   false critical flag). `ArtifactType.SPEC` is registered as a
   skill-identity artifact type (18 registered / 11 skill-identity types).
+- **`anvil:spec` three-way audit verdict + implementation-status register
+  (Phase 2)** (#697/#707): `spec-audit` now performs the full
+  spec↔`code_ref` consistency sweep (every constant / struct / formula /
+  validity-predicate claim) and, on a contradiction, emits ONE critical
+  flag — `implementation_contradicts_spec` — carrying a mandatory three-way
+  `Disposition`: **(a) `spec-wrong`** routes to the normal `spec-revise`
+  path (fix the spec to match the code); **(b) `code-wrong`** emits a
+  copy-pasteable operator-escalation block (quoted spec + code + a suggested
+  consumer-repo issue) and blocks advance until the code is fixed or the
+  operator overrides via `spec-revise --override-code-wrong "<reason>"`
+  (non-empty rationale, modeled on `memo`'s NO-GO `--override-no-go`) —
+  `spec-revise` NEVER silently rewrites the spec toward a vestigial code
+  path; **(c) `intentional-gap`** is register-suppressed when a matching
+  `## Implementation status` row exists, or flagged `unregistered`
+  otherwise. The discrimination lives in command-doc + `findings.md`/
+  `verdict.md` conventions (a `Disposition` column +
+  `_summary.md.spec_consistency.disposition_counts`) — NO `review_schema.py`
+  change (single free-form flag type, deliberately not three types).
+  Auditor discipline: never default an uncertain contradiction to
+  `spec-wrong`; when uncertain, default to `code-wrong` (escalating a true
+  spec-wrong costs one confirmation; silently spec-editing a true code-wrong
+  recreates the botho near-miss). Adds the first-class `## Implementation
+  status` register (a live/target/status/tracking table in
+  `spec.template.tex` + a SKILL.md contract — operator/drafter-authored, not
+  auditor-generated); `spec-review` raises a `major` finding for an
+  unregistered target-state claim (the prose-side twin of the audit's
+  mechanical code-side check, with the division of labor documented in both
+  command docs). Includes a four-fixture disposition-discrimination test
+  (`test_audit_disposition.py`) covering spec-wrong / code-wrong /
+  intentional-gap-registered / intentional-gap-UNREGISTERED (the near-miss
+  shape), asserting a `code-wrong` case NEVER routes to a spec edit. No
+  consumer-repo issue-filing automation — escalation is a human-actionable
+  note.
 
 ## [0.8.1] — 2026-07-13
 

@@ -5,8 +5,8 @@ audience:
   - Auditors and reviewers checking the spec against the implementation (secondary)
 hard_rules:
   - Every normative claim is true of the implementation, or is explicitly
-    marked target-state with the gap tracked in the implementation-status
-    register (the register itself lands in Phase 2 / #707).
+    marked target-state with the gap tracked in the ## Implementation status
+    register (SKILL.md §Implementation-status register).
   - Never rewrite the spec to match a vestigial code path — a suspected
     implementation mismatch is a human decision (spec-wrong / code-wrong /
     intentional-gap), never a mechanical reconciliation toward the code.
@@ -42,8 +42,9 @@ tracked.
   predicates an implementer must satisfy to be conformant.
 - **Marked target-state**: where the live implementation and the intended
   design diverge (e.g. a feature specified but not yet shipped), the divergence
-  is marked, not silently canonized to either side. The first-class
-  implementation-status register that formalizes this lands in Phase 2 (#707).
+  is recorded in the `## Implementation status` register (a live/target/status/
+  tracking row per component), not silently canonized to either side.
+  `spec-audit` suppresses a registered gap and flags an unregistered one.
 
 ## Reference material
 
