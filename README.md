@@ -32,7 +32,7 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 | `anvil:project-photos` | Strictly read-only provenance tool: reads a human-authored numbering doc for a scanned-photo archive and emits a deterministic manifest map (original capture → stable name + archive item IDs + rotation hint + multi-item flag, plus a missing-captures list) — byte-identical re-runs, image manipulation stays consumer-native | `manifest.json` provenance map |
 | `anvil:project-book` | Recurring assembly tool: stages the `.latest`-resolved version of every chapter thread into a consumer-owned master LaTeX document, two-pass compiles it into one book, and writes a per-thread convergence report (state / score / audit + next command) | `book.tex` → PDF + per-thread `BOOK_REPORT.md` |
 
-Each skill ships a complete lifecycle (`draft → review → revise → audit → figures`, with some variants), a tunable 8-dimension scoring rubric, opinionated templates, and a worked example thread. Consumers extend them per-project via `.anvil/skills/<name>/` in the consumer repo.
+Each skill ships a complete lifecycle (`draft → review → revise → audit → figures`, with some variants), a tunable 9-dimension /44 scoring rubric (the two `ip-uspto` skills on /45, `deck` on /49), opinionated templates, and a worked example thread. Consumers extend them per-project via `.anvil/skills/<name>/` in the consumer repo.
 
 ## Installation
 
@@ -138,7 +138,7 @@ Run `./scripts/install-anvil.sh --check-deps` to see which are present on your s
 ## Design principles
 
 1. **Filesystem as substrate.** Versioned directories (`{thread}.{N}/`) are immutable. Sibling directories (`{thread}.{N}.review/`, `.audit/`, `.<critic>/`) hold read-only critic output. Revisions read both and write `{N+1}/`.
-2. **Scored review rubric.** 8 weighted dimensions, /40 total, ≥32 to advance (≥35 for legal / customer-facing artifacts). Critical-flag short-circuit.
+2. **Scored review rubric.** 9 weighted dimensions, /44 total (the two `ip-uspto` skills on /45, `deck` on /49), ≥35 to advance (≥39 for legal / customer-facing artifacts, `deck` ≥43). Critical-flag short-circuit.
 3. **Checkpointing.** `_progress.json` per version directory tracks phase state; long phases skip on resume; validation is by file existence, not flag.
 4. **State machine.** `EMPTY → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED` (with skill-specific extensions like `CUSTOMER-READY` for `report` and `FINALIZED` for `ip-uspto`).
 5. **Separation of concerns.** Review is read-only. Revision is separate. Audit is a distinct tool-augmented fact-check. Figure generation is its own role.
@@ -212,7 +212,7 @@ A typical authoring loop for any skill looks like:
 1. **`<skill>-draft <thread>`** — drafter produces `<thread>.1/` with the artifact body, exhibits, and `_progress.json`.
 2. **`<skill>-review <thread>`** — reviewer (and any specialist critics) score against the rubric; output lands in `<thread>.1.review/`. Optional deterministic pre-flight (render-gate / marp_lint / mmdc preflight) runs first.
 3. **`<skill>-revise <thread>`** — reviser reads the prior version + all critic siblings and writes `<thread>.2/` with a `changelog.md` mapping critic notes to changes.
-4. Loop until rubric threshold met (default ≥32 / 40) or stable-score termination.
+4. Loop until rubric threshold met (default ≥35 / 44) or stable-score termination.
 5. **`<skill>-audit <thread>`** *(skills with audit phase)* — tool-augmented fact-check against external sources (citation resolution, BOM arithmetic, prior-art search, etc.). Emits `kind: tool_evidence` findings.
 6. **`<skill>-figures <thread>`** — rendered deliverable (PDF, slides, drawings) using the shared figure-theming substrate (navy palette by default, override-able).
 7. **State transitions to `READY` / `AUDITED` / `CUSTOMER-READY`** per skill state machine.
