@@ -188,7 +188,7 @@ exposed: a late-revise overfull introduced after the last pre-flight
 pass would otherwise reach FILING-READY / COUNSEL-READY unchallenged.
 The ip-skill call sites tighten the threshold to
 ``overfull_threshold_pt=2.0`` (the framework default of 5.0pt is
-unchanged for ``installation`` / ``proposal`` / ``datasheet`` / ``pub``
+unchanged for ``installation`` / ``proposal`` / ``datasheet`` / ``paper``
 / ``report``). The sphere-canary regression fixture at
 ``tests/lib/fixtures/render_gate/overfull_sphere_canary.txt`` (13 hits,
 worst 83.6pt) is pinned in
@@ -655,7 +655,7 @@ def _parse_overfull_boxes(log_text: str, threshold_pt: float) -> list[dict]:
 
     **Dedupe contract (issue #668).** Multi-pass LaTeX cycles
     (``pdflatex → bibtex → pdflatex → pdflatex``, as captured by
-    e.g. ``pub-audit``'s ``compile-log.txt``) re-emit the *same* overfull
+    e.g. ``paper-audit``'s ``compile-log.txt``) re-emit the *same* overfull
     warning on every ``pdflatex`` invocation, so a single real overfull box
     appears once per pass in the concatenated log. We deduplicate by
     ``(line, amount_pt, kind)`` — LaTeX line numbers are stable across
@@ -3279,7 +3279,7 @@ def compile_and_gate(
     proposal) and as a fallback for the others when the gate runs before
     audit/finalize. The compile is **single-pass** by default — enough to
     catch syntax errors and overfull boxes. Skills that need a full
-    multi-pass compile (e.g., ``pub`` needs ``pdflatex && bibtex &&
+    multi-pass compile (e.g., ``paper`` needs ``pdflatex && bibtex &&
     pdflatex && pdflatex`` for citations) should run that compile in their
     audit step and then call ``gate(...)`` against the produced PDF +
     log; this helper is the "first pass / no upstream compile" path.

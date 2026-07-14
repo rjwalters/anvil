@@ -112,18 +112,18 @@ def test_proposal_perspective_documents_sibling_dir_layout():
 
 def test_proposal_perspective_has_pub_litsearch_shape_sections():
     body = _read(PERSPECTIVE_MD)
-    # Mirror pub-litsearch.md's overall shape: Reads / Writes (in header) +
+    # Mirror paper-litsearch.md's overall shape: Reads / Writes (in header) +
     # Inputs / Outputs / Procedure / Idempotence / failure modes / re-run.
     assert "## Inputs" in body, "proposal-perspective.md MUST have an Inputs section"
     assert "## Outputs" in body, "proposal-perspective.md MUST have an Outputs section"
     assert "## Procedure" in body, "proposal-perspective.md MUST have a Procedure section"
     assert "Failure modes" in body or "## Failure" in body, (
         "proposal-perspective.md MUST have a Failure modes section "
-        "(mirrors pub-litsearch.md / deck-perspective.md shape)"
+        "(mirrors paper-litsearch.md / deck-perspective.md shape)"
     )
     assert "Re-run" in body or "re-run" in body, (
         "proposal-perspective.md MUST document the re-run pattern "
-        "(mirrors pub-litsearch.md / deck-perspective.md shape)"
+        "(mirrors paper-litsearch.md / deck-perspective.md shape)"
     )
 
 

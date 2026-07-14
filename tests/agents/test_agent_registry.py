@@ -45,7 +45,7 @@ ARTIFACT_SKILLS = [
     "report",
     "proposal",
     "installation",
-    "pub",
+    "paper",
     "slides",
     "ip-uspto",
     "ip-uspto-provisional",

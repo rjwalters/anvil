@@ -13,7 +13,7 @@ Anvil orchestrates iterative drafting, review, and revision of long-form artifac
 | Skill | Artifact type | Output |
 |---|---|---|
 | `anvil:memo` | Investment memos, internal documents | Markdown |
-| `anvil:pub` | Research papers | LaTeX → PDF |
+| `anvil:paper` | Research papers | LaTeX → PDF |
 | `anvil:report` | Customer-facing technical reports (engagement findings, audits, advisories) | Markdown → PDF |
 | `anvil:deck` | Investor pitch decks | Marp Markdown → PDF |
 | `anvil:slides` | Talk / conference slides | Marp Markdown → PDF + speaker notes |
@@ -56,6 +56,10 @@ Anvil installs into a target repository (the consumer repo) where you do the aut
 ```
 
 After installation you invoke the skills from Claude Code in the consumer repo — e.g. `anvil:memo my-thesis` to draft a memo, then `memo-review my-thesis` to score it.
+
+### Migration: `pub` renamed to `paper`
+
+The research-paper skill was renamed from `anvil:pub` to `anvil:paper`. On your next install, switch `--skills=pub` → `--skills=paper` (invoking `--skills=pub` now prints a clear redirect error — there is no forwarding alias). Your existing thread directories are slug-named, not skill-named, so they are untouched; and a project `BRIEF.md` carrying `artifact_type: pub` still parses (it is accepted as an input alias that normalizes to the canonical `paper` type). Command names changed from `pub-*` to `paper-*` (`pub-draft` → `paper-draft`, etc.).
 
 ### Installing into an existing monorepo
 
@@ -126,7 +130,7 @@ The skills shell out to language-appropriate renderers. None are required by the
 | `mmdc` (Mermaid CLI) | `deck`, `slides` (for diagrams) | `npm install -g @mermaid-js/mermaid-cli` |
 | `pdfjam` (TeX Live) | `slides --4-up` / `--2-up` handouts only | `apt install texlive-extra-utils` (Linux) / `brew install --cask mactex-no-gui` (macOS) |
 | `pdftoppm` (poppler) | Rendered-artifact critics | `apt install poppler-utils` / `brew install poppler` |
-| `xelatex` / `pdflatex` | `pub`, `ip-uspto`, `ip-uspto-provisional`, `installation`, `proposal` | TeX Live / MacTeX |
+| `xelatex` / `pdflatex` | `paper`, `ip-uspto`, `ip-uspto-provisional`, `installation`, `proposal` | TeX Live / MacTeX |
 | `pandoc` | `report` | `apt install pandoc` / `brew install pandoc` |
 
 Run `./scripts/install-anvil.sh --check-deps` to see which are present on your system with remediation hints.
@@ -156,7 +160,7 @@ When an extra isn't installed, the corresponding check gracefully skips and the 
 
 ```
 anvil/
-  skills/        Per-artifact-type skills (memo, pub, report, deck, slides,
+  skills/        Per-artifact-type skills (memo, paper, report, deck, slides,
                  ip-uspto, ip-uspto-provisional, installation, proposal,
                  datasheet, essay). Each has SKILL.md +
                  commands/ + rubric.md + (optional) templates/, assets/,

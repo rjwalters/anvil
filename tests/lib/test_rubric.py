@@ -21,7 +21,7 @@ Covers:
   - Per-thread override at ``<thread>/.anvil/rubrics/<venue>.yaml`` wins
     over the skill-shipped file.
   - Consumer-installed override at
-    ``<consumer>/.anvil/skills/pub/rubrics/<venue>.yaml`` wins over the
+    ``<consumer>/.anvil/skills/paper/rubrics/<venue>.yaml`` wins over the
     skill-shipped file but loses to the per-thread override.
   - Returns ``None`` when ``venue`` is set but no YAML is found in any
     tier (caller's responsibility to warn).
@@ -46,7 +46,7 @@ from anvil.lib.rubric import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PUB_RUBRICS_DIR = REPO_ROOT / "anvil" / "skills" / "pub" / "rubrics"
+PAPER_RUBRICS_DIR = REPO_ROOT / "anvil" / "skills" / "paper" / "rubrics"
 
 
 # Per-venue expected dimension ids. These pin the design (catches drift if
@@ -85,7 +85,7 @@ EXPECTED_TOTALS = {"neurips": 16, "nature": 15, "arxiv": 10}
 @pytest.mark.parametrize("venue", sorted(EXPECTED_DIMENSIONS.keys()))
 def test_shipped_venue_yaml_loads(venue: str):
     """Each shipped venue YAML loads via ``load_rubric`` without error."""
-    rubric = load_rubric(PUB_RUBRICS_DIR / f"{venue}.yaml")
+    rubric = load_rubric(PAPER_RUBRICS_DIR / f"{venue}.yaml")
     assert rubric.advisory is True
     assert rubric.venue == venue
     assert rubric.id == f"anvil-pub-{venue}-v1"
@@ -96,7 +96,7 @@ def test_shipped_venue_yaml_loads(venue: str):
 @pytest.mark.parametrize("venue", sorted(EXPECTED_DIMENSIONS.keys()))
 def test_shipped_venue_dimension_ids(venue: str):
     """Per-venue dimension ids match the design (catches renames)."""
-    rubric = load_rubric(PUB_RUBRICS_DIR / f"{venue}.yaml")
+    rubric = load_rubric(PAPER_RUBRICS_DIR / f"{venue}.yaml")
     got_ids = {d.id for d in rubric.dimensions}
     assert got_ids == EXPECTED_DIMENSIONS[venue], (
         f"Venue {venue!r} dimensions drifted: "
@@ -107,7 +107,7 @@ def test_shipped_venue_dimension_ids(venue: str):
 @pytest.mark.parametrize("venue", sorted(EXPECTED_DIMENSIONS.keys()))
 def test_shipped_venue_weights_positive(venue: str):
     """Per-dimension weights are positive integers."""
-    rubric = load_rubric(PUB_RUBRICS_DIR / f"{venue}.yaml")
+    rubric = load_rubric(PAPER_RUBRICS_DIR / f"{venue}.yaml")
     for d in rubric.dimensions:
         assert isinstance(d.weight, int) and d.weight >= 1
 
@@ -115,7 +115,7 @@ def test_shipped_venue_weights_positive(venue: str):
 @pytest.mark.parametrize("venue", sorted(EXPECTED_DIMENSIONS.keys()))
 def test_shipped_venue_descriptions_substantial(venue: str):
     """Per-dimension descriptions are substantial enough to guide scoring."""
-    rubric = load_rubric(PUB_RUBRICS_DIR / f"{venue}.yaml")
+    rubric = load_rubric(PAPER_RUBRICS_DIR / f"{venue}.yaml")
     for d in rubric.dimensions:
         # AC says ≥2 sentences. Use a minimum-length heuristic plus a
         # period-count check, both lenient.
@@ -132,7 +132,7 @@ def test_shipped_venue_descriptions_substantial(venue: str):
 @pytest.mark.parametrize("venue", sorted(EXPECTED_DIMENSIONS.keys()))
 def test_shipped_venue_critical_flags_present(venue: str):
     """Each venue declares at least one critical_flag with prose."""
-    rubric = load_rubric(PUB_RUBRICS_DIR / f"{venue}.yaml")
+    rubric = load_rubric(PAPER_RUBRICS_DIR / f"{venue}.yaml")
     assert len(rubric.critical_flags) >= 1
     for cf in rubric.critical_flags:
         assert cf.type.replace("_", "").isalnum()
@@ -314,35 +314,35 @@ def _write_anvil_json(thread_dir: Path, **fields) -> None:
 
 
 def test_discover_no_anvil_json_returns_none(tmp_path: Path):
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "q3-method"
     thread.mkdir()
     assert discover_venue_rubric(thread, skill_root) is None
 
 
 def test_discover_no_venue_field_returns_none(tmp_path: Path):
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "q3-method"
     _write_anvil_json(thread, max_iterations=4)
     assert discover_venue_rubric(thread, skill_root) is None
 
 
 def test_discover_empty_venue_returns_none(tmp_path: Path):
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "q3-method"
     _write_anvil_json(thread, venue="")
     assert discover_venue_rubric(thread, skill_root) is None
 
 
 def test_discover_unknown_venue_returns_none(tmp_path: Path):
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "q3-method"
     _write_anvil_json(thread, venue="nonexistent-venue")
     assert discover_venue_rubric(thread, skill_root) is None
 
 
 def test_discover_skill_shipped_neurips(tmp_path: Path):
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "q3-method"
     _write_anvil_json(thread, venue="neurips")
     rubric = discover_venue_rubric(thread, skill_root)
@@ -353,7 +353,7 @@ def test_discover_skill_shipped_neurips(tmp_path: Path):
 
 def test_discover_per_thread_override_wins(tmp_path: Path):
     """Per-thread `.anvil/rubrics/<venue>.yaml` shadows the skill-shipped file."""
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "q3-method"
     _write_anvil_json(thread, venue="neurips")
     override_dir = thread / ".anvil" / "rubrics"
@@ -377,13 +377,13 @@ def test_discover_per_thread_override_wins(tmp_path: Path):
 
 def test_discover_consumer_installed_override(tmp_path: Path):
     """Consumer-installed override wins over skill-shipped but loses to per-thread."""
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     portfolio = tmp_path / "portfolio"
     portfolio.mkdir()
     thread = portfolio / "q3-method"
     _write_anvil_json(thread, venue="neurips")
     consumer_override = (
-        portfolio / ".anvil" / "skills" / "pub" / "rubrics" / "neurips.yaml"
+        portfolio / ".anvil" / "skills" / "paper" / "rubrics" / "neurips.yaml"
     )
     consumer_override.parent.mkdir(parents=True)
     consumer_override.write_text(
@@ -404,7 +404,7 @@ def test_discover_consumer_installed_override(tmp_path: Path):
 
 
 def test_discover_per_thread_beats_consumer_installed(tmp_path: Path):
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     portfolio = tmp_path / "portfolio"
     portfolio.mkdir()
     thread = portfolio / "q3-method"
@@ -412,7 +412,7 @@ def test_discover_per_thread_beats_consumer_installed(tmp_path: Path):
 
     # Consumer-installed override.
     consumer_override = (
-        portfolio / ".anvil" / "skills" / "pub" / "rubrics" / "neurips.yaml"
+        portfolio / ".anvil" / "skills" / "paper" / "rubrics" / "neurips.yaml"
     )
     consumer_override.parent.mkdir(parents=True)
     consumer_override.write_text(
@@ -449,14 +449,14 @@ def test_discover_per_thread_beats_consumer_installed(tmp_path: Path):
 
 def test_discover_explicit_consumer_root(tmp_path: Path):
     """``consumer_root`` argument overrides the default (thread parent)."""
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "any" / "q3-method"
     thread.mkdir(parents=True)
     _write_anvil_json(thread, venue="neurips")
 
     consumer_root = tmp_path / "explicit-consumer"
     override = (
-        consumer_root / ".anvil" / "skills" / "pub" / "rubrics" / "neurips.yaml"
+        consumer_root / ".anvil" / "skills" / "paper" / "rubrics" / "neurips.yaml"
     )
     override.parent.mkdir(parents=True)
     override.write_text(
@@ -480,7 +480,7 @@ def test_discover_explicit_consumer_root(tmp_path: Path):
 
 def test_discover_malformed_anvil_json_returns_none(tmp_path: Path):
     """A malformed `.anvil.json` falls back to no venue (does not raise)."""
-    skill_root = PUB_RUBRICS_DIR.parent
+    skill_root = PAPER_RUBRICS_DIR.parent
     thread = tmp_path / "q3-method"
     thread.mkdir()
     (thread / ".anvil.json").write_text("{ not valid json")

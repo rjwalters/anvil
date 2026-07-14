@@ -34,8 +34,8 @@ Zero open issues as of 2026-07-03. A **v0.7.0 release cut is pending** — `CHAN
 
 These were deliberately deferred from the 2026-07-02 sweep to keep PRs small; the lib contracts shipped without skill-level consumers:
 
-1. **Corpus claim-provenance skill adoption** (from #597's curation): `pub-audit` corpus verification step (`kind: tool_evidence`, five-way classification, fabrication-class critical flags), `pub-review` back-check (5–10 spot samples), `essay-draft` provenance.md writing + `essay-review` back-check. Until one lands, a corpus-declaring project cannot actually run a corpus audit.
-2. **Subject voice tier adoption beyond essay** (from #598's curation): pub and report drafter/reviewer wiring per the same pattern (their voice-grounding steps already exist); audit hooks.
+1. **Corpus claim-provenance skill adoption** (from #597's curation): `paper-audit` corpus verification step (`kind: tool_evidence`, five-way classification, fabrication-class critical flags), `paper-review` back-check (5–10 spot samples), `essay-draft` provenance.md writing + `essay-review` back-check. Until one lands, a corpus-declaring project cannot actually run a corpus audit.
+2. **Subject voice tier adoption beyond essay** (from #598's curation): paper and report drafter/reviewer wiring per the same pattern (their voice-grounding steps already exist); audit hooks.
 3. **Deferred from #598**: rhetoric-lint integration for subject-dialogue lines; `vocab_reminder`-style subject-cadence tool.
 
 ### Recurring themes the next wave of issues will likely touch

@@ -73,8 +73,8 @@ def test_deck_perspective_references_framework_snippet():
 
 def test_deck_perspective_cites_pub_litsearch_as_precedent():
     body = _read(PERSPECTIVE_MD)
-    assert "pub-litsearch" in body, (
-        "deck-perspective.md MUST cite pub-litsearch.md as the load-bearing "
+    assert "paper-litsearch" in body, (
+        "deck-perspective.md MUST cite paper-litsearch.md as the load-bearing "
         "existing precedent (issue #149 / Epic #143 design contract)"
     )
 
@@ -111,7 +111,7 @@ def test_deck_perspective_documents_sibling_dir_layout():
 
 def test_deck_perspective_has_pub_litsearch_shape_sections():
     body = _read(PERSPECTIVE_MD)
-    # Mirror pub-litsearch.md's overall shape: Reads / Writes (in header) +
+    # Mirror paper-litsearch.md's overall shape: Reads / Writes (in header) +
     # Inputs / Outputs / Procedure / Idempotence / failure modes / re-run.
     # We assert on section headings that the architect contract names.
     assert "## Inputs" in body, "deck-perspective.md MUST have an Inputs section"
@@ -119,11 +119,11 @@ def test_deck_perspective_has_pub_litsearch_shape_sections():
     assert "## Procedure" in body, "deck-perspective.md MUST have a Procedure section"
     assert "Failure modes" in body or "## Failure" in body, (
         "deck-perspective.md MUST have a Failure modes section "
-        "(mirrors pub-litsearch.md shape)"
+        "(mirrors paper-litsearch.md shape)"
     )
     assert "Re-run" in body or "re-run" in body, (
         "deck-perspective.md MUST document the re-run pattern "
-        "(mirrors pub-litsearch.md shape)"
+        "(mirrors paper-litsearch.md shape)"
     )
 
 
@@ -232,7 +232,7 @@ def test_skill_md_perspective_appears_before_first_drafted_version():
 def test_skill_md_state_machine_notes_optional_perspective():
     body = _read(SKILL_MD)
     # The state-machine section MUST have the optional-sibling note (adapted
-    # from pub/SKILL.md lines 55-63).
+    # from paper/SKILL.md lines 55-63).
     assert ".0.perspective/" in body
     # The non-gating wording must appear in the state-machine context, not
     # solely in the artifact-contract block. We check the loose property
@@ -243,7 +243,7 @@ def test_skill_md_state_machine_notes_optional_perspective():
     ), (
         "deck SKILL.md state-machine section MUST note that the perspective "
         "sibling is optional and non-gating (issue #149 AC; adapted from "
-        "pub/SKILL.md §State machine)"
+        "paper/SKILL.md §State machine)"
     )
 
 

@@ -95,7 +95,7 @@ def test_write_is_unconditional_across_skill_selections(tmp_path: Path) -> None:
     for a non-voice skill selection too (every install creates the Python
     mirror + venv target).
     """
-    for skills in ("--skills=memo", "--skills=pub", "--skills=essay"):
+    for skills in ("--skills=memo", "--skills=paper", "--skills=essay"):
         target = tmp_path / skills.replace("=", "_").replace("--", "")
         target.mkdir()
 
@@ -155,12 +155,12 @@ def test_root_gitignore_untouched_for_non_voice_skill(tmp_path: Path) -> None:
 
     Only .anvil/.gitignore should be created; the root .gitignore write footprint
     is unaffected by this change (Stage 7.9 voice append is skill-gated and does
-    not fire for pub).
+    not fire for paper).
     """
     target = tmp_path / "root-untouched"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert (target / ".anvil" / ".gitignore").is_file(), (

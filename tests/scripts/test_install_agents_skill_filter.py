@@ -1,8 +1,10 @@
 """Regression tests: installer Stage 7.5 scopes the agents copy by --skills=.
 
-Issue #662: a ``--skills=pub`` install (tractatus canary, 2026-07-13) copied
-**all 54** ``anvil-<skill>-<phase>.md`` subagent shims into the consumer's
-``.claude/agents/``, even though only the 5 ``anvil-pub-*.md`` files belong to
+Issue #662: a single-skill install (the tractatus canary, 2026-07-13, ran
+``--skills=pub`` — the skill was renamed ``pub`` → ``paper`` under #694; these
+tests exercise the current ``--skills=paper``) copied **all 54**
+``anvil-<skill>-<phase>.md`` subagent shims into the consumer's
+``.claude/agents/``, even though only the 5 ``anvil-paper-*.md`` files belong to
 the selected skill. The other ~49 register agents for skills the consumer never
 installed — agent-picker noise and a larger-than-necessary write footprint that
 contradicts the ``--skills=`` flag's own "strict subset" framing.
@@ -115,23 +117,23 @@ def test_source_ships_the_expected_agent_registry() -> None:
 
 
 def test_single_skill_install_scopes_agents(tmp_path: Path) -> None:
-    """``--skills=pub`` installs exactly the 5 ``anvil-pub-*.md`` files."""
+    """``--skills=paper`` installs exactly the 5 ``anvil-paper-*.md`` files."""
 
-    target = tmp_path / "pub-target"
+    target = tmp_path / "paper-target"
     target.mkdir()
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     installed = _installed_agents(target)
     assert installed == {
-        "anvil-pub-auditor.md",
-        "anvil-pub-drafter.md",
-        "anvil-pub-figurer.md",
-        "anvil-pub-reviewer.md",
-        "anvil-pub-reviser.md",
+        "anvil-paper-auditor.md",
+        "anvil-paper-drafter.md",
+        "anvil-paper-figurer.md",
+        "anvil-paper-reviewer.md",
+        "anvil-paper-reviser.md",
     }, (
-        f"--skills=pub installed the wrong agent set: {sorted(installed)}; "
+        f"--skills=paper installed the wrong agent set: {sorted(installed)}; "
         f"stdout:\n{result.stdout}"
     )
 
@@ -211,28 +213,28 @@ def test_ip_uspto_provisional_installs_only_its_own(tmp_path: Path) -> None:
 
 
 def test_multi_skill_install_is_the_union(tmp_path: Path) -> None:
-    """``--skills=pub,memo`` installs the union (5 + 4 = 9 files)."""
+    """``--skills=paper,memo`` installs the union (5 + 4 = 9 files)."""
 
     target = tmp_path / "multi-target"
     target.mkdir()
 
-    result = _run("--skills=pub,memo", str(target))
+    result = _run("--skills=paper,memo", str(target))
     _assert_ok(result)
 
     installed = _installed_agents(target)
     expected = {
-        "anvil-pub-auditor.md",
-        "anvil-pub-drafter.md",
-        "anvil-pub-figurer.md",
-        "anvil-pub-reviewer.md",
-        "anvil-pub-reviser.md",
+        "anvil-paper-auditor.md",
+        "anvil-paper-drafter.md",
+        "anvil-paper-figurer.md",
+        "anvil-paper-reviewer.md",
+        "anvil-paper-reviser.md",
         "anvil-memo-drafter.md",
         "anvil-memo-figurer.md",
         "anvil-memo-reviewer.md",
         "anvil-memo-reviser.md",
     }
     assert installed == expected, (
-        f"--skills=pub,memo installed {sorted(installed)}, "
+        f"--skills=paper,memo installed {sorted(installed)}, "
         f"expected the union {sorted(expected)}"
     )
 
@@ -268,13 +270,13 @@ def test_full_install_still_ships_all_agents(tmp_path: Path) -> None:
 def test_dry_run_reports_filtered_count_and_writes_nothing(
     tmp_path: Path,
 ) -> None:
-    """``--dry-run --skills=pub`` reports 5 agent files and writes nothing."""
+    """``--dry-run --skills=paper`` reports 5 agent files and writes nothing."""
 
     target = tmp_path / "dry-target"
     target.mkdir()
 
     result = subprocess.run(
-        ["bash", str(INSTALLER), "--dry-run", "--skills=pub", str(target)],
+        ["bash", str(INSTALLER), "--dry-run", "--skills=paper", str(target)],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
@@ -283,7 +285,7 @@ def test_dry_run_reports_filtered_count_and_writes_nothing(
 
     assert "[dry-run] copy 5 agent files" in result.stdout, (
         "expected the filtered '[dry-run] copy 5 agent files ...' action line "
-        f"for --skills=pub; got:\n{result.stdout}"
+        f"for --skills=paper; got:\n{result.stdout}"
     )
     assert not (target / ".claude").exists(), (
         "--dry-run wrote .claude/ to the target"
@@ -310,15 +312,15 @@ def test_preexisting_non_anvil_agent_survives(tmp_path: Path) -> None:
     loom_content = "loom shim body — must not be touched\n"
     loom_shim.write_text(loom_content, encoding="utf-8")
 
-    result = _run("--skills=pub", str(target))
+    result = _run("--skills=paper", str(target))
     _assert_ok(result)
 
     assert loom_shim.read_text(encoding="utf-8") == loom_content, (
         "installer disturbed a pre-existing non-anvil (loom-*) agent shim"
     )
-    # The pub agents landed alongside it.
-    assert "anvil-pub-drafter.md" in _installed_agents(target), (
-        "pub agents were not installed alongside the pre-existing loom shim"
+    # The paper agents landed alongside it.
+    assert "anvil-paper-drafter.md" in _installed_agents(target), (
+        "paper agents were not installed alongside the pre-existing loom shim"
     )
 
 

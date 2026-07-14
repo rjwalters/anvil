@@ -9,12 +9,12 @@ follow ``\input``/``\include``, and its render-gate ``extra_source_paths``
 note called the convention a hypothetical "consumer override" ("none in the
 default skeleton, but consumer overrides may add them"). A reviewer obeying
 the literal step scored the master shell and silently missed inline TikZ
-figure content — the same class of bug PR #654 fixed for ``pub``.
+figure content — the same class of bug PR #654 fixed for ``paper``.
 
 This module pins the prose contract that step 4 (content read) and step 4b
 (render-gate ``extra_source_paths``) now resolve the ``\input``/``\include``
 tree via ``anvil/lib/tex_includes.py::resolve_tex_inputs``, mirroring the
-``pub-review.md`` pattern, and that the "hypothetical consumer override"
+``paper-review.md`` pattern, and that the "hypothetical consumer override"
 framing is gone.
 
 Per the per-skill test filename convention (#58), this file is named

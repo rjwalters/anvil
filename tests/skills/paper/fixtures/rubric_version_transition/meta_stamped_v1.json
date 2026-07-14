@@ -1,0 +1,12 @@
+{
+  "critic": "review",
+  "role": "paper-review.md",
+  "started":  "2026-06-01T12:00:00Z",
+  "finished": "2026-06-01T12:05:00Z",
+  "model": "claude-opus-4-7",
+  "schema_version": 1,
+  "scorecard_kind": "human-verdict",
+  "rubric_id": "anvil-pub-v1-legacy-40",
+  "rubric_total": 40,
+  "advance_threshold": 32
+}

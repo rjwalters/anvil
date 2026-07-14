@@ -493,7 +493,7 @@ class TestDashFolding:
         assert result.passed()
 
     def test_tex_body_quote_from_input_child_passes(self, tmp_path: Path) -> None:
-        # Issue #643: a pub multi-file thread's body lives in \input-ed
+        # Issue #643: a paper multi-file thread's body lives in \input-ed
         # section files. A reviewer quoting a child section must validate
         # against the RESOLVED body, not the ~90-line main.tex shell —
         # otherwise a legitimate quote trips a false fabricated_evidence.
@@ -1048,7 +1048,7 @@ def test_memo_rubric_points_to_snippet_rule() -> None:
 
 # (skill, reviewer command, body filename quoted in the rule, self-check step)
 TABLE_SHAPED_REVIEWERS = [
-    ("pub", "pub-review.md", "main.tex", "5b"),
+    ("paper", "paper-review.md", "main.tex", "5b"),
     ("report", "report-review.md", "report.md", "5b"),
     ("deck", "deck-review.md", "deck.md", "8b"),
     ("slides", "slides-review.md", "deck.md", "7b"),
@@ -1068,7 +1068,7 @@ MACHINE_SUMMARY_REVIEWERS = [
 ]
 
 ROLLOUT_RUBRIC_SKILLS = [
-    "pub",
+    "paper",
     "report",
     "deck",
     "slides",
@@ -1092,8 +1092,8 @@ def test_review_doc_wires_the_self_check(
     ).read_text(encoding="utf-8")
     # Edit 1: the quote sub-bullet in the scoring step.
     assert "Quoted-evidence requirement (issue #464 / #475)" in doc
-    if skill == "pub":
-        # Issue #643: pub is the multi-file LaTeX skill; the quote rule was
+    if skill == "paper":
+        # Issue #643: paper (renamed from `pub`, #694) is the multi-file LaTeX skill; the quote rule was
         # broadened from "verbatim quote from `main.tex`" to "verbatim quote
         # from the resolved body" (main.tex OR its \input/\include children).
         # The load-bearing claim is still that a verbatim quote is required

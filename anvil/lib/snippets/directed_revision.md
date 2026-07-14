@@ -160,7 +160,7 @@ meaning.
 Every `*-revise` command has *some* combined-verdict pre-check step
 that exits/reports terminal without writing when the critics already
 passed. The full set (12 skills): `memo`, `report`, `datasheet`,
-`proposal`, `primer`, `deck`, `pub`, `slides`, `installation`,
+`proposal`, `primer`, `deck`, `paper`, `slides`, `installation`,
 `essay`, `ip-uspto`, `ip-uspto-provisional`.
 
 **Rollout is phased** (issue #691). Adopted so far:
@@ -175,7 +175,7 @@ passed. The full set (12 skills): `memo`, `report`, `datasheet`,
   the iteration cap (step 3) still apply.
 
 **Pending adoption** (each its own scoped follow-up PR, referencing
-this snippet): `report`, `datasheet`, `proposal`, `deck`, `pub`,
+this snippet): `report`, `datasheet`, `proposal`, `deck`, `paper`,
 `slides`, `installation`, `essay`, `ip-uspto`, `ip-uspto-provisional`.
 The `essay` and `installation` shapes are review-only (no audit), so
 their bypass is even simpler — skip the single-critic verdict

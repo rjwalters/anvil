@@ -90,7 +90,7 @@ Per the curator enrichment on #377, the v0 registry excludes:
   intake / inventorship / prior-art / pre-flight / finalize, memo
   citations / hyperlinks / image-accessibility / figure-content /
   render / migrate / migrate-refs, report claim-figure-grounding /
-  figure-content, pub-litsearch, slides-outline / handout / rehearse,
+  figure-content, paper-litsearch, slides-outline / handout / rehearse,
   deck-brief / imagegen / imagegen-adapter, proposal-synthesize /
   proposal-perspective).
 - Bridge tool agents (`anvil-project-migrate`,

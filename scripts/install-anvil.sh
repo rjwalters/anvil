@@ -311,6 +311,13 @@ if [[ -n "$SKILLS_FILTER" ]]; then
         error "lib and roles are always installed; use skill names like: ${ALL_SKILLS[*]}"
         ;;
     esac
+    # Renamed-skill hint (issue #694): the `pub` skill was renamed to
+    # `paper` (hard rename, no forwarding alias). A consumer still
+    # invoking `--skills=pub` from a pre-rename runbook gets a clear,
+    # actionable redirect instead of the generic unknown-skill error.
+    if [[ "$s" == "pub" ]]; then
+      error "the 'pub' skill was renamed to 'paper' (issue #694). Re-run with --skills=paper (existing thread dirs are slug-named and unaffected; a BRIEF carrying 'artifact_type: pub' still parses as an input alias)."
+    fi
     # Validate against ALL_SKILLS
     found=false
     for avail in "${ALL_SKILLS[@]}"; do
@@ -1283,13 +1290,15 @@ done
 # Filter behavior (issue #662): the agents/ copy IS scoped by --skills=. Agent
 # filenames follow anvil-<skill>-<phase>.md, and each <skill> matches a
 # directory under anvil/skills/ (the same ALL_SKILLS enumeration Stage 4
-# builds). A --skills=pub install therefore installs only the 5 anvil-pub-*.md
+# builds). A --skills=paper install therefore installs only the 5 anvil-paper-*.md
 # shims, not the full 54-file registry — matching the strict-subset framing of
 # the flag itself. (A prior comment here claimed the copy was NOT scoped by
 # --skills=, on the rationale that a skill-pinned install might spawn agents for
-# non-installed skills. The tractatus canary contradicted that: --skills=pub is
-# a real fan-out pattern, and the agent-picker noise from 49 unusable shims is
-# real friction — not a "documentation / dev path.")
+# non-installed skills. The tractatus canary contradicted that: the fan-out
+# was real — the canary invoked `--skills=pub` (the skill was renamed `pub` →
+# `paper` under #694; the mechanism and rationale are name-independent) — and
+# the agent-picker noise from 49 unusable shims is real friction — not a
+# "documentation / dev path.")
 #
 # Longest-prefix-match hazard: `ip-uspto` and `ip-uspto-provisional` share a
 # filename prefix, so a naive substring/glob filter would leak

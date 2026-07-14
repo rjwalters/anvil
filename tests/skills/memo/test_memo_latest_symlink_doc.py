@@ -24,7 +24,7 @@ Per-skill test filename convention (#58): this file is named with a
 ``test_memo_`` prefix so it never collides with a similarly-shaped
 ``test_latest_symlink_doc`` if/when the cross-skill normalization
 issue (called out in #153 "Out of scope") ports the same paragraph
-shape to slides / pub / report / ip-uspto / installation / proposal.
+shape to slides / paper / report / ip-uspto / installation / proposal.
 """
 
 from __future__ import annotations

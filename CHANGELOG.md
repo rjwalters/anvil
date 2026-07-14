@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Skill rename: `anvil:pub` → `anvil:paper`** (#694). The
+  research-paper skill was the least self-describing name in the catalog
+  (`pub` reads as *publish* / *public* / *pint*); every sibling skill
+  names its artifact. Hard rename in one PR, **no deprecation alias**:
+  the skill directory (`anvil/skills/pub/` → `anvil/skills/paper/`), all
+  command names (`pub-draft` → `paper-draft`, `pub-review` →
+  `paper-review`, `pub-litsearch` → `paper-litsearch`, …), the SKILL.md
+  frontmatter/name (`anvil:paper`), the generated per-phase agent shims
+  (`anvil-pub-*` → `anvil-paper-*`), the installer's skill enumeration,
+  and the README / CLAUDE.md skill tables all move to `paper`.
+  **Migration**: switch `--skills=pub` → `--skills=paper` on your next
+  install (invoking `--skills=pub` now prints a clear redirect error).
+  Existing thread directories are slug-named, not skill-named, so they
+  are untouched. Two **input-alias compatibility shims** keep existing
+  consumer data working: (1) a `BRIEF.md` `documents:` entry carrying the
+  legacy `artifact_type: pub` still parses — it normalizes to the
+  canonical `ArtifactType.PAPER` (input-only; nothing emits `pub`); (2)
+  the `rubric-rebackport` / `project-migrate` catalogs recognize legacy
+  `pub.md` bodies and `artifact_type: pub` BRIEF entries, mapping them to
+  the current `paper` skill. The **rubric_id literals stay frozen** as
+  `anvil-pub-v1` / `anvil-pub-v2` / `anvil-pub-<venue>-v1` /
+  `anvil-pub-vision-v1`: a rubric_id is a versioned identity already
+  stamped onto existing consumer reviews, decoupled from the skill
+  directory name — a rename does not bump the rubric version.
+
 ### Added
 
 - **New artifact class `anvil:spec` (Phase 1 skeleton)** (#697/#706):

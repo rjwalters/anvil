@@ -41,7 +41,7 @@ See repository `README.md` for the v0 skill catalog.
 The current skill index:
 
 - `anvil:memo` — investment / strategy / position memo.
-- `anvil:pub` — academic publication.
+- `anvil:paper` — academic publication (research papers).
 - `anvil:report` — customer-facing report.
 - `anvil:deck` — slide deck (Marp).
 - `anvil:slides` — narrated slide outline.
