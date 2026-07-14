@@ -1,0 +1,53 @@
+{
+  "data": {
+    "id": "10.5281/zenodo.4618153",
+    "type": "dois",
+    "attributes": {
+      "doi": "10.5281/zenodo.4618153",
+      "prefix": "10.5281",
+      "suffix": "zenodo.4618153",
+      "identifiers": [],
+      "creators": [
+        {
+          "name": "McConkey, Thomas G",
+          "nameType": "Personal",
+          "givenName": "Thomas G",
+          "familyName": "McConkey",
+          "affiliation": ["IBM Quantum"],
+          "nameIdentifiers": []
+        },
+        {
+          "name": "Minev, Zlatko",
+          "nameType": "Personal",
+          "givenName": "Zlatko",
+          "familyName": "Minev",
+          "affiliation": ["IBM Quantum"],
+          "nameIdentifiers": []
+        },
+        {
+          "name": "Qiskit Metal Development Team",
+          "nameType": "Organizational",
+          "affiliation": [],
+          "nameIdentifiers": []
+        }
+      ],
+      "titles": [
+        {
+          "title": "Qiskit Metal: An Open-Source Framework for Quantum Device Design & Analysis"
+        }
+      ],
+      "publisher": "Zenodo",
+      "publicationYear": 2021,
+      "types": {
+        "ris": "COMP",
+        "bibtex": "misc",
+        "citeproc": "article",
+        "schemaOrg": "SoftwareSourceCode",
+        "resourceType": "",
+        "resourceTypeGeneral": "Software"
+      },
+      "url": "https://zenodo.org/record/4618153",
+      "version": "0.7.0"
+    }
+  }
+}
