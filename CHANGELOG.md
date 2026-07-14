@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-07-14
+
 ### Changed
 
 - **Skill rename: `anvil:pub` → `anvil:paper`** (#694). The
@@ -92,6 +94,85 @@
   shape), asserting a `code-wrong` case NEVER routes to a spec edit. No
   consumer-repo issue-filing automation — escalation is a human-actionable
   note.
+- **`anvil:spec` deterministic constant-consistency gate (Phase 3)**
+  (#697/#708): a new skill-local `anvil/skills/spec/lib/constant_consistency.py`
+  extracts marker-declared named constants (`% anvil-const: name=… value=…
+  [unit=…]` — standalone or inline table-row-comment) and `\newcommand`
+  definitions across the spec's multi-file LaTeX and flags same-name /
+  different-value occurrences before the expensive content review, feeding
+  the internal-consistency rubric dimension. Exact string-normalized
+  comparison (a normative constant matches or is a defect — no numeric
+  tolerance); `unit-mismatch` and `malformed-declaration` are separate
+  lower-severity finding kinds; marker-driven only (no prose extraction in
+  v1). Wired into `spec-review` as a step-3b pre-flight gate; the marker
+  convention is documented for drafters in `SKILL.md`, `spec-draft`, and the
+  template. Skill-local per "wait for the second consumer" — not promoted to
+  `anvil/lib/`. (Only the Phase 4 botho worked example / #709 remains
+  deferred, blocked on the upstream dogfood run.)
+- **First-class operator-directed revision (`--polish`)** (#691): the
+  `*-revise` combined-verdict pre-check conflated "passed the advance
+  threshold" with "nothing worth fixing" — once a thread advanced (and, for
+  audit-bearing skills, the audit was clean) the command reported terminal
+  and exited without writing, leaving operators to prompt-hack around the
+  command to spend one more iteration on critic-enumerated minor
+  improvements. `memo`'s already-shipped `--polish "<reason>"` contract is
+  now generalized into a shared snippet
+  (`anvil/lib/snippets/directed_revision.md`) and adopted by `anvil:primer`
+  as the second consumer: a required non-empty reason bypasses ONLY the
+  pre-check early-exit (iteration cap + critic-completeness still apply),
+  records an audit-trail-only `revision_mode` / `revise_force_reason`, grants
+  no inherited credit (a fresh critic pair must re-score), and keeps the
+  default no-flag behavior byte-identical. The remaining ten skills are an
+  enumerated follow-up rollout.
+- **Four deterministic PDF-render gates from the primer canary** (#692):
+  a `\pandocbounded` override capping images at `0.85\textheight` so a tall
+  figure plus a multi-line caption no longer overflows the page (shipped in a
+  primer-local `pandoc-defaults.yaml`, co-located with the `Figure N —` /
+  `\captionsetup{labelformat=empty}` caption convention); a source-driven
+  glyph-verification check in `render_gate.py` (sweeps ALL non-ASCII
+  codepoints — excluding `Zs` whitespace and non-rendered URL-target / HTML-
+  comment regions — and asserts each survives in `pdftotext` output, catching
+  silent font glyph drops by construction); an embedded-image assertion
+  (`![…]()` ref count vs `pdfimages -list`); and `check_mmdc_launchable()` in
+  `render.py` (a two-stage PATH-plus-probe that catches an `mmdc` whose
+  puppeteer Chrome is absent, distinct from the presence-only
+  `check_mmdc_available()`).
+- **`anvil:primer` draft-time figure placement** (#690): the drafter now
+  emits `![…](exhibits/figN-slug.png)` references and records a `figure_plan`
+  in `_progress.json`; `primer-figures` is un-gated from the terminal
+  `AUDITED` state and renders to exactly those paths, so the review/audit
+  critics finally score figure captions and placement (rubric dims 3/7).
+  Closes the structural gap where the figures phase could never satisfy its
+  own "reference the image" guidance and PDFs shipped image-free.
+- **`anvil:primer` Botho worked example** (#693): a trimmed, provenance-
+  stamped snapshot of the first real consumer run (botho#881 → PR #900) is
+  vendored under `anvil/skills/primer/examples/botho/` with a BRIEF-parse
+  regression test, matching the shape six sibling skills already ship.
+- **DataCite fallback in `anvil/lib/cite.py`** (#696): on a Crossref 404/406
+  for a syntactically valid DOI, `resolve()` now falls back to
+  `api.datacite.org` before failing, so Zenodo / software / dataset DOIs
+  resolve to first-class `BibRecord`s instead of being demoted to unverified
+  leads. Stdlib-only, cache-first, cassette-tested; the paper-litsearch
+  verified-or-dropped invariant is preserved (a DOI unknown to both
+  registries still raises).
+
+### Fixed
+
+- **`anvil:report` `pandoc-defaults.yaml` failed to parse under pandoc 3.x**
+  (#701): the page-number CSS used the `include-in-header: - text:` form,
+  which a pandoc *defaults* file rejects (it expects file paths there). The
+  content now threads through `variables: header-includes`, with a
+  parse-contract test (mirroring the primer asset from #692).
+- **Committed `anvil/lib/*_schema.json` had drifted from their pydantic
+  sources** (#714): regenerated `review_schema.json` (missing the `NO_GO`
+  verdict from #559) and `rubric_schema.json` (stale `pub` rubric path from
+  the #694 rename), and added a drift-guard test asserting the committed
+  files match a fresh `export_schema` regeneration.
+- **Internal test-pin hygiene**: `memo`'s `TestSkillIdentityArtifactTypes`
+  pins were stale against the registered artifact-type set (missing
+  `ArtifactType.PRIMER`) and failing on a clean tree (#702); a pre-existing
+  `rubric-rebackport` catalog-drift guard failing on the unregistered
+  `primer` rubric was backfilled alongside the `spec` registration (#706).
 
 ## [0.8.1] — 2026-07-13
 
