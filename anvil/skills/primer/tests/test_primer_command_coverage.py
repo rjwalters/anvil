@@ -220,6 +220,72 @@ class TestSpecRefContractInCommands(unittest.TestCase):
         self.assertIn("spec_ref_resolved", text)
 
 
+class TestFigurePlanContract(unittest.TestCase):
+    """The #690 draft-time figure-placeholder contract is documented across
+    draft / figures / revise / review / audit / SKILL.md."""
+
+    def test_draft_places_figure_references_and_records_plan(self):
+        text = _read("commands/primer-draft.md")
+        # The drafter emits body references to exhibits paths...
+        self.assertIn("exhibits/figN-slug.png", text)
+        self.assertIn("![Figure N — ", text)
+        # ...and records the figure plan in _progress.json.
+        self.assertIn("figure_plan", text)
+        # Broken refs before figures render are expected/tolerated.
+        self.assertIn("does not yet exist", text.lower().replace("don't", "do not"))
+        # Zero-figure threads are the silent-off default.
+        self.assertIn("silent-off", text)
+
+    def test_draft_documents_caption_numbering_convention(self):
+        text = _read("commands/primer-draft.md")
+        # Captions carry their own "Figure N —" prefix + labelformat=empty.
+        self.assertIn("labelformat=empty", text)
+        self.assertIn("Figure N —", text)
+
+    def test_figures_ungated_from_audited_and_renders_referenced_paths(self):
+        text = _read("commands/primer-figures.md")
+        # No longer gated on AUDITED — runs any time after draft.
+        self.assertIn("No terminal-state gate", text)
+        self.assertIn("figure_plan", text)
+        # Renders to exactly the drafter-referenced paths, never invents one.
+        self.assertIn("exactly the", text)
+        self.assertIn("never invent", text.lower())
+        # Caption convention agreement (no double-numbering).
+        self.assertIn("labelformat=empty", text)
+        # Existence validation mirrors report-figures.
+        self.assertIn("Validate by file existence", text)
+
+    def test_revise_preserves_and_updates_the_figure_plan(self):
+        text = _read("commands/primer-revise.md")
+        self.assertIn("figure_plan", text)
+        self.assertIn("exhibits/figN-slug.png", text)
+
+    def test_review_has_exhibit_existence_freshness_check(self):
+        text = _read("commands/primer-review.md")
+        # A step-4c analog capping dim 3 / dim 7 on missing/stale exhibits.
+        self.assertIn("4c", text)
+        self.assertIn("figure_plan", text)
+        self.assertIn("stale", text.lower())
+        # Zero-figure thread is a silent no-op (regression safety).
+        self.assertIn("silent no-op", text)
+        # Caps dims 3 and 7, no critical flag.
+        self.assertIn("no critical flag", text.lower())
+
+    def test_audit_covers_diagram_content(self):
+        text = _read("commands/primer-audit.md")
+        # The factual sweep now covers teaching-diagram source content.
+        self.assertIn("figure_plan", text)
+        self.assertIn("diagram", text.lower())
+
+    def test_skill_documents_draft_time_figure_placement(self):
+        text = _read("SKILL.md")
+        self.assertIn("figure_plan", text)
+        self.assertIn("draft-time figure-placement", text)
+        # The figures gate moved earlier (no AUDITED-only gate).
+        self.assertIn("no `AUDITED` gate", text)
+        self.assertIn("labelformat=empty", text)
+
+
 class TestRubric(unittest.TestCase):
     """rubric.md declares 9 dims summing to 44, >=35, pedagogy-dominant."""
 
