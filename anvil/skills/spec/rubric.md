@@ -4,7 +4,7 @@ Rubric id: **`anvil-spec-v1`**. The reviewer and auditor score a spec against 9 
 
 The rubric is tuned so that **normative correctness dominates**: dim 1 (*Normative correctness*) carries the highest weight (7) because the artifact class succeeds or fails on whether its claims are *true of the thing it describes* — the way `primer` tilts toward pedagogy (dim 1, weight 7) and `essay` toward voice. Behind it, **internal consistency** (dim 2) and **claim precision** (dim 3) are heavy (weight 6 each): a spec that contradicts itself section-to-section, or states a normative claim ambiguously, is a defect an implementer trips over. Dim 9 (*Rhetorical economy*) is **residual here rather than load-bearing** (unlike `essay`, where it is load-bearing) — a spec is expected to be exhaustive, so economy is guarded but not the point.
 
-**Phase-1 scoping note.** The full spec↔implementation audit sweep (the mechanized `code_ref` cross-check) is **Phase 2 scope (#707)**, and the deterministic cross-table constant-consistency gate is **Phase 3 scope (#708)**. This Phase-1 `rubric.md` defines each dimension's *scoring rubric* (what a 7 vs a 3 looks like) so reviewers and auditors can score by manual judgment against `code_ref` today; the mechanized sweeps land later and slot in under the same dimensions without re-weighting.
+**Scoping note.** The spec↔implementation audit sweep — the `code_ref` cross-check with the three-way `implementation_contradicts_spec` verdict (spec-wrong / code-wrong / intentional-gap) and the implementation-status register — ships in **Phase 2 (#707)** and is documented at flag 3 below. The deterministic cross-table constant-consistency gate remains **Phase 3 scope (#708)**. Each dimension's *scoring rubric* (what a 7 vs a 3 looks like) is unchanged by the phasing; the mechanized constant gate lands later and slots under dim 2 without re-weighting.
 
 ## Dimensions
 
@@ -41,13 +41,20 @@ Any single flag → BLOCK, regardless of total score. Each flag's justification 
 
 1. **Self-contradiction** (review-side — `spec-review`, judgment): the same normative quantity/predicate is stated two incompatible ways in the spec (the block-time-floor 3s-vs-5s shape). Quote both occurrences and their sections. This is a hard block because an implementer cannot satisfy a spec that contradicts itself. *(Phase 3's deterministic constant gate (#708) will mechanize the cheap half of detecting this; Phase 1 catches it by judgment.)*
 2. **Undefined normative term** (review-side — `spec-review`, judgment): a term used in a `MUST`/`SHALL`/validity predicate is never defined, making the requirement unfalsifiable. Quote the normative use and confirm the absence of a definition.
-3. **Implementation contradicts normative claim** (audit-side — `spec-audit`; conditional on an active, resolved `code_ref`): a spec claim disagrees with the resolved implementation. **PHASE 1 SCOPE NOTE — the full three-way verdict is deferred to Phase 2 (#707).** The fix direction (spec-wrong → revise spec; code-wrong → operator escalation, **never** silently rewrite the spec to match a vestigial code path; intentional target-state gap → record in the implementation-status register) is a *human decision* the Phase-1 skeleton does NOT adjudicate. **Phase 1 posture: an auditor who detects a suspected code/spec mismatch records it as a `major` finding** (quoting the spec claim AND the implementation location), surfaces the ambiguous direction to the operator in the verdict prose, and **never auto-rewrites the spec**. The three-way verdict logic + implementation-status register that promote this to a fully-adjudicated critical flag land in Phase 2. **Inactive (cannot fire) when `code_ref` is undeclared or unresolvable** — no implementation to check against; the missing/broken contract is a `major` finding instead.
+3. **Implementation contradicts normative claim** — the `implementation_contradicts_spec` flag (audit-side — `spec-audit`; conditional on an active, resolved `code_ref`): a spec claim disagrees with the resolved implementation. **This is ONE flag carrying a mandatory three-way `Disposition` sub-field** (the fix direction is a human decision, never a mechanical presumption — the botho near-miss the class exists to prevent):
+   - **`spec-wrong`** — the code is the ratified truth; the stale spec claim is fixed to match it via the normal `spec-revise` path.
+   - **`code-wrong`** — the spec (a ratified ADR) is the source of truth and the implementation has drifted. **OPERATOR ESCALATION**: `spec-audit` emits a copy-pasteable escalation block (quoted spec + quoted code + a suggested consumer-repo issue) and the finding **blocks advance** until the operator fixes the code (re-run the audit) or overrides via `spec-revise --override-code-wrong "<reason>"`. `spec-revise` **NEVER** silently rewrites the spec to match a vestigial code path.
+   - **`intentional-gap`** — an accepted target-vs-live divergence. **Register-suppressed** (a matching `## Implementation status` row makes it a clean pass, not a flag); an **unregistered** target-state divergence fires the flag (`Disposition: intentional-gap`, sub-note `unregistered`) and blocks until the register row is added.
+
+   **Auditor discipline**: never default an uncertain contradiction to `spec-wrong` — when uncertain, default to `code-wrong` (operator escalation). Escalating a true spec-wrong costs one confirmation; silently spec-editing a true code-wrong recreates the near-miss. The three-way discrimination is a `findings.md`/`verdict.md` convention (`Disposition` column + `_summary.md.spec_consistency.disposition_counts`), NOT a `Verdict`-enum or `CriticalFlag.type` change — a single flag type is deliberate (three types would let a lazy sweep silently reclassify a code-wrong as an intentional-gap). See `spec-audit.md` §The three-way verdict. **Inactive (cannot fire) when `code_ref` is undeclared or unresolvable** — no implementation to check against; the missing/broken contract is a `major` finding instead. Also cannot fire on a register-suppressed intentional gap.
 
 **Absent-`code_ref` posture (flag 3 inactive).** When the `documents:` entry declares no `code_ref`, flag 3 **cannot fire** — no false critical flag, no crash. Instead, both `spec-review` and `spec-audit` record a **`major` finding recommending the operator declare `code_ref`**: a spec whose defining constraint ("every normative claim is true of the implementation, or marked target-state") is unenforceable is a defect to surface, not a blocker. A declared-but-unresolvable `code_ref` (bad path) is also a `major` finding (the tier activates but degrades gracefully), never a critical flag.
 
+**Unregistered target-state claim — a review-side `major` finding (not a flag).** Distinct from flag 3: `spec-review` (step 5b) raises a `major` finding when a normative claim *reads* as target-state (future-tense / aspirational) but has no `## Implementation status` register row — a prose-judgment check that fires even without a `code_ref`. It accumulates toward dim 1; it does NOT short-circuit advance. `spec-audit`'s `unregistered` disposition (above) is the code-side twin (requires an active `code_ref`); both may fire on the same claim. See SKILL.md §Implementation-status register for the division of labor.
+
 If no critical issues, the verdict says so explicitly: "Critical flags: none."
 
-**Never a critical flag (Phase 1)**: a suspected code/spec mismatch (a `major` finding pending Phase 2's three-way verdict — never an auto-rewrite), an undeclared or unresolvable `code_ref` (a `major` finding), or length past an implicit envelope (dim 9 deduction).
+**Never a critical flag**: a register-suppressed intentional gap (a clean pass), an unregistered target-state claim from the *review* side (a `major` finding — the *audit* side does flag it critically when `code_ref` is active), an undeclared or unresolvable `code_ref` (a `major` finding), an `unresolvable` sweep row (a `major` finding), or length past an implicit envelope (dim 9 deduction).
 
 ## Advance threshold
 
@@ -69,10 +76,10 @@ Both critics emit the **`human-verdict`** scorecard kind per `anvil/lib/snippets
   _progress.json   Phase state for the reviewer
 
 <thread>.{N}.audit/
-  verdict.md       Audit verdict + critical audit-flag paragraphs (factual + spec↔implementation)
-  findings.md      Per-claim table: claim | kind (factual/implementation-consistency) | verified? | evidence
+  verdict.md       Audit verdict + implementation_contradicts_spec flag block(s) with Disposition + escalation block(s)
+  findings.md      Per-claim table: claim | kind (factual/implementation-consistency) | verified? | disposition | evidence
   comments.md      Line-level audit comments
-  _summary.md      Machine-readable audit blocks (code_ref resolution, findings counts)
+  _summary.md      Machine-readable audit blocks (code_ref resolution, spec_consistency + disposition_counts)
   _meta.json       Stamps (below)
   _progress.json   Phase state for the auditor
 ```

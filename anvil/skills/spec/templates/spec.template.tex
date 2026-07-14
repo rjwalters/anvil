@@ -62,10 +62,29 @@ Name & Value & Notes \\
 % must be defined in §Definitions. A predicate must be satisfiable (dim 5).
 
 \section{Implementation status}
-% Live vs. target per component. Where the implementation and the spec
-% diverge, mark it HERE rather than silently rewriting either side. NOTE: the
-% first-class implementation-status register (and its cross-check in the audit)
-% is Phase 2 scope (#707) — this section is the placeholder it formalizes.
+\label{sec:impl-status}
+% THE IMPLEMENTATION-STATUS REGISTER (SKILL.md §Implementation-status register).
+% Live vs. target per component. Where the implementation (code_ref) and this
+% spec deliberately diverge, record the gap HERE rather than silently rewriting
+% either side. This table is OPERATOR/DRAFTER-authored input, NOT
+% auditor-generated: you declare which components have an intentional live/target
+% gap; spec-audit checks that a target-state claim in the body has a matching row
+% (a code-vs-spec divergence with NO row is the "unregistered gap" critical flag,
+% Disposition intentional-gap). Only components with a REAL live/target
+% divergence need a row — a true-now claim needs none. Every target-state row
+% names the divergence explicitly (concrete Live + concrete Target, no vague
+% "TBD"); the Tracking column links the issue/ADR that owns the gap's resolution.
+% Delete the example row and add your own; delete the whole section only if the
+% spec claims no live/target gaps at all.
+\begin{center}
+\begin{tabular}{@{}p{2.2cm}p{2.8cm}p{2.8cm}ll@{}}
+\toprule
+Component & Live behavior & Target (this spec) & Status & Tracking \\
+\midrule
+[Output signatures] & [Ed25519 (classical)] & [ML-DSA-65 on all outputs] & target-state & [issue link / unscheduled] \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \section{Revision history}
 % Versioning discipline (dim 7): a reader must know which version they hold and
