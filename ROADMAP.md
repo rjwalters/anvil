@@ -2,9 +2,9 @@
 
 **Mission**: Make iterative AI-assisted authoring of long-form artifacts as principled as software engineering is — versioned, reviewable, resumable, and audit-trailed.
 
-Anvil orchestrates drafting, review, audit, and revision of memos, papers, patent applications, pitch decks, talk slides, technical reports, art-installation concepts, and customer proposals. Each artifact lives in an immutable versioned directory; each review pass writes to a read-only sibling; each revision consumes both and produces the next version. The version history *is* the audit trail.
+Anvil orchestrates drafting, review, audit, and revision of memos, research papers, patent applications (non-provisional and provisional), pitch decks, talk slides, technical reports, IC/component datasheets, art-installation concepts, customer proposals, voice-grounded essays, pedagogical primers, and normative specifications. Each artifact lives in an immutable versioned directory; each review pass writes to a read-only sibling; each revision consumes both and produces the next version. The version history *is* the audit trail.
 
-We use the **filesystem as substrate** so the pattern works on a single laptop with no GitHub account, no SaaS dependency, and no proprietary lock-in. We use a **scored rubric** (8 weighted dimensions / 40, ≥32 to advance, critical-flag short-circuit) so the convergence criterion is mechanical, not vibes. We use **N parallel critics → one reviser** as a first-class primitive so subject-matter critics can be added by composition, not orchestration.
+We use the **filesystem as substrate** so the pattern works on a single laptop with no GitHub account, no SaaS dependency, and no proprietary lock-in. We use a **scored rubric** (9 weighted dimensions / 44 — the two `ip-uspto` skills on /45, `deck` on /49 — ≥35 to advance, ≥39 for customer-facing and legal work, critical-flag short-circuit) so the convergence criterion is mechanical, not vibes. We use **N parallel critics → one reviser** as a first-class primitive so subject-matter critics can be added by composition, not orchestration.
 
 ## Design Philosophy
 
@@ -24,22 +24,29 @@ We use the **filesystem as substrate** so the pattern works on a single laptop w
 
 ---
 
-## Current State (v0.0.1)
+## Current State (v0.9.0)
 
-The complete authoring lifecycle is supported for eight artifact classes:
+The complete authoring lifecycle is supported for **thirteen artifact classes**:
 
-| Skill | Artifact type | Output | Status |
-|---|---|---|---|
-| `anvil:memo` | Investment memos, internal documents | Markdown | Shipped #3 |
-| `anvil:paper` | Research papers (with venue-pinned rubrics) | LaTeX → PDF | Shipped #5, venue overlays #33 |
-| `anvil:report` | Customer-facing technical reports (engagement findings, audits, advisories) | Markdown / LaTeX → PDF | Shipped #8 |
-| `anvil:deck` | Investor pitch decks | Marp Markdown → PDF | Shipped #6 |
-| `anvil:slides` | Talk / conference slides + speaker notes | Marp Markdown → PDF | Shipped #7 |
-| `anvil:ip-uspto` | USPTO non-provisional utility patent applications | LaTeX → PDF | Shipped #4 |
-| `anvil:installation` | Experiential / installation artwork (concept proposals) | LaTeX → PDF | Shipped #59 |
-| `anvil:proposal` | Buildable-system proposals (pre-contract bookend to `anvil:report`) | LaTeX → PDF | Shipped #60 |
+| Skill | Artifact type | Output |
+|---|---|---|
+| `anvil:memo` | Investment / decision memos, internal documents (NO-GO thesis-failure terminal) | Markdown |
+| `anvil:paper` | Research papers, with venue-pinned rubric overlays + litsearch (renamed from `pub`, #694) | LaTeX → PDF |
+| `anvil:report` | Customer-facing technical reports (engagement findings, audits, advisories) | Markdown / LaTeX → PDF |
+| `anvil:deck` | Investor pitch decks (10-dim /49 rubric, ≥43) | Marp Markdown → PDF |
+| `anvil:slides` | Talk / conference slides + speaker notes | Marp Markdown → PDF |
+| `anvil:ip-uspto` | USPTO non-provisional utility patent applications (/45 rubric) | LaTeX → PDF |
+| `anvil:ip-uspto-provisional` | USPTO provisional applications — claims-optional, enablement-depth-first, conversion seed for `anvil:ip-uspto` (/45) | LaTeX → PDF |
+| `anvil:installation` | Experiential / installation artwork (concept proposals) | LaTeX → PDF |
+| `anvil:proposal` | Buildable-system proposals (pre-contract bookend to `anvil:report`) | LaTeX → PDF |
+| `anvil:datasheet` | Customer-facing IC / component datasheets (deterministic pinmap / bus-width consistency gates) | LaTeX → PDF |
+| `anvil:essay` | Short-form voice-grounded essays / blog posts (voice fidelity as dominant dim 2; READY-terminal) | Markdown |
+| `anvil:primer` | Long-form pedagogical explainers (pedagogy-dominant dim 1; optional `spec_ref` consistency audit) | Markdown (+ optional PDF) |
+| `anvil:spec` | Normative technical specifications maintained against an implementation (normative-correctness dim 1, ≥39; optional `code_ref` consistency audit) | LaTeX (+ optional PDF) |
 
-Each skill ships a complete `draft → review → revise → (audit) → figures` lifecycle, an 8-dimension /40 rubric, opinionated templates, a worked example thread, and tests.
+Each skill ships a complete `draft → review → revise → (audit) → figures` lifecycle (with skill-specific variations — e.g. `essay` ships draft/review/revise/status only), a 9-dimension /44 rubric (the two `ip-uspto` skills on /45, `deck` on 10-dim /49), opinionated templates, a worked example thread, and tests.
+
+**Bridge + utility skills** round out the set: `anvil:project-migrate` and `anvil:rubric-rebackport` (contract-shift bridges), `anvil:project-share` (shareable provenance-stamped export), `anvil:project-scout` (read-only repo survey), `anvil:project-photos` (scanned-archive provenance manifest), and `anvil:project-book` (multi-thread book assembly). Nineteen skills ship in total.
 
 ### Shared framework primitives (`anvil/lib/`)
 
@@ -53,7 +60,9 @@ Each skill ships a complete `draft → review → revise → (audit) → figures
 | `rubric.py` + `rubric_schema.json` | Rubric models + venue-pinned overlay discovery (`.anvil.json: venue` → optional advisory rubric) | #33 |
 | `render.py` | Marp → PDF, PDF → PNGs, pandoc → PDF, matplotlib walker, `check_*_available()` preflight helpers | #30 |
 | `vision.py` | `VisionCritic` + `VisionRubric` — vision-model review of rendered artifacts | #30 |
-| `render_gate.py` | Deterministic gate over compiled PDFs (page-fit, overfull boxes, compile success, placeholder scan); LaTeX-skill analog of `marp_lint` | #64 |
+| `render_gate.py` | Deterministic gate over compiled PDFs (page-fit, overfull boxes, compile success, placeholder scan, source-driven glyph verification, embedded-image assertion); LaTeX-skill analog of `marp_lint` | #64, #692 |
+| `sidecar.py` | `staged_sidecar` context manager + atomic rename for crash-safe critic-sibling writes; consumed by 60 critic-writing commands across all 13 artifact-class skills | #346 |
+| `numeric_consistency.py` | Deterministic claim-vs-claim numeric-consistency gate (within a body); consumed by `essay` / `memo` / `paper` review | #462 |
 | `figures/palette.py` + `anvil.mplstyle` + `mermaid-theme.json` | Shared figure-theming substrate (navy palette + 4 semantic mermaid classDefs + per-glyph font fallback for Unicode arrows) | #74, #92 |
 | `marp/config.yml` | Pinned Marp config (MathJax + html, `mmdc → PNG` as the working diagram path) | #32 |
 
@@ -74,7 +83,7 @@ These are the fundamental challenges agents face when drafting long-form artifac
 
 | Challenge | Description | Anvil's approach |
 |---|---|---|
-| Convergence is non-mechanical | "Is this good enough?" is judgment; agents don't agree | Scored rubric: 8 weighted dimensions, ≥32 / 40 to advance, critical-flag short-circuit, stable-score termination (#27) |
+| Convergence is non-mechanical | "Is this good enough?" is judgment; agents don't agree | Scored rubric: 9 weighted dimensions / 44 (≥35 to advance, ≥39 customer-facing/legal), critical-flag short-circuit, stable-score termination (#27), per-review version stamping so legacy /40 and current /44+ reviews coexist |
 | Drift between revisions | Critics surface findings; revisers silently lose context | Sibling-critic directories are immutable; revisers read prior version + ALL siblings + write a `changelog.md` mapping findings to changes |
 | Wasted expensive reviews | Reviewer scores a 4-page memo against a 3-page contract | Deterministic pre-flight (render-gate, marp_lint, mmdc preflight) fires *before* content review |
 | Single-perspective review | One reviewer = one set of blind spots | N parallel critics → one reviser (#10/#26): rubric reviewer + venue-pinned reviewer + vision critic + audit critic all feed the same reviser pass |
@@ -105,6 +114,31 @@ Recurring themes likely to drive future issues:
 
 7. **Portfolio orchestrators.** Each skill is single-thread today; portfolio-level commands (e.g. `slides.md`'s gap detector, #85) are nascent. A general orchestrator pattern in `anvil/lib/` is plausible if patterns repeat.
 
+### Candidate artifact classes (ideation)
+
+Ideation only — **none of these is committed work.** Per theme "Canary-driven development," a new artifact class ships when a live downstream consumer produces the genre and hits friction none of the current classes fit (the way botho drove `primer` #686 and `spec` #697). This list records the candidates worth reaching for *when* that signal appears; it is not a build queue.
+
+The bar a candidate must clear (what separated `primer`/`spec` from being `report` variants): (a) a **dominant success metric** that is a genuinely new axis, not one of an existing skill's dimensions; (b) real genre conventions a rubric can encode; (c) ideally a **companion input feeding a consistency audit** — the `spec_ref`/`code_ref` pattern is now reusable infrastructure and is anvil's differentiator over a generic "write me a doc" prompt; (d) deterministic pre-flight gates are possible.
+
+Strongest candidates, each mapped to the pattern:
+
+| Candidate | Dominant metric (new axis) | Companion input / audit | Notes |
+|---|---|---|---|
+| `app-note` (application note) | Design-in reproducibility — an engineer following it reaches a working circuit | `datasheet_ref` → does the note contradict the part's actual limits? (reuses the `code_ref` audit shape) | **Highest-signal candidate**: neighbor to the shipped `datasheet`, plausible live consumer (sphere / semiconductor). "Tutorial, for hardware." |
+| `api-reference` | Accuracy + completeness against the API surface | `code_ref` / OpenAPI doc → every public symbol documented, no documented symbol that doesn't exist | Nearly falls out of `spec` for free; add a deterministic completeness gate. |
+| `runbook` | Executable safety — every step unambiguous, ordered, verifiable, reversible | reference to the scripts/infra it drives | Distinct from `installation` (one-time setup) and `spec` (normative description). Natural gates: every step has a verification + a rollback. |
+| `tutorial` / `how-to` | Task-completion success — reader reaches a working end state | the tool/API being taught | The task-completion sibling to `primer`'s concept-explanation. Clear boundary against `primer`. |
+| `threat-model` | Attack-surface coverage + severity calibration | system architecture / code | Audit-grade like `spec`/`report`; distinctive and increasingly in demand. |
+
+Explicitly **not** their own class (fold into an existing skill — recorded so the line is documented):
+
+- ADR → a `memo` variant (decision record with a thesis).
+- case-study, market / competitive analysis → `report` variants.
+- RFP response → a `proposal` variant.
+- literature review → already inside `paper` (litsearch).
+- thesis, course, multi-lesson curriculum → `project-book` assembly, not a new class.
+- release-notes → likely a *utility* (generated against a git range), not an authored artifact class — cf. the deferred "Reference-skill category" (theme 6).
+
 ---
 
 ## What Anvil is NOT
@@ -115,7 +149,7 @@ To keep scope honest:
 - **Anvil is not a renderer.** It shells out to `marp`, `pandoc`, `xelatex`, `mmdc`, `pdftoppm`. The renderer choices are pinned (e.g. Marp for slides, MathJax not KaTeX) but the rendering itself happens in subprocess.
 - **Anvil is not a forge.** No GitHub-style PR workflow for the artifacts. The version history is the audit trail; collaboration happens via shared filesystem + (optionally) git.
 - **Anvil is not opinionated about voice.** Each skill ships defaults; consumers override via `.anvil/skills/<name>/voice.md` and other extension points.
-- **Anvil is not yet** broadly distributed — v0.0.1 is installable but consumer adoption is currently one canary. The framework will harden through real use, not speculative design.
+- **Anvil is not yet** broadly distributed. The framework hardens through real use, not speculative design — v0.9.0 is driven by several live canary consumers (2AM Logic Studio; botho, which drove `primer` and `spec`; geode-fem and the Tractatus Lean-4 project on `paper`) rather than one.
 
 ---
 
