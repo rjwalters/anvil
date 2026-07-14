@@ -558,5 +558,145 @@ class TestSpecRefResolver(unittest.TestCase):
             self.assertIsNone(resolved)
 
 
+class TestRenderGateHardeningContract(unittest.TestCase):
+    """The #692 render-pipeline hardening: the primer-local pandoc defaults
+    asset carries both the caption + \\pandocbounded directives, and
+    primer-figures.md documents the new deterministic render-gate checks."""
+
+    def test_pandoc_defaults_asset_exists(self):
+        asset = _SKILL_ROOT / "assets" / "pandoc-defaults.yaml"
+        self.assertTrue(
+            asset.exists(),
+            f"missing primer pandoc defaults asset: {asset}",
+        )
+
+    def test_pandoc_defaults_carries_both_directives_in_one_header_block(self):
+        """The caption directive (#690/#695) and the \\pandocbounded cap
+        (#692) must co-exist in ONE header-includes block, not two competing
+        ones."""
+        text = (_SKILL_ROOT / "assets" / "pandoc-defaults.yaml").read_text(
+            encoding="utf-8"
+        )
+        # Exactly one header-includes key (the parse-valid inline-LaTeX path in
+        # a pandoc defaults file — see the asset's schema note).
+        self.assertEqual(text.count("header-includes:"), 1)
+        # (a) the caption convention from #690/#695...
+        self.assertIn("labelformat=empty", text)
+        # (b) ...and the #692 pandocbounded 0.85\textheight cap.
+        self.assertIn(r"\pandocbounded", text)
+        self.assertIn(r"0.85\textheight", text)
+        # Both directives appear AFTER the single header-includes key (i.e.
+        # in the same block), not before it. Use rindex so a comment mention
+        # earlier in the file doesn't mask the in-block occurrence.
+        header_pos = text.index("header-includes:")
+        self.assertGreater(text.rindex("labelformat=empty"), header_pos)
+        self.assertGreater(text.rindex(r"\pandocbounded"), header_pos)
+        # The LaTeX path is pinned (pandocbounded is a LaTeX-only macro).
+        self.assertIn("pdf-engine: xelatex", text)
+
+    def test_figures_documents_pandoc_defaults_and_pandocbounded(self):
+        text = _read("commands/primer-figures.md")
+        self.assertIn("pandoc-defaults.yaml", text)
+        self.assertIn(r"\pandocbounded", text)
+        self.assertIn(r"0.85\textheight", text)
+
+    def test_figures_documents_glyph_and_embedded_image_gates(self):
+        text = _read("commands/primer-figures.md")
+        # Source-driven glyph verification (item 2).
+        self.assertIn("glyph_verification", text)
+        self.assertIn("pdftotext", text)
+        self.assertIn("U+2260", text)
+        # Embedded-image assertion (item 3).
+        self.assertIn("embedded_images", text)
+        self.assertIn("pdfimages", text)
+
+    def test_figures_documents_mmdc_launchability_probe(self):
+        text = _read("commands/primer-figures.md")
+        # Item 4: the launchability probe, distinct from binary presence.
+        self.assertIn("check_mmdc_launchable", text)
+        self.assertIn("MMDC_LAUNCH_REMEDIATION", text)
+
+    def test_pandoc_defaults_compiles_a_tall_figure_when_tools_available(self):
+        """Real-render smoke: the \\pandocbounded 0.85\\textheight cap must
+        compile standalone (no consumer .tex template — primer ships none) and
+        keep a tall figure + long caption on-page.
+
+        Skipped when pandoc/xelatex/pdfinfo are absent (CI without a
+        toolchain), matching the opportunistic-smoke discipline in
+        ``tests/lib/test_render_gate.py``.
+        """
+        import shutil
+        import struct
+        import subprocess
+        import tempfile
+        import zlib
+
+        for tool in ("pandoc", "xelatex", "pdfinfo"):
+            if shutil.which(tool) is None:
+                self.skipTest(f"{tool} not on PATH; skipping real-render smoke")
+
+        asset = _SKILL_ROOT / "assets" / "pandoc-defaults.yaml"
+
+        def _make_tall_png(path: Path, w: int, h: int) -> None:
+            def chunk(typ: bytes, data: bytes) -> bytes:
+                c = typ + data
+                return (
+                    struct.pack(">I", len(data))
+                    + c
+                    + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+                )
+
+            ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+            raw = bytearray()
+            row = bytes((30, 60, 120)) * w
+            for _ in range(h):
+                raw.append(0)
+                raw += row
+            idat = zlib.compress(bytes(raw), 6)
+            path.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + chunk(b"IHDR", ihdr)
+                + chunk(b"IDAT", idat)
+                + chunk(b"IEND", b"")
+            )
+
+        with tempfile.TemporaryDirectory() as d:
+            work = Path(d)
+            (work / "exhibits").mkdir()
+            _make_tall_png(work / "exhibits" / "tall.png", 400, 1400)
+            body = work / "primer.md"
+            body.write_text(
+                "# A tall exhibit\n\n"
+                "![Figure 1 — a deliberately tall diagram whose caption spans "
+                "several lines so that, without the 0.85 textheight cap, the "
+                "caption would overflow the page footer and clip at the edge — "
+                "the exact botho canary failure this override fixes.]"
+                "(exhibits/tall.png)\n\n"
+                "That concludes the walkthrough.\n",
+                encoding="utf-8",
+            )
+            pdf = work / "primer.pdf"
+            proc = subprocess.run(
+                [
+                    "pandoc",
+                    str(body),
+                    "-o",
+                    str(pdf),
+                    "--defaults",
+                    str(asset),
+                    "--resource-path",
+                    str(work),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            # The override must COMPILE (exit 0) and produce a PDF. Glyph
+            # warnings on stderr are fine; a non-zero exit is not.
+            self.assertEqual(
+                proc.returncode, 0, f"pandoc failed: {proc.stderr[-800:]}"
+            )
+            self.assertTrue(pdf.exists() and pdf.stat().st_size > 0)
+
+
 if __name__ == "__main__":
     unittest.main()
