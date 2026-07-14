@@ -570,3 +570,125 @@ def test_render_mermaid_to_png_nonzero_exit_raises_render_error(
     )
     with pytest.raises(RenderError, match="mmdc failed.*boom"):
         render_mermaid_to_png(src, tmp_path / "out.png")
+
+
+# ---------------------------------------------------------------------------
+# check_mmdc_launchable — two-stage PATH + launch-probe (issue #692)
+# ---------------------------------------------------------------------------
+
+
+def test_check_mmdc_launchable_is_exported():
+    """The launchability probe + its remediation are part of the public API."""
+    from anvil.lib.render import check_mmdc_launchable
+
+    assert callable(check_mmdc_launchable)
+    assert "check_mmdc_launchable" in render.__all__
+    assert "MMDC_LAUNCH_REMEDIATION" in render.__all__
+
+
+def test_check_mmdc_available_unchanged_binary_presence_only(monkeypatch):
+    """AC (item 4): the existing binary-presence-only contract is preserved.
+
+    ``check_mmdc_available`` must NOT spawn any subprocess — it stays a pure
+    ``shutil.which`` test so the 5 existing call sites/tests are unaffected.
+    """
+    from anvil.lib.render import check_mmdc_available
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+    # Any subprocess spawn here would be a contract regression.
+    with patch("anvil.lib.render.subprocess.run") as mock_run:
+        assert check_mmdc_available() is True
+        mock_run.assert_not_called()
+
+
+def test_check_mmdc_launchable_false_when_not_on_path(monkeypatch):
+    """Returns False immediately (no probe spawn) when the binary is absent."""
+    from anvil.lib.render import check_mmdc_launchable
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    with patch("anvil.lib.render.subprocess.run") as mock_run:
+        assert check_mmdc_launchable() is False
+        mock_run.assert_not_called()
+
+
+def test_check_mmdc_launchable_true_on_successful_probe(monkeypatch):
+    """Returns True when mmdc is on PATH and the probe render exits 0 + writes PNG.
+
+    Mockable — no real Chromium required at test time (matches the file's
+    stated testability discipline).
+    """
+    from anvil.lib.render import check_mmdc_launchable
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+
+    def fake_run(cmd, *args, **kwargs):
+        # cmd is ["mmdc", "--input", <probe.mmd>, "--output", <probe.png>].
+        # Simulate mmdc writing the output PNG so probe_png.exists() is True.
+        out_idx = cmd.index("--output") + 1
+        Path(cmd[out_idx]).write_bytes(b"\x89PNG\r\n")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr("anvil.lib.render.subprocess.run", fake_run)
+    assert check_mmdc_launchable() is True
+
+
+def test_check_mmdc_launchable_false_on_nonzero_exit(monkeypatch):
+    """Returns False when mmdc is on PATH but the probe render exits non-zero.
+
+    This is the issue-#692 canary: binary present, Puppeteer/Chromium launch
+    fails (pinned Chrome absent from ~/.cache/puppeteer).
+    """
+    from anvil.lib.render import check_mmdc_launchable
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+    fake = subprocess.CompletedProcess(
+        args=["mmdc"], returncode=1, stdout=b"", stderr=b"Could not find Chromium"
+    )
+    monkeypatch.setattr("anvil.lib.render.subprocess.run", lambda *a, **kw: fake)
+    assert check_mmdc_launchable() is False
+
+
+def test_check_mmdc_launchable_false_when_png_not_written(monkeypatch):
+    """Returns False when the probe exits 0 but no PNG landed (silent failure)."""
+    from anvil.lib.render import check_mmdc_launchable
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+    fake = subprocess.CompletedProcess(
+        args=["mmdc"], returncode=0, stdout=b"", stderr=b""
+    )
+    monkeypatch.setattr("anvil.lib.render.subprocess.run", lambda *a, **kw: fake)
+    assert check_mmdc_launchable() is False
+
+
+def test_check_mmdc_launchable_false_on_timeout(monkeypatch):
+    """Returns False (not raises) when the probe render times out."""
+    from anvil.lib.render import check_mmdc_launchable
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+    monkeypatch.setattr(
+        "anvil.lib.render.subprocess.run",
+        lambda *a, **kw: (_ for _ in ()).throw(
+            subprocess.TimeoutExpired(["mmdc"], 30)
+        ),
+    )
+    assert check_mmdc_launchable() is False
+
+
+def test_check_mmdc_launchable_false_on_oserror(monkeypatch):
+    """Returns False (not raises) when the probe spawn raises OSError."""
+    from anvil.lib.render import check_mmdc_launchable
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/mmdc")
+    monkeypatch.setattr(
+        "anvil.lib.render.subprocess.run",
+        lambda *a, **kw: (_ for _ in ()).throw(OSError("exec format error")),
+    )
+    assert check_mmdc_launchable() is False
+
+
+def test_mmdc_launch_remediation_mentions_executable_path_fallback():
+    """The remediation string documents the puppeteer executablePath fallback."""
+    from anvil.lib.render import MMDC_LAUNCH_REMEDIATION
+
+    assert "executablePath" in MMDC_LAUNCH_REMEDIATION
+    assert "puppeteer" in MMDC_LAUNCH_REMEDIATION.lower()

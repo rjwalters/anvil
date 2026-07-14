@@ -21,6 +21,8 @@ from anvil.lib.render_gate import (
     COMPILE_UNAVAILABLE,
     DEFAULT_PLACEHOLDER_PATTERNS,
     DIM_COMPILE,
+    DIM_EMBEDDED_IMAGES,
+    DIM_GLYPH_VERIFICATION,
     DIM_OVERFULL,
     DIM_PAGE_FIT,
     DIM_PLACEHOLDERS,
@@ -794,3 +796,308 @@ def test_critical_flag_order_is_stable():
         f"render_gate_{DIM_COMPILE}",
         f"render_gate_{DIM_PLACEHOLDERS}",
     ]
+
+
+# -----------------------------------------------------------------------------
+# Glyph verification (issue #692) — source-driven non-ASCII sweep vs pdftotext
+# -----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stix_glyph_drop_source() -> Path:
+    """Source body containing ≠ (U+2260) ×3 and × (U+00D7) ×1 (issue #692)."""
+    p = FIXTURES / "stix_glyph_drop_source.md"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdftotext_stix_drop() -> str:
+    """Stub pdftotext whose extraction dropped ≠ (STIX Two Text regression)."""
+    p = FIXTURES / "fake_pdftotext_stix_drop.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+@pytest.fixture
+def fake_pdftotext_clean() -> str:
+    """Stub pdftotext whose extraction preserves every source glyph."""
+    p = FIXTURES / "fake_pdftotext_clean.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+def test_glyph_drop_stix_regression_pin(
+    empty_pdf, fake_pdfinfo_3pages_path, stix_glyph_drop_source, fake_pdftotext_stix_drop
+):
+    """Regression-pin the STIX Two Text ≠ (U+2260) silent glyph drop (#692).
+
+    The source references ≠ three times; the (stubbed) pdftotext extraction
+    has it zero times — the exact botho-canary shape where a hardcoded
+    allow-list "verified" the known glyphs and shipped a PDF missing ≠. The
+    source-driven sweep MUST flag it as an error and fail the gate.
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[stix_glyph_drop_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_stix_drop,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION in r.failed_gates
+    assert r.passed is False
+    glyph_findings = [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+    assert len(glyph_findings) == 1
+    # The finding names the exact dropped codepoint (U+2260), and only it —
+    # × (U+00D7) survived, so it must NOT be flagged.
+    assert "U+2260" in glyph_findings[0].message
+    assert "U+00D7" not in glyph_findings[0].message
+    # The typed Review carries the blocking critical flag.
+    rev = r.to_review(version_dir="botho.2", critic_id="render-gate")
+    flag_types = {cf.type for cf in rev.critical_flags}
+    assert f"render_gate_{DIM_GLYPH_VERIFICATION}" in flag_types
+
+
+def test_glyph_verification_clean_render_passes(
+    empty_pdf, fake_pdfinfo_3pages_path, stix_glyph_drop_source, fake_pdftotext_clean
+):
+    """A clean render (all source non-ASCII survive at >= source count) passes
+    the glyph gate with zero findings."""
+    r = gate(
+        empty_pdf,
+        source_paths=[stix_glyph_drop_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_clean,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+
+
+@pytest.fixture
+def nbsp_only_source() -> Path:
+    """Source whose only non-ASCII is a stray U+00A0 NBSP (issue #692)."""
+    p = FIXTURES / "nbsp_only_source.md"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdftotext_nbsp_normalized() -> str:
+    """Stub pdftotext that normalized the source NBSP to an ASCII space."""
+    p = FIXTURES / "fake_pdftotext_nbsp_normalized.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+@pytest.fixture
+def url_only_nonascii_source() -> Path:
+    """Source whose non-ASCII lives only in URL targets / comments (issue #692)."""
+    p = FIXTURES / "url_only_nonascii_source.md"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdftotext_url_only() -> str:
+    """Stub pdftotext whose body text carries no non-ASCII (URLs not rendered)."""
+    p = FIXTURES / "fake_pdftotext_url_only.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+def test_glyph_verification_nbsp_normalized_passes(
+    empty_pdf, fake_pdfinfo_3pages_path, nbsp_only_source, fake_pdftotext_nbsp_normalized
+):
+    """A stray Unicode NBSP (U+00A0) that pdftotext normalizes to an ASCII space
+    must NOT trip the glyph gate (issue #692 false-positive vector 1).
+
+    Whitespace normalization is not the glyph-drop failure mode the sweep
+    guards against — Zs-category codepoints are excluded on both sides.
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[nbsp_only_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_nbsp_normalized,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+
+
+def test_glyph_verification_url_only_nonascii_passes(
+    empty_pdf, fake_pdfinfo_3pages_path, url_only_nonascii_source, fake_pdftotext_url_only
+):
+    """Non-ASCII living only in a link/image URL target, HTML comment, or
+    autolink must NOT trip the glyph gate (issue #692 false-positive vector 2).
+
+    Those glyphs are counted in the raw source but never reach the rendered
+    body, so the source sweep excludes non-rendered regions before counting.
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[url_only_nonascii_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_url_only,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+
+
+def test_glyph_verification_skips_gracefully_when_pdftotext_absent(
+    empty_pdf, fake_pdfinfo_3pages_path, stix_glyph_drop_source, monkeypatch
+):
+    """pdftotext absent → glyph check skips (breadcrumb in reasons), does not
+    raise, does not fail the gate."""
+    # Force pdftotext resolution to miss (no override, which() returns None).
+    import anvil.lib.render_gate as rg
+
+    real_which = rg.shutil.which
+
+    def which_no_pdftotext(name):
+        return None if name == "pdftotext" else real_which(name)
+
+    monkeypatch.setattr(rg.shutil, "which", which_no_pdftotext)
+    r = gate(
+        empty_pdf,
+        source_paths=[stix_glyph_drop_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION not in r.failed_gates
+    assert any(
+        r_.startswith(f"{DIM_GLYPH_VERIFICATION}:") and "pdftotext" in r_
+        for r_ in r.reasons
+    )
+
+
+# -----------------------------------------------------------------------------
+# Embedded-image assertion (issue #692) — body refs vs pdfimages -list
+# -----------------------------------------------------------------------------
+
+
+@pytest.fixture
+def two_image_refs_source() -> Path:
+    """Body referencing two ``![…](exhibits/…png)`` figures (issue #692)."""
+    p = FIXTURES / "two_image_refs_source.md"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdfimages_zero() -> str:
+    """Stub ``pdfimages -list`` reporting ZERO embedded images (botho v2)."""
+    p = FIXTURES / "fake_pdfimages_zero.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+@pytest.fixture
+def fake_pdfimages_two() -> str:
+    """Stub ``pdfimages -list`` reporting two embedded images."""
+    p = FIXTURES / "fake_pdfimages_two.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+def test_embedded_images_zero_regression_pin(
+    empty_pdf, fake_pdfinfo_3pages_path, two_image_refs_source, fake_pdfimages_zero
+):
+    """Regression-pin the botho v2 zero-embedded-image failure (#692).
+
+    The body references two figures; the (stubbed) ``pdfimages -list`` reports
+    zero embedded images — the exact shape where every other gate was green
+    (placeholder scan clean, compile clean, glyphs "verified") yet the PDF
+    shipped with no figures. The embedded-image assertion MUST fail the gate.
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[two_image_refs_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdfimages_path=fake_pdfimages_zero,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_EMBEDDED_IMAGES in r.failed_gates
+    assert r.passed is False
+    embed_findings = [f for f in r.findings if f.gate == DIM_EMBEDDED_IMAGES]
+    assert len(embed_findings) == 1
+    assert "2" in embed_findings[0].message and "0" in embed_findings[0].message
+    rev = r.to_review(version_dir="botho.2", critic_id="render-gate")
+    flag_types = {cf.type for cf in rev.critical_flags}
+    assert f"render_gate_{DIM_EMBEDDED_IMAGES}" in flag_types
+
+
+def test_embedded_images_matching_count_passes(
+    empty_pdf, fake_pdfinfo_3pages_path, two_image_refs_source, fake_pdfimages_two
+):
+    """N body refs + N (or more) embedded images passes the gate."""
+    r = gate(
+        empty_pdf,
+        source_paths=[two_image_refs_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdfimages_path=fake_pdfimages_two,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_EMBEDDED_IMAGES not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_EMBEDDED_IMAGES]
+
+
+def test_embedded_images_skips_gracefully_when_pdfimages_absent(
+    empty_pdf, fake_pdfinfo_3pages_path, two_image_refs_source, monkeypatch
+):
+    """pdfimages absent → embedded-image check skips (breadcrumb), does not
+    fail the gate solely due to missing tooling."""
+    import anvil.lib.render_gate as rg
+
+    real_which = rg.shutil.which
+
+    def which_no_pdfimages(name):
+        return None if name == "pdfimages" else real_which(name)
+
+    monkeypatch.setattr(rg.shutil, "which", which_no_pdfimages)
+    r = gate(
+        empty_pdf,
+        source_paths=[two_image_refs_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_EMBEDDED_IMAGES not in r.failed_gates
+    assert any(
+        r_.startswith(f"{DIM_EMBEDDED_IMAGES}:") and "pdfimages" in r_
+        for r_ in r.reasons
+    )
+
+
+def test_embedded_images_check_skipped_when_body_has_no_image_refs(
+    empty_pdf, fake_pdfinfo_3pages_path, clean_source_no_refs, fake_pdfimages_zero
+):
+    """A body with zero ``![…]()`` refs never runs the embedded-image check —
+    zero-figure threads must not fail on zero embedded images."""
+    r = gate(
+        empty_pdf,
+        source_paths=[clean_source_no_refs],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdfimages_path=fake_pdfimages_zero,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_EMBEDDED_IMAGES not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_EMBEDDED_IMAGES]
+
+
+@pytest.fixture
+def clean_source_no_refs(tmp_path) -> Path:
+    """A prose body with no image references at all."""
+    p = tmp_path / "prose.md"
+    p.write_text("# A chapter\n\nAll prose, no figures here.\n", encoding="utf-8")
+    return p
