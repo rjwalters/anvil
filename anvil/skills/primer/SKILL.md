@@ -120,6 +120,19 @@ Thresholds: **≥35/44 advances** (general tier — educational collateral, NOT 
 3. **Stamped critic metadata**: both siblings' `_meta.json` carry `scorecard_kind: "human-verdict"` plus the #346 stamps (`rubric_id: "anvil-primer-v1"`, `rubric_total: 44`, `advance_threshold: 35`).
 4. **An optional PDF with embedded figures**: when `primer-figures` has run, `<thread>.{N}/<thread>.pdf` alongside the markdown (the version dir is self-contained for archival), plus the rendered `exhibits/*.png` at exactly the paths the body references. Because the drafter places `![Figure N — caption](exhibits/…)` references inline at draft time (per #690 — no longer terminal-phase collateral), the PDF actually *contains* its teaching diagrams rather than shipping text-only, and those figures were scored by the review/audit critics (dim 3 / dim 7). The markdown remains the source-of-truth. `primer-figures` is idempotent and may be re-run at the terminal `AUDITED` version to refresh the PDF.
 
+## Operator-initiated polish passes
+
+An `AUDITED` thread is the normal terminus, but operators MAY invoke `primer-revise <thread> --polish "<reason>"` to produce one additional revision pass that targets the line-level signal the default terminal-exit path skips — sub-threshold per-dimension justifications in the review's `scoring.md`, `nit`-tagged or untagged `comments.md` notes, and audit-side line-level findings. The entry point exists because passing the threshold and having nothing worth fixing are different states, and the combined verdict pre-check conflates them: for public-facing collateral, shipping the enumerated minors the critics already listed is worse than one directed iteration (the canary friction in issue #691 — Botho #881).
+
+The full contract lives in `anvil/lib/snippets/directed_revision.md`. The load-bearing invariants:
+
+- **The reason argument is required** — empty / whitespace-only / missing is rejected and the thread is left untouched.
+- **`--polish` bypasses the step-2 combined verdict pre-check ONLY.** The dual-critic-completeness check (BOTH review AND audit still required) and the iteration cap still apply.
+- **No inherited credit** — the polish-pass output is a normal `<thread>.{N+1}/` version dir; the next `primer-review` + `primer-audit` pair scores it on its own rubric merits and does NOT read the audit-trail fields.
+- **Audit trail**: `metadata.revision_mode = "polish"` + `metadata.revise_force_reason = "<verbatim reason>"` (audit-trail-only — not scored, not gating, no state-machine impact). The default (no-flag) `primer-revise` behavior is byte-identical to the pre-#691 shape.
+
+See `commands/primer-revise.md` §"CLI flags" for the reviser-side procedure.
+
 ## Output format
 
 Follows `report`'s **markdown source-of-truth + optional PDF** precedent exactly. `<thread>.md` is the primary artifact (diffable, web-publishable — matching the "Mechanics of MobileCoin" web-HTML precedent); `primer-figures` produces an optional `<thread>.pdf` via the same **pandoc-first / LaTeX-opt-in** path `report` uses, reusing `anvil/lib/render.py` and `anvil/lib/render_gate.py` rather than writing new render plumbing. No third rendering path is invented.

@@ -82,6 +82,100 @@ def test_audit_snippet_cross_references_validator():
 
 
 # ---------------------------------------------------------------------------
+# directed_revision.md (issue #691)
+# ---------------------------------------------------------------------------
+
+
+def test_directed_revision_snippet_exists():
+    assert (SNIPPETS / "directed_revision.md").exists(), (
+        "anvil/lib/snippets/directed_revision.md MUST exist per issue #691"
+    )
+
+
+def test_directed_revision_snippet_names_the_flag():
+    body = _read(SNIPPETS / "directed_revision.md")
+    # The flag is --polish (memo's existing name), NOT a second --directed
+    # vocabulary.
+    assert '--polish "<reason>"' in body
+    assert "--directed" in body, (
+        "snippet MUST explain why it reuses --polish over the issue's "
+        "originally-proposed --directed name"
+    )
+
+
+def test_directed_revision_snippet_states_required_reason():
+    body = _read(SNIPPETS / "directed_revision.md")
+    # Empty / whitespace-only / missing reason is rejected; thread untouched.
+    assert 'Required, non-empty reason' in body or "required" in body.lower()
+    assert '--polish ""' in body
+    assert "untouched" in body
+
+
+def test_directed_revision_snippet_scopes_the_bypass():
+    body = _read(SNIPPETS / "directed_revision.md")
+    # Bypasses the combined-verdict pre-check step ONLY; cap + critic
+    # completeness still apply.
+    assert "ONLY" in body
+    assert "iteration-cap check still applies" in body
+    assert "critic-completeness check still applies" in body
+
+
+def test_directed_revision_snippet_no_inherited_credit():
+    body = _read(SNIPPETS / "directed_revision.md")
+    assert "NO inherited credit" in body or "No inherited credit" in body
+    # A fresh critic pair must re-score; the polish pass earns no credit.
+    assert "fresh critic pair MUST land" in body
+
+
+def test_directed_revision_snippet_audit_trail_fields():
+    body = _read(SNIPPETS / "directed_revision.md")
+    assert "revision_mode" in body
+    assert "revise_force_reason" in body
+    assert '"polish"' in body
+
+
+def test_directed_revision_snippet_default_byte_identical():
+    body = _read(SNIPPETS / "directed_revision.md")
+    assert "byte-identical" in body
+
+
+def test_directed_revision_snippet_names_current_and_pending_adopters():
+    body = _read(SNIPPETS / "directed_revision.md")
+    # memo + primer are the adopted consumers; the remaining 10 skills are
+    # enumerated as pending so the blast radius is not lost.
+    assert "memo" in body
+    assert "primer" in body
+    for skill in (
+        "report",
+        "datasheet",
+        "proposal",
+        "deck",
+        "pub",
+        "slides",
+        "installation",
+        "essay",
+        "ip-uspto",
+        "ip-uspto-provisional",
+    ):
+        assert skill in body, (
+            f"snippet MUST enumerate pending adopter '{skill}'"
+        )
+
+
+def test_memo_and_primer_revise_reference_the_snippet():
+    """Both adopted revise commands point at the shared snippet."""
+    skills = SNIPPETS.parents[1] / "skills"
+    for rel in (
+        "memo/commands/memo-revise.md",
+        "primer/commands/primer-revise.md",
+    ):
+        body = (skills / rel).read_text(encoding="utf-8")
+        assert "directed_revision.md" in body, (
+            f"{rel} MUST reference anvil/lib/snippets/directed_revision.md"
+        )
+
+
+# ---------------------------------------------------------------------------
 # state_machine.md
 # ---------------------------------------------------------------------------
 
