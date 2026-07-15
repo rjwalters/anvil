@@ -46,6 +46,12 @@ SKILLS_DIR = REPO_ROOT / "anvil" / "skills"
 DRIFT_NOTE_FRAGMENT = "anvil skills available beyond your selection"
 DRIFT_RECOMMEND_FRAGMENT = "re-run without --skills="
 
+# Always-on skills (#728) are unioned into SELECTED_SKILLS after the --skills=
+# filter, so they are never part of the "available beyond your selection"
+# drift enumeration even under a strict subset. Mirror the installer's
+# ALWAYS_ON_SKILLS allowlist here so the missing-skill delta stays exact.
+ALWAYS_ON_SKILLS = {"help"}
+
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     """Run the installer with ``args`` and capture text stdout+stderr."""
@@ -223,9 +229,12 @@ def test_drift_note_lists_missing_skills_alphabetically(tmp_path: Path) -> None:
         f"missing-skill list is not alpha-sorted; got {listed!r} on line:\n"
         f"{enumeration_line!r}\nfull stdout:\n{result.stdout}"
     )
-    # Sanity check: the listed skills must be the ALL_SKILLS minus the
-    # selected pair {memo, deck}.
-    expected_missing = sorted(set(_discover_all_skills()) - {"memo", "deck"})
+    # Sanity check: the listed skills must be ALL_SKILLS minus the selected
+    # pair {memo, deck} AND minus the always-on carve-out (#728), which is
+    # unioned into SELECTED_SKILLS and so never appears as "missing".
+    expected_missing = sorted(
+        set(_discover_all_skills()) - {"memo", "deck"} - ALWAYS_ON_SKILLS
+    )
     assert listed == expected_missing, (
         f"missing-skill list does not match expected delta; got {listed!r}, "
         f"expected {expected_missing!r}; full stdout:\n{result.stdout}"
