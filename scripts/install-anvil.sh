@@ -331,6 +331,34 @@ else
   SELECTED_SKILLS=("${ALL_SKILLS[@]}")
   note "no --skills= flag; installing all (${#SELECTED_SKILLS[@]} skills). Use --skills= to install a subset."
 fi
+
+# Always-on carve-out (#728): designated orientation/utility skills are
+# installed regardless of --skills= filtering, since they only describe what
+# else is installed and are worthless if absent from a filtered install. This
+# runs AFTER the --skills= validation above so typo'd requests still error;
+# the dedup guard makes it a no-op on full installs (where the skill is
+# already present via ALL_SKILLS) and on explicit requests (e.g.
+# --skills=help,memo). Kept installer-hardcoded — mirroring the lib/roles
+# always-installed precedent — rather than frontmatter-driven; always-on is a
+# maintainer decision, not a per-skill authoring opt-in. Scope is `help` only:
+# do not widen to project-scout or other broadly-useful utilities without an
+# explicit, independently-argued issue.
+ALWAYS_ON_SKILLS=("help")
+for s in "${ALWAYS_ON_SKILLS[@]}"; do
+  # Only union in skills that actually exist in the source tree, so a stale
+  # allowlist entry can never inject a phantom skill name into the manifest.
+  is_available=false
+  for avail in "${ALL_SKILLS[@]}"; do
+    [[ "$avail" == "$s" ]] && { is_available=true; break; }
+  done
+  $is_available || continue
+  already_selected=false
+  for sel in "${SELECTED_SKILLS[@]}"; do
+    [[ "$sel" == "$s" ]] && { already_selected=true; break; }
+  done
+  $already_selected || SELECTED_SKILLS+=("$s")
+done
+
 ok "selected: ${SELECTED_SKILLS[*]}"
 
 # ----- Confirmation prompt --------------------------------------------------
