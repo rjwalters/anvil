@@ -30,7 +30,7 @@
     "code_wrong_override_reason": null,
     "adoption_note": "Revision of the initial-authored normative LaTeX for whitepaper section 11. v2 consumes both critic siblings of v1 (review BLOCK 38/44 zero flags; audit CLEAN). Changes are prose/structure/LaTeX-mechanical (drop-in-input fixes, RFC-2119 discipline, stable register row IDs, base-layer CT rewording) plus one advisory audit finding declined as a tooling limitation; no normative live/target claim was weakened.",
     "code_ref_resolved": [
-      "/Users/rwalters/GitHub/botho/bridge/**/*.rs (35 files; scalar glob per BRIEF resolves the bridge Rust service)",
+      "../../bridge/**/*.rs (35 files; scalar glob per BRIEF resolves the bridge Rust service)",
       "bridge/service/src/mint/ethereum.rs",
       "bridge/service/src/mint/solana.rs",
       "bridge/service/src/release/bth.rs",

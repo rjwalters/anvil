@@ -29,7 +29,7 @@
 ```json code_ref
 {
   "ran": true,
-  "resolved": "/Users/rwalters/GitHub/botho/bridge/**/*.rs (35 files)",
+  "resolved": "../../bridge/**/*.rs (35 files)",
   "missing": false,
   "note": "Scalar glob does not reach WrappedBTH.sol / Solana Anchor program / cluster-tax bridge_import_sweep.rs (anvil#718/#724); auditor reads those manually. dim 1 scored by judgment against resolved impl; exhaustive sweep is spec-audit's."
 }

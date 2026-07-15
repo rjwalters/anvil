@@ -9,7 +9,7 @@
   "factual_findings": 8,
   "major_findings": 1,
   "code_ref": {
-    "declared": "/Users/rwalters/GitHub/botho/bridge/**/*.rs",
+    "declared": "../../bridge/**/*.rs",
     "resolved": true,
     "resolved_file_count": 35,
     "scalar": true,
@@ -24,7 +24,7 @@
   "spec_consistency": {
     "ran": true,
     "resolved": [
-      "/Users/rwalters/GitHub/botho/bridge/**/*.rs (35 files)",
+      "../../bridge/**/*.rs (35 files)",
       "bridge/service/src/bth_scan.rs",
       "bridge/service/src/release/bth.rs",
       "bridge/core/src/attestation.rs",
