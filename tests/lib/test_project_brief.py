@@ -649,6 +649,10 @@ def test_resolve_code_ref_valid_resolves_active(tmp_path: Path) -> None:
     assert resolved.missing is False
     assert resolved.paths
     assert resolved.paths[0].endswith("impl.rs")
+    # A scalar declaration normalizes to a single-element list; a fully
+    # resolving declaration has an empty unresolved list (#719).
+    assert resolved.declared == ["impl.rs"]
+    assert resolved.unresolved == []
 
 
 def test_resolve_code_ref_bad_path_is_missing_active(tmp_path: Path) -> None:
@@ -660,27 +664,134 @@ def test_resolve_code_ref_bad_path_is_missing_active(tmp_path: Path) -> None:
     assert resolved.missing is True
 
 
-def test_resolve_code_ref_malformed_list_is_missing_active(
+def test_resolve_code_ref_valid_list_unions_active(tmp_path: Path) -> None:
+    """A list of VALID path/glob strings is the #719 HAPPY path (union-active).
+
+    Under #719, a list-form code_ref of valid strings spanning
+    non-contiguous roots resolves to the deduped, declaration-ordered
+    union of every element's matches — missing=False, unresolved=[]. (Pre
+    #719 this exact input was mis-classified malformed → missing=True.)
+    """
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "crypto").mkdir()
+    (project / "crypto" / "pq.rs").write_text("fn pq() {}\n", encoding="utf-8")
+    (project / "botho").mkdir()
+    (project / "botho" / "block.rs").write_text(
+        "fn block() {}\n", encoding="utf-8"
+    )
+    _write_spec_brief(
+        project,
+        "            code_ref:\n"
+        "              - crypto/*.rs\n"
+        "              - botho/block.rs",
+    )
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.unresolved == []
+    assert len(resolved.paths) == 2
+    assert any(p.endswith("crypto/pq.rs") for p in resolved.paths)
+    assert any(p.endswith("botho/block.rs") for p in resolved.paths)
+    # Declaration order: crypto element's matches precede botho's.
+    assert resolved.paths[0].endswith("crypto/pq.rs")
+
+
+def test_resolve_code_ref_list_dedupes_preserving_order(
     tmp_path: Path,
 ) -> None:
-    """THE BUG (#718): a list-form code_ref must NOT degrade to None.
+    """Overlapping globs union with dedup, first-seen order preserved (#719)."""
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "src").mkdir()
+    (project / "src" / "a.rs").write_text("fn a() {}\n", encoding="utf-8")
+    (project / "src" / "b.rs").write_text("fn b() {}\n", encoding="utf-8")
+    _write_spec_brief(
+        project,
+        "            code_ref:\n"
+        "              - src/*.rs\n"
+        "              - src/a.rs",
+    )
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.unresolved == []
+    # a.rs matched by both elements but appears once (dedup).
+    assert len(resolved.paths) == 2
 
-    A malformed (wrong-type) code_ref is a declared-but-broken
-    declaration — it must ACTIVATE the tier via missing=True, exactly like
-    a bad path, not silently disable the consistency tier.
+
+def test_resolve_code_ref_partial_miss_is_active_with_unresolved(
+    tmp_path: Path,
+) -> None:
+    """SOME elements resolve, some don't → missing=False + unresolved (#719).
+
+    A partial miss keeps the tier active (the sweep runs against what DID
+    resolve) but records the non-matching declared strings in
+    ``unresolved`` for the critics' major finding.
+    """
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "impl.rs").write_text("fn main() {}\n", encoding="utf-8")
+    _write_spec_brief(
+        project,
+        "            code_ref:\n"
+        "              - impl.rs\n"
+        "              - nope/gone.rs",
+    )
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.unresolved == ["nope/gone.rs"]
+    assert len(resolved.paths) == 1
+    assert resolved.paths[0].endswith("impl.rs")
+
+
+def test_resolve_code_ref_list_all_missing_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """ZERO elements resolve → missing=True (parity with the single-bad-path)."""
+    project = tmp_path / "proj"
+    _write_spec_brief(
+        project,
+        "            code_ref:\n"
+        "              - nope/a.rs\n"
+        "              - nope/b.rs",
+    )
+    resolved = resolve_code_ref(project, "sp")
+    assert resolved is not None
+    assert resolved.missing is True
+    assert resolved.paths == []
+
+
+def test_resolve_code_ref_empty_list_is_inactive(tmp_path: Path) -> None:
+    """`code_ref: []` normalizes to None (tier INACTIVE), mirroring #391."""
+    project = tmp_path / "proj"
+    _write_spec_brief(project, "            code_ref: []")
+    assert resolve_code_ref(project, "sp") is None
+
+
+def test_resolve_code_ref_list_with_nonstring_element_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """A list containing a NON-STRING element is declared-but-broken (#718/#719).
+
+    A malformed *element* poisons the whole field (no silent per-element
+    skip): CompanionRefTypeError at validation → resolver returns
+    missing=True with the type-error text surfaced in ``declared``.
     """
     project = tmp_path / "proj"
     _write_spec_brief(
         project,
         "            code_ref:\n"
         "              - crypto/pq/src/**/*.rs\n"
-        "              - botho/src/block.rs",
+        "              - 42",
     )
     resolved = resolve_code_ref(project, "sp")
     assert resolved is not None, "malformed code_ref must NOT resolve to None"
     assert resolved.missing is True
     # The clear type error is surfaced, not swallowed.
-    assert "must be a string path/glob" in resolved.declared
+    assert resolved.declared
+    assert "must be a non-empty string path/glob" in resolved.declared[0]
 
 
 def test_resolve_code_ref_malformed_int_is_missing_active(
@@ -729,7 +840,8 @@ def test_resolve_code_ref_ignores_unrelated_malformed_spec_ref(
 
     resolve_code_ref only owns code_ref; an unrelated malformed companion
     field is swallowed to None for it, exactly like any other BRIEF-parse
-    failure.
+    failure. (A non-string list element is the malformed trigger under
+    #719 — a plain list of strings is now valid.)
     """
     project = tmp_path / "proj"
     _write_brief(
@@ -741,6 +853,7 @@ def test_resolve_code_ref_ignores_unrelated_malformed_spec_ref(
             artifact_type: primer
             spec_ref:
               - a.md
+              - 42
         """,
     )
     assert resolve_code_ref(project, "sp") is None
@@ -767,6 +880,8 @@ def test_resolve_spec_ref_valid_resolves_active(tmp_path: Path) -> None:
     assert resolved.missing is False
     assert resolved.paths
     assert resolved.paths[0].endswith("spec.md")
+    assert resolved.declared == ["spec.md"]
+    assert resolved.unresolved == []
 
 
 def test_resolve_spec_ref_bad_path_is_missing_active(tmp_path: Path) -> None:
@@ -778,21 +893,113 @@ def test_resolve_spec_ref_bad_path_is_missing_active(tmp_path: Path) -> None:
     assert resolved.missing is True
 
 
-def test_resolve_spec_ref_malformed_list_is_missing_active(
+def test_resolve_spec_ref_valid_list_unions_active(tmp_path: Path) -> None:
+    """A list of VALID path/glob strings is the #719 HAPPY path (union-active).
+
+    Primer mirror of the code_ref union test — a valid multi-element list
+    resolves to the deduped, declaration-ordered union.
+    """
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "a.md").write_text("# A\n", encoding="utf-8")
+    (project / "b.md").write_text("# B\n", encoding="utf-8")
+    _write_primer_brief(
+        project,
+        "            spec_ref:\n              - a.md\n              - b.md",
+    )
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.unresolved == []
+    assert len(resolved.paths) == 2
+    assert resolved.paths[0].endswith("a.md")
+    assert resolved.paths[1].endswith("b.md")
+
+
+def test_resolve_spec_ref_list_dedupes_preserving_order(
     tmp_path: Path,
 ) -> None:
-    """THE BUG (#718), primer mirror: a list-form spec_ref must NOT be None."""
+    """Overlapping globs union with dedup, first-seen order preserved (#719)."""
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "docs").mkdir()
+    (project / "docs" / "a.md").write_text("# A\n", encoding="utf-8")
+    (project / "docs" / "b.md").write_text("# B\n", encoding="utf-8")
+    _write_primer_brief(
+        project,
+        "            spec_ref:\n"
+        "              - docs/*.md\n"
+        "              - docs/a.md",
+    )
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.unresolved == []
+    # a.md matched by both elements but appears once (dedup).
+    assert len(resolved.paths) == 2
+
+
+def test_resolve_spec_ref_partial_miss_is_active_with_unresolved(
+    tmp_path: Path,
+) -> None:
+    """SOME elements resolve, some don't → missing=False + unresolved (#719)."""
+    project = tmp_path / "proj"
+    project.mkdir(parents=True, exist_ok=True)
+    (project / "spec.md").write_text("# Spec\n", encoding="utf-8")
+    _write_primer_brief(
+        project,
+        "            spec_ref:\n"
+        "              - spec.md\n"
+        "              - nope/gone.md",
+    )
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is False
+    assert resolved.unresolved == ["nope/gone.md"]
+    assert len(resolved.paths) == 1
+    assert resolved.paths[0].endswith("spec.md")
+
+
+def test_resolve_spec_ref_list_all_missing_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """ZERO elements resolve → missing=True (parity with single-bad-path)."""
+    project = tmp_path / "proj"
+    _write_primer_brief(
+        project,
+        "            spec_ref:\n"
+        "              - nope/a.md\n"
+        "              - nope/b.md",
+    )
+    resolved = resolve_spec_ref(project, "pr")
+    assert resolved is not None
+    assert resolved.missing is True
+    assert resolved.paths == []
+
+
+def test_resolve_spec_ref_empty_list_is_inactive(tmp_path: Path) -> None:
+    """`spec_ref: []` normalizes to None (tier INACTIVE), mirroring #391."""
+    project = tmp_path / "proj"
+    _write_primer_brief(project, "            spec_ref: []")
+    assert resolve_spec_ref(project, "pr") is None
+
+
+def test_resolve_spec_ref_list_with_nonstring_element_is_missing_active(
+    tmp_path: Path,
+) -> None:
+    """A list containing a NON-STRING element is declared-but-broken (#718/#719)."""
     project = tmp_path / "proj"
     _write_primer_brief(
         project,
         "            spec_ref:\n"
         "              - ../whitepaper/a.md\n"
-        "              - ../whitepaper/b.md",
+        "              - 7",
     )
     resolved = resolve_spec_ref(project, "pr")
     assert resolved is not None, "malformed spec_ref must NOT resolve to None"
     assert resolved.missing is True
-    assert "must be a string path/glob" in resolved.declared
+    assert resolved.declared
+    assert "must be a non-empty string path/glob" in resolved.declared[0]
 
 
 def test_resolve_spec_ref_malformed_int_is_missing_active(
@@ -832,7 +1039,11 @@ def test_resolve_spec_ref_structurally_invalid_brief_is_none(
 def test_resolve_spec_ref_ignores_unrelated_malformed_code_ref(
     tmp_path: Path,
 ) -> None:
-    """A malformed code_ref must not make resolve_spec_ref return missing."""
+    """A malformed code_ref must not make resolve_spec_ref return missing.
+
+    (A non-string list element is the malformed trigger under #719 — a
+    plain list of strings is now valid.)
+    """
     project = tmp_path / "proj"
     _write_brief(
         project,
@@ -843,6 +1054,7 @@ def test_resolve_spec_ref_ignores_unrelated_malformed_code_ref(
             artifact_type: spec
             code_ref:
               - a.rs
+              - 42
         """,
     )
     assert resolve_spec_ref(project, "pr") is None
@@ -857,11 +1069,25 @@ def test_malformed_code_ref_raises_companion_ref_type_error(
     """load_project_brief raises the distinct subclass for a bad code_ref.
 
     The subclass is a ValueError (so every other caller is unchanged), but
-    carries the `field` discriminator the resolvers use.
+    carries the `field` discriminator the resolvers use. Under #719 a plain
+    list of strings is VALID, so the malformed trigger is a non-string
+    list element (or, as here, a non-string / non-list scalar).
     """
     project = tmp_path / "proj"
+    _write_spec_brief(project, "            code_ref: 42")
+    with pytest.raises(CompanionRefTypeError) as excinfo:
+        load_project_brief(project)
+    assert excinfo.value.field == "code_ref"
+    assert isinstance(excinfo.value, ValueError)
+
+
+def test_malformed_code_ref_list_element_raises_companion_ref_type_error(
+    tmp_path: Path,
+) -> None:
+    """A list with a non-string element raises the distinct subclass (#719)."""
+    project = tmp_path / "proj"
     _write_spec_brief(
-        project, "            code_ref:\n              - a.rs"
+        project, "            code_ref:\n              - a.rs\n              - 42"
     )
     with pytest.raises(CompanionRefTypeError) as excinfo:
         load_project_brief(project)
@@ -874,8 +1100,20 @@ def test_malformed_spec_ref_raises_companion_ref_type_error(
 ) -> None:
     """load_project_brief raises the distinct subclass for a bad spec_ref."""
     project = tmp_path / "proj"
+    _write_primer_brief(project, "            spec_ref: 7")
+    with pytest.raises(CompanionRefTypeError) as excinfo:
+        load_project_brief(project)
+    assert excinfo.value.field == "spec_ref"
+    assert isinstance(excinfo.value, ValueError)
+
+
+def test_malformed_spec_ref_list_element_raises_companion_ref_type_error(
+    tmp_path: Path,
+) -> None:
+    """A list with a non-string element raises the distinct subclass (#719)."""
+    project = tmp_path / "proj"
     _write_primer_brief(
-        project, "            spec_ref:\n              - a.md"
+        project, "            spec_ref:\n              - a.md\n              - 7"
     )
     with pytest.raises(CompanionRefTypeError) as excinfo:
         load_project_brief(project)
