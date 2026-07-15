@@ -2,6 +2,69 @@
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-15
+
+### Summary
+
+Completes the **`anvil:spec`** artifact class (epic #697, all four phases) and
+adds **`anvil:help`**, an onboarding/orientation skill — bringing the catalog
+to **20 skills**. Also lands a wave of consumer-install robustness fixes
+surfaced by the botho canary running `anvil:spec` against a real
+implementation (which found 3 real spec↔code divergences along the way).
+
+### Added
+
+- **New utility skill `anvil:help`** (#725). A strictly read-only orientation
+  tool for consumers: it introspects the installed skill set (from
+  `.anvil/install-metadata.json`, falling back to a `.claude/skills/anvil-*/`
+  scan) and prints a two-tier view — `anvil:help` overview (installed skills
+  grouped artifact-vs-utility, the common lifecycle with its per-skill
+  variations, a "start here" pointer) and `anvil:help <skill>` deep-dive (real
+  command set, rubric total/threshold, thread layout). Describes only what is
+  installed; writes nothing.
+- **`anvil:help` installs unconditionally regardless of `--skills=`
+  filtering** (#728). A Stage 4 always-on allowlist in `install-anvil.sh`
+  unions `help` into the selected set after the `--skills=` filter (dedup-safe,
+  no-op on full installs, typos still error, and the carve-out does not widen
+  to other utility skills) — so orientation is present precisely in the
+  filtered installs where it is most needed.
+- **`anvil:spec` worked example** (#709), completing epic #697. A vendored,
+  trimmed snapshot of botho's terminal-`AUDITED` `botho-bridge-spec` thread
+  under `anvil/skills/spec/examples/` — exercising the real `code_ref`
+  three-way audit, the implementation-status register, and live
+  `% anvil-const:` markers — plus an `expected-thread.N/README.md`
+  structural-contract doc and a parse test. The `anvil:spec` class is now
+  complete end-to-end: skeleton (#706), three-way verdict + register (#707),
+  constant gate (#708), worked example (#709).
+- **`code_ref` / `spec_ref` accept a list of paths/globs** (#719).
+  Multi-crate / non-contiguous implementation roots can be declared as a list,
+  not only a single scalar glob.
+
+### Changed
+
+- **Atomic-sidecar CLI invocations are consumer-reachable** (#724). The skill
+  command docs now invoke the sidecar shim via the `uv run --project .anvil`
+  wrapper (dual-form Primary-tier headers), fixing the unreachable
+  bare-`python -m anvil.lib.sidecar` gap in `.anvil/`-vendored consumer
+  installs; the manual-mv manifest check is now count/`ls`-based (robust under
+  restricted-`stat` sandboxes); and `spec-audit` gains a `disposition_counts`
+  worked example.
+- **`anvil:spec` audit & adoption guidance** (#709). Documents the
+  claim-driven large-tree sweep strategy (extract normative claims, then grep
+  the resolved `code_ref` paths per-claim — the 405-file friction), the
+  `check_constant_consistency_multi` `dict[label→text]` signature, and the
+  `_progress.json` scaffolding prerequisite for adopted specs.
+
+### Fixed
+
+- **Malformed `code_ref` / `spec_ref` surfaces as a major finding** instead of
+  silently degrading to tier-inactive (#718): a bad path resolves to
+  `missing=True`, never a silent `None`.
+- **Full installs prune upstream-removed / renamed skills** (Stage 7.6, #720):
+  stale skill directories from a prior install are cleaned up.
+- **Audit commands cross-reference the `findings.md` harness-guard fallback**
+  (#717) across six audit command docs.
+
 ## [0.9.0] — 2026-07-14
 
 ### Changed

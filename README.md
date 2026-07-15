@@ -4,7 +4,7 @@
 
 Anvil orchestrates iterative drafting, review, and revision of long-form artifacts — investment memos, patent applications, research papers, pitch decks, technical reports, art installations, customer proposals, short-form essays. Each artifact lives in an immutable versioned directory; review passes write to read-only sibling directories; revisions consume both and produce the next version. The version history *is* the audit trail.
 
-**Status:** v0.9.0. Installable — see the Skills table below for the current list. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
+**Status:** v0.10.0. Installable — see the Skills table below for the current list. Actively developed against a real-world canary consumer ([2AM Logic Studio](https://2amlogic.com)) — the framework is sharpened by being used, not by being designed in isolation.
 
 **Sibling project:** [Loom](https://github.com/rjwalters/loom) does this for code (issues, PRs, forge coordination). Anvil does this for prose-and-graphics artifacts (filesystem coordination, no forge required). Both can be installed in the same repository.
 
