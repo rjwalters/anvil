@@ -1715,8 +1715,12 @@ class BriefDocument(BaseModel):
     max_iterations: Optional[int] = Field(default=None)
     iteration_cap_rationale: Optional[str] = Field(default=None)
     web_search: Optional[bool] = Field(default=None)
-    spec_ref: Optional[str] = Field(default=None)
-    code_ref: Optional[str] = Field(default=None)
+    # spec_ref / code_ref accept a scalar string OR a YAML list of
+    # path/glob strings on disk (issue #719); the per-field validators
+    # (_validate_spec_ref / _validate_code_ref) normalize the scalar form
+    # to a single-element list, so downstream code always sees a list.
+    spec_ref: Optional[List[str]] = Field(default=None)
+    code_ref: Optional[List[str]] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -2755,67 +2759,114 @@ class CompanionRefTypeError(ValueError):
         self.field = field
 
 
-def _validate_spec_ref(raw: Any, field_path: str) -> Optional[str]:
-    """Validate a raw ``spec_ref`` value (issue #686).
+def _validate_companion_ref(
+    raw: Any,
+    field_path: str,
+    *,
+    field: str,
+    scalar_example: str,
+    list_example: str,
+) -> Optional[List[str]]:
+    """Validate a raw companion-ref value (``spec_ref`` / ``code_ref``).
 
-    Type-and-emptiness only: the value must be a string; empty /
-    whitespace-only normalizes to ``None`` (back-compat — a YAML author
-    can write ``spec_ref:`` with nothing on the right-hand side and get
-    the tier-inactive path). Surrounding whitespace is stripped.
+    Shared normalizer for the two structurally-identical companion-input
+    fields (issue #719). Accepts either a scalar string (back-compat) or a
+    YAML list of path/glob strings, and always normalizes to
+    ``Optional[List[str]]`` so the resolvers see one shape.
+
+    Normalization rules (mirroring the :func:`_validate_render_lua_filters`
+    list-field precedent, with the #718 malformed-→-``missing`` posture on
+    a wrong-typed value):
+
+    - ``raw is None`` → ``None`` (undeclared; tier INACTIVE).
+    - ``raw`` a **string**:
+        - empty / whitespace-only → ``None`` (scalar back-compat: a YAML
+          author writing ``spec_ref:`` with an empty RHS gets tier-inactive).
+        - non-empty → ``[raw.strip()]`` (single-element list).
+    - ``raw`` a **list**:
+        - empty list → ``None`` (mirrors ``render_lua_filters`` back-compat).
+        - every element a non-empty string → the stripped list, **preserving
+          declaration order** (dedup happens at resolution time, not here).
+        - any element not a non-empty string → raise
+          :class:`CompanionRefTypeError` (declared-but-broken; the #718
+          posture — the whole field is poisoned, not the single element
+          skipped).
+    - ``raw`` any other type (int, dict, …) → raise
+      :class:`CompanionRefTypeError` (unchanged #718 behavior).
 
     No file-existence check at parse time — BRIEF parsing must not depend
-    on cwd, and the spec is a resolution-time input. A declared-but-
-    missing path surfaces at resolution time via
-    :func:`resolve_spec_ref` as a structured ``missing: true`` entry (the
-    primer critics' ``major`` finding), never a parse-time raise.
+    on cwd, and the companion is a resolution-time input. A declared-but-
+    missing path surfaces at resolution time via the resolver as a
+    structured ``missing: true`` / ``unresolved`` entry, never a
+    parse-time raise.
     """
     if raw is None:
         return None
-    if not isinstance(raw, str):
-        raise CompanionRefTypeError(
-            f"BRIEF.{field_path} must be a string path/glob; got "
-            f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
-            f"value as a path relative to the directory containing "
-            f"BRIEF.md (e.g., "
-            f"`spec_ref: ../whitepaper/whitepaper.5/whitepaper.md`).",
-            field="spec_ref",
-        )
-    stripped = raw.strip()
-    if not stripped:
-        return None
-    return stripped
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if not stripped:
+            return None
+        return [stripped]
+    if isinstance(raw, list):
+        if len(raw) == 0:
+            return None
+        out: List[str] = []
+        for j, item in enumerate(raw):
+            if not isinstance(item, str) or not item.strip():
+                raise CompanionRefTypeError(
+                    f"BRIEF.{field_path}[{j}] must be a non-empty string "
+                    f"path/glob; got {type(item).__name__}: {item!r} — "
+                    f"suggested fix: write each entry as a path relative "
+                    f"to the directory containing BRIEF.md (e.g., "
+                    f"`{field}: [{list_example}]`).",
+                    field=field,
+                )
+            out.append(item.strip())
+        return out
+    raise CompanionRefTypeError(
+        f"BRIEF.{field_path} must be a string path/glob or a list of "
+        f"path/glob strings; got {type(raw).__name__}: {raw!r} — suggested "
+        f"fix: write the value as a path relative to the directory "
+        f"containing BRIEF.md (e.g., `{field}: {scalar_example}`) or as a "
+        f"YAML list (e.g., `{field}: [{list_example}]`).",
+        field=field,
+    )
 
 
-def _validate_code_ref(raw: Any, field_path: str) -> Optional[str]:
-    """Validate a raw ``code_ref`` value (issue #697/#706).
+def _validate_spec_ref(raw: Any, field_path: str) -> Optional[List[str]]:
+    """Validate a raw ``spec_ref`` value (issues #686, #719).
+
+    Accepts a scalar string (back-compat) or a YAML list of path/glob
+    strings, normalizing to ``Optional[List[str]]``. See
+    :func:`_validate_companion_ref` for the full contract.
+    """
+    return _validate_companion_ref(
+        raw,
+        field_path,
+        field="spec_ref",
+        scalar_example="../whitepaper/whitepaper.5/whitepaper.md",
+        list_example="../whitepaper/a.md, ../whitepaper/b.md",
+    )
+
+
+def _validate_code_ref(raw: Any, field_path: str) -> Optional[List[str]]:
+    """Validate a raw ``code_ref`` value (issues #697/#706, #719).
 
     Mirror of :func:`_validate_spec_ref` for the ``anvil:spec`` skill's
     ``code_ref`` companion input (the implementation a normative spec
-    describes). Type-and-emptiness only: the value must be a string;
-    empty / whitespace-only normalizes to ``None`` (the tier-inactive
-    path). Surrounding whitespace is stripped.
-
-    No file-existence check at parse time — BRIEF parsing must not depend
-    on cwd, and the implementation is a resolution-time input. A
-    declared-but-missing path surfaces at resolution time via
-    :func:`resolve_code_ref` as a structured ``missing: true`` entry (the
-    spec critics' ``major`` finding), never a parse-time raise.
+    describes). Accepts a scalar string (back-compat) or a YAML list of
+    path/glob strings — the natural shape for a multi-crate / multi-module
+    implementation spanning non-contiguous roots — normalizing to
+    ``Optional[List[str]]``. See :func:`_validate_companion_ref` for the
+    full contract.
     """
-    if raw is None:
-        return None
-    if not isinstance(raw, str):
-        raise CompanionRefTypeError(
-            f"BRIEF.{field_path} must be a string path/glob; got "
-            f"{type(raw).__name__}: {raw!r} — suggested fix: write the "
-            f"value as a path relative to the directory containing "
-            f"BRIEF.md (e.g., "
-            f"`code_ref: ../../src/**/*.rs`).",
-            field="code_ref",
-        )
-    stripped = raw.strip()
-    if not stripped:
-        return None
-    return stripped
+    return _validate_companion_ref(
+        raw,
+        field_path,
+        field="code_ref",
+        scalar_example="../../src/**/*.rs",
+        list_example="crypto/pq/src/**/*.rs, botho/src/block.rs",
+    )
 
 
 def _validate_render_lua_filters(
@@ -4027,6 +4078,69 @@ def resolve_rhetoric_rules(
 # ---------------------------------------------------------------------------
 
 
+def _companion_ref_is_glob(s: str) -> bool:
+    """True when a companion-ref declaration contains glob metacharacters."""
+    return any(ch in s for ch in "*?[")
+
+
+def _resolve_companion_element(
+    element: str,
+    roots: List[Tuple[str, Path]],
+) -> Tuple[List[str], Optional[str]]:
+    """Resolve ONE companion-ref path/glob declaration (issue #719).
+
+    The per-element resolution primitive shared by :func:`resolve_spec_ref`
+    and :func:`resolve_code_ref`, so a list declaration loops this once per
+    element (issue #719). Preserves the pre-#719 single-declaration
+    behavior exactly for the one-element case:
+
+    - Absolute declarations bypass the root walk (glob via
+      :func:`glob.glob`, plain path via a direct ``is_file()`` check).
+    - Relative declarations walk ``roots`` in order (project-root first,
+      then consumer-root); the first root with ≥1 match wins.
+    - Glob matches are sorted; a plain path resolves to its single file.
+
+    Returns ``(matches, source)`` — ``matches`` is the (possibly empty)
+    sorted list of absolute path strings for this element, and ``source``
+    is which root it resolved against (``None`` when it matched nothing).
+    """
+    declared_path = Path(element)
+    if declared_path.is_absolute():
+        if _companion_ref_is_glob(element):
+            try:
+                matches = sorted(
+                    p
+                    for p in _glob.glob(element, recursive=True)
+                    if Path(p).is_file()
+                )
+            except (OSError, ValueError):
+                matches = []
+            if matches:
+                return matches, "absolute"
+            return [], None
+        if declared_path.is_file():
+            return [str(declared_path)], "absolute"
+        return [], None
+
+    for source, root in roots:
+        if _companion_ref_is_glob(element):
+            try:
+                matches = sorted(
+                    str(p.resolve())
+                    for p in root.glob(element)
+                    if p.is_file()
+                )
+            except (OSError, ValueError):
+                matches = []
+            if matches:
+                return matches, source
+        else:
+            candidate = root / declared_path
+            if candidate.is_file():
+                return [str(candidate.resolve())], source
+    return [], None
+
+
 class ResolvedSpecRef(BaseModel):
     """One resolved ``spec_ref`` entry from :func:`resolve_spec_ref` (issue #686).
 
@@ -4047,35 +4161,55 @@ class ResolvedSpecRef(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    declared: str = Field(
-        ...,
-        description="The verbatim path / glob string from the BRIEF.",
+    declared: List[str] = Field(
+        default_factory=list,
+        description=(
+            "The verbatim path / glob string(s) from the BRIEF, in "
+            "declaration order (issue #719). A scalar BRIEF value "
+            "normalizes to a single-element list. For a malformed "
+            "declaration this carries the type-error message text."
+        ),
     )
     paths: List[str] = Field(
         default_factory=list,
         description=(
             "Absolute path string(s) of the resolved spec document(s). "
-            "Single element for a plain path; sorted list for a glob. "
-            "Empty when ``missing``."
+            "The deduped, declaration-ordered union of every declared "
+            "element's matches (each element: single path or sorted glob "
+            "matches). Empty when ``missing``."
         ),
     )
     missing: bool = Field(
         ...,
         description=(
-            "True when the declared path / glob matched no file at "
-            "either resolution root. The tier still ACTIVATES; the "
-            "primer critics surface a ``major`` finding and skip the "
-            "cross-check."
+            "True only when ZERO declared elements resolved to any file "
+            "(nothing usable at all) — byte-identical to the single-string "
+            "all-missing semantics. A PARTIAL miss (some elements resolve, "
+            "some don't) is ``missing=False`` with a non-empty "
+            "``unresolved`` (active-with-warning). When ``missing``, the "
+            "tier still ACTIVATES; the primer critics surface a ``major`` "
+            "finding and skip the cross-check."
+        ),
+    )
+    unresolved: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Declared element strings that matched zero files, in "
+            "declaration order (issue #719). Empty for a fully-resolving "
+            "declaration (and always empty for a scalar). Non-empty on a "
+            "PARTIAL miss (``missing=False``): the sweep runs against "
+            "``paths`` while the primer critics add a ``major`` finding "
+            "naming these entries."
         ),
     )
     source: Optional[Literal["project", "consumer", "absolute"]] = Field(
         None,
         description=(
-            "Which root the entry resolved against: ``project`` "
-            "(project-root hit, first precedence), ``consumer`` "
-            "(consumer-root fallback via the ``.anvil/`` marker walk), "
-            "``absolute`` (declared as an absolute path). ``None`` when "
-            "``missing``."
+            "Which root the FIRST resolved element resolved against: "
+            "``project`` (project-root hit, first precedence), "
+            "``consumer`` (consumer-root fallback via the ``.anvil/`` "
+            "marker walk), ``absolute`` (declared as an absolute path). "
+            "``None`` when ``missing``."
         ),
     )
 
@@ -4095,6 +4229,24 @@ def resolve_spec_ref(
     ``prior_reports[]`` paths use. A ``spec_ref`` may be a plain path (the
     common case) or a glob; glob matches are sorted and the first root
     with ≥1 match wins.
+
+    **List declarations (issue #719).** ``spec_ref`` may declare a YAML
+    list of independent path/glob strings (multi-file formal siblings that
+    don't share a common glob root). Each element resolves independently
+    (its own root walk); the results are unioned in **declaration order**
+    and **deduped** (first-seen order preserved) into ``.paths``. Per-
+    element accounting:
+
+    - ALL elements resolve → ``missing=False``, ``unresolved=[]``.
+    - SOME resolve, some don't (partial miss) → ``missing=False``,
+      ``unresolved`` = the non-matching declared strings (declaration
+      order); the sweep still runs against ``.paths`` and the primer
+      critics add a ``major`` finding naming the unresolved entries.
+    - ZERO resolve → ``missing=True`` (byte-identical to today's single-
+      string all-missing case).
+
+    A scalar declaration is the one-element case: ``unresolved`` is always
+    empty (a lone bad path is the ZERO-resolve → ``missing=True`` case).
 
     **Never raises on absence.** A declared-but-missing ``spec_ref``
     comes back as a structured ``missing: true`` :class:`ResolvedSpecRef`
@@ -4134,7 +4286,7 @@ def resolve_spec_ref(
         # (``code_ref``) is unrelated to this resolver; swallow it to
         # ``None`` exactly as any other BRIEF-parse failure below.
         if exc.field == "spec_ref":
-            return ResolvedSpecRef(declared=str(exc), missing=True)
+            return ResolvedSpecRef(declared=[str(exc)], missing=True)
         return None
     except ValueError:
         return None
@@ -4145,41 +4297,7 @@ def resolve_spec_ref(
     if doc is None or doc.spec_ref is None:
         return None
 
-    declared = doc.spec_ref
-    declared_path = Path(declared)
-
-    # Absolute declared paths bypass the root walk. A glob may be
-    # declared for either shape; a bare path with no glob metacharacters
-    # resolves via a direct is_file() check, a glob via _glob.glob.
-    def _is_glob(s: str) -> bool:
-        return any(ch in s for ch in "*?[")
-
-    if declared_path.is_absolute():
-        if _is_glob(declared):
-            try:
-                matches = sorted(
-                    p
-                    for p in _glob.glob(declared, recursive=True)
-                    if Path(p).is_file()
-                )
-            except (OSError, ValueError):
-                matches = []
-            if matches:
-                return ResolvedSpecRef(
-                    declared=declared,
-                    paths=matches,
-                    missing=False,
-                    source="absolute",
-                )
-            return ResolvedSpecRef(declared=declared, missing=True)
-        if declared_path.is_file():
-            return ResolvedSpecRef(
-                declared=declared,
-                paths=[str(declared_path)],
-                missing=False,
-                source="absolute",
-            )
-        return ResolvedSpecRef(declared=declared, missing=True)
+    declared = doc.spec_ref  # normalized to List[str] by _validate_spec_ref
 
     roots: List[Tuple[str, Path]] = [("project", Path(project_dir))]
     resolved_consumer = (
@@ -4190,33 +4308,36 @@ def resolve_spec_ref(
     if resolved_consumer is not None:
         roots.append(("consumer", resolved_consumer))
 
-    for source, root in roots:
-        if _is_glob(declared):
-            try:
-                matches = sorted(
-                    str(p.resolve())
-                    for p in root.glob(declared)
-                    if p.is_file()
-                )
-            except (OSError, ValueError):
-                matches = []
-            if matches:
-                return ResolvedSpecRef(
-                    declared=declared,
-                    paths=matches,
-                    missing=False,
-                    source=source,
-                )
-        else:
-            candidate = root / declared_path
-            if candidate.is_file():
-                return ResolvedSpecRef(
-                    declared=declared,
-                    paths=[str(candidate.resolve())],
-                    missing=False,
-                    source=source,
-                )
-    return ResolvedSpecRef(declared=declared, missing=True)
+    # Resolve each declared element independently, then union the results
+    # in declaration order with dedup (issue #719). A single-element list
+    # (the scalar-normalized case) reduces to today's behavior exactly.
+    union_paths: List[str] = []
+    seen: set = set()
+    unresolved: List[str] = []
+    first_source: Optional[str] = None
+    for element in declared:
+        matches, source = _resolve_companion_element(element, roots)
+        if not matches:
+            unresolved.append(element)
+            continue
+        if first_source is None:
+            first_source = source
+        for m in matches:
+            if m not in seen:
+                seen.add(m)
+                union_paths.append(m)
+
+    if not union_paths:
+        # ZERO elements resolved — the whole declaration is unusable
+        # (byte-identical to today's single-string all-missing case).
+        return ResolvedSpecRef(declared=declared, missing=True)
+    return ResolvedSpecRef(
+        declared=declared,
+        paths=union_paths,
+        missing=False,
+        unresolved=unresolved,
+        source=first_source,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -4278,35 +4399,55 @@ class ResolvedCodeRef(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    declared: str = Field(
-        ...,
-        description="The verbatim path / glob string from the BRIEF.",
+    declared: List[str] = Field(
+        default_factory=list,
+        description=(
+            "The verbatim path / glob string(s) from the BRIEF, in "
+            "declaration order (issue #719). A scalar BRIEF value "
+            "normalizes to a single-element list. For a malformed "
+            "declaration this carries the type-error message text."
+        ),
     )
     paths: List[str] = Field(
         default_factory=list,
         description=(
             "Absolute path string(s) of the resolved implementation "
-            "file(s). Single element for a plain path; sorted list for a "
-            "glob. Empty when ``missing``."
+            "file(s). The deduped, declaration-ordered union of every "
+            "declared element's matches (each element: single path or "
+            "sorted glob matches). Empty when ``missing``."
         ),
     )
     missing: bool = Field(
         ...,
         description=(
-            "True when the declared path / glob matched no file at "
-            "either resolution root. The tier still ACTIVATES; the spec "
-            "critics surface a ``major`` finding and skip the "
-            "cross-check."
+            "True only when ZERO declared elements resolved to any file "
+            "(nothing usable at all) — byte-identical to the single-string "
+            "all-missing semantics. A PARTIAL miss (some elements resolve, "
+            "some don't) is ``missing=False`` with a non-empty "
+            "``unresolved`` (active-with-warning). When ``missing``, the "
+            "tier still ACTIVATES; the spec critics surface a ``major`` "
+            "finding and skip the cross-check."
+        ),
+    )
+    unresolved: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Declared element strings that matched zero files, in "
+            "declaration order (issue #719). Empty for a fully-resolving "
+            "declaration (and always empty for a scalar). Non-empty on a "
+            "PARTIAL miss (``missing=False``): the sweep runs against "
+            "``paths`` while the spec critics add a ``major`` finding "
+            "naming these entries."
         ),
     )
     source: Optional[Literal["project", "consumer", "absolute"]] = Field(
         None,
         description=(
-            "Which root the entry resolved against: ``project`` "
-            "(project-root hit, first precedence), ``consumer`` "
-            "(consumer-root fallback via the ``.anvil/`` marker walk), "
-            "``absolute`` (declared as an absolute path). ``None`` when "
-            "``missing``."
+            "Which root the FIRST resolved element resolved against: "
+            "``project`` (project-root hit, first precedence), "
+            "``consumer`` (consumer-root fallback via the ``.anvil/`` "
+            "marker walk), ``absolute`` (declared as an absolute path). "
+            "``None`` when ``missing``."
         ),
     )
 
@@ -4327,6 +4468,25 @@ def resolve_code_ref(
     ``code_ref`` may be a plain path or a glob (the common case for a
     multi-file implementation, e.g. ``../../src/**/*.rs``); glob matches
     are sorted and the first root with ≥1 match wins.
+
+    **List declarations (issue #719).** ``code_ref`` may declare a YAML
+    list of independent path/glob strings — the natural shape for a
+    multi-crate / multi-module implementation spanning non-contiguous
+    roots (a normative spec's implementation is rarely one glob-contiguous
+    tree). Each element resolves independently (its own root walk); the
+    results are unioned in **declaration order** and **deduped** (first-
+    seen order preserved) into ``.paths``. Per-element accounting:
+
+    - ALL elements resolve → ``missing=False``, ``unresolved=[]``.
+    - SOME resolve, some don't (partial miss) → ``missing=False``,
+      ``unresolved`` = the non-matching declared strings (declaration
+      order); the sweep still runs against ``.paths`` and the spec critics
+      add a ``major`` finding naming the unresolved entries.
+    - ZERO resolve → ``missing=True`` (byte-identical to today's single-
+      string all-missing case).
+
+    A scalar declaration is the one-element case: ``unresolved`` is always
+    empty (a lone bad path is the ZERO-resolve → ``missing=True`` case).
 
     **Never raises on absence.** A declared-but-missing ``code_ref`` comes
     back as a structured ``missing: true`` :class:`ResolvedCodeRef` — the
@@ -4364,7 +4524,7 @@ def resolve_code_ref(
         # (``spec_ref``) is unrelated to this resolver; swallow it to
         # ``None`` exactly as any other BRIEF-parse failure below.
         if exc.field == "code_ref":
-            return ResolvedCodeRef(declared=str(exc), missing=True)
+            return ResolvedCodeRef(declared=[str(exc)], missing=True)
         return None
     except ValueError:
         return None
@@ -4375,38 +4535,7 @@ def resolve_code_ref(
     if doc is None or doc.code_ref is None:
         return None
 
-    declared = doc.code_ref
-    declared_path = Path(declared)
-
-    def _is_glob(s: str) -> bool:
-        return any(ch in s for ch in "*?[")
-
-    if declared_path.is_absolute():
-        if _is_glob(declared):
-            try:
-                matches = sorted(
-                    p
-                    for p in _glob.glob(declared, recursive=True)
-                    if Path(p).is_file()
-                )
-            except (OSError, ValueError):
-                matches = []
-            if matches:
-                return ResolvedCodeRef(
-                    declared=declared,
-                    paths=matches,
-                    missing=False,
-                    source="absolute",
-                )
-            return ResolvedCodeRef(declared=declared, missing=True)
-        if declared_path.is_file():
-            return ResolvedCodeRef(
-                declared=declared,
-                paths=[str(declared_path)],
-                missing=False,
-                source="absolute",
-            )
-        return ResolvedCodeRef(declared=declared, missing=True)
+    declared = doc.code_ref  # normalized to List[str] by _validate_code_ref
 
     roots: List[Tuple[str, Path]] = [("project", Path(project_dir))]
     resolved_consumer = (
@@ -4417,33 +4546,36 @@ def resolve_code_ref(
     if resolved_consumer is not None:
         roots.append(("consumer", resolved_consumer))
 
-    for source, root in roots:
-        if _is_glob(declared):
-            try:
-                matches = sorted(
-                    str(p.resolve())
-                    for p in root.glob(declared)
-                    if p.is_file()
-                )
-            except (OSError, ValueError):
-                matches = []
-            if matches:
-                return ResolvedCodeRef(
-                    declared=declared,
-                    paths=matches,
-                    missing=False,
-                    source=source,
-                )
-        else:
-            candidate = root / declared_path
-            if candidate.is_file():
-                return ResolvedCodeRef(
-                    declared=declared,
-                    paths=[str(candidate.resolve())],
-                    missing=False,
-                    source=source,
-                )
-    return ResolvedCodeRef(declared=declared, missing=True)
+    # Resolve each declared element independently, then union the results
+    # in declaration order with dedup (issue #719). A single-element list
+    # (the scalar-normalized case) reduces to today's behavior exactly.
+    union_paths: List[str] = []
+    seen: set = set()
+    unresolved: List[str] = []
+    first_source: Optional[str] = None
+    for element in declared:
+        matches, source = _resolve_companion_element(element, roots)
+        if not matches:
+            unresolved.append(element)
+            continue
+        if first_source is None:
+            first_source = source
+        for m in matches:
+            if m not in seen:
+                seen.add(m)
+                union_paths.append(m)
+
+    if not union_paths:
+        # ZERO elements resolved — the whole declaration is unusable
+        # (byte-identical to today's single-string all-missing case).
+        return ResolvedCodeRef(declared=declared, missing=True)
+    return ResolvedCodeRef(
+        declared=declared,
+        paths=union_paths,
+        missing=False,
+        unresolved=unresolved,
+        source=first_source,
+    )
 
 
 # ---------------------------------------------------------------------------

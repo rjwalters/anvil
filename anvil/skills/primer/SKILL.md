@@ -82,11 +82,25 @@ documents:
     spec_ref: ../whitepaper/whitepaper.5/whitepaper.md
 ```
 
-The path is resolved **project-root first, then consumer-root**, the same walk `report`'s `prior_reports[]` paths and the `voice:` docs use, via `anvil/lib/project_brief.py::resolve_spec_ref(project_dir, slug)` (never raises on absence; a declared-but-missing path comes back as a structured `missing: true` entry). The activation contract follows the framework-wide #428/#449 posture exactly (`report`'s `customer:` key, `essay`'s `voice:` block):
+`spec_ref` also accepts a **YAML list of independent path/glob strings** (issue #719) — the natural shape when the formal sibling spans several files that don't share a common glob root:
 
-- **`spec_ref` declared and resolves** → the **spec-consistency tier is ACTIVE**. `primer-audit` reads the resolved spec document and performs the spec-consistency sweep: any primer claim that *contradicts* the cited spec is the audit-side critical flag **"Contradicts cited spec"**; any formal section the primer *duplicates* instead of cross-referencing is surfaced by `primer-review` as the review-side critical flag **"Duplicates formal spec section"**. Dim 5 (*Spec cross-reference discipline*) scores against the resolved spec.
+```yaml
+documents:
+  - slug: botho-from-the-basics
+    artifact_type: primer
+    spec_ref:
+      - ../whitepaper/consensus.md
+      - ../whitepaper/crypto.md
+```
+
+A scalar string still parses (back-compat) — it normalizes internally to a single-element list. Each declared element resolves **independently**; `resolve_spec_ref` unions the results in **declaration order** and **dedupes** (first-seen order preserved) into `ResolvedSpecRef.paths`. An empty list (`spec_ref: []`) normalizes to `None` (tier inactive). A list containing a **non-string element** is a declared-but-broken declaration → `CompanionRefTypeError` at parse time → the resolver returns a `missing: true` entry (the whole field is poisoned, no silent per-element skip — the #718 posture).
+
+Each element is resolved **project-root first, then consumer-root**, the same walk `report`'s `prior_reports[]` paths and the `voice:` docs use, via `anvil/lib/project_brief.py::resolve_spec_ref(project_dir, slug)` (never raises on absence; a declared-but-missing element comes back in the structured `unresolved` list, or — if nothing at all resolves — a `missing: true` entry). The activation contract follows the framework-wide #428/#449 posture exactly (`report`'s `customer:` key, `essay`'s `voice:` block):
+
+- **`spec_ref` declared and (fully) resolves** → the **spec-consistency tier is ACTIVE**, `missing=False`, `unresolved=[]`. `primer-audit` reads the resolved spec document and performs the spec-consistency sweep: any primer claim that *contradicts* the cited spec is the audit-side critical flag **"Contradicts cited spec"**; any formal section the primer *duplicates* instead of cross-referencing is surfaced by `primer-review` as the review-side critical flag **"Duplicates formal spec section"**. Dim 5 (*Spec cross-reference discipline*) scores against the resolved spec.
 - **`spec_ref` absent (undeclared)** → the tier is **inactive / silent-off**. Dim 5 scores on the primer alone (no spec cross-check possible — the two spec-consistency critical flags cannot fire), and both `primer-review` and `primer-audit` record a **`major` finding recommending the operator declare `spec_ref`** (a companion with no declared spec cannot have its defining constraint mechanically enforced — a defect to surface, never a crash, never a false critical flag). This is the standard "declared-but-missing is a defect to surface; absent-and-undeclared is silent/off" activation contract.
-- **`spec_ref` declared but unresolvable (bad path / empty glob)** → the tier **ACTIVATES**; `resolve_spec_ref` returns a `missing: true` entry (never raises), and the breakage surfaces as a **`major` finding** directing the operator to fix the path. The audit proceeds without the cross-check (graceful degradation — the same `report` customer-context / `essay` voice-docs posture); no critical flag fires from an unresolvable spec.
+- **`spec_ref` declared but ZERO elements resolve (bad path / empty glob, or every element of a list stale)** → the tier **ACTIVATES**; `resolve_spec_ref` returns a `missing: true` entry (never raises), and the breakage surfaces as a **`major` finding** directing the operator to fix the path(s). The audit proceeds without the cross-check (graceful degradation — the same `report` customer-context / `essay` voice-docs posture); no critical flag fires from an unresolvable spec.
+- **`spec_ref` declared as a list where SOME elements resolve and some don't (partial miss)** → the tier stays **ACTIVE** against what DID resolve: `missing=False`, `.paths` = the union of the resolving elements, and `unresolved` names the non-matching declared strings (declaration order). The spec-consistency sweep **still runs** against `.paths`; both `primer-review` and `primer-audit` surface a **`major` finding enumerating the `unresolved` entries** (a stale element is a weaker signal than a wholly-undeclared spec — do not discard the resolving files because one path drifted after a rename). No critical flag fires from a partial miss.
 
 ## State machine
 
