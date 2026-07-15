@@ -110,10 +110,22 @@ class TestFilesExist(unittest.TestCase):
                     (_SKILL_ROOT / "commands" / f"{stem}.md").exists(),
                     f"{stem}.md is deferred/out-of-scope",
                 )
-        # The Phase-4 worked example is NOT vendored yet.
-        self.assertFalse(
-            (_SKILL_ROOT / "examples").exists(),
-            "the botho worked example is Phase 4 scope (#709)",
+
+    def test_phase4_worked_example_vendored(self):
+        # Phase 4 (#709) vendors the terminal-AUDITED botho-bridge-spec thread
+        # as the skill's worked example (mirrors primer's #700 shape). The
+        # load-bearing structural contract is pinned in detail by
+        # test_spec_example_brief_parses.py; this coverage test only asserts the
+        # example dir + its BRIEF + the structural-contract README are present.
+        examples = _SKILL_ROOT / "examples"
+        self.assertTrue(examples.is_dir(), "the botho worked example must be vendored (#709)")
+        self.assertTrue(
+            (examples / "botho-bridge-spec" / "BRIEF.md").is_file(),
+            "expected the vendored example BRIEF",
+        )
+        self.assertTrue(
+            (examples / "expected-thread.N" / "README.md").is_file(),
+            "expected the structural-contract README",
         )
 
     def test_phase3_constant_gate_present(self):
