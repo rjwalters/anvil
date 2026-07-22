@@ -395,6 +395,7 @@ REGISTERED_ARTIFACT_TYPES: Tuple[str, ...] = (
     "datasheet",
     "primer",
     "spec",
+    "memoir",
 )
 
 
@@ -513,6 +514,19 @@ class ArtifactType(str, Enum):
         ``code_ref`` companion-input key (the mirror image of primer's
         ``spec_ref`` — the implementation the spec normatively describes)
         parses under the STRICT unknown-key rejection.
+    MEMOIR
+        Skill-identity value (#740): an ``anvil:memoir`` chaptered
+        narrative-nonfiction thread reconstructed from a private
+        evidentiary corpus (family memoirs, oral histories,
+        biography-from-archive). Not a memo subtype — selects no memo
+        rubric overlay. Registered per the
+        #386/#408/#432/#440/#460/#486/#686/#697 precedent so a shared
+        project BRIEF can declare which skill owns a chapter thread. The
+        already-general top-level ``corpus:`` (#597) and ``voice:``
+        ``subjects:`` (#598) keys need no memoir-specific BRIEF grammar —
+        both parse under the STRICT unknown-key rejection today; this
+        registration only adds the ``artifact_type: memoir`` value
+        itself.
     """
 
     INVESTMENT_MEMO = "investment-memo"
@@ -533,6 +547,7 @@ class ArtifactType(str, Enum):
     DATASHEET = "datasheet"
     PRIMER = "primer"
     SPEC = "spec"
+    MEMOIR = "memoir"
 
 
 # Populate the legacy input-alias map now that the enum exists (issue
@@ -565,7 +580,8 @@ MEMO_ARTIFACT_TYPES: frozenset = frozenset(
 # ``report`` added under #432;
 # ``ip-uspto`` / ``ip-uspto-provisional`` added under #440; ``essay``
 # added under #460; ``datasheet`` added under #486; ``primer`` added
-# under #686; ``spec`` added under #697/#706):
+# under #686; ``spec`` added under #697/#706; ``memoir`` added under
+# #740):
 # values that name which
 # NON-memo skill owns a thread in a
 # shared project BRIEF. Memo's overlay dispatch
@@ -588,6 +604,7 @@ SKILL_IDENTITY_ARTIFACT_TYPES: frozenset = frozenset(
         ArtifactType.DATASHEET,
         ArtifactType.PRIMER,
         ArtifactType.SPEC,
+        ArtifactType.MEMOIR,
     }
 )
 

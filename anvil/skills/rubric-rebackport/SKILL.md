@@ -230,14 +230,18 @@ total but not id), the planner can heuristically pick from the
 | essay | 44 | `anvil-essay-v1` | 35 |
 | primer | 44 | `anvil-primer-v1` | 35 |
 | spec | 44 | `anvil-spec-v1` | 39 |
+| memoir | 44 | `anvil-memoir-v1` | 39 |
 
 The /40 rows remain in the catalog because stamp-only inference still
 needs them for legacy reviews authored against pre-#357 rubrics. The
 /44 (/45) rows are the targets for post-#357 reviews. The datasheet
 (#421) / ip-uspto-provisional (#444) / essay (#477) / primer (#686) /
-spec (#697/#706) skills shipped with
+spec (#697/#706) / memoir (#740) skills shipped with
 per-review stamping from day one, so they carry no /40 legacy rows
-(issue #482; primer + spec backfilled into the catalog under #706). Note the id asymmetry: the provisional skill's directory
+(issue #482; primer + spec backfilled into the catalog under #706;
+memoir added to the catalog from day one under #740, per the
+`TestCatalogDriftGuard` regression test's own guidance). Note the id
+asymmetry: the provisional skill's directory
 name is `ip-uspto-provisional` but its rubric_id is
 `anvil-ip-provisional-v1` (no "uspto").
 
