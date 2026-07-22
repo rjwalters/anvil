@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Added
+
+- **New skill: `anvil:memoir`** (#740). Chaptered narrative nonfiction
+  reconstructed from a private evidentiary corpus (family memoirs, oral
+  histories, biography-from-archive, interview-grounded long-form
+  profiles) — the first artifact-class skill to compose dual-corpus claim
+  provenance (#597) and dual voice tiers (#598) active at once in one
+  document, chapter-thread-native (one thread per chapter, assembled via
+  `anvil:project-book`), audit-mandatory with `AUDITED` as the terminal
+  state (no shortcut to `READY`). Ships the skeleton: `SKILL.md`,
+  `rubric.md` (9-dim /44, `anvil-memoir-v1`, sourcing fidelity as the
+  dominant dim 1 at weight 7, ≥39 audit-grade advance threshold), six
+  lifecycle commands (`memoir`, `memoir-draft`, `memoir-review`,
+  `memoir-audit`, `memoir-revise`, `memoir-figures`), templates
+  (`BRIEF.md.example` + a LaTeX chapter template with
+  `\famphoto`/`\fullphoto`/`\marginphoto` photo-placement macro stubs for
+  `anvil:project-photos`), `ArtifactType.MEMOIR` registration, 5
+  regenerated lifecycle agents, and a minimal synthetic worked example
+  (`grani-memoir-mini`). `memoir-audit` is the first command to implement
+  the exhaustive `kind: tool_evidence` corpus-audit critic
+  (`anvil/lib/snippets/provenance.md` §Section 4) as a
+  `<thread>.{N}.corpus-audit/` sibling, coexisting with a general
+  `.audit/` sibling. Deferred to follow-up issues: cross-chapter
+  consistency checking, a structured facts-register companion input, and
+  a full `nitas-mama` dogfood worked example.
+
 ## [0.10.1] — 2026-07-21
 
 ### Summary
