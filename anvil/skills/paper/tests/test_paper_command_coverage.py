@@ -261,5 +261,59 @@ class TestPaperVisionRecommendation(unittest.TestCase):
         self.assertIn("the portfolio orchestrator (`paper`) surfaces", self.skill)
 
 
+class TestNatbibCiteCommandGuidance(unittest.TestCase):
+    """Both drafter and reviser document the natbib author-year cite-command
+    rule (issue #735).
+
+    Under the default ``anvil-paper`` class natbib runs in author-year mode,
+    where bare ``\\cite{key}`` aliases to ``\\citet{key}`` and prints
+    "Author (Year)" — so ``Name~\\cite{key}`` doubles the author name in the
+    rendered PDF. The fix is documentation-only: both ``paper-draft.md`` and
+    ``paper-revise.md`` carry a decision-table rule steering the agent to
+    ``\\citeyearpar`` / ``\\citet`` / ``\\citep`` and away from bare
+    ``\\cite`` when the author is named in prose. These substring assertions
+    pin that guidance so a future edit cannot silently drop it.
+    """
+
+    def setUp(self):
+        self.draft = _read("commands/paper-draft.md")
+        self.revise = _read("commands/paper-revise.md")
+
+    def _assert_rule_present(self, text: str) -> None:
+        # Anchors the natbib author-year mode + the aliasing root cause.
+        self.assertIn("author-year", text)
+        self.assertIn("authoryear", text)  # the cls option, quoted verbatim
+        # The three sanctioned commands appear.
+        self.assertIn(r"\citeyearpar{key}", text)
+        self.assertIn(r"\citet{key}", text)
+        self.assertIn(r"\citep{key}", text)
+        # The bare-cite anti-pattern is called out.
+        self.assertIn(r"\cite{key}", text)
+        self.assertIn(r"Name~\cite{key}", text)
+        # The doubling defect is named concretely.
+        self.assertIn("doubles the author name", text)
+        # The numeric-mode carve-out is stated.
+        self.assertIn(r"\documentclass[numeric]{anvil-paper}", text)
+        self.assertIn("unaffected", text)
+        # The shared section heading is present in both files.
+        self.assertIn(
+            "## Citation-command choice under natbib author-year", text
+        )
+
+    def test_draft_documents_cite_command_rule(self):
+        self._assert_rule_present(self.draft)
+
+    def test_revise_documents_cite_command_rule(self):
+        self._assert_rule_present(self.revise)
+
+    def test_draft_related_work_points_to_rule(self):
+        # The Related Work body-writing bullet warns against Name~\cite.
+        self.assertIn("do NOT write `Name~\\cite{key}`", self.draft)
+
+    def test_revise_prose_rewrite_points_to_rule(self):
+        # The reviser's refs.bib step warns against reintroducing the doubling.
+        self.assertIn("reintroduce `Name~\\cite{key}` author-name doubling", self.revise)
+
+
 if __name__ == "__main__":
     unittest.main()
