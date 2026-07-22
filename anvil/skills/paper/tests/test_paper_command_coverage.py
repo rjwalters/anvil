@@ -16,6 +16,18 @@ subject-voice-tier wiring the #613 curation locked:
   subject voice tier wiring, and no ``subject_voice_grounding`` block.
 - The byte-identical-when-absent contract is documented in both files.
 
+Issue #732 extends this module with two more coverage classes:
+
+- ``paper-revise.md`` now loads the ad hoc skill-local
+  ``.anvil/skills/paper/voice.md`` override, symmetric with
+  ``paper-draft.md`` (bug a) — while still staying out of the #613
+  **subject** voice tier.
+- ``rubric.md`` dim 7/9 and ``paper-review.md``'s D7/D9 guidance name the
+  self-flattering / virtue-signaling adjective class as a **default**
+  AI-tell check (bug b), fired for every consumer with no ``voice.md``
+  required, with the STYLE_GUIDE semantic-work exception preserved and no
+  rubric-total / weight change.
+
 The module filename is deliberately distinct (``test_paper_command_coverage``)
 per the #58 packaging convention so it never collides with another skill's
 ``test_*`` module under pytest's default import mode. The tests read files
@@ -129,6 +141,63 @@ class TestPubReviseNotWired(unittest.TestCase):
 
     def test_no_subject_voice_exemplars(self):
         self.assertNotIn("subject_voice_exemplars", self.text)
+
+
+class TestPubReviseVoiceOverride(unittest.TestCase):
+    """paper-revise.md loads the skill-local voice.md, symmetric with
+    paper-draft.md (issue #732 bug a)."""
+
+    def setUp(self):
+        self.revise = _read("commands/paper-revise.md")
+        self.draft = _read("commands/paper-draft.md")
+
+    def test_draft_still_loads_voice_md(self):
+        # Guard the symmetry anchor — draft has always loaded it.
+        self.assertIn(".anvil/skills/paper/voice.md", self.draft)
+
+    def test_revise_now_loads_voice_md(self):
+        self.assertIn(".anvil/skills/paper/voice.md", self.revise)
+        self.assertIn("Voice and style overrides", self.revise)
+
+    def test_revise_voice_hook_is_ad_hoc_not_subject_tier(self):
+        # Bug (a) is the simple skill-local override, NOT the #613 subject
+        # voice tier — the deliberate out-of-scope contract still holds.
+        self.assertNotIn("resolve_subject_voice_docs", self.revise)
+        self.assertNotIn("subject_voice_grounding", self.revise)
+        self.assertNotIn("subject_voice_exemplars", self.revise)
+
+
+class TestPubDefaultAiTellCheck(unittest.TestCase):
+    """Default self-flattering / virtue-signaling adjective check in the
+    reviewer's D7/D9 guidance and the rubric rows (issue #732 bug b)."""
+
+    def setUp(self):
+        self.rubric = _read("rubric.md")
+        self.review = _read("commands/paper-review.md")
+
+    def test_rubric_dim7_names_the_tell_class(self):
+        self.assertIn("self-flattering", self.rubric)
+        self.assertIn("virtue-signaling", self.rubric)
+        # Semantic-work exception preserved.
+        self.assertIn("semantic work", self.rubric)
+
+    def test_review_d7_default_check_no_voice_md_required(self):
+        self.assertIn("default AI-tell check", self.review)
+        self.assertIn("self-flattering", self.review)
+        # Fires without a hand-authored voice.md.
+        self.assertIn("does not require a hand-authored", self.review)
+
+    def test_review_d9_mirrors_the_check(self):
+        # The economy dimension also names the class + exception.
+        self.assertIn("D9 economy failure", self.review)
+        self.assertIn("semantic-work exception", self.review)
+
+    def test_no_rubric_total_or_weight_change(self):
+        # Additive scoring guidance — the /44 total and D7/D9 weights hold.
+        self.assertIn("summing to **44**", self.rubric)
+        self.assertIn("Advance threshold: ≥35", self.rubric)
+        self.assertIn("| 7 | **Prose & structural quality** | 4 |", self.rubric)
+        self.assertIn("| 9 | **Rhetorical economy** | 4 |", self.rubric)
 
 
 if __name__ == "__main__":

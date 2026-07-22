@@ -262,7 +262,7 @@ non-`anvil-proposal` `\documentclass`.
 
 This skill ships opinionated defaults. Consumers are expected to override liberally via `.anvil/skills/paper/` in their own repo:
 
-- `voice.md` (optional) — Author or lab voice/style guidance the drafter reads in addition to its base prompt.
+- `voice.md` (optional) — Author or lab voice/style guidance both the drafter (`commands/paper-draft.md`) and the reviser (`commands/paper-revise.md`) read in addition to their base prompts, so a voice tell is scrubbed on every prose-writing pass, not just the first draft (issue #732).
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any dealbreaker a sophisticated reader would catch" instruction.
 - `templates/<venue>.cls` or `templates/<venue>.sty` — Venue-specific style files. The brief tells the drafter to use them.
 - `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted.
