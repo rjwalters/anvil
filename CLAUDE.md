@@ -106,6 +106,14 @@ When implementing or modifying a skill: follow its documented lifecycle commands
 
 ## Status of work
 
-Tracked as open issues at https://github.com/rjwalters/anvil/issues. The v0 punch list is **complete** (8 skills + lib substrate + installer + repo-management discipline; see `CHANGELOG.md` "0.1.0" entry for the full set). Ongoing work is recorded chronologically in `WORK_LOG.md` and prioritized in `WORK_PLAN.md`. Future themes (per-skill audit migrations, memo-side gates, cross-skill lint sharing, render-gate consumer ergonomics) are sketched in `ROADMAP.md` "Near-Term Themes."<!-- BEGIN LOOM ORCHESTRATION -->
-This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration. See `.loom/CLAUDE.md` for the full guide (roles, labels, worktrees, configuration).
+<!-- BEGIN LOOM ORCHESTRATION -->
+This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration — see the Loom repository for the full guide (roles, labels, worktrees, configuration). When installed, Loom also writes a locally-substituted copy of that guide to `.loom/CLAUDE.md`.
 <!-- END LOOM ORCHESTRATION -->
+<!-- BEGIN REPO-SKILLS -->
+This repository has [Repo Skills](https://github.com/rjwalters/repo) v0.4.3 installed —
+general repository hygiene and environment commands invoked as `/repo:<command>`. Run
+`/repo:help` for the command list, or see `.claude/skills/repo/SKILL.md` for the full
+guide. Hygiene commands apply safe, reversible fixes by default and report each
+change; run with `--ask` to review first, and `--prune` to allow irreversible
+removals. Managed by `install.sh` — edit outside the markers only.
+<!-- END REPO-SKILLS -->

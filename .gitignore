@@ -27,20 +27,28 @@ uv.lock
 
 # Logs
 *.log
+.loom/daemon-state.json
+.loom/[0-9][0-9]-daemon-state.json
+.loom/stuck-history.json
+.loom/alerts.json
+.loom/health-metrics.json
+.loom/progress/
+
+# Worktree-local marker written by .loom/scripts/worktree.sh; per-worktree
+# bookkeeping, never repo content — must never be committed.
+.loom-managed
+# >>> loom-managed (do not edit) >>>
+# Loom runtime state (don't commit these)
 .loom-in-use
 .loom-checkpoint
 .loom/.daemon.pid
 .loom/.daemon.log
 .loom/daemon.sock
-.loom/daemon-state.json
 .loom/daemon-loop.pid
 .loom/daemon-metrics.json
 .loom/loom-source-path
-.loom/[0-9][0-9]-daemon-state.json
-.loom/stuck-history.json
-.loom/alerts.json
+.loom/spawn-loop-state.json
 .loom/issue-failures.json
-.loom/health-metrics.json
 .loom/interventions/
 .loom/worktrees/
 .loom/state.json
@@ -49,7 +57,6 @@ uv.lock
 .loom/claims/
 .loom/signals/
 .loom/status/
-.loom/progress/
 .loom/retry-state/
 .loom/diagnostics/
 .loom/guide-docs-state.json
@@ -62,8 +69,7 @@ uv.lock
 .loom/*.log
 .loom/*.sock
 .loom/logs/
-.loom/spawn-loop-state.json
+# <<< loom-managed <<<
 
-# Worktree-local marker written by .loom/scripts/worktree.sh; per-worktree
-# bookkeeping, never repo content — must never be committed.
-.loom-managed
+# Repo Skills machine-local install metadata (absolute source path + timestamp)
+.claude/skills/repo/.install-local.json
