@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-07-21
+
+### Summary
+
+Two `anvil:paper` correctness fixes surfaced by the geode-fem canary: the
+reviser now applies the same author-voice guidance the drafter does and the
+reviewer ships a default self-flattering-AI-tell prose check, and the
+orchestrator now surfaces the previously-silent `paper-vision` critic so
+figures no longer reach terminal `AUDITED` without a visual-review
+recommendation.
+
+### Changed
+
+- **`anvil:paper` orchestrator now recommends `paper-vision`** (#731). The
+  `paper.md` next-command table splits its `READY`/`AUDITED` rows by figure +
+  `.vision/`-sibling presence: a thread with figures and no vision sibling is
+  routed to `paper-vision`, and a `NEVER-VISION-CHECKED` anomaly is flagged —
+  closing the gap where a figure-bearing paper could reach terminal `AUDITED`
+  with its figures never visually inspected. Text-only and already-checked
+  threads route byte-identically; the `AUDITED` definition and rubric contract
+  are unchanged.
+
+### Fixed
+
+- **`voice.md` now loads symmetrically in `paper-revise`** (#732). The reviser
+  — which rewrites prose across every version — now applies the same consumer
+  `.anvil/skills/paper/voice.md` author-voice guidance that `paper-draft`
+  already honored. Additionally, the reviewer's D7/D9 prose dimensions ship a
+  **default** self-flattering / virtue-signaling AI-tell check (the
+  "honest/candid/frank/uncomfortable X" adjective class), firing for every
+  consumer without a hand-authored `voice.md`, with the semantic-work
+  exception preserved. No rubric total/weight/threshold change (/44, D7=4,
+  D9=4, ≥35).
+
 ## [0.10.0] — 2026-07-15
 
 ### Summary
