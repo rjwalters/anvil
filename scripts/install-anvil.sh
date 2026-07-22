@@ -645,7 +645,10 @@ copy_file_with_parents() {
 #   * Creates the .gitignore if absent, with a leading section comment.
 #   * Ensures the file ends with a newline before appending (no line-joining).
 #
-# Args: $1 = path to .gitignore, $2 = pattern to ensure present.
+# Args: $1 = path to .gitignore, $2 = pattern to ensure present,
+#       $3 = (optional) header comment used ONLY when creating a fresh file
+#            (defaults to the voice-grounding header for backward compat; the
+#            vision-PNG stage #738 passes its own so a fresh file reads honestly).
 gitignore_covers() {
   # Mirror project-share/lib/apply.py::_gitignore_covers minus the dir-only
   # candidates: here the pattern is matched verbatim against trimmed lines.
@@ -655,6 +658,7 @@ gitignore_covers() {
 
 append_to_gitignore_idempotent() {
   local gitignore="$1" pattern="$2"
+  local header="${3:-# Anvil private voice-grounding docs (issue #577) — kept local.}"
   if [[ -f "$gitignore" ]]; then
     # Already covered? Scan non-comment, non-blank lines for an exact match.
     local raw line
@@ -671,7 +675,7 @@ append_to_gitignore_idempotent() {
     printf '%s\n' "$pattern" >> "$gitignore"
   else
     {
-      printf '# Anvil private voice-grounding docs (issue #577) — kept local.\n'
+      printf '%s\n' "$header"
       printf '%s\n' "$pattern"
     } > "$gitignore"
     chmod 0644 "$gitignore"
@@ -1795,6 +1799,69 @@ else
       do_action "append '$voice_pattern' to .gitignore (protect private voice-grounding docs from commit)" \
         append_to_gitignore_idempotent "$VOICE_GITIGNORE" "$voice_pattern"
       [[ "$DRY_RUN" == true ]] || ok "'$voice_pattern' added to .gitignore (private voice grounding stays local)"
+    fi
+  done
+fi
+
+# ----- Stage 7.10: gitignore regenerable vision render intermediates (#738) --
+#
+# The four vision critics (paper, report, deck, slides) render per-page/per-slide
+# PNGs INTO their committed critic sibling dir: `<thread>.{N}.vision/pages/`
+# (paper, report) or `<thread>.{N}.vision/slides/` (deck, slides). Unlike every
+# other critic sibling (`.review`, `.audit`) which carries only ~8 KB of
+# markdown/JSON, the vision sibling co-locates megabytes of PNGs (the geode-fem
+# repro: 6.5 MB of `pages/*.png` alongside an 8 KB manifest). Those PNGs are pure
+# render output of `render_pdf_to_pngs(pdf, out_dir, dpi)` from a PDF that is
+# itself regenerable from source — nothing in them is canonical (the canonical
+# committed critic output is the three top-level JSONs). A consumer who `git
+# add`s the whole `*.vision/` dir during a hygiene pass pulls in the bloat.
+#
+# Seed a root-`.gitignore` rule so the regenerable PNG subdirs are never
+# committed by accident. Two globs cover all four critics and BOTH sibling
+# layouts: `**/*.vision/pages/` (paper/report, flat) and `**/*.vision/slides/`
+# (deck/slides, nested `<thread>/<thread>.{N}.vision/slides/`) — the leading
+# `**` matches wherever the consumer runs the skill (e.g. `papers/…`), so this
+# is the consumer ROOT `.gitignore`, NOT the `.anvil/.gitignore` (Stage 8.6),
+# because the PNGs live outside `.anvil/`. This is the exact rule geode-fem PR
+# #666 worked around locally.
+#
+# Same mechanism as the Stage 7.9 voice append (append_to_gitignore_idempotent):
+# idempotent (re-install never duplicates), never rewrites unrelated lines, and
+# a DISTINCT do_action so --dry-run output and re-run skip-notes read honestly.
+# Gated on at least one vision-capable skill being selected, mirroring how Stage
+# 7.9 gates the voice append on essay/memo. Zero change to the render path, the
+# VLM read path, the staged-sidecar atomicity contract, or the stale-PNG
+# re-render cache (the PNGs stay co-located — gitignore only affects `git add`).
+info "Stage 7.10: gitignore regenerable vision render intermediates (issue #738)"
+VISION_SKILL_SELECTED=false
+for s in "${SELECTED_SKILLS[@]}"; do
+  if [[ "$s" == "paper" || "$s" == "report" || "$s" == "deck" || "$s" == "slides" ]]; then
+    VISION_SKILL_SELECTED=true; break
+  fi
+done
+if [[ "$VISION_SKILL_SELECTED" != true ]]; then
+  note "no vision-capable skill (paper/report/deck/slides) selected; skipping vision-PNG gitignore"
+else
+  VISION_GITIGNORE="$TARGET/.gitignore"
+  for vision_pattern in "**/*.vision/pages/" "**/*.vision/slides/"; do
+    # Determine whether the pattern is already covered, so the note reads
+    # honestly under both --dry-run and a real re-run.
+    vision_pat_covered=false
+    if [[ -f "$VISION_GITIGNORE" ]]; then
+      while IFS= read -r vision_raw || [[ -n "$vision_raw" ]]; do
+        vision_line="${vision_raw#"${vision_raw%%[![:space:]]*}"}"
+        vision_line="${vision_line%"${vision_line##*[![:space:]]}"}"
+        [[ -z "$vision_line" || "$vision_line" == \#* ]] && continue
+        if [[ "$vision_line" == "$vision_pattern" ]]; then vision_pat_covered=true; break; fi
+      done < "$VISION_GITIGNORE"
+    fi
+    if [[ "$vision_pat_covered" == true ]]; then
+      note ".gitignore already ignores '$vision_pattern' (regenerable vision render intermediates) — skipping append"
+    else
+      do_action "append '$vision_pattern' to .gitignore (keep regenerable vision PNGs out of commits)" \
+        append_to_gitignore_idempotent "$VISION_GITIGNORE" "$vision_pattern" \
+          "# Anvil regenerable vision render intermediates (issue #738) — not committed."
+      [[ "$DRY_RUN" == true ]] || ok "'$vision_pattern' added to .gitignore (regenerable vision render intermediates stay uncommitted)"
     fi
   done
 fi
