@@ -155,12 +155,18 @@ def test_root_gitignore_untouched_for_non_voice_skill(tmp_path: Path) -> None:
 
     Only .anvil/.gitignore should be created; the root .gitignore write footprint
     is unaffected by this change (Stage 7.9 voice append is skill-gated and does
-    not fire for paper).
+    not fire for a non-voice skill).
+
+    NOTE: the skill here must be neither voice-consuming (essay/memo — Stage 7.9)
+    nor vision-capable (paper/report/deck/slides — Stage 7.10, issue #738), since
+    both of those stages DO append to the root .gitignore. ``proposal`` is
+    neither, so it exercises the Stage 8.6 self-contained-write contract in
+    isolation.
     """
     target = tmp_path / "root-untouched"
     target.mkdir()
 
-    result = _run("--skills=paper", str(target))
+    result = _run("--skills=proposal", str(target))
     _assert_ok(result)
 
     assert (target / ".anvil" / ".gitignore").is_file(), (
