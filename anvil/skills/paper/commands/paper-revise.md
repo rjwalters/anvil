@@ -112,6 +112,10 @@ The cycle continues until:
   The default assumption "the reviser edits the prose in `main.tex`" silently underserves vision findings — surface the figure-source path or the specific LaTeX structure (table/equation) explicitly in the `changelog.md` resolution column. The `mathtext_artifact_breaks_meaning` critical flag is the highest-stakes vision finding for a paper: because LaTeX is the source-of-truth, a rendered equation that diverges from intent is a correctness defect and MUST be resolved at the source.
 - **Preserve `figures/src/`.** The figurer relies on source scripts for re-render. Carry them over verbatim unless the revision deletes the corresponding figure.
 
+## Voice and style overrides
+
+If `.anvil/skills/paper/voice.md` exists in the consumer repo, load it and apply its guidance while revising prose. The reviser rewrites prose across every version, so it MUST honor the same author/lab voice hook the drafter reads (`commands/paper-draft.md` § "Voice and style overrides") — otherwise a tell introduced or retained during a revise pass is never scrubbed, even when the consumer's `voice.md` names it. This is the ad hoc skill-local override (a static consumer file re-read fresh each command invocation, with no version-dir footprint to carry forward), distinct from the #613 **subject**-voice tier (third-party dialogue grounding), which this command deliberately does not participate in. This is the standard anvil override pattern — see `SKILL.md` "Defaults and overrides" and the consumer's `.anvil/skills/paper/` layout.
+
 ## `_progress.json` snippet (revised version dir)
 
 This command writes the version-dir shape documented in `anvil/lib/snippets/progress.md`. The reviser adds a `metadata.revised_from` field naming the parent version:
