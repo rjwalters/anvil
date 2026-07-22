@@ -152,6 +152,8 @@ The "Area Chair ensemble" pattern published in AI-Scientist (Sakana, 2024) — m
 
 **READY vs AUDITED distinction.** Unlike memo (where `AUDITED` is rarely reached), `paper-audit` is part of the normal lifecycle. A paper is **not done** until it reaches `AUDITED`: the auditor's job is to verify every `\cite{}` resolves and every cited claim is actually supported. The PDF compile check (see Acceptance criteria) lives in the auditor's responsibility because it requires the bibliography to be valid.
 
+**`paper-vision` is recommended-but-optional.** Unlike `paper-audit` (mandatory-at-`READY`), `paper-vision` does **not** gate the state machine and will **not** run unless explicitly invoked — a thread with figures can reach terminal `AUDITED` without any visual review. To keep the rendered-artifact critic from being silently skipped, the portfolio orchestrator (`paper`) surfaces the recommendation: at `READY` with figures present but no `<thread>.{N}.vision/` sibling it recommends `paper-vision` (before `paper-audit`), and at `AUDITED` in the same condition it emits a non-blocking `NEVER-VISION-CHECKED` operator note. Threads with **no figures** are never prompted for vision. This is a recommendation only — it does not change the `AUDITED` state's on-disk evidence definition below, and the vision-owned dimensions remain an additive overlay outside the /44 gate (see `rubric.md`).
+
 ## Command dispatch
 
 | Command | Role | Reads | Writes |
