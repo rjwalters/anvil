@@ -40,7 +40,11 @@ A single command that an operator (or orchestrating agent) runs to see the state
    | `REVIEWED` (advance=false, AT iteration cap) | `BLOCKED — human review required` |
    | `REVIEWED` (advance=true, no audit yet) | `paper-audit <thread>` |
    | `READY` (advance=true, no figures generated) | `paper-figures <thread>` (then `paper-audit`) |
-   | `AUDITED` (no critical flags in audit) | (terminal) |
+   | `READY` (advance=true, figures present, no `<thread>.{N}.vision/` sibling at this `N`) | `paper-vision <thread>` (then `paper-audit`) — surface rendered-figure defects before the audit pass so a vision critical flag factors into the same revision as any audit flag |
+   | `READY` (advance=true, figures present, `<thread>.{N}.vision/` sibling exists) | `paper-audit <thread>` |
+   | `AUDITED` (no critical flags in audit, no figures) | (terminal) |
+   | `AUDITED` (no critical flags in audit, figures present, `<thread>.{N}.vision/` sibling exists) | (terminal) |
+   | `AUDITED` (no critical flags in audit, figures present, no `<thread>.{N}.vision/` sibling at this `N`) | (terminal — but recommend `paper-vision <thread>`: figures reached terminal without visual review; non-blocking operator note, does not reopen the state machine) |
    | `AUDITED` (critical flags in audit) | `paper-revise <thread>` (audit findings drive a new revision) |
 
 5. Detect anomalies and surface them:
@@ -48,6 +52,7 @@ A single command that an operator (or orchestrating agent) runs to see the state
    - A critic sibling dir (`<slug>.{N}.<critic>/`) without a matching `<slug>.{N}/` — orphan; report. **Exception:** `<slug>.0.litsearch/` is allowed without a matching `<slug>.0/`.
    - A gap in version numbers (e.g., `<slug>.1/` and `<slug>.3/` with no `<slug>.2/`) — report.
    - An audit with unresolved critical flags on a thread the reviewer marked `advance: true` — report as `READY-WITH-AUDIT-FLAGS`, recommend `paper-revise`.
+   - A `READY` or `AUDITED` thread with figures generated at the latest `N` (i.e. `<slug>.{N}/figures/` contains at least one rendered file besides the `src/` subdirectory) but no `<slug>.{N}.vision/` sibling at that `N` — report as `NEVER-VISION-CHECKED`, recommend `paper-vision`. This is **informational and non-blocking** (it does not change the reported state and does not reopen the state machine); it exists because `paper-vision` is operator-recommended-but-optional and its rendered-artifact defects (label cropping, axis legibility, mathtext artifacts) are otherwise never surfaced. A thread with **no figures** at the latest `N` never triggers this note (byte-identical routing to a text-only paper).
 
 ## Output format
 
