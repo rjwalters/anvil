@@ -62,6 +62,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
    - Add entries from `<thread>.{N}.litsearch/candidates.bib` for the new citations.
    - Fix bibliography hygiene issues flagged in the review (missing fields, inconsistent formatting).
    - Verify every `\cite{key}` in the new `main.tex` resolves before marking the phase done.
+   - **When a revision adds or rewrites cited prose, pick the cite *command* per the "Citation-command choice under natbib author-year" rule below** — do not reintroduce `Name~\cite{key}` author-name doubling even if the original draft got it right. A revise pass that renames an author in prose or moves a citation across the parenthetical/textual boundary must re-choose between `\citet` / `\citeyearpar` / `\citep`.
 10. **Write `changelog.md`**: a markdown table mapping each critic note to the change made.
 
     Label each entry's `Source` column with both the sibling dir and the **source rubric**: `generic` for entries originating in the generic /44 `_review.json`, `venue:<slug>` for entries from `_review.venue.json`, and `audit` / `litsearch` for the corresponding sibling dirs. This lets a reader see at a glance which rubric flagged which issue — important because the venue overlay is advisory only and a reader may wish to weight venue-origin entries differently.
@@ -80,6 +81,19 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
     For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next reviewer pass can override or accept the reviser's judgment. Declining a `venue:<slug>` entry is reasonable when the venue advice conflicts with the generic-rubric guidance — note the trade-off in the resolution column.
 11. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 12. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised q3-method.1 → q3-method.2/ (addressed 9 notes including 2 critical-flags, declined 1)`).
+
+## Citation-command choice under natbib author-year
+
+The default `anvil-paper` class loads natbib in **author-year / round** mode (`templates/anvil-paper.cls:56` — `\RequirePackage[round,sort&compress,authoryear]{natbib}`). In this mode **bare `\cite{key}` is aliased to `\citet{key}`** and prints "Author (Year)" — NOT the parenthetical "(Author, Year)". So writing `Name~\cite{key}` **doubles the author name** in the rendered PDF (e.g. `Chung and Miller~\cite{chung2020}` renders as "Chung and Miller Chung and Miller (2020)"). The `.tex` source reads idiomatically, so this defect is invisible in every text-only review/audit pass and surfaces only in the rendered PDF — a revise pass that adds or rewrites cited prose must choose the cite command from whether the author is already named in the surrounding prose:
+
+| Author named in prose? | Use | Renders as |
+|---|---|---|
+| Yes | `\citeyearpar{key}` | "Chung and Miller (2020)" |
+| No | `\citet{key}` | "Chung and Miller (2020) show..." |
+| N/A (fully parenthetical) | `\citep{key}` | "...prior work (Chung and Miller, 2020)" |
+| — | ~~bare `\cite{key}`~~ | **avoid** — aliases to `\citet{}` under author-year mode; doubles the name when the author is already named in prose |
+
+The **`numeric` documentclass option** (`\documentclass[numeric]{anvil-paper}`) is **unaffected**: there bare `\cite{key}` renders `[N]` and there is no doubling risk, so this rule is scoped to the default (author-year) path only.
 
 ## Idempotence and resumability
 

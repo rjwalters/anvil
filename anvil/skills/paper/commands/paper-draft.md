@@ -66,7 +66,7 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`. (Note: a `<thread>.
    - `\title{}`, `\author{}` (or `Author Name(s) Withheld`), `\date{}`.
    - `\begin{abstract} ... \end{abstract}` — 100–200 words; restates the claim, the method in one sentence, the key result, the contribution.
    - `\section{Introduction}` — motivates the problem, states the contribution explicitly (bullet list of named contributions is preferred over a single muddled paragraph), forward-references the experimental setup.
-   - `\section{Related Work}` — positions against prior work as informed by the litsearch sibling's `notes.md`. Cites only entries that are in `refs.bib`. Honest engagement with the closest 1–3 papers per cluster; do not pad with weakly related work.
+   - `\section{Related Work}` — positions against prior work as informed by the litsearch sibling's `notes.md`. Cites only entries that are in `refs.bib`. Honest engagement with the closest 1–3 papers per cluster; do not pad with weakly related work. When you name an author in the prose here (common in related work), pick the cite command per the "Citation-command choice under natbib author-year" rule below — do NOT write `Name~\cite{key}`, which doubles the author name under the default class.
    - `\section{Method}` (or domain-appropriate equivalent: `\section{Approach}`, `\section{Theory}`, etc.) — describes the method with enough detail for an independent group to replicate (reproducibility dimension). Algorithms in `algorithm` environment where appropriate.
    - `\section{Experiments}` (or `\section{Results}`) — describes the experimental setup, then the results. Tables and figures are referenced from the body; the actual rendering is handled by `paper-figures` (figurer creates `figures/*.pdf` from `figures/src/*.py` or TikZ).
    - `\section{Discussion}` — interprets the results, names limitations honestly, discusses threats to validity.
@@ -76,9 +76,23 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`. (Note: a `<thread>.
    - Start with `<thread>/refs.bib` if present.
    - Merge entries from `<thread>.0.litsearch/candidates.bib` that the drafter actually cites in `main.tex`. Uncited entries stay in the litsearch sibling only — do not bloat `refs.bib` with unused entries.
    - Every `\cite{key}` in `main.tex` must have a matching `@type{key, ...}` in `refs.bib`. The drafter verifies this before marking `draft.state = done`.
+   - **Cite *command* choice matters, not just resolution.** Under the default `anvil-paper` class (natbib author-year mode) bare `\cite{key}` prints "Author (Year)", so choose among `\citet` / `\citeyearpar` / `\citep` per the "Citation-command choice under natbib author-year" rule below rather than defaulting to bare `\cite{key}`.
 8. **Create `figures/` skeleton**: `mkdir -p figures/src/`. Insert `\includegraphics{figures/<name>}` or `\input{figures/<name>.tex}` placeholders in the body where the brief or the structure calls for a figure. Actual figure generation is `paper-figures`'s job. If the brief supplies a `figures/src/` directory of scripts, copy them into the version dir's `figures/src/` so the figurer can pick them up.
 9. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO timestamp>`.
 10. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted q3-method.1/ (main.tex: 4200 words, refs.bib: 18 entries, 3 figure placeholders)`).
+
+## Citation-command choice under natbib author-year
+
+The default `anvil-paper` class loads natbib in **author-year / round** mode (`templates/anvil-paper.cls:56` — `\RequirePackage[round,sort&compress,authoryear]{natbib}`). In this mode **bare `\cite{key}` is aliased to `\citet{key}`** and prints "Author (Year)" — NOT the parenthetical "(Author, Year)". So writing `Name~\cite{key}` **doubles the author name** in the rendered PDF (e.g. `Chung and Miller~\cite{chung2020}` renders as "Chung and Miller Chung and Miller (2020)"). The `.tex` source reads idiomatically, so this defect is invisible in every text-only review pass and surfaces only in the rendered PDF — prevent it at draft time by choosing the cite command from whether the author is already named in the surrounding prose:
+
+| Author named in prose? | Use | Renders as |
+|---|---|---|
+| Yes | `\citeyearpar{key}` | "Chung and Miller (2020)" |
+| No | `\citet{key}` | "Chung and Miller (2020) show..." |
+| N/A (fully parenthetical) | `\citep{key}` | "...prior work (Chung and Miller, 2020)" |
+| — | ~~bare `\cite{key}`~~ | **avoid** — aliases to `\citet{}` under author-year mode; doubles the name when the author is already named in prose |
+
+The **`numeric` documentclass option** (`\documentclass[numeric]{anvil-paper}`) is **unaffected**: there bare `\cite{key}` renders `[N]` and there is no doubling risk, so this rule is scoped to the default (author-year) path only.
 
 ## BRIEF bootstrap interview (when BRIEF.md is absent)
 
