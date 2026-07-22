@@ -200,5 +200,66 @@ class TestPubDefaultAiTellCheck(unittest.TestCase):
         self.assertIn("| 9 | **Rhetorical economy** | 4 |", self.rubric)
 
 
+class TestPaperVisionRecommendation(unittest.TestCase):
+    """paper.md surfaces paper-vision at READY/AUDITED with figures (issue #731).
+
+    The vision critic was wired on the consuming side (paper-revise) but never
+    surfaced on the invoking side, so figures could reach terminal AUDITED
+    without any visual review. These assertions pin the non-blocking
+    orchestrator recommendation (Option 2) — a next-command table row and a
+    ``NEVER-VISION-CHECKED`` anomaly bullet — plus the SKILL.md doc sentence.
+    """
+
+    def setUp(self):
+        self.paper = _read("commands/paper.md")
+        self.skill = _read("SKILL.md")
+
+    def test_table_recommends_vision_at_ready_with_figures(self):
+        # A READY thread with figures and no vision sibling routes to paper-vision.
+        self.assertIn(
+            "figures present, no `<thread>.{N}.vision/` sibling at this `N`",
+            self.paper,
+        )
+        self.assertIn("`paper-vision <thread>` (then `paper-audit`)", self.paper)
+
+    def test_table_recommends_vision_at_audited_with_figures(self):
+        # AUDITED terminal with unchecked figures still surfaces paper-vision,
+        # non-blocking (does not reopen the state machine).
+        self.assertIn(
+            "terminal — but recommend `paper-vision <thread>`", self.paper
+        )
+        self.assertIn("does not reopen the state machine", self.paper)
+
+    def test_no_figures_audited_is_byte_identical_terminal(self):
+        # Text-only papers keep a plain terminal row (no vision prompt).
+        self.assertIn(
+            "| `AUDITED` (no critical flags in audit, no figures) | (terminal) |",
+            self.paper,
+        )
+
+    def test_vision_sibling_present_routes_unchanged(self):
+        # A thread that already has a vision sibling is not re-recommended.
+        self.assertIn(
+            "figures present, `<thread>.{N}.vision/` sibling exists) | "
+            "`paper-audit <thread>` |",
+            self.paper,
+        )
+
+    def test_anomaly_bullet_never_vision_checked(self):
+        self.assertIn("NEVER-VISION-CHECKED", self.paper)
+        self.assertIn("informational and non-blocking", self.paper)
+        # No-figures threads never trigger the note.
+        self.assertIn(
+            "A thread with **no figures** at the latest `N` never triggers this note",
+            self.paper,
+        )
+
+    def test_skill_documents_vision_is_optional_and_surfaced(self):
+        self.assertIn("recommended-but-optional", self.skill)
+        self.assertIn("NEVER-VISION-CHECKED", self.skill)
+        # The mechanism (orchestrator surfacing) is named.
+        self.assertIn("the portfolio orchestrator (`paper`) surfaces", self.skill)
+
+
 if __name__ == "__main__":
     unittest.main()
