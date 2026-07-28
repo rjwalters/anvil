@@ -679,6 +679,17 @@ _FRONTMATTER_DELIM = "---"
 # documented in ``anvil/skills/memo/SKILL.md`` §"Length targets".
 _WORDS_PER_PAGE = 600
 
+# Artifact types for which a ``target_length: { slides: [min, max] }``
+# unit is truthful (issue #742). A deck/slides thread is authored and
+# reviewed in slide count, not words or pages — there is no
+# words-per-page-style equivalence to convert through, so ``slides`` is
+# a TERMINAL unit, never converted. Declaring ``slides`` on any other
+# ``artifact_type`` is rejected at parse time (see
+# ``_normalize_target_length_range``).
+_SLIDES_UNIT_ARTIFACT_TYPES: frozenset = frozenset(
+    {ArtifactType.DECK, ArtifactType.SLIDES}
+)
+
 # Rubric dimension range for the ``dim_N_calibration`` / ``dim_N_waiver``
 # key families: the closed interval [1, 9]. Both shipped consumers (memo
 # per ``anvil/skills/memo/rubric.md``, deck per
@@ -789,7 +800,7 @@ _VALID_RENDER_ENGINES = ("weasyprint", "xelatex", "wkhtmltopdf")
 
 
 class TargetLengthRange(BaseModel):
-    """Word-count range from a BRIEF document entry's ``target_length`` block.
+    """Word-count (or slide-count) range from a BRIEF ``target_length`` block.
 
     Used in two places:
 
@@ -801,16 +812,30 @@ class TargetLengthRange(BaseModel):
     enforced. A ``pages`` input is converted at
     :data:`_WORDS_PER_PAGE` (600 wpp) per the SKILL.md convention.
 
+    A ``slides`` input (issue #742; ``deck`` / ``slides``
+    ``artifact_type`` only — see :data:`_SLIDES_UNIT_ARTIFACT_TYPES`) is
+    the one exception to the words-based contract: slide count is a
+    TERMINAL unit for a deck, not a proxy for word/page length, so it is
+    passed through UNCONVERTED. For a ``source_key == "slides"`` range,
+    ``min_words`` / ``max_words`` hold the raw slide-count bounds
+    verbatim (the field names are the words/pages-era names; no
+    words-per-page-style conversion is ever applied to them) — always
+    check ``source_key`` before interpreting the bounds as a word count.
+
     Attributes
     ----------
     min_words
-        Minimum word count (inclusive).
+        Minimum word count (inclusive) — or, for ``source_key ==
+        "slides"``, the minimum slide count (inclusive), unconverted.
     max_words
-        Maximum word count (inclusive). Must be ``>= min_words``.
+        Maximum word count (inclusive). Must be ``>= min_words`` — or,
+        for ``source_key == "slides"``, the maximum slide count
+        (inclusive), unconverted.
     source_key
-        ``"words"`` or ``"pages"`` — which top-level key the on-disk
-        range used. Captured for the audit trail so a reader can see
-        whether the BRIEF author wrote in words or in pages.
+        ``"words"``, ``"pages"``, or ``"slides"`` — which top-level key
+        the on-disk range used. Captured for the audit trail so a
+        reader can see whether the BRIEF author wrote in words, pages,
+        or slides.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -2253,25 +2278,61 @@ def _normalize_audience(value: Any) -> List[str]:
     return flattened
 
 
+def _slides_unit_allowed(
+    artifact_type: Optional[Union["ArtifactType", str]],
+) -> bool:
+    """Return whether ``target_length: { slides: [...] }`` is truthful.
+
+    ``None`` (no artifact-type context available at the call site) fails
+    closed — see :func:`_normalize_target_length_range`.
+    """
+    if artifact_type is None:
+        return False
+    return artifact_type in _SLIDES_UNIT_ARTIFACT_TYPES
+
+
 def _normalize_target_length_range(
-    raw: Any, field_path: str
+    raw: Any,
+    field_path: str,
+    *,
+    artifact_type: Optional[Union["ArtifactType", str]] = None,
 ) -> TargetLengthRange:
     """Convert a raw ``{words: [...]}`` / ``{pages: [...]}`` to a typed range.
 
     Raises ``ValueError`` for any malformed shape — the BRIEF parser is
     STRICT (unlike the prior rubric_overrides loader, which warned).
 
-    Accepts the **flat shape** only — ``{"words": [min, max]}`` or
-    ``{"pages": [min, max]}``. Extended-shape keys (``default``,
-    ``overrides``) are rejected explicitly — the per-version surface
-    has moved to ``target_length_overrides`` per the #296
-    consolidation.
+    Accepts the **flat shape** only — ``{"words": [min, max]}``,
+    ``{"pages": [min, max]}``, or (issue #742, ``deck`` / ``slides``
+    ``artifact_type`` only) ``{"slides": [min, max]}``. Extended-shape
+    keys (``default``, ``overrides``) are rejected explicitly — the
+    per-version surface has moved to ``target_length_overrides`` per
+    the #296 consolidation.
+
+    Parameters
+    ----------
+    artifact_type
+        The owning document entry's ``artifact_type``, when known.
+        Gates the ``slides`` unit: it is only accepted when
+        ``artifact_type`` is ``deck`` or ``slides`` (see
+        :data:`_SLIDES_UNIT_ARTIFACT_TYPES`) — a slide deck is authored
+        and reviewed in slide count, not words or pages, so the
+        ``slides`` unit is rejected for every other artifact type
+        (there is no truthful words/pages-equivalent for a deck).
+        ``None`` (the default, used by callers with no artifact-type
+        context, e.g. the ``rubric_overrides.target_length`` and
+        ``target_length_overrides`` call sites) also rejects ``slides``
+        — fail closed rather than silently accepting an unvalidated
+        unit.
     """
     if not isinstance(raw, dict):
+        shape_hint = "`{ words: [min, max] }` or `{ pages: [min, max] }`"
+        if _slides_unit_allowed(artifact_type):
+            shape_hint += " (or `{ slides: [min, max] }` for a deck/slides thread)"
         raise ValueError(
             f"BRIEF.{field_path} must be a dict; got "
             f"{type(raw).__name__} — suggested fix: use the shape "
-            f'`{{ words: [min, max] }}` or `{{ pages: [min, max] }}`.'
+            f"{shape_hint}."
         )
 
     # Reject extended-shape keys explicitly so a copy-paste from the
@@ -2289,18 +2350,42 @@ def _normalize_target_length_range(
 
     has_words = "words" in raw
     has_pages = "pages" in raw
-    if has_words and has_pages:
+    has_slides = "slides" in raw
+
+    declared_keys = [
+        key
+        for key, present in (("words", has_words), ("pages", has_pages), ("slides", has_slides))
+        if present
+    ]
+
+    if len(declared_keys) > 1:
         raise ValueError(
-            f"BRIEF.{field_path} has both 'words' and 'pages' — "
-            f"ambiguous shape; pick exactly one key."
-        )
-    if not has_words and not has_pages:
-        raise ValueError(
-            f"BRIEF.{field_path} has neither 'words' nor 'pages' — "
-            f"suggested fix: add `words: [min, max]` or `pages: [min, max]`."
+            f"BRIEF.{field_path} has more than one of 'words' / 'pages' / "
+            f"'slides' ({declared_keys}) — ambiguous shape; pick exactly "
+            f"one key."
         )
 
-    source_key = "words" if has_words else "pages"
+    if not declared_keys:
+        raise ValueError(
+            f"BRIEF.{field_path} has none of 'words', 'pages', or "
+            f"'slides' — suggested fix: add `words: [min, max]` or "
+            f"`pages: [min, max]` (or, for a deck/slides thread, "
+            f"`slides: [min, max]`)."
+        )
+
+    source_key = declared_keys[0]
+
+    if source_key == "slides" and not _slides_unit_allowed(artifact_type):
+        artifact_type_display = getattr(artifact_type, "value", artifact_type)
+        raise ValueError(
+            f"BRIEF.{field_path}.slides is only accepted when the "
+            f"document's artifact_type is 'deck' or 'slides' (got "
+            f"{artifact_type_display!r}) — a slide deck is "
+            f"authored/reviewed in slide count, not words or pages, so "
+            f"'slides' is not a truthful unit here. Suggested fix: use "
+            f"`words: [min, max]` or `pages: [min, max]` instead."
+        )
+
     range_value = raw[source_key]
 
     if not isinstance(range_value, list) or len(range_value) != 2:
@@ -2340,6 +2425,12 @@ def _normalize_target_length_range(
         min_words = lo_raw * _WORDS_PER_PAGE
         max_words = hi_raw * _WORDS_PER_PAGE
     else:
+        # "words" passes through unchanged; "slides" is a TERMINAL unit
+        # (issue #742) — it is NEVER run through the words-per-page
+        # conversion. ``min_words`` / ``max_words`` hold the raw slide
+        # count verbatim in that case; ``source_key`` is the
+        # discriminator a consumer must check before treating the
+        # bounds as an actual word count.
         min_words = lo_raw
         max_words = hi_raw
 
@@ -2351,7 +2442,10 @@ def _normalize_target_length_range(
 
 
 def _normalize_target_length_overrides(
-    raw: Any, field_path: str
+    raw: Any,
+    field_path: str,
+    *,
+    artifact_type: Optional[Union["ArtifactType", str]] = None,
 ) -> Optional[TargetLengthOverrides]:
     """Convert a raw ``target_length_overrides`` dict to a typed model.
 
@@ -2359,6 +2453,10 @@ def _normalize_target_length_overrides(
     ``"2"``, …) and values are ``[min, max]``-style range dicts. Empty
     dict → returns a :class:`TargetLengthOverrides` with empty
     ``overrides``. Absent (``None``) → returns ``None``.
+
+    ``artifact_type`` (issue #742) is forwarded to each per-version
+    :func:`_normalize_target_length_range` call so a ``slides:``
+    override is gated the same way as the top-level ``target_length``.
 
     Raises ``ValueError`` for malformed shape (non-dict, non-integer-
     string key, malformed range).
@@ -2398,7 +2496,9 @@ def _normalize_target_length_overrides(
                 f'write the key as `"1"`, `"2"`, etc.'
             )
         range_typed = _normalize_target_length_range(
-            value, field_path=f"{field_path}[{key_str!r}]"
+            value,
+            field_path=f"{field_path}[{key_str!r}]",
+            artifact_type=artifact_type,
         )
         overrides[key_str] = range_typed
 
@@ -2428,7 +2528,10 @@ def _parse_dim_waiver_key(key: str) -> Optional[int]:
 
 
 def _normalize_rubric_overrides(
-    raw: Any, field_path: str
+    raw: Any,
+    field_path: str,
+    *,
+    artifact_type: Optional[Union["ArtifactType", str]] = None,
 ) -> Optional[RubricOverrides]:
     """Convert a raw ``rubric_overrides`` dict to a typed model.
 
@@ -2487,7 +2590,9 @@ def _normalize_rubric_overrides(
 
         if key == "target_length":
             target_length = _normalize_target_length_range(
-                value, field_path=f"{field_path}.target_length"
+                value,
+                field_path=f"{field_path}.target_length",
+                artifact_type=artifact_type,
             )
             continue
 
@@ -3213,7 +3318,9 @@ def _normalize_documents(
         raw_tl = entry.get("target_length")
         target_length = (
             _normalize_target_length_range(
-                raw_tl, field_path=f"documents[{i}].target_length"
+                raw_tl,
+                field_path=f"documents[{i}].target_length",
+                artifact_type=artifact_type,
             )
             if raw_tl is not None
             else None
@@ -3222,11 +3329,13 @@ def _normalize_documents(
         target_length_overrides = _normalize_target_length_overrides(
             entry.get("target_length_overrides"),
             field_path=f"documents[{i}].target_length_overrides",
+            artifact_type=artifact_type,
         )
 
         rubric_overrides = _normalize_rubric_overrides(
             entry.get("rubric_overrides"),
             field_path=f"documents[{i}].rubric_overrides",
+            artifact_type=artifact_type,
         )
 
         render_engine = _validate_render_engine(
