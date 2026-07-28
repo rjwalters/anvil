@@ -94,6 +94,37 @@ The dim 3 justification MUST cite the specific missing hooks (e.g., "Unsourced: 
 
 The deduction is applied entirely via reviewer judgment reading this prose against the memo — there is no automated `refs/` enforcement in v0. The contract exists to give both drafter and reviewer a shared, named standard to score against.
 
+### Label-once-then-ledger convention (issue #747)
+
+The three hooks above are asymmetric by construction: a missing hook is deducted, but nothing prices an *excess* of the cheapest hook — the in-prose hedge. A drafter chasing dim 3 credit can therefore restate the same provenance caveat inline at every point of use with no downside, which converges (as the worked example below shows) on a memo that is epistemically impeccable and very hard to read. This subsection closes that asymmetry without touching the hook contract's floor.
+
+**Claim families.** When several load-bearing claims share one provenance status — e.g., "these figures are all founder-reported and unreplicated," or "these estimates all derive from the same 2024 industry survey" — they form a **claim family**. The hook contract for a claim family is satisfied in full by:
+
+1. **One body-level statement** of the shared provenance status (a sentence naming the status and pointing at the ledger), AND
+2. **One ledger** — an `exhibits/` table or a footnote list — enumerating each individual claim in the family with its own status.
+
+Together, (1) + (2) are the hook-contract equivalent of an inline footnote or `refs/` stub for **every claim the ledger enumerates** — the family does not need the caveat restated at each point of use in body prose. See the worked example below.
+
+**Redundant hedging.** Once a claim family is labeled (1) and ledgered (2), each *additional* inline restatement of the same caveat at a further point of use is **redundant hedging**: it earns no further dim 3 credit (the hook was already satisfied by the label + ledger) and is priced instead under **dim 9 *Rhetorical economy*** (see §"Dim 9 — rhetorical economy" §"Redundant provenance restatement" below), not dim 3. Dim 3's weight and its missing-hook deduction are unchanged — this convention only stops scoring repetition of an already-satisfied hook as if it were free upside.
+
+**No-double-jeopardy clause (load-bearing).** A ledgered claim family MUST NOT incur a missing-hook deduction under this section merely because the reviser stopped repeating the inline caveat at a point of use once the family was labeled and ledgered. The label + ledger together **are** the hook for every claim in the family; dropping a now-redundant inline restatement does not undo that. Without this clause a reviser has no rational reason to ever delete a restated hedge — keeping both the inline caveat everywhere AND the ledger is dim-3-safe, the ledger becomes dead weight, and the redundant-hedging pattern the dim 9 sub-rule exists to catch survives unchanged. This clause is what makes deleting the redundant restatement, once ledgered, the reviser's strictly dominant move.
+
+**Worked example (the Exhibit-D shape).** A memo with a dozen founder-reported metrics states the family's provenance once at the body level:
+
+> Every metric in this section is founder-reported and unreplicated by the drafter; Exhibit D lists each claim with its verification status.
+
+...then carries a ledger — here, `exhibits/exhibit-d-claim-ledger.md` — enumerating the individual claims:
+
+| Claim | Value | Source | Status |
+|---|---|---|---|
+| SWE-Bench Pro pass-rate retention | 92% → 97% of frontier | Founder interview, 2024-Q3 | founder-reported; unreplicated |
+| SWE-Bench Pro cost ratio | 53% → 61% of frontier cost | Founder interview, 2024-Q3 | founder-reported; unreplicated |
+| Time-to-first-edit | faster than frontier-only baseline | Founder interview, 2024-Q3 | founder-reported; subset size not stated |
+
+Under this convention, a body sentence citing the SWE-Bench Pro numbers does NOT need to append "(founder-reported; unreplicated)" inline — the body-level statement plus the Exhibit D ledger already carry the hook for every row. A drafter who restates "(founder-reported; unreplicated)" inline at every point of use anyway is paying a dim 9 cost (see below) for zero additional dim 3 credit.
+
+**Backwards-compat.** A memo with no claim family — every hedge is a one-off, tied to a single claim — is unaffected: there is nothing to consolidate into a ledger, so the standard three-hook contract above applies unchanged and no restatement can be "redundant" under this subsection.
+
 **Perspective sibling as substrate evidence.** When a `<thread>.0.perspective/` (or latest `<thread>.{N}.perspective/`) sibling exists, the reviewer treats its presence as **positive evidence that the drafter had verified external substrate available** when authoring the memo. Specifically: a load-bearing claim that cites a candidate from `candidates.md` (by anchor id, e.g., `#acme-series-a-2024`, or by the underlying `refs/<file>` pointer the candidate names) is treated as carrying an inline-footnote-equivalent hook — i.e., the citation-hook deduction does NOT apply to that claim. The perspective candidate's source pointer (URL, refs file, citation pointer) is the load-bearing artifact; the candidate's structured `Source:` field is the hook. Conversely, an unhooked load-bearing claim about a substrate area the perspective sibling's `notes.md` "Identified gaps" explicitly flagged as un-covered is a **stronger** signal of a real deduction — the drafter was told the substrate was missing and made the claim anyway. The reviewer also reads `_meta.json.search_params.stubs_filled` to identify which `refs/<key>.md` stubs the perspective role resolved (per `commands/memo-perspective.md` §"Side-effect: filling refs/ citation stubs"); a stub the perspective sibling filled is no longer a "needs hook" instance. Absence of a perspective sibling is the legacy case — the reviewer applies the citation-hook rule above unchanged (perspective is non-gating per `anvil/lib/snippets/perspective.md`, so no deduction is taken for its absence). See `commands/memo-perspective.md` for the substrate-gathering contract and `SKILL.md` §"State machine" for the optional-sibling framing.
 
 ## Perspective substrate (dim 3)
@@ -494,8 +525,19 @@ Anti-patterns to penalize:
 - Worked-example tables when the rule is stated and obvious.
 - Open-decisions / risks entries that are reformulations of items already named in earlier sections.
 - Bullet lists that restate adjacent prose without adding granularity.
+- Inline provenance/caveat restatement for a claim family already labeled once and ledgered (see §"Citation hooks (dim 3)" §"Label-once-then-ledger convention (issue #747)") — see §"Redundant provenance restatement" below for the allowance and deduction shape.
 
 The dim 9 justification MUST cite specific instances (e.g., "§4.2's three-paragraph hedge on PAM4/FEC could land in one sentence — -2 on dim 9"). Vague "could be tighter" deductions without named instances are not actionable for the reviser and SHOULD be avoided. (Same anchoring discipline as the existing dim 3 citation-hooks rule and §"Refs back-check (dim 3)" sub-rule above.)
+
+### Redundant provenance restatement (issue #747)
+
+Per §"Citation hooks (dim 3)" §"Label-once-then-ledger convention (issue #747)", once a claim family's provenance status is stated once at the body level and ledgered (an `exhibits/` table or footnote list enumerating the family's individual claims), each *additional* inline restatement of the same caveat at a further point of use is redundant hedging, not evidence discipline. Dim 9 prices it; dim 3 does not — the no-double-jeopardy clause in that subsection governs the dim 3 side.
+
+**Allowance.** The reviewer permits **one free restatement per section** (the first inline recurrence inside a new `##`/`###` section reorients a reader who may have skipped ahead, or may be reading the memo out of order) before deducting. The second and subsequent restatements of the same caveat within the same section are deductible.
+
+**Instance-naming requirement.** The dim 9 justification MUST name the redundant instances explicitly, matching the existing standard for how dim 3 names missing hooks (§"Citation hooks (dim 3)"): e.g., "Redundant provenance: 'founder-reported' restated inline at §2.1, §2.2, §4, §8 — already ledgered in Exhibit D and stated once at §2 — -1 on dim 9." Vague "over-hedged" deductions without named instances are not actionable for the reviser and SHOULD be avoided — same standard as the existing dim 3 citation-hooks rule.
+
+**Backwards-compat.** A memo with no claim family sharing one provenance status — every hedge is a one-off tied to a single claim — is unaffected: there is no ledger to consolidate against, so no restatement can be "redundant" under this sub-rule. This sub-rule fires only when (a) a claim family shares a provenance status, AND (b) that status is both stated once at the body level and ledgered per §"Citation hooks (dim 3)" §"Label-once-then-ledger convention (issue #747)". A memo authored before this sub-rule shipped, or one with no claim families at all, reviews byte-identically to the pre-#747 dim 9 contract.
 
 ### Surfacing to `comments.md` (issue #242)
 
