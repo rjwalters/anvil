@@ -24,11 +24,36 @@ Dry-run is a **flag, not the default** (deliberate divergence from the bridge
 tools): this command only writes into a disposable, marker-guarded build dir,
 never into source-of-truth.
 
+## Runnable entry point
+
+The flow ships as a directly runnable argparse CLI, `lib/cli.py` (mirroring
+`memo/lib/render_phase.py`). From a **consumer repo root** (where anvil is
+installed under `.anvil/`):
+
+```
+python3 .anvil/anvil/skills/project-share/lib/cli.py <project-dir>             # build/rebuild
+python3 .anvil/anvil/skills/project-share/lib/cli.py <project-dir> --dry-run   # plan only, write nothing
+python3 .anvil/anvil/skills/project-share/lib/cli.py <project-dir> --zip       # also write the datestamped zip
+```
+
+From the **anvil source repo** the path is
+`anvil/skills/project-share/lib/cli.py` instead.
+
+The CLI bootstraps `sys.path` (walking up to the ancestor carrying
+`anvil/__init__.py`, so both layouts resolve) and loads the sibling `lib/`
+package under a synthetic name — no hand-rolled importlib driver needed. It
+prints the markdown report to stdout and exits nonzero when the run did not
+succeed (refused rebuild, verification failure, or an unresolved doc). If the
+anvil framework itself cannot be imported (e.g. pydantic missing because
+`uv sync --project .anvil` never ran), it prints a remediation and exits 1;
+under `uv`, invoke it as
+`uv run --project .anvil python .anvil/anvil/skills/project-share/lib/cli.py <project-dir>`.
+
 ## Procedure
 
 The whole flow is one library call — `orchestrate.run(project_dir,
-dry_run=..., zip_output=...)` from `anvil/skills/project-share/lib/`. The
-steps it composes:
+dry_run=..., zip_output=...)` from `anvil/skills/project-share/lib/`, wrapped
+by the `lib/cli.py` entry point above. The steps it composes:
 
 ### 1. Load config + BRIEF
 

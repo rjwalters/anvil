@@ -156,7 +156,10 @@ single invocation; the on-disk evidence is the rebuilt `SHARE/` tree and its
   resolution + refs + PDF fingerprints), `plan.py` (ordering, strip
   filtering, collision/guard checks), `apply.py` (marker-guarded rebuild,
   EXPORT.md, zip), `verify.py` (post-write layout + leak checks),
-  `orchestrate.py` (single `run()` entry).
+  `orchestrate.py` (single `run()` entry), `cli.py` (the runnable
+  argparse entry point wrapping `orchestrate.run` — `python3
+  <skill>/lib/cli.py <project-dir> [--dry-run] [--zip]`; mirrors
+  `memo/lib/render_phase.py`).
 
 ## Tests
 
@@ -182,6 +185,10 @@ PR #362 / #372 precedent):
   folders disappear; pinned-timestamp runs are byte-identical.
 - `test_project_share_guard.py` — foreign-dir refusal (no deletion) and
   marker-authorized rebuild.
+- `test_project_share_cli.py` — the runnable `lib/cli.py` entry point:
+  stdlib-only module imports (standalone-import discipline), `main()`
+  dry-run / apply / `--zip` / unresolved-doc / bad-dir exit codes, an
+  end-to-end subprocess run, and the command-doc invocation contract.
 
 ## Git sync hook (opt-in, off by default)
 
