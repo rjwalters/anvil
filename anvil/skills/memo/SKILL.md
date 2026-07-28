@@ -26,7 +26,8 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
       _meta.json             { critic: perspective, scorecard_kind: human-verdict, search_params: { ... } }
       _progress.json         Phase state (phase: perspective)
     <thread>.1/              First drafted version (immutable once written)
-      <thread>.md            Memo body (filename echoes the thread slug per #295)
+      skeleton.md            Recursive claim tree the body expands (issue #752); authored before the body, immutable with it. Absent on pre-#752 versions (legal)
+      <thread>.md            Memo body (filename echoes the thread slug per #295); an expansion of skeleton.md
       exhibits/              Inline exhibits referenced from body
       _progress.json         Phase state for this version
       changelog.md           (revisions only) Maps prior critic notes to changes
@@ -57,6 +58,25 @@ A **memo thread** is a single decision artifact (typically: invest / pass / cond
 **Body filename convention (#295).** Inside each `<thread>.{N}/` version directory the body markdown filename **echoes the thread slug**: a thread named `investment-memo` writes its body to `investment-memo.1/investment-memo.md`, a thread named `latency-wall` writes to `latency-wall.1/latency-wall.md`, and so on. This is the only recognized shape — there is no `body_filename` override mechanism, no skill-fixed `memo.md` default. The echo convention makes the file identifiable on disk (Spotlight, shell output, "Open Recent" all show the slug rather than the same `memo.md` for every thread in every project).
 
 Versioned dirs (`<thread>.{N}/`) and critic sibling dirs (`<thread>.{N}.<critic>/`) are **immutable once their `_progress.json` records the phase as `done`**. Revisions are produced as a new version dir, never by editing in place.
+
+### Skeleton-first drafting (issue #752)
+
+Anvil documents were historically drafted **body-first**: prose is written, then summarized, then scored claim-by-claim. Nothing owned the document's *communicative intent* as a first-class artifact, so a memo could pass every atom-level check (every claim true, sourced, and hedged) while failing to transmit its plan — the "word-soup" failure mode the studio canary surfaced when a praetor-thread memo scored 43/44 (advance:true, 0 critical) yet the operator rejected it as "not having a clear understanding of what we are trying to communicate." The rubric verifies atoms; comprehension is a property of the whole.
+
+**Skeleton-first drafting** makes the intent a first-class, on-disk artifact. Every `<thread>.{N}/` version dir carries a `skeleton.md` alongside `<thread>.md` — a **recursive claim tree** the body is an expansion of:
+
+- **Root claim** — exactly ONE sentence stating what a reader must take away (a claim, not a topic).
+- **Section claims** — one sentence per planned section, each a claim ("The economics force a $457–$1,314 enterprise price and today it sits $14 above the kill line", never "Economics"); sub-claims nest under a section claim.
+- **Plain-language constraint** — no term may appear in the skeleton that a domain-literate outsider could not parse unless the skeleton defines it, forcing the jargon question to be settled BEFORE 3,000 words calcify around undefined coinages.
+
+The lifecycle wiring:
+
+- **`memo-draft` step 5f** authors `skeleton.md` before the body; step 6 expands it. `skeleton.md` is immutable with the version dir.
+- **`--skeleton-gate`** (opt-in) stops the drafter after the skeleton so the operator can approve or correct the seven-sentence claim tree in one minute — the checkpoint at which every expensive praetor-thread failure would have been caught (see `commands/memo-draft.md` §"CLI flags").
+- **`memo-revise` step 8** edits `skeleton.md` FIRST when a revision changes structure or claims, recording the skeleton diff in `changelog.md` — structural drift becomes a small tree diff instead of a 3,400-word prose diff (see `commands/memo-revise.md` §"Skeleton-first revision").
+- **`memo-review` step 4e** back-checks skeleton→body derivation as a third leg of the summary-detail consistency check, using the same `MATCH` / `ABSENT` / `CONTRADICTED` / `DIVERGENT` verdict tags and severity ladder (see `rubric.md` §"Summary-detail consistency" §"Skeleton↔section derivation leg (issue #752)").
+
+**Sub-step of `DRAFTED`, not a new state.** `_progress.json.phases.skeleton` records that the skeleton ran; the state machine still derives `DRAFTED` from `phases.draft == done`. **Backwards-compat is byte-identical**: a version dir with no `skeleton.md` (every memo drafted before issue #752, and any opt-out thread) is a fully legal `DRAFTED` state; the reviewer's skeleton back-check records `ran: false` observationally, takes no deduction, and never blocks advance. The skeleton is opt-in producer discipline — the framework never penalizes its absence.
 
 ### Citation stubs
 
@@ -122,6 +142,8 @@ Per `rubric.md` §"Scope tagging (comments.md)" and `commands/memo-review.md` st
 In addition to the refs back-check above (memo claim ↔ `refs/` source-of-truth), the reviewer performs an **intra-memo summary-detail consistency back-check** on every memo with a callout, abstract, TL;DR, or thesis block — see `rubric.md` §"Summary-detail consistency" and `commands/memo-review.md` §Procedure step 4e. The back-check enumerates load-bearing summary claims, locates the detail section that elaborates each claim, and classifies the relationship as `MATCH` / `ABSENT` / `CONTRADICTED` / `DIVERGENT` with severity `critical` / `important` / `suggestion`. A `CONTRADICTED` finding at `critical` severity (e.g., a callout that assigns one generation's behavior to a different generation) raises a `Summary-detail consistency: CONTRADICTED` critical flag and forces `advance: false` regardless of the rubric total.
 
 This is the **intra-memo** leg of the back-check triangle (memo A summary ↔ memo A detail); the refs back-check above is the source-of-truth leg (memo A claim ↔ memo A `refs/`); the cross-thread analog (§"Cross-thread citation back-check" below, #236) covers memo A claim ↔ memo B §N. Phase A ships as reviewer-prose discipline (no Python detector); a Phase B detector at `anvil/skills/memo/lib/summary_detail.py` is a follow-on gated on canary signal. The canary-anchor fixture under `tests/fixtures/summary_detail_consistency/raytheon_gen_attribution/` preserves the Studio Raytheon-pitch memo.3 Gen-attribution swap as the regression-test anchor for Phase B.
+
+The intra-memo leg gained a **third companion** in issue #752: the **skeleton↔section derivation leg** (memo A `skeleton.md` claim ↔ memo A §N) checks that the body actually delivers the recursive claim tree it was authored to expand (see §"Skeleton-first drafting" above and `rubric.md` §"Summary-detail consistency" §"Skeleton↔section derivation leg (issue #752)"). It reuses the same `MATCH` / `ABSENT` / `CONTRADICTED` / `DIVERGENT` verdict tags and severity ladder; a `CONTRADICTED` body-vs-skeleton finding (or an `ABSENT` root claim) raises a `Skeleton derivation` critical flag. When no `skeleton.md` is present (every pre-#752 thread), the leg records `ran: false` observationally and takes no deduction. The canary-anchor fixture is under `tests/fixtures/skeleton_derivation/praetor_word_soup/`.
 
 ### Cross-thread citation back-check
 
@@ -252,7 +274,7 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | State | Evidence |
 |---|---|
 | `EMPTY` | No `<thread>.{N}/` directories exist |
-| `DRAFTED` | Latest `<thread>.{N}/` exists with `<thread>.md` (body filename echoes the slug per #295) and `_progress.json.draft == done`; no sibling review at the same `N` |
+| `DRAFTED` | Latest `<thread>.{N}/` exists with `<thread>.md` (body filename echoes the slug per #295) and `_progress.json.draft == done`; no sibling review at the same `N`. (`skeleton.md` + `phases.skeleton == done` are a sub-step of `DRAFTED`, not a gate — issue #752; their absence is a legal `DRAFTED` state) |
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` |
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag |
