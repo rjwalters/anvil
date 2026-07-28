@@ -439,14 +439,15 @@ documents:
 
 ### Range shape (used by every range surface)
 
-Inside any `target_length`, `target_length_overrides["<N>"]`, or `rubric_overrides.target_length`, the range is an object with **exactly one** of two keys:
+Inside any `target_length`, `target_length_overrides["<N>"]`, or `rubric_overrides.target_length`, the range is an object with **exactly one** of these keys:
 
 | Key | Shape | Meaning |
 |---|---|---|
 | `words` | `[min, max]` | Target word count for the body markdown (primary, deterministic, no rendering required). |
 | `pages` | `[min, max]` | Target rendered page count. Converted internally at **600 words/page** (so `pages: [3, 4]` becomes `words: [1800, 2400]`). |
+| `slides` | `[min, max]` | Target slide count. Accepted ONLY when the document's `artifact_type` is `deck` or `slides` (issue #742) — rejected for every other artifact type. A slide deck is authored and reviewed in slide count, not words or pages, so `slides` is a TERMINAL unit: it is never converted through the words-per-page proxy. |
 
-`words` is the primary spec form. `pages` is accepted as ergonomic shorthand for authors who think in pages, but the comparison logic always operates on word count — anvil:memo is markdown-first (no native page count without rendering) and the 600-words/page conversion is the documented, stable proxy.
+`words` is the primary spec form for memo-family (word-scored) artifacts. `pages` is accepted as ergonomic shorthand for authors who think in pages, but the comparison logic always operates on word count — anvil:memo is markdown-first (no native page count without rendering) and the 600-words/page conversion is the documented, stable proxy. `slides` exists because a deck/slides thread has no truthful words/pages equivalent at all; declaring `pages` on a deck would otherwise fabricate a word budget via the 600-wpp conversion for an artifact that is never scored by word count.
 
 Both `min` and `max` are integers; `min <= max`. The range is inclusive on both ends: a word count between `min` and `max` (inclusive) is on-target.
 

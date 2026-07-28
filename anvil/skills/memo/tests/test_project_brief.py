@@ -1021,6 +1021,123 @@ class TestMalformedTargetLength(_TmpProjectBase):
 
 
 # ---------------------------------------------------------------------------
+# target_length: { slides: [...] } — issue #742
+# ---------------------------------------------------------------------------
+
+
+class TestTargetLengthSlidesUnit(_TmpProjectBase):
+    """``slides`` is a truthful third ``target_length`` unit for deck/slides.
+
+    A deck (or slides) thread is authored and reviewed in slide count,
+    not words or pages — declaring ``pages`` on a deck previously routed
+    silently through the 600-words-per-page conversion, fabricating a
+    word budget for an artifact that has none. ``slides`` is accepted
+    ONLY for ``artifact_type: deck`` / ``artifact_type: slides``, and is
+    passed through WITHOUT any words-per-page-style conversion — slide
+    count is the terminal unit.
+    """
+
+    def test_deck_slides_unit_parses_without_conversion(self) -> None:
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: pitch-deck
+                artifact_type: deck
+                target_length: { slides: [11, 14] }
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+
+        tl = brief.documents[0].target_length
+        self.assertIsNotNone(tl)
+        assert tl is not None
+        self.assertEqual(tl.source_key, "slides")
+        # No words-per-page-style conversion: the raw slide bounds pass
+        # through verbatim (11, 14) — NOT multiplied by any wpp factor.
+        self.assertEqual(tl.min_words, 11)
+        self.assertEqual(tl.max_words, 14)
+
+    def test_slides_artifact_type_slides_unit_parses(self) -> None:
+        """``artifact_type: slides`` (the talk-deck skill) also accepts ``slides``."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: talk
+                artifact_type: slides
+                target_length: { slides: [20, 25] }
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+
+        tl = brief.documents[0].target_length
+        self.assertIsNotNone(tl)
+        assert tl is not None
+        self.assertEqual(tl.source_key, "slides")
+        self.assertEqual(tl.min_words, 20)
+        self.assertEqual(tl.max_words, 25)
+
+    def test_non_deck_artifact_type_slides_unit_rejected(self) -> None:
+        """A ``slides`` unit on a non-deck/non-slides document is rejected."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: doc
+                artifact_type: investment-memo
+                target_length: { slides: [11, 14] }
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        msg = str(cm.exception)
+        self.assertIn("slides", msg)
+        self.assertIn("deck", msg)
+        self.assertIn("investment-memo", msg)
+
+    def test_deck_words_and_slides_both_declared_raises(self) -> None:
+        """Even on a deck, declaring both ``words`` and ``slides`` is ambiguous."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: pitch-deck
+                artifact_type: deck
+                target_length: { words: [100, 200], slides: [11, 14] }
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        with self.assertRaises(ValueError) as cm:
+            load_project_brief_strict(self.project_dir)
+        self.assertIn("ambiguous", str(cm.exception).lower())
+
+    def test_deck_words_unit_still_accepted(self) -> None:
+        """A deck may still declare ``words`` / ``pages`` — ``slides`` is additive, not exclusive."""
+        fm = textwrap.dedent(
+            """\
+            project: tiny
+            documents:
+              - slug: pitch-deck
+                artifact_type: deck
+                target_length: { words: [500, 800] }
+            """
+        ).rstrip()
+        _write_brief(self.project_dir, fm)
+        brief = load_project_brief_strict(self.project_dir)
+
+        tl = brief.documents[0].target_length
+        self.assertIsNotNone(tl)
+        assert tl is not None
+        self.assertEqual(tl.source_key, "words")
+        self.assertEqual(tl.min_words, 500)
+        self.assertEqual(tl.max_words, 800)
+
+
+# ---------------------------------------------------------------------------
 # Absence-tolerant behavior
 # ---------------------------------------------------------------------------
 
