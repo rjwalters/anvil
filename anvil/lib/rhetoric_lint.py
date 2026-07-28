@@ -20,11 +20,17 @@ rule kinds:
   (``'`` matches ``’``).
 - ``regex`` — compiled as written, with ``re.IGNORECASE`` applied
   (the lint is a vocabulary check; casing never changes the verdict).
-- ``frequency`` — a literal token counted per 1000 words of scanned
-  text against ``max_per_1000_words`` (e.g. the em-dash density rule:
-  more than 8 ``—`` per 1000 words is the documented AI-tell). A
-  ``min_words`` floor (default :data:`DEFAULT_FREQUENCY_MIN_WORDS`)
-  keeps density estimates from firing on statistically tiny texts.
+- ``frequency`` — a ``re.IGNORECASE`` pattern whose match count is
+  measured per 1000 words of scanned text against
+  ``max_per_1000_words``. A single-literal pattern behaves like a token
+  count (e.g. the em-dash density rule: more than 8 ``—`` per 1000 words
+  is the documented AI-tell); a span pattern counts spans (e.g. the
+  ``emphasis-density`` rule counts ``\\*\\*[^*]+\\*\\*`` bold spans, more
+  than ~20 per 1000 words being the bold-inflation tell). An optional
+  ``label`` supplies a human name for the counted unit in the finding's
+  diagnostic tail. A ``min_words`` floor (default
+  :data:`DEFAULT_FREQUENCY_MIN_WORDS`) keeps density estimates from
+  firing on statistically tiny texts.
 
 JSON rule-set schema (consumer files)
 -------------------------------------
@@ -155,6 +161,16 @@ DEFAULT_FREQUENCY_MIN_WORDS = 50
 # VOCABULARY.md): sustained density above 8 per 1000 words is the
 # documented AI-tell in business/technical prose.
 EMDASH_MAX_PER_1000_WORDS = 8
+
+# Bold-emphasis density ceiling for the default ``emphasis-density``
+# frequency rule (issue #745). Studio calibration: across 105 memo
+# bodies the median bold density runs ~10-12 spans/1000 words on healthy
+# memos; the revise loop was observed monotonically densifying one thread
+# to 35+ spans/1000 (25.5% of words bolded) with no existing lint able to
+# see it. 20 gives comfortable headroom above the healthy median while
+# flagging the pathological 35+ range where emphasis inverts (the reader
+# learns to ignore bold entirely).
+EMPHASIS_MAX_PER_1000_WORDS = 20
 
 # Suppression-directive rule tokens honored by default. The memo gate's
 # dimension name is the documented consumer-facing token
@@ -350,6 +366,49 @@ DEFAULT_RHETORIC_RULES: tuple[dict, ...] = (
         "pattern": "—",
         "max_per_1000_words": EMDASH_MAX_PER_1000_WORDS,
         "message": "Em-dash density exceeds the AI-tell threshold; vary punctuation (commas, colons, parentheses, periods).",
+    },
+    {
+        "id": "emphasis-density",
+        "kind": RULE_KIND_FREQUENCY,
+        # A bold span: ``**...**`` with at least one non-asterisk char
+        # inside. Frequency patterns are compiled as regex (case fold is
+        # irrelevant here), so this counts bold *spans*, not raw ``**``
+        # runs — one span == one finding-worthy unit of emphasis.
+        "pattern": r"\*\*[^*]+\*\*",
+        "label": "bold span",
+        "max_per_1000_words": EMPHASIS_MAX_PER_1000_WORDS,
+        "message": "Bold emphasis above ~20 spans/1000 words stops functioning as emphasis; reserve bold for decision-critical claims (gates, kill lines, the recommendation).",
+    },
+    {
+        "id": "no-meta-commentary",
+        "kind": RULE_KIND_REGEX,
+        # Reviewer-addressed meta-commentary: prose *about* the document
+        # (self-reference + a describing verb) plus the fixed
+        # rubric-compliance-performance phrases the studio canary
+        # surfaced ("argued here", "not re-argued here", "out of scope
+        # here", "stated plainly"). The self-reference arm deliberately
+        # covers both "this memo" and "the memo/document" against a broad
+        # verb set — the memo.8 escape (issue #745) was a narrower grep
+        # that missed "this memo proposes".
+        "pattern": (
+            r"\b(?:this|the) (?:memo|document) "
+            r"(?:does not|do not|is|are|argues?|proposes?|claims?|"
+            r"pretends?|assumes?|shows?|demonstrates?|contends?)\b"
+            r"|\b(?:argued|stated|confronted) here\b"
+            r"|\bre-argued here\b"
+            r"|\bout of scope here\b"
+            r"|\bstated plainly\b"
+        ),
+        "message": "Prose about the document is addressed to the reviewer, not the reader; delete the frame and keep the content.",
+    },
+    {
+        "id": "no-warning-emoji",
+        "kind": RULE_KIND_REGEX,
+        # Warning / alarm emoji in body prose. The variation selector
+        # (U+FE0F) rides with U+26A0 in the class; matching it alone is
+        # harmless (it never appears un-anchored in real prose).
+        "pattern": r"[⚠️🚨❗]",
+        "message": "Emoji alarm markers are emphasis inflation; if it's a kill condition, say so in words.",
     },
 )
 
@@ -645,6 +704,22 @@ def _validate_rule(rule: object) -> tuple[Optional[dict], Optional[str]]:
         ):
             min_words = DEFAULT_FREQUENCY_MIN_WORDS
         normalized["min_words"] = int(min_words)
+        # Frequency patterns are counted as regex matches (``findall``),
+        # so a rule can count spans like ``\*\*[^*]+\*\*`` (bold), not
+        # only single literal tokens. A single-char literal such as the
+        # em-dash ``—`` counts identically under either model. Compile
+        # now so a malformed pattern is a config finding, not a
+        # mid-scan crash.
+        try:
+            normalized["_compiled"] = _compile_rule_pattern(kind, pattern)
+        except re.error as exc:
+            return (None, f"rule {rule_id!r}: invalid regex pattern: {exc}")
+        # Optional human label used only in the frequency finding's
+        # diagnostic tail (so an opaque regex like the bold-span pattern
+        # reads as "bold span" instead of the raw source).
+        label = rule.get("label")
+        if isinstance(label, str) and label.strip():
+            normalized["label"] = label.strip()
     else:
         # Positional scope (phrase/regex only; frequency is always
         # document-level and never receives a ``scope`` key). Unknown or
@@ -866,18 +941,20 @@ def lint_rhetoric(
 
     for rule in rules:
         if rule["kind"] == RULE_KIND_FREQUENCY:
-            count = sum(line.count(rule["pattern"]) for line in scan_lines)
+            freq_regex = rule["_compiled"]
+            count = sum(len(freq_regex.findall(line)) for line in scan_lines)
             if words < rule["min_words"] or words == 0:
                 continue
             density = count / words * 1000.0
             if density > rule["max_per_1000_words"]:
+                label = rule.get("label") or rule["pattern"]
                 findings.append(
                     RhetoricFinding(
                         rule_id=rule["id"],
                         severity=rule["severity"],
                         message=(
                             f"{rule['message']} "
-                            f"({count} occurrence(s) of {rule['pattern']!r} "
+                            f"({count} occurrence(s) of {label!r} "
                             f"in {words} words = {density:.1f}/1000; "
                             f"threshold {rule['max_per_1000_words']:g}/1000)."
                         ),
@@ -928,6 +1005,7 @@ __all__ = [
     "DEFAULT_RHETORIC_RULES",
     "DEFAULT_SUPPRESS_RULES",
     "EMDASH_MAX_PER_1000_WORDS",
+    "EMPHASIS_MAX_PER_1000_WORDS",
     "RULE_KIND_FREQUENCY",
     "RULE_KIND_PHRASE",
     "RULE_KIND_REGEX",
