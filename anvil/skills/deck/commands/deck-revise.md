@@ -98,6 +98,7 @@ For the decision:
    - For each dimension scoring <50% of weight after aggregation: list the specific changes needed to lift the score (drawn from the relevant critic's findings).
    - **Conflict resolution**: when critics disagree (e.g., reviewer says "more risks", narrative says "fewer slides"), explicitly pick a synthesis. Document the conflict and the resolution in `_revision-log.md`.
    - **Preserve high-scoring sections**: any dimension scoring ≥75% of weight in the prior iteration must remain at ≥75% in the revised iteration. Track regressions in `_revision-log.md`.
+   - **Findings are leads, not evidence (issue #749).** A `refs/<file>` anchor, quote, or figure-source claim supplied by a `comments.md` finding or a `verdict.md` critical-flag justification is a LEAD, not a verified fact. Before writing or modifying such a value on a slide in response to a finding, the reviser MUST resolve it against the actual source file at write time — the same verification discipline `rubric.md` §"Refs back-check (dims 5, 6)" already requires when the reviser originates a source-of-truth claim itself. Do NOT transcribe a finding's own citation into `deck.md` unverified. When the verified value differs from what the finding supplied, write the VERIFIED value — not the finding's value — and log the correction in `_revision-log.md` per step 11's "Review-supplied citation correction note."
 7b. **Consult the load-bearing economic-substance subset of parity findings BEFORE bulk-dismissing `only_in_memo`** — issue #553:
    - Read `<thread>.{N}.review/_summary.md`'s `lint.deck_memo_parity.only_in_memo_economic` list (the same list also surfaces under `findings.md` § "Parity-lint findings (deck↔memo, optional)" → "Economic substance dropped from deck (load-bearing subset)"). When the lint skipped or no memo sibling exists, this list is empty and the step is inactive.
    - **Why this step exists**: thin-deck-vs-rich-memo is the expected steady state for most threads — decks are legitimately terser than memos — and the broader `lint.deck_memo_parity.only_in_memo` set will frequently fire on prose tokens (acronyms, dates, percentages in regulatory-background) that are correctly dropped from the deck. The natural reviser response to the broader set is "accept the divergence, document if needed, move on." That response is **correct** for the broader set and **wrong** for the economic subset: each `only_in_memo_economic` token is a load-bearing economic number the memo carried (an attach rate, contribution-margin figure, pricing point, ARR/MRR / unit-economics claim) that the deck dropped. The canary failure shape (Docent, 2026-06-12) was the operator bulk-dismissing all `only_in_memo` warnings as "thin deck, by design" and missing a `$/seat` contribution-margin figure hidden in the noise.
@@ -164,6 +165,14 @@ For the decision:
     |---|---|---|
     | acme-seed.1.review | Add advisors slide | Brief lists 2 advisors but neither has agreed to be public yet — would violate the assets-available contract. Will revisit when founder confirms. |
     | acme-seed.1.design | Use brand color on every slide | Brand color used on title and section breaks (purposeful, not decorative). Reviser disagrees that brand color should appear on every slide — would flatten visual hierarchy. |
+
+    ## Review-supplied citation corrections (issue #749)
+
+    When step 7's "Findings are leads, not evidence" verification turns up a `refs/<file>` anchor, quote, or number that a finding supplied but that does NOT match what the source file actually says or where it lives, add a row here naming the finding's claimed value, the verified value, and the source that settled it. Absent when every finding's supplied location verified clean this pass — the section is written only when verification actually corrected something.
+
+    | Source | Claimed | Verified | Resolution |
+    |---|---|---|---|
+    | acme-seed.1.review | `refs/cv.pdf` "Bessemer Trust, 2013-2023" | `refs/cv.pdf` actually reads "Bessemer Trust, 2018-2023" | Slide 10 written with the verified 5-year tenure, not the finding's 10-year claim. |
 
     ## Dimensions preserved (no regression)
 

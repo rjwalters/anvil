@@ -47,6 +47,7 @@ This command is the canonical "N parallel critics, one reviser" pattern. For the
    - For each `comments.md` entry tagged `blocker` or `major`, plan a concrete change.
    - For each audit `findings.md` row with `Verified? = no` or `partial` (with material discrepancy), plan a concrete fix (provide source, correct number, or remove claim).
    - For each prior-report cross-check disagreement called out in the audit verdict, plan either an explicit reconciliation in the body or a correction.
+   - **Findings are leads, not evidence (issue #749).** A cited source, `refs/<file>` location, quote, or corrected figure supplied by a `comments.md` entry or an audit `findings.md` row is a LEAD, not a verified fact. Before writing or modifying such a value in `report.md` in response to a finding, the reviser MUST resolve it against the actual source at write time — the same claim-inventory discipline `report-audit` already applies when it walks the report's own citations (`commands/report-audit.md` step 5's claim inventory + step 7's evidence map). Do NOT transcribe a finding's own citation into the body unverified, even under iteration pressure. When the verified value differs from what the finding supplied, write the VERIFIED value — not the finding's value — and log the correction in `changelog.md` per step 9's "Review-supplied citation correction note."
    - Resolve conflicting feedback between critic siblings explicitly (e.g., reviewer says "tighten exec summary," audit says "exec summary numbers don't match body — fix the body, not the summary" — pick a synthesis and note it in the changelog).
 8. **Produce `report.md`** at `<thread>.{N+1}/report.md`:
    - Address each planned change.
@@ -66,6 +67,8 @@ This command is the canonical "N parallel critics, one reviser" pattern. For the
    ```
 
    For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next review pass can override or accept the reviser's judgment.
+
+   **Review-supplied citation correction note (issue #749).** When step 7's "Findings are leads, not evidence" verification turns up a source, `refs/<file>` location, or figure that a `comments.md` entry or audit `findings.md` row supplied but that does NOT match what the source actually says, add a row here naming the finding's claimed value, the verified value, and the source that settled it — e.g. `| acme-q2/findings.1.audit (critical) | claimed refs/perf.csv row 12 → "47% reduction" | verified refs/perf.csv row 12 actually reads "42% reduction" | Body written against the verified 42% figure |`. This is the audit trail entry that makes a review-sidecar sourcing error visible on the pass that FIXES it, rather than only becoming visible after a later reviser's own remediation guess also lands on the wrong figure. Absence of the row (every supplied value verified clean) is the default and unremarkable.
 10. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 11. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised acme-q2/findings.1 → acme-q2/findings.2/ (addressed 11 review notes, 6 audit findings, declined 1)`).
 
