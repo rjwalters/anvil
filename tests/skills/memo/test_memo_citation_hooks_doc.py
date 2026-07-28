@@ -88,6 +88,20 @@ def test_memo_draft_references_rubric_deduction():
     )
 
 
+def test_memo_draft_teaches_label_once_then_ledger_pattern():
+    """Issue #747: drafters should reach for a claim-family ledger up front
+    instead of restating the same provenance hedge at every point of use."""
+    body = _read(DRAFT_MD).lower()
+    assert "label-once-then-ledger" in body, (
+        "memo-draft.md MUST teach the label-once-then-ledger pattern by name "
+        "(issue #747)"
+    )
+    assert "ledger" in body, (
+        "memo-draft.md MUST teach drafters to reach for a claim-family ledger "
+        "when several claims share one provenance status (issue #747)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # rubric.md — dim 3 has a named Citation hooks subsection with deduction rule
 # ---------------------------------------------------------------------------
@@ -141,6 +155,72 @@ def test_rubric_preserves_length_targets_subsection():
     body = _read(RUBRIC_MD)
     assert "Length targets" in body, (
         "rubric.md MUST preserve the existing 'Length targets (dim 7)' subsection"
+    )
+
+
+# ---------------------------------------------------------------------------
+# rubric.md — label-once-then-ledger convention (issue #747)
+# ---------------------------------------------------------------------------
+
+
+def test_rubric_documents_label_once_then_ledger_convention():
+    body = _read(RUBRIC_MD).lower()
+    assert "label-once-then-ledger" in body, (
+        "rubric.md MUST document the label-once-then-ledger convention by name "
+        "(issue #747)"
+    )
+    assert "ledger" in body, (
+        "rubric.md MUST document the exhibit/footnote ledger as the mechanism "
+        "that satisfies the hook contract for a claim family (issue #747)"
+    )
+
+
+def test_rubric_documents_claim_family_concept():
+    body = _read(RUBRIC_MD).lower()
+    assert "claim family" in body or "claim families" in body, (
+        "rubric.md MUST name the 'claim family' concept the label-once-then-ledger "
+        "convention operates over (issue #747)"
+    )
+
+
+def test_rubric_documents_no_double_jeopardy_clause():
+    body = _read(RUBRIC_MD).lower()
+    assert "no-double-jeopardy" in body, (
+        "rubric.md MUST document the no-double-jeopardy clause explicitly: a "
+        "ledgered claim family cannot ALSO incur a missing-hook deduction at "
+        "point of use (issue #747)"
+    )
+
+
+def test_rubric_documents_redundant_hedging_deduction():
+    body = _read(RUBRIC_MD).lower()
+    assert "redundant hedging" in body or "redundant provenance" in body, (
+        "rubric.md MUST document that repeated inline restatement of an "
+        "already-ledgered caveat is deductible under dim 9, not dim 3 "
+        "(issue #747)"
+    )
+
+
+def test_rubric_dim9_anti_patterns_include_redundant_provenance_restatement():
+    body = _read(RUBRIC_MD)
+    # Locate the dim 9 section so this assertion is anchored, not a
+    # doc-wide grep — mirrors the existing sectioned-assertion style.
+    dim9_idx = body.find("Dim 9")
+    assert dim9_idx != -1, "rubric.md MUST contain a 'Dim 9' section"
+    dim9_body = body[dim9_idx:].lower()
+    assert "redundant" in dim9_body and "ledger" in dim9_body, (
+        "rubric.md's Dim 9 anti-patterns list MUST include redundant inline "
+        "restatement of an already-ledgered provenance caveat (issue #747)"
+    )
+
+
+def test_rubric_dim9_redundant_provenance_names_instances():
+    """The dim 9 redundant-provenance sub-rule must require named instances,
+    matching the existing anchoring discipline used elsewhere in dim 3/dim 9."""
+    body = _read(RUBRIC_MD)
+    assert "founder-reported" in body, (
+        "rubric.md MUST carry a worked instance-naming example for the "
+        "redundant-provenance deduction (issue #747)"
     )
 
 
