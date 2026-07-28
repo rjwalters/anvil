@@ -35,6 +35,7 @@ from anvil.lib.rhetoric_lint import (
     DEFAULT_FREQUENCY_MIN_WORDS,
     DEFAULT_RHETORIC_RULES,
     EMDASH_MAX_PER_1000_WORDS,
+    EMPHASIS_MAX_PER_1000_WORDS,
     RULE_KIND_FREQUENCY,
     RULE_KIND_PHRASE,
     RULE_KIND_REGEX,
@@ -84,23 +85,37 @@ def test_module_is_pure_stdlib():
 
 
 def test_default_rules_all_valid_and_conservative_count():
-    """Every default validates against the documented schema; ~20-30 rules."""
+    """Every default validates against the documented schema; ~20-35 rules."""
     for rule in DEFAULT_RHETORIC_RULES:
         normalized, error = _validate_rule(rule)
         assert error is None, error
         assert normalized is not None
-    assert 20 <= len(DEFAULT_RHETORIC_RULES) <= 30
+    assert 20 <= len(DEFAULT_RHETORIC_RULES) <= 35
     ids = [r["id"] for r in DEFAULT_RHETORIC_RULES]
     assert len(ids) == len(set(ids)), "duplicate default rule ids"
 
 
-def test_default_set_has_exactly_one_frequency_rule_emdash():
-    freq = [
-        r for r in DEFAULT_RHETORIC_RULES if r["kind"] == RULE_KIND_FREQUENCY
-    ]
-    assert len(freq) == 1
-    assert freq[0]["pattern"] == "—"
-    assert freq[0]["max_per_1000_words"] == EMDASH_MAX_PER_1000_WORDS == 8
+def test_default_set_frequency_rules_are_emdash_and_emphasis():
+    """Two frequency defaults ship: em-dash density and bold-span density
+    (issue #745). Both carry a positive ``max_per_1000_words``."""
+    freq = {
+        r["id"]: r
+        for r in DEFAULT_RHETORIC_RULES
+        if r["kind"] == RULE_KIND_FREQUENCY
+    }
+    assert set(freq) == {"em-dash-density", "emphasis-density"}
+    assert freq["em-dash-density"]["pattern"] == "—"
+    assert (
+        freq["em-dash-density"]["max_per_1000_words"]
+        == EMDASH_MAX_PER_1000_WORDS
+        == 8
+    )
+    assert freq["emphasis-density"]["pattern"] == r"\*\*[^*]+\*\*"
+    assert (
+        freq["emphasis-density"]["max_per_1000_words"]
+        == EMPHASIS_MAX_PER_1000_WORDS
+        == 20
+    )
 
 
 def test_default_rules_serialize_as_json():
@@ -222,6 +237,104 @@ def test_frequency_counts_exclude_code_and_comments():
         + " -->\n"
     )
     assert _active(lint_rhetoric(text)) == []
+
+
+# ---------------------------------------------------------------------------
+# emphasis-density (issue #745): bold-span frequency rule
+# ---------------------------------------------------------------------------
+
+
+def _bold_doc(spans: int, total_words: int = 1000) -> str:
+    """A ``total_words``-word doc with ``spans`` distinct bold spans.
+
+    Each ``**bN**`` span contributes exactly one word token, so the
+    per-1000-words denominator is ``total_words`` regardless of ``spans``.
+    """
+    plain = ("alpha " * (total_words - spans)).strip()
+    bolds = " ".join(f"**b{i}**" for i in range(spans))
+    return plain + "\n" + bolds + "\n"
+
+
+def test_emphasis_density_over_threshold_warns():
+    """Acceptance criterion: 30 bold spans / 1000 words warns."""
+    hits = _active(lint_rhetoric(_bold_doc(30)))
+    assert [f.rule_id for f in hits] == ["emphasis-density"]
+    assert hits[0].line is None  # document-level, no line anchor
+    # The finding counts bold *spans* (30), not raw ``**`` runs (60), and
+    # names the counted unit with the human label, not the raw regex.
+    assert "30 occurrence" in hits[0].message
+    assert "bold span" in hits[0].message
+    assert r"\*\*" not in hits[0].message
+
+
+def test_emphasis_density_under_threshold_no_finding():
+    """Acceptance criterion: 15 bold spans / 1000 words does NOT warn."""
+    assert _active(lint_rhetoric(_bold_doc(15))) == []
+
+
+def test_emphasis_density_disable_via_config():
+    res = lint_rhetoric(
+        _bold_doc(30), extra_rules={"disable": ["emphasis-density"]}
+    )
+    assert _active(res) == []
+
+
+# ---------------------------------------------------------------------------
+# no-meta-commentary (issue #745): reviewer-addressed meta-commentary
+# ---------------------------------------------------------------------------
+
+
+def test_meta_commentary_fires_on_self_reference_and_fixed_phrases():
+    text = (
+        "This memo does not claim victory.\n"
+        "The point was argued here.\n"
+        "That is out of scope here.\n"
+        "It is stated plainly.\n"
+    )
+    ids = [f.rule_id for f in _active(lint_rhetoric(text))]
+    assert ids == ["no-meta-commentary"] * 4
+
+
+def test_meta_commentary_catches_this_memo_proposes():
+    """The memo.8 escape (issue #745): a narrower ad-hoc grep missed
+    'this memo proposes'; the shipped rule's verb set includes it."""
+    text = "The open-layer structure this memo proposes is sound.\n"
+    assert [f.rule_id for f in _active(lint_rhetoric(text))] == [
+        "no-meta-commentary"
+    ]
+
+
+def test_meta_commentary_no_false_positive_on_plain_memo_reference():
+    assert _active(lint_rhetoric("Send the memo to finance by Friday.\n")) == []
+
+
+def test_meta_commentary_disable_via_config():
+    res = lint_rhetoric(
+        "This memo argues X.\n",
+        extra_rules={"disable": ["no-meta-commentary"]},
+    )
+    assert _active(res) == []
+
+
+# ---------------------------------------------------------------------------
+# no-warning-emoji (issue #745): alarm-emoji inflation
+# ---------------------------------------------------------------------------
+
+
+def test_warning_emoji_fires_on_each_marker():
+    for ch in ("⚠️", "🚨", "❗"):
+        ids = [
+            f.rule_id
+            for f in _active(lint_rhetoric(f"{ch} This is a kill condition.\n"))
+        ]
+        assert "no-warning-emoji" in ids, ch
+
+
+def test_warning_emoji_disable_via_config():
+    res = lint_rhetoric(
+        "🚨 Alarm.\n", extra_rules={"disable": ["no-warning-emoji"]}
+    )
+    assert _active(res) == []
 
 
 # ---------------------------------------------------------------------------
@@ -478,15 +591,28 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
     file in the repo (fixture memo bodies, BRIEF templates) plus the
     other skills' worked examples.
 
-    Both em-dash rules — the ``em-dash-density`` *frequency* rule and the
-    positional ``no-opening-emdash`` rule (issue #601) — are asserted
-    separately (``test_zero_findings_on_clean_memo_fixture`` and the
-    dedicated positional tests): the repo's own fixture prose is
-    em-dash-dense AI-written text (10-30 per 1000 words, several opening
-    directly on an em-dash — exactly the tells those rules exist to
-    flag), so it cannot serve as the "good prose" baseline for either
-    em-dash dimension.
+    Four *style-density / self-reference* rules are asserted separately
+    rather than against this corpus, for the same reason: the repo's own
+    fixture prose is em-dash-dense AI-written text (10-30 em-dashes per
+    1000 words, several opening directly on an em-dash), some fixture
+    bodies are bold-dense, and the BRIEF templates carry document-
+    describing commentary ("the memo is deliberately non-prescriptive")
+    — each is exactly the tell its rule exists to flag, so none can serve
+    as the "good prose" baseline. The clean-memo fixture
+    (``test_zero_findings_on_clean_memo_fixture``) and the dedicated
+    per-rule tests below are the real zero-findings baseline for:
+
+    - ``em-dash-density`` (*frequency*) and ``no-opening-emdash``
+      (positional, issue #601);
+    - ``emphasis-density`` (*frequency*, bold spans) and
+      ``no-meta-commentary`` (issue #745).
     """
+    style_density_excluded = (
+        "em-dash-density",
+        "no-opening-emdash",
+        "emphasis-density",
+        "no-meta-commentary",
+    )
     corpus = (
         sorted((REPO_ROOT / "anvil/skills/memo/tests/fixtures").rglob("*.md"))
         + sorted((REPO_ROOT / "anvil/skills/memo/templates").glob("*.example"))
@@ -503,7 +629,7 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
         hits = [
             f.to_dict()
             for f in _active(result)
-            if f.rule_id not in ("em-dash-density", "no-opening-emdash")
+            if f.rule_id not in style_density_excluded
         ]
         if hits:
             offenders[str(path)] = hits
