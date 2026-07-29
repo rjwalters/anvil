@@ -36,13 +36,15 @@ _LIB_DIR = _SKILL_ROOT / "lib"
 
 _PACKAGE_NAME = "project_share_lib"
 
-# Dependency-safe load order: config → collect → plan → apply → verify
-# → orchestrate (plan imports collect + config; apply + verify import
-# plan; orchestrate imports everything).
+# Dependency-safe load order: config → collect → plan → citations →
+# apply → verify → orchestrate (plan imports collect + config;
+# citations + apply + verify import plan; apply also imports citations;
+# orchestrate imports everything).
 _MODULES = [
     "config",
     "collect",
     "plan",
+    "citations",
     "apply",
     "verify",
     "orchestrate",
@@ -90,6 +92,7 @@ _load_skill_lib_package()
 config = sys.modules[f"{_PACKAGE_NAME}.config"]
 collect = sys.modules[f"{_PACKAGE_NAME}.collect"]
 plan = sys.modules[f"{_PACKAGE_NAME}.plan"]
+citations = sys.modules[f"{_PACKAGE_NAME}.citations"]
 apply_mod = sys.modules[f"{_PACKAGE_NAME}.apply"]
 verify = sys.modules[f"{_PACKAGE_NAME}.verify"]
 orchestrate = sys.modules[f"{_PACKAGE_NAME}.orchestrate"]
@@ -97,6 +100,7 @@ orchestrate = sys.modules[f"{_PACKAGE_NAME}.orchestrate"]
 
 __all__ = [
     "apply_mod",
+    "citations",
     "collect",
     "config",
     "orchestrate",
