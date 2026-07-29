@@ -12,7 +12,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*No issues currently claimed.*
+- **#779** — `test(memo): stale weasyprint-detection test fails when binary is not on PATH`. Small, mechanical bug fix (a stale test never updated for #308/#311's two-stage `check_weasyprint_available()`). Curated `tier:maintenance`, promoted, and claimed by a Builder on 2026-07-29 shortly after this plan was drafted.
 
 ## Ready for Work (`loom:issue`) — implementation complete, pending merge
 
@@ -31,7 +31,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-- **#779** — `test(memo): stale weasyprint-detection test fails when binary is not on PATH`. Small, mechanical bug fix (a stale test never updated for #308/#311's two-stage `check_weasyprint_available()`). Currently mid-Curator-enhancement (`loom:curating`). Likely tier on promotion: `tier:maintenance`.
+*Empty.* #779 completed curation and was claimed while this plan was in review — see "In Progress" above.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
