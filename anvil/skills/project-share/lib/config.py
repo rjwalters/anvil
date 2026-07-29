@@ -22,7 +22,8 @@ Config surface (all fields optional)::
       include_refs: true         # default true
       include_assets: true       # default true
       strip: [...]               # default: _progress.json, changelog.md,
-                                 #          "_*.json", "*.tmp", ".tmp*"
+                                 #          "_*.json", "*.tmp", ".tmp*",
+                                 #          "__pycache__", "*.pyc", ".DS_Store"
       out: SHARE                 # default SHARE
 
 ``order`` semantics (locked at curation): when present it is the
@@ -59,13 +60,20 @@ DEFAULT_OUT = "SHARE"
 # outside recipient. ``_*.json`` covers ``_progress.json`` /
 # ``_meta.json`` / any future underscore-prefixed sidecar JSON;
 # ``.tmp*`` covers the ``staged_sidecar`` staging convention
-# (``anvil/lib/sidecar.py``).
+# (``anvil/lib/sidecar.py``); ``__pycache__`` (a directory-name
+# pattern — matched per path component by ``is_stripped()`` in
+# :mod:`plan`, so it excludes the whole subtree), ``*.pyc``, and
+# ``.DS_Store`` cover Python bytecode caches and macOS droppings that
+# can end up in a project's ``research/`` pool (issue #756).
 DEFAULT_STRIP = (
     "_progress.json",
     "changelog.md",
     "_*.json",
     "*.tmp",
     ".tmp*",
+    "__pycache__",
+    "*.pyc",
+    ".DS_Store",
 )
 
 

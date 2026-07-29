@@ -51,8 +51,9 @@ already owns the word "export" for an unrelated meaning.
 - **Copies** the resolved version dir's contents wholesale, minus the strip
   list — PDFs, `figures/`, `exhibits/`, speaker notes, and supporting assets
   ride along without per-skill special-casing.
-- **Strips** anvil bookkeeping: `_progress.json`, `changelog.md`, `_*.json`,
-  `*.tmp`, `.tmp*` by default (configurable via `export.strip`).
+- **Strips** anvil bookkeeping and non-project droppings: `_progress.json`,
+  `changelog.md`, `_*.json`, `*.tmp`, `.tmp*`, `__pycache__`, `*.pyc`,
+  `.DS_Store` by default (configurable via `export.strip`).
 - **Structurally excludes** (never copied, regardless of config): critic
   siblings (`<slug>.<N>.<tag>/` are siblings of the version dir, not
   contents), version history (only the resolved version), the `.latest`
