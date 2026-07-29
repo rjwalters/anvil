@@ -108,8 +108,16 @@ dependencies = [
 # the slide. Image-based — samples background from corner patches of the
 # already-rendered per-page PNG, takes argmax/argmin on rows-with-content
 # to compute a content bbox. Needs PIL/numpy for the pixel arithmetic.
+#
+# Pillow floor is >=12.3.0 (issue #744): 12.2.0 and earlier carry 13
+# Dependabot alerts (10 high), all resolved in 12.3.0. Since Anvil ships no
+# checked-in lockfile (see the header comment above), this lower bound is
+# the only lever that reaches consumer installs — bumping it forces
+# `uv sync --project .anvil` to re-resolve past 12.2.0 the next time
+# `install-anvil.sh` runs, even for a consumer whose existing
+# `.anvil/uv.lock` already pinned the vulnerable version.
 auto_shrink = [
-    "Pillow>=10.0",
+    "Pillow>=12.3.0",
     "numpy>=1.24",
 ]
 # `anvil:memo` render-gate content-bbox image check (issue #395).
@@ -120,9 +128,9 @@ auto_shrink = [
 # set as `[auto_shrink]` (the bbox algorithm is the same corner-sampling
 # approach); declared separately so consumers can opt in per capability.
 # The stdlib header checks (pixel ceiling, aspect, declared-vs-actual)
-# run without this extra.
+# run without this extra. Pillow floor matches `[auto_shrink]` — see #744.
 image_lint = [
-    "Pillow>=10.0",
+    "Pillow>=12.3.0",
     "numpy>=1.24",
 ]
 # `anvil:deck` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
@@ -136,9 +144,10 @@ image_lint = [
 # when the adapter actually returns JPEG/WebP. Stock-venv installs
 # still work; the dispatcher hard-fails with a clear
 # "install anvil[deck_imagegen]" pointer ONLY when it receives non-PNG
-# bytes without Pillow available.
+# bytes without Pillow available. Pillow floor matches `[auto_shrink]` —
+# see #744.
 deck_imagegen = [
-    "Pillow>=10.0",
+    "Pillow>=12.3.0",
 ]
 # Memo HTML-to-PDF render chain (preferred engine).
 # weasyprint 69.0 is not compatible with Python 3.14 (CSS module import fails).
