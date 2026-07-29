@@ -31,6 +31,7 @@ from typing import List, Optional
 from anvil.lib.project_brief import load_project_brief_strict
 
 from .apply import ApplyResult, apply_plan
+from .citations import CitationLintResult, find_dangling_citations
 from .config import ExportConfig, load_export_config
 from .plan import (
     ORDERING_EXPORT_ORDER,
@@ -57,6 +58,11 @@ class RunResult:
         Apply outcome; ``None`` for dry-run.
     verify_result
         Verify outcome; ``None`` when apply was skipped or refused.
+    citation_result
+        Dangling-citation lint outcome (issue #758). Always present
+        (including in dry-run) — the check only reads plan-collected
+        source files, never the out dir. Report-only: a non-empty
+        result does NOT affect ``success``.
     report
         Markdown report (printed to stdout by the command).
     success
@@ -72,6 +78,7 @@ class RunResult:
     plan: SharePlan
     apply_result: Optional[ApplyResult] = None
     verify_result: Optional[VerifyResult] = None
+    citation_result: Optional[CitationLintResult] = None
     report: str = ""
     success: bool = False
 
@@ -200,15 +207,29 @@ def run(
     brief = load_project_brief_strict(project_dir)
     plan = build_plan(project_dir, brief, config)
 
-    result = RunResult(project_dir=project_dir, config=config, plan=plan)
+    # Read-only lint (issue #758): scans the plan-collected source
+    # markdown for citations to project files that never enter the
+    # export set. Runs before dry-run's early return since it only
+    # reads already-collected plan data — no out-dir dependency.
+    citation_result = find_dangling_citations(plan)
+
+    result = RunResult(
+        project_dir=project_dir,
+        config=config,
+        plan=plan,
+        citation_result=citation_result,
+    )
     report = _format_plan_report(plan, dry_run)
+    report += "\n" + citation_result.to_report()
 
     if dry_run:
         result.report = report
         result.success = not plan.failed_docs
         return result
 
-    apply_result = apply_plan(plan, zip_output=zip_output, now=now)
+    apply_result = apply_plan(
+        plan, zip_output=zip_output, now=now, citations=citation_result
+    )
     result.apply_result = apply_result
     report += "\n" + _format_apply_report(apply_result)
 

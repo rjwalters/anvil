@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+from .citations import CitationLintResult
 from .plan import (
     MARKER_FILENAME,
     ORDERING_EXPORT_ORDER,
@@ -63,8 +64,19 @@ def _utc(now: Optional[datetime]) -> datetime:
     return now.astimezone(timezone.utc)
 
 
-def render_export_md(plan: SharePlan, now: datetime) -> str:
-    """Render the recipient-facing EXPORT.md index (the rebuild marker)."""
+def render_export_md(
+    plan: SharePlan,
+    now: datetime,
+    *,
+    citations: Optional[CitationLintResult] = None,
+) -> str:
+    """Render the recipient-facing EXPORT.md index (the rebuild marker).
+
+    ``citations`` (issue #758): when the dangling-citation lint found
+    anything, it's noted here — report only, since the citation may be
+    deliberate (e.g. an internal cross-reference the recipient isn't
+    meant to follow).
+    """
     lines: List[str] = []
     lines.append(f"# Share export: {plan.project_name}")
     lines.append("")
@@ -135,6 +147,21 @@ def render_export_md(plan: SharePlan, now: datetime) -> str:
             lines.append(f"- `{doc.slug}`: {doc.failure}")
         lines.append("")
 
+    if citations is not None and citations.findings:
+        lines.append("## Citations")
+        lines.append("")
+        lines.append(
+            f"{len(citations.findings)} possible dangling citation(s) "
+            f"found (report only — may be deliberate):"
+        )
+        lines.append("")
+        for f in citations.findings:
+            lines.append(
+                f"- `{f.source_rel}` cites `{f.citation_text}` -> "
+                f"`{f.resolved_rel}`, which is not part of this export"
+            )
+        lines.append("")
+
     return "\n".join(lines) + "\n"
 
 
@@ -195,12 +222,17 @@ def apply_plan(
     *,
     zip_output: bool = False,
     now: Optional[datetime] = None,
+    citations: Optional[CitationLintResult] = None,
 ) -> ApplyResult:
     """Execute the plan: marker-guarded rebuild, copies, EXPORT.md, zip.
 
     Per-doc resolution failures recorded on the plan do NOT abort the
     apply — the resolvable docs still export and the findings land in
     EXPORT.md (AC 9). Only the marker-guard refusal prevents writing.
+
+    ``citations``: the dangling-citation lint outcome (issue #758),
+    when the caller already computed one against this same plan. Noted
+    in EXPORT.md; never blocks the write.
     """
     now = _utc(now)
     out_dir = plan.out_dir
@@ -233,7 +265,9 @@ def apply_plan(
         result.files_copied += 1
 
     export_md = out_dir / MARKER_FILENAME
-    export_md.write_text(render_export_md(plan, now), encoding="utf-8")
+    export_md.write_text(
+        render_export_md(plan, now, citations=citations), encoding="utf-8"
+    )
     result.export_md = export_md
 
     if zip_output:

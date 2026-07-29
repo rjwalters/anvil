@@ -64,6 +64,15 @@ already owns the word "export" for an unrelated meaning.
   ordering source, and a per-doc table with resolved version-dir name,
   resolution mode, and PDF filename + SHA-256 — so the recipient can tell at
   a glance what they got and the sender can prove provenance later.
+- **Lints for dangling citations** (issue #758): scans every exported
+  markdown file for references (markdown links, `../` paths, bare
+  backticked/prose filenames) to repo-relative files that are NOT part of
+  the export set — e.g. a thread body citing a project-root working
+  document like `STRATEGIC-OPTIONS.md`. This is the export-time analog of
+  the memo skill's refs back-check: references should resolve within the
+  world the reader receives. Report-only (never blocks) since the citation
+  may be deliberate — findings appear in the run summary and in
+  `EXPORT.md`.
 - **No re-rendering**: purely a packaging step. A missing PDF is noted in
   `EXPORT.md`, never an error and never a render trigger.
 
@@ -155,12 +164,12 @@ single invocation; the on-disk evidence is the rebuilt `SHARE/` tree and its
   the `.latest` path itself by contract).
 - Skill-local `lib/`: `config.py` (ExportConfig), `collect.py` (per-doc
   resolution + refs + PDF fingerprints), `plan.py` (ordering, strip
-  filtering, collision/guard checks), `apply.py` (marker-guarded rebuild,
-  EXPORT.md, zip), `verify.py` (post-write layout + leak checks),
-  `orchestrate.py` (single `run()` entry), `cli.py` (the runnable
-  argparse entry point wrapping `orchestrate.run` — `python3
-  <skill>/lib/cli.py <project-dir> [--dry-run] [--zip]`; mirrors
-  `memo/lib/render_phase.py`).
+  filtering, collision/guard checks), `citations.py` (dangling-citation
+  lint, issue #758), `apply.py` (marker-guarded rebuild, EXPORT.md, zip),
+  `verify.py` (post-write layout + leak checks), `orchestrate.py` (single
+  `run()` entry), `cli.py` (the runnable argparse entry point wrapping
+  `orchestrate.run` — `python3 <skill>/lib/cli.py <project-dir> [--dry-run]
+  [--zip]`; mirrors `memo/lib/render_phase.py`).
 
 ## Tests
 
@@ -186,6 +195,10 @@ PR #362 / #372 precedent):
   folders disappear; pinned-timestamp runs are byte-identical.
 - `test_project_share_guard.py` — foreign-dir refusal (no deletion) and
   marker-authorized rebuild.
+- `test_project_share_citations.py` — dangling-citation lint: bare
+  filename + markdown-link detection, exported-sibling non-flagging,
+  clean-project no-findings, and report-only surfacing in the run
+  summary + `EXPORT.md`.
 - `test_project_share_cli.py` — the runnable `lib/cli.py` entry point:
   stdlib-only module imports (standalone-import discipline), `main()`
   dry-run / apply / `--zip` / unresolved-doc / bad-dir exit codes, an

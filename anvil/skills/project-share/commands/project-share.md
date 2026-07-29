@@ -127,6 +127,19 @@ planned file landed, no stripped or structurally-excluded name leaked, no
 critic-sibling-shaped directory anywhere. Failures are reported and exit
 nonzero.
 
+### 6. Citation lint (report only, issue #758)
+
+`citations.find_dangling_citations` scans every markdown file the plan
+copies (per-doc body + refs, and the shared `research/` pool) for
+citations — markdown links, `../` relative paths, bare backticked/prose
+filenames — that resolve to a real file in the project tree which is NOT
+part of this export's copy set (e.g. a thread body citing a project-root
+working document like `STRATEGIC-OPTIONS.md`). This runs against the
+plan's already-collected source files, so it fires in `--dry-run` mode
+too. Findings are **reported, never blocking** — the citation may be
+deliberate — and appear both in the run summary and in `EXPORT.md`'s
+`## Citations` section.
+
 ## Output
 
 In all modes the command prints a markdown report to stdout. In apply mode
