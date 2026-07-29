@@ -884,8 +884,13 @@ dependencies = [
 # missing.
 [project.optional-dependencies]
 # \`anvil:deck\` silent-Marp-auto-shrink lint (issue #102 / #100b).
+# Pillow floor is >=12.3.0 (issue #744): 12.2.0 and earlier carry 13
+# Dependabot alerts (10 high), all resolved in 12.3.0. Anvil ships no
+# checked-in lockfile, so this lower bound is what forces a consumer's
+# \`uv sync --project .anvil\` to re-resolve past the vulnerable pin the
+# next time install-anvil.sh runs.
 auto_shrink = [
-    "Pillow>=10.0",
+    "Pillow>=12.3.0",
     "numpy>=1.24",
 ]
 
