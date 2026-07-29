@@ -106,6 +106,7 @@ class SharePlan:
     docs: List[DocPlan] = field(default_factory=list)
     excluded_slugs: List[str] = field(default_factory=list)
     research_files: List[FilePlan] = field(default_factory=list)
+    cover_file: Optional[FilePlan] = None
     notes: List[str] = field(default_factory=list)
 
     @property
@@ -118,6 +119,8 @@ class SharePlan:
         for doc in self.docs:
             out.extend(doc.files)
         out.extend(self.research_files)
+        if self.cover_file is not None:
+            out.append(self.cover_file)
         return out
 
 
@@ -224,6 +227,43 @@ def _check_out_collisions(
         )
 
 
+def _resolve_cover(
+    project_dir: Path,
+    config: ExportConfig,
+    reserved_top_level_names: Sequence[str] = (),
+) -> Optional[FilePlan]:
+    """Resolve ``export.cover`` (issue #757) into a top-level :class:`FilePlan`.
+
+    Returns ``None`` when ``export.cover`` is unset. Raises ``ValueError``
+    when ``export.cover_as`` collides with :data:`MARKER_FILENAME` (the
+    AC's explicit collision requirement) or any other reserved top-level
+    export-root name (``research/``, a planned ``NN-<slug>/`` doc dir —
+    defense-in-depth, same posture as :func:`_check_out_collisions`), or
+    when ``export.cover`` does not resolve to an existing file under
+    ``project_dir``. All checks here are pure config checks (no
+    filesystem I/O) and run before the filesystem check.
+    """
+    if config.cover is None:
+        return None
+    reserved = {MARKER_FILENAME, *reserved_top_level_names}
+    if config.cover_as in reserved:
+        raise ValueError(
+            f"export.cover_as={config.cover_as!r} collides with a "
+            f"reserved top-level export-root name (the `{MARKER_FILENAME}` "
+            f"rebuild marker, `{RESEARCH_DIRNAME}/`, or a planned document "
+            f"directory) — refusing. Suggested fix: choose a different "
+            f"`export.cover_as` name."
+        )
+    source = (project_dir / config.cover).resolve()
+    if not source.is_file():
+        raise ValueError(
+            f"export.cover={config.cover!r} does not resolve to a file at "
+            f"{source}. Suggested fix: check the path is relative to the "
+            f"project root and that the file exists."
+        )
+    return FilePlan(source=source, target_rel=Path(config.cover_as))
+
+
 def build_plan(
     project_dir: Path,
     brief: "ProjectBrief",
@@ -234,12 +274,20 @@ def build_plan(
     Raises
     ------
     ValueError
-        On ``export.order`` unknown slugs or an ``export.out`` name
-        colliding with a source-of-truth directory.
+        On ``export.order`` unknown slugs, an ``export.out`` name
+        colliding with a source-of-truth directory, an ``export.cover_as``
+        colliding with a reserved top-level export-root name (the
+        ``EXPORT.md`` marker, ``research/``, or a planned document
+        directory), or an ``export.cover`` path that does not resolve to
+        an existing file.
     """
     project_dir = Path(project_dir).resolve()
     _check_out_collisions(project_dir, brief, config)
     ordered, excluded, ordering_source = _resolve_ordering(brief, config)
+    reserved_top_level_names = [RESEARCH_DIRNAME] + [
+        f"{ordinal:02d}-{slug}" for ordinal, slug in enumerate(ordered)
+    ]
+    cover_file = _resolve_cover(project_dir, config, reserved_top_level_names)
 
     plan = SharePlan(
         project_dir=project_dir,
@@ -248,6 +296,7 @@ def build_plan(
         out_dir=project_dir / config.out,
         ordering_source=ordering_source,
     )
+    plan.cover_file = cover_file
     plan.excluded_slugs = excluded
     for slug in excluded:
         plan.notes.append(

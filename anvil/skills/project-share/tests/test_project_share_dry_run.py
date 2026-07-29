@@ -92,5 +92,27 @@ class TestDryRunReport(unittest.TestCase):
             self.assertIsNone(result.verify_result)
 
 
+class TestDryRunWithCover(unittest.TestCase):
+    """Issue #757: dry-run reports the planned cover copy, writes nothing."""
+
+    def test_cover_reported_and_no_writes(self) -> None:
+        with TemporaryDirectory() as td:
+            project = build_full_project(
+                Path(td),
+                export_block="export:\n  cover: SHARE-README.md\n",
+            )
+            (project / "SHARE-README.md").write_text(
+                "# Welcome\n", encoding="utf-8"
+            )
+            before = _tree_hash(project)
+            result = orchestrate.run(project, dry_run=True)
+            after = _tree_hash(project)
+            self.assertEqual(before, after)
+            self.assertTrue(result.success, result.report)
+            self.assertIn("Cover note", result.report)
+            self.assertIn("README.md", result.report)
+            self.assertFalse((project / "SHARE").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
