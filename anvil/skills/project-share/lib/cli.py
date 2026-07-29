@@ -38,12 +38,21 @@ from pathlib import Path
 from types import ModuleType
 from typing import Optional
 
-# Dependency-safe load order: config -> collect -> plan -> apply ->
-# verify -> orchestrate (plan imports collect + config; apply + verify
-# import plan; orchestrate imports everything). Mirrors
+# Dependency-safe load order: config -> collect -> plan -> citations ->
+# apply -> verify -> orchestrate (plan imports collect + config;
+# citations + apply + verify import plan; apply also imports
+# citations; orchestrate imports everything). Mirrors
 # tests/_project_share_skill_lib.py.
 _PACKAGE_NAME = "project_share_lib"
-_MODULES = ["config", "collect", "plan", "apply", "verify", "orchestrate"]
+_MODULES = [
+    "config",
+    "collect",
+    "plan",
+    "citations",
+    "apply",
+    "verify",
+    "orchestrate",
+]
 
 
 def _bootstrap_sys_path() -> None:
