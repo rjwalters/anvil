@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-29*
+*Last updated: 2026-07-29 (Guide triage pass)*
 
 ---
 
@@ -12,7 +12,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-- **#779** — `test(memo): stale weasyprint-detection test fails when binary is not on PATH`. Small, mechanical bug fix (a stale test never updated for #308/#311's two-stage `check_weasyprint_available()`). Curated `tier:maintenance`, promoted, and claimed by a Builder on 2026-07-29 shortly after this plan was drafted.
+*Empty.* #779 (`test(memo): stale weasyprint-detection test fails when binary is not on PATH`) merged via PR #781 and closed on 2026-07-29 — see `WORK_LOG.md`.
 
 ## Ready for Work (`loom:issue`) — implementation complete, pending merge
 
@@ -31,7 +31,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-*Empty.* #779 completed curation and was claimed while this plan was in review — see "In Progress" above.
+*No new issues.* #746 and #743 both currently show a live `loom:curating` claim — the Curator is re-verifying their (already-open) implementing PRs (#761, #763) remain unmerged, per its documented re-check cadence. This is a transient bookkeeping claim, not new backlog.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -43,7 +43,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-Five open issues total as of 2026-07-29 (down from a much larger in-flight set worked through the 2026-07-03 → 2026-07-29 window — see `WORK_LOG.md` for the ~85-PR merge record since the last Work Plan refresh). The backlog is effectively **drained of unbuilt ready work**: every `loom:issue` issue already has a complete, Judge-approved PR; the only blocked issue with real dependency content (#751) is blocked on its own already-built PR merging; #764 is a self-tracking migration-verification issue waiting on one live daemon sweep cycle, not on other issues. The rate-limiting step across the board is **merging open PRs #761 / #763 / #773**, not Builder dispatch.
+Four open issues total as of 2026-07-29 (down from five now that #779 merged and closed — see `WORK_LOG.md` for the ~86-PR merge record since the last Work Plan refresh). The backlog is effectively **drained of unbuilt ready work**: every `loom:issue` issue already has a complete, Judge-approved PR; the only blocked issue with real dependency content (#751) is blocked on its own already-built PR merging; #764 is a self-tracking migration-verification issue waiting on one live daemon sweep cycle, not on other issues. The rate-limiting step across the board is **merging open PRs #761 / #763 / #773**, not Builder dispatch. Note PR #773 (closes #751) currently shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean.
 
 ### Recurring themes the next wave of issues will likely touch
 
