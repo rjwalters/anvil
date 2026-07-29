@@ -1,4 +1,9 @@
 {
+  "autonomous": {
+    "workFinder": {
+      "enabled": true
+    }
+  },
   "version": "2",
   "offlineMode": false,
   "forge": {
