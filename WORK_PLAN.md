@@ -2,41 +2,48 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-03*
+*Last updated: 2026-07-29*
 
 ---
 
 ## Urgent (Top Priority)
 
-*No issues currently carry the `loom:urgent` label.*
+*No issues currently carry the `loom:urgent` label.* The three open `loom:issue` issues (below) each already have a complete, Judge-approved, mergeable PR awaiting human/Champion merge — there is no unbuilt work to prioritize among them. Urgent labeling would misrepresent the queue; see "Backlog state" below.
 
 ## In Progress (`loom:building`)
 
 *No issues currently claimed.*
 
-## Ready for Work (`loom:issue`)
+## Ready for Work (`loom:issue`) — implementation complete, pending merge
 
-*None at the moment.*
+| Issue | Title | Tier | Status |
+|---|---|---|---|
+| #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `loom:pr` (Judge-approved, mergeable) |
+| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting`, `loom:curated` | PR #763 open, `loom:pr` (Judge-approved, mergeable) |
+| #751 | evidence grades leak into reader prose — preservation contract needs a rendering rule | `tier:goal-supporting`, `loom:blocked` (dependency: PR #773 unmerged) | PR #773 open, `loom:pr` (Judge-approved, mergeable) |
 
-## Triage queue (`loom:triage`)
+**Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763`, `773` (Champion/human).
 
-*Empty.* The 2026-07-01/02 sweep waves cleared the entire backlog: the `nitas-mama` memoir enablement wave (#596–#599 → PRs #603–#606) and the blog-parity batch (#600–#602 → PRs #607–#609). See `WORK_LOG.md` for the merge record.
+## Blocked (`loom:blocked`)
+
+- **#764** — Tracker: retire local `.claude/commands/loom/sweep.md --claim-owned` patch once Loom is upgraded. The 2026-07-29 Loom v0.16.0 upgrade (PR — commit `bf47bcb`) landed the trigger condition; Curator verified ACs 1–2 (patch superseded, upstream `sweep.md` natively handles `--claim-owned`). AC 3 (one daemon-dispatched sweep completing end-to-end post-upgrade) is still unobserved as of PR #777/#778 — `sweeps.json` is empty. Stays blocked pending that observation; not a dependency-resolution unblock.
+- **#751** — see table above; blocked on PR #773 merging (self-referential — the fix is already built).
+
+## Triage queue (`loom:triage` / `loom:curating`)
+
+- **#779** — `test(memo): stale weasyprint-detection test fails when binary is not on PATH`. Small, mechanical bug fix (a stale test never updated for #308/#311's two-stage `check_weasyprint_available()`). Currently mid-Curator-enhancement (`loom:curating`). Likely tier on promotion: `tier:maintenance`.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
 *None outstanding.*
 
+## Epics (`loom:epic`)
+
+*None open.* The most recent epic, #697 (`anvil:spec` artifact class), closed 2026-07-15 — all four phases (#706–#709) merged; see `WORK_LOG.md` 2026-07-15.
+
 ## Backlog state
 
-Zero open issues as of 2026-07-03. A **v0.7.0 release cut is pending** — `CHANGELOG.md` `[Unreleased]` carries the full post-0.6.0 batch (deck business-model wave, memoir enablement wave, blog-parity batch, memo/ip/install hardening).
-
-### Known follow-ons (documented in curation comments, filed as issues as needed)
-
-These were deliberately deferred from the 2026-07-02 sweep to keep PRs small; the lib contracts shipped without skill-level consumers:
-
-1. **Corpus claim-provenance skill adoption** (from #597's curation): `paper-audit` corpus verification step (`kind: tool_evidence`, five-way classification, fabrication-class critical flags), `paper-review` back-check (5–10 spot samples), `essay-draft` provenance.md writing + `essay-review` back-check. Until one lands, a corpus-declaring project cannot actually run a corpus audit.
-2. **Subject voice tier adoption beyond essay** (from #598's curation): paper and report drafter/reviewer wiring per the same pattern (their voice-grounding steps already exist); audit hooks.
-3. **Deferred from #598**: rhetoric-lint integration for subject-dialogue lines; `vocab_reminder`-style subject-cadence tool.
+Five open issues total as of 2026-07-29 (down from a much larger in-flight set worked through the 2026-07-03 → 2026-07-29 window — see `WORK_LOG.md` for the ~85-PR merge record since the last Work Plan refresh). The backlog is effectively **drained of unbuilt ready work**: every `loom:issue` issue already has a complete, Judge-approved PR; the only blocked issue with real dependency content (#751) is blocked on its own already-built PR merging; #764 is a self-tracking migration-verification issue waiting on one live daemon sweep cycle, not on other issues. The rate-limiting step across the board is **merging open PRs #761 / #763 / #773**, not Builder dispatch.
 
 ### Recurring themes the next wave of issues will likely touch
 
