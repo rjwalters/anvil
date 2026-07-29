@@ -164,7 +164,7 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag from any critic sibling |
 | `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version |
 
-**Thresholds** (deck is a customer-facing artifact per `lib/README.md`'s legal/customer-facing rule — a pitch deck is the founder's pitch to external capital):
+**Thresholds** (deck is a customer-facing artifact per `anvil/lib/README.md`'s legal/customer-facing rule — a pitch deck is the founder's pitch to external capital):
 
 - **≥43/49** advances to `READY`.
 - **<43/49** requires revision.

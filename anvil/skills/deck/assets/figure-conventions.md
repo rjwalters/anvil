@@ -464,7 +464,7 @@ is optional at the framework level (needs `Pillow` + `numpy`, opt-in via
 
 **Remediation.** Trim 10–20 words from the densest element on the slide,
 or move one bullet (or one body paragraph) to a peer slide. The
-[slide-archetypes budget guidance](#slide-archetypes) — under the
+[slide-archetypes budget guidance](slide-archetypes.md) — under the
 `marp_lint` doc — is the source-side analogue: stay within the word
 budget the archetype documents and Marp won't have anything to scale.
 
