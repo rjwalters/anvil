@@ -33,13 +33,18 @@ from pathlib import Path
 from anvil.lib.rhetoric_lint import (
     CONFIG_RULE_ID,
     DEFAULT_FREQUENCY_MIN_WORDS,
+    DEFAULT_LONG_SENTENCE_WORD_THRESHOLD,
     DEFAULT_RHETORIC_RULES,
     EMDASH_MAX_PER_1000_WORDS,
     EMPHASIS_MAX_PER_1000_WORDS,
+    LONG_SENTENCE_MAX_PER_1000_WORDS,
     RULE_KIND_FREQUENCY,
+    RULE_KIND_LONG_SENTENCE,
     RULE_KIND_PHRASE,
     RULE_KIND_REGEX,
     RhetoricLintResult,
+    _scannable_lines,
+    _sentence_word_counts,
     _validate_rule,
     lint_rhetoric,
 )
@@ -338,6 +343,169 @@ def test_warning_emoji_disable_via_config():
 
 
 # ---------------------------------------------------------------------------
+# long-sentence-density (issue #750): syntactic-complexity frequency rule
+# ---------------------------------------------------------------------------
+
+
+def _sentence(word_count: int, start_idx: int = 0) -> str:
+    """A naive sentence of ``word_count`` unique alnum tokens, period-terminated."""
+    return " ".join(f"w{start_idx + i}" for i in range(word_count)) + "."
+
+
+def _long_sentence_doc(
+    long_count: int, total_words: int = 1000, long_len: int = 45
+) -> str:
+    """A ``total_words``-word doc with ``long_count`` sentences of
+    ``long_len`` words each; the remainder is short (<=5-word) filler
+    sentences so no filler sentence itself crosses the long-sentence bar
+    and the per-1000-words denominator is exactly ``total_words``."""
+    long_words_total = long_count * long_len
+    filler_words = total_words - long_words_total
+    assert filler_words >= 0
+    idx = 0
+    sentences: list[str] = []
+    remaining = filler_words
+    while remaining > 0:
+        n = min(5, remaining)
+        sentences.append(_sentence(n, idx))
+        idx += n
+        remaining -= n
+    for _ in range(long_count):
+        sentences.append(_sentence(long_len, idx))
+        idx += long_len
+    return " ".join(sentences) + "\n"
+
+
+def test_default_set_contains_long_sentence_density_rule():
+    matches = [
+        r for r in DEFAULT_RHETORIC_RULES if r["id"] == "long-sentence-density"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["kind"] == RULE_KIND_LONG_SENTENCE
+    assert (
+        matches[0]["sentence_word_threshold"]
+        == DEFAULT_LONG_SENTENCE_WORD_THRESHOLD
+        == 40
+    )
+    assert (
+        matches[0]["max_per_1000_words"] == LONG_SENTENCE_MAX_PER_1000_WORDS == 4
+    )
+
+
+def test_long_sentence_density_over_threshold_fires_document_level():
+    """Acceptance criterion: 6 planted 45-word sentences / 1000 words warns."""
+    hits = _active(lint_rhetoric(_long_sentence_doc(6)))
+    assert [f.rule_id for f in hits] == ["long-sentence-density"]
+    assert hits[0].line is None  # document-level, no line anchor
+    assert hits[0].match is None
+    assert "6 sentence(s) over 40 words" in hits[0].message
+    assert "6.0/1000" in hits[0].message
+
+
+def test_long_sentence_density_under_threshold_no_finding():
+    """Acceptance criterion: 2 planted 45-word sentences / 1000 words passes."""
+    assert _active(lint_rhetoric(_long_sentence_doc(2))) == []
+
+
+def test_long_sentence_density_at_threshold_no_finding():
+    """Threshold is strict: exactly 4/1000 does NOT fire (> 4 does)."""
+    assert _active(lint_rhetoric(_long_sentence_doc(4))) == []
+
+
+def test_long_sentence_word_boundary_exactly_40_not_long():
+    """A sentence of exactly 40 words is at the bar, not over it."""
+    text = _long_sentence_doc(6, long_len=40)
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_long_sentence_word_boundary_41_is_long():
+    """41 words crosses the ">40 words" bar."""
+    text = _long_sentence_doc(6, long_len=41)
+    hits = _active(lint_rhetoric(text))
+    assert [f.rule_id for f in hits] == ["long-sentence-density"]
+
+
+def test_long_sentence_density_min_words_floor():
+    """A single long sentence in a 45-word doc is below the 50-word floor."""
+    assert _active(lint_rhetoric(_sentence(45))) == []
+
+
+def test_long_sentence_density_disable_via_config():
+    res = lint_rhetoric(
+        _long_sentence_doc(6),
+        extra_rules={"disable": ["long-sentence-density"]},
+    )
+    assert _active(res) == []
+
+
+def test_long_sentence_density_excludes_code_and_comments():
+    """Long "sentences" inside fenced code / HTML comments do not count."""
+    fenced_long = "w " * 45 + ".\n"
+    text = (
+        _long_sentence_doc(0, total_words=1000)
+        + "```\n"
+        + fenced_long * 10
+        + "```\n"
+        + "<!-- "
+        + fenced_long * 10
+        + " -->\n"
+    )
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_sentence_word_counts_joins_wrapped_lines():
+    """A sentence wrapped across two source lines counts once, not twice."""
+    text = "This sentence wraps\nacross two lines and ends here."
+    counts = _sentence_word_counts(_scannable_lines(text))
+    assert counts == [9]
+
+
+def test_validate_rule_long_sentence_no_pattern_required():
+    normalized, error = _validate_rule(
+        {
+            "id": "ls",
+            "kind": RULE_KIND_LONG_SENTENCE,
+            "max_per_1000_words": 4,
+            "message": "m",
+        }
+    )
+    assert error is None, error
+    assert normalized is not None
+    assert "pattern" not in normalized
+    assert normalized["sentence_word_threshold"] == DEFAULT_LONG_SENTENCE_WORD_THRESHOLD
+
+
+def test_validate_rule_long_sentence_requires_threshold(tmp_path):
+    path = _write_rules(
+        tmp_path, {"rules": [{"id": "ls", "kind": "long_sentence"}]}
+    )
+    result = lint_rhetoric("Plain text.", extra_rules_path=path)
+    config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
+    assert len(config) == 1
+    assert "max_per_1000_words" in config[0].message
+
+
+def test_validate_rule_long_sentence_invalid_sentence_word_threshold(tmp_path):
+    path = _write_rules(
+        tmp_path,
+        {
+            "rules": [
+                {
+                    "id": "ls",
+                    "kind": "long_sentence",
+                    "max_per_1000_words": 4,
+                    "sentence_word_threshold": 0,
+                }
+            ]
+        },
+    )
+    result = lint_rhetoric("Plain text.", extra_rules_path=path)
+    config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
+    assert len(config) == 1
+    assert "sentence_word_threshold" in config[0].message
+
+
+# ---------------------------------------------------------------------------
 # Scan exclusions: code fences, HTML comments, inline code
 # ---------------------------------------------------------------------------
 
@@ -591,27 +759,30 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
     file in the repo (fixture memo bodies, BRIEF templates) plus the
     other skills' worked examples.
 
-    Four *style-density / self-reference* rules are asserted separately
+    Five *style-density / self-reference* rules are asserted separately
     rather than against this corpus, for the same reason: the repo's own
     fixture prose is em-dash-dense AI-written text (10-30 em-dashes per
     1000 words, several opening directly on an em-dash), some fixture
-    bodies are bold-dense, and the BRIEF templates carry document-
-    describing commentary ("the memo is deliberately non-prescriptive")
-    — each is exactly the tell its rule exists to flag, so none can serve
-    as the "good prose" baseline. The clean-memo fixture
+    bodies are bold-dense and/or carry multi-clause 40+ word sentences,
+    and the BRIEF templates carry document-describing commentary ("the
+    memo is deliberately non-prescriptive") — each is exactly the tell
+    its rule exists to flag, so none can serve as the "good prose"
+    baseline. The clean-memo fixture
     (``test_zero_findings_on_clean_memo_fixture``) and the dedicated
     per-rule tests below are the real zero-findings baseline for:
 
     - ``em-dash-density`` (*frequency*) and ``no-opening-emdash``
       (positional, issue #601);
     - ``emphasis-density`` (*frequency*, bold spans) and
-      ``no-meta-commentary`` (issue #745).
+      ``no-meta-commentary`` (issue #745);
+    - ``long-sentence-density`` (*long_sentence*, issue #750).
     """
     style_density_excluded = (
         "em-dash-density",
         "no-opening-emdash",
         "emphasis-density",
         "no-meta-commentary",
+        "long-sentence-density",
     )
     corpus = (
         sorted((REPO_ROOT / "anvil/skills/memo/tests/fixtures").rglob("*.md"))
