@@ -1,5 +1,11 @@
 {
   "autonomous": {
+    "roleRunner": {
+      "enabled": true,
+      "onIdle": [
+        "champion"
+      ]
+    },
     "workFinder": {
       "enabled": true
     }
@@ -100,13 +106,5 @@
       },
       "theme": "midnight"
     }
-  ],
-  "autonomous": {
-    "roleRunner": {
-      "enabled": true,
-      "onIdle": [
-        "champion"
-      ]
-    }
-  }
+  ]
 }
