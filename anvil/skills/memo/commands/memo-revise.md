@@ -7,9 +7,21 @@ description: Reviser command for the memo skill. Reads the latest version + all 
 
 **Role**: reviser.
 **Reads**: latest `<thread>.{N}/` and ALL `<thread>.{N}.*/` critic siblings (`.review/`, `.audit/`, `.critic/`, ...).
-**Writes**: `<thread>.{N+1}/` containing the revised memo, exhibits, `_progress.json`, and a `changelog.md` mapping critic notes to the changes made.
+**Writes**: `<thread>.{N+1}/` containing `skeleton.md` (updated before the body — issue #752), the revised memo, exhibits, `_progress.json`, and a `changelog.md` mapping critic notes to the changes made.
 
 This command is the canonical "N parallel critics, one reviser" pattern from anvil's design principles. It consumes any number of critic siblings at the current version and produces a single revised version that addresses them.
+
+## Skeleton-first revision (issue #752)
+
+`skeleton.md` (the recursive claim tree authored by `memo-draft` step 5f — root claim + one claim per section) is the memo's communicative intent. When a revision **changes the memo's structure or its load-bearing claims** (adds/removes/reorders a section, changes the thesis, changes what a section must land), the reviser edits `skeleton.md` FIRST — in the new `<thread>.{N+1}/` version dir — and only then expands the edited skeleton into the body. Structural drift across versions thereby becomes visible as a small tree diff instead of a 3,400-word prose diff, and the intent stays the source of truth for the body rather than being reverse-engineered from it.
+
+Three cases:
+
+1. **Structure/claims change** — edit `skeleton.md` before `<thread>.md`; record the skeleton diff in `changelog.md` (see step 9). The body must remain an expansion of the *edited* skeleton.
+2. **Line-level revision only** (a polish pass, a `nit`/`minor` fix, a citation correction that does not move a claim) — carry `skeleton.md` over verbatim from the prior version; no skeleton diff to record.
+3. **Prior version has no skeleton** (a legacy thread drafted before issue #752, or a thread whose v1 predates the skeleton contract) — the reviser SHOULD reconstruct a `skeleton.md` from the prior body as the first step of the revision (the small, cheap act of stating the intent the body already carries), then proceed. This is opt-in: absence of a prior skeleton does NOT block the revise pass; the reviser MAY carry the thread forward without a skeleton and the reviewer notes the absence observationally (no deduction). Reconstructing it is the recommended path because it makes the next revision's structural drift diffable.
+
+The skeleton-first rule does NOT change the rubric threshold, the `--scope` filter, the iteration cap, or critical-flag handling — it is a producer-side authoring-order discipline that feeds the reviewer's skeleton→body derivation back-check (see `commands/memo-review.md` step 4e §"Skeleton↔section derivation leg" and `rubric.md` §"Summary-detail consistency" §"Skeleton↔section derivation leg (issue #752)").
 
 ## Inputs
 
@@ -22,9 +34,10 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 
 ```
 <thread>.{N+1}/
-  <thread>.md            Revised memo body
+  skeleton.md        Updated claim tree (issue #752): edited BEFORE the body when the revision changes structure or claims; carried over verbatim otherwise
+  <thread>.md            Revised memo body — an expansion of the updated skeleton.md
   exhibits/          Carried over and/or updated exhibits
-  changelog.md       Maps each critic note (by sibling + section) to the change made in this revision
+  changelog.md       Maps each critic note (by sibling + section) to the change made in this revision; records the skeleton diff when the skeleton changed
   _progress.json     Phase state with revise: done
 ```
 
@@ -345,10 +358,12 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
      - **`moved-to-exhibit`** — body prose demoted to apparatus.
 
      Inject this instruction into the revision-plan prompt using the exact wording, alongside the existing target-length wording from step 6: **"For each finding, consider `removed` before `added` — many findings (overreach, contradiction, scope, redundancy) are better resolved by deletion than by qualification. A plan that resolves every finding by `added` should be re-examined before applying."** The reviser does the actual work, so prompt wording is load-bearing for reproducible behavior (same load-bearing-prompt-wording rule as step 6's target-length injection). The chosen mode for each item becomes that item's resolution-mode tag in `changelog.md` at step 9 — and, under `--plan`, the plan row's `Mode` cell (see §"Plan sibling shape" and `templates/plan.md.template`).
-8. **Produce `<thread>.md`** at `<thread>.{N+1}/<thread>.md`:
-   - Address each planned change.
+8. **Update `skeleton.md`, then produce `<thread>.md`** at `<thread>.{N+1}/` (skeleton-first per §"Skeleton-first revision" — issue #752):
+   - **Skeleton first.** Write `<thread>.{N+1}/skeleton.md` BEFORE the body. When the revision plan changes structure or load-bearing claims, edit the claim tree to match (add/remove/reorder section claims, sharpen or correct the root claim); when the revision is line-level only, carry the prior `skeleton.md` over verbatim. When the prior version had no `skeleton.md` (legacy thread), reconstruct one from the prior body as the first step (recommended; opt-in — see case 3 in §"Skeleton-first revision"). The body you write next MUST be an expansion of this skeleton.
+   - **Then the body.** Produce `<thread>.{N+1}/<thread>.md` as an expansion of the (possibly edited) `skeleton.md`. Address each planned change.
    - Preserve sections that scored well — do not regress on dimensions that already met the standard.
    - Carry over `exhibits/` from the prior version; update or add exhibits as the revision plan requires.
+   - Record `phases.skeleton.state = done` in `_progress.json` (shallow-merge; parallel to the drafter's step 5f) so every version dir records that the skeleton was authored/carried before its body.
 9. **Write `changelog.md`**: a markdown table mapping each critic note to the change made.
 
    **Net-delta header (issue #748).** Before anything else — before the polish-pass header note, the directive-consumed header note, and the resolutions table — `changelog.md` opens with two lines reporting the revision's net word and emphasis delta:
@@ -359,6 +374,8 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
    ```
 
    `words` is the whole-document word count (source `<thread>.md` → new `<thread>.md`, split on whitespace — same counting convention as the target-length resolution in step 6); `bold spans` is the count of Markdown bold spans (`**...**` occurrences) in the body. Both lines are `<metric>: <before> → <after> (<signed delta>)` — a zero-length or shrinking revision still prints both lines (e.g. `words: 3597 → 3410 (-187)`). This header is **audit-trail only**: it is not scored, not gating, and has no state-machine impact (same framing as `metadata.scope` and `metadata.revision_mode` below) — it exists so an operator or the next reviewer can see at a glance whether a "clean" revision (every finding addressed, verdict improved) also grew the document, without diffing two versions by hand. The two numbers compose with the version-drift block from the companion review-side issue (anvil#746) — same metrics, producer side.
+
+   **Skeleton-diff note (issue #752).** When the revision changed `skeleton.md` (case 1 of §"Skeleton-first revision" — structure or load-bearing claims changed), append a `> Skeleton diff:` blockquote note to the changelog header (after the net-delta lines, before the polish-pass / directive header notes) summarizing the claim-tree change in one or two lines — e.g. `> Skeleton diff: root claim changed from "owning the agent beats owning the gateway" to "owning the harness beats owning the models" (value-migration thesis); §3 (gateway argument) demoted from a section claim to a sub-claim under §2.` This makes the structural intent-change visible as a small tree diff at the top of the changelog, the load-bearing benefit of skeleton-first revision (a seven-sentence diff instead of a 3,400-word prose diff). When the skeleton was carried over verbatim (case 2 — line-level revision only), OR reconstructed from a prior body that had none (case 3), state that in one line — e.g. `> Skeleton diff: none (line-level revision; skeleton carried over).` or `> Skeleton diff: reconstructed from prior body (legacy thread had no skeleton.md).` The note is audit-trail only — not scored, not gating.
 
    ```
    | Source                       | Note                                          | Resolution                          |
