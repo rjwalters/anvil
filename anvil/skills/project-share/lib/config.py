@@ -25,6 +25,22 @@ Config surface (all fields optional)::
                                  #          "_*.json", "*.tmp", ".tmp*",
                                  #          "__pycache__", "*.pyc", ".DS_Store"
       out: SHARE                 # default SHARE
+      cover: SHARE-README.md     # optional recipient-facing cover note
+      cover_as: README.md        # optional dest filename; default README.md
+
+``cover`` (issue #757): a hand-written recipient-facing note (what this
+share is, read order, what's being asked of the reader) is destroyed on
+every marker-guarded blow-away rebuild if it lives inside the export
+root itself. Pointing ``export.cover`` at a durable source file OUTSIDE
+the out dir (e.g. a project-root file, never itself exported) means the
+apply step copies it into the export root on every run, so rebuilds and
+``--zip`` include it automatically. ``cover`` is a path relative to the
+project root; the copy destination inside the export root defaults to
+``README.md`` and is overridable via ``cover_as`` (a bare filename, no
+path separators). Both the source-file existence check and the
+collision check against the ``EXPORT.md`` marker filename happen at
+plan time (:mod:`plan`), not here — this parser has no knowledge of the
+project root or the marker filename.
 
 ``order`` semantics (locked at curation): when present it is the
 authoritative include-list and ordering — slugs omitted from ``order``
@@ -36,6 +52,7 @@ has no knowledge of the documents list).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -76,6 +93,12 @@ DEFAULT_STRIP = (
     ".DS_Store",
 )
 
+# Default destination filename for `export.cover` inside the export root
+# (issue #757). Deliberately distinct from `MARKER_FILENAME` ("EXPORT.md")
+# in `lib/plan.py` — the plan-time collision guard checks `cover_as`
+# against that name whenever `cover` is configured.
+DEFAULT_COVER_AS = "README.md"
+
 
 class ExportConfig(BaseModel):
     """Typed view of the BRIEF ``export:`` frontmatter block.
@@ -103,6 +126,15 @@ class ExportConfig(BaseModel):
     out
         Output directory name under the project root (default
         ``SHARE``). Must be a bare directory name — no path separators.
+    cover
+        Optional path (relative to the project root) to a recipient-facing
+        cover note that is copied into the export root on every apply, so
+        it survives the marker-guarded blow-away rebuild (default
+        ``None`` — no cover file copied).
+    cover_as
+        Destination filename for ``cover`` inside the export root
+        (default ``README.md``). Must be a bare filename — no path
+        separators. Ignored when ``cover`` is unset.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -113,6 +145,8 @@ class ExportConfig(BaseModel):
     include_assets: bool = Field(default=True)
     strip: List[str] = Field(default_factory=lambda: list(DEFAULT_STRIP))
     out: str = Field(default=DEFAULT_OUT)
+    cover: Optional[str] = Field(default=None)
+    cover_as: str = Field(default=DEFAULT_COVER_AS)
 
     @field_validator("order")
     @classmethod
@@ -166,6 +200,48 @@ class ExportConfig(BaseModel):
                 f"export.out must not be {value!r} — it would resolve to "
                 f"the project root (or above) and the marker-guarded "
                 f"rebuild would refuse it anyway."
+            )
+        return value
+
+    @field_validator("cover")
+    @classmethod
+    def _cover_is_safe_relative_path(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"export.cover must be a non-empty path string; got "
+                f"{value!r}."
+            )
+        if value.startswith("/") or value.startswith("\\"):
+            raise ValueError(
+                f"export.cover must be a path relative to the project "
+                f"root (no leading path separator); got {value!r}. "
+                f"Suggested fix: use a project-root-relative path like "
+                f"`SHARE-README.md`."
+            )
+        if any(part == ".." for part in re.split(r"[\\/]+", value)):
+            raise ValueError(
+                f"export.cover must not contain a `..` path-traversal "
+                f"component; got {value!r}. Suggested fix: use a path "
+                f"that stays under the project root, e.g. "
+                f"`refs/cover-note.md`."
+            )
+        return value
+
+    @field_validator("cover_as")
+    @classmethod
+    def _cover_as_is_bare_filename(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError(
+                f"export.cover_as must be a non-empty filename; got "
+                f"{value!r}."
+            )
+        if "/" in value or "\\" in value:
+            raise ValueError(
+                f"export.cover_as must be a bare filename under the "
+                f"export root (no path separators); got {value!r}. "
+                f"Suggested fix: use a single name like `README.md`."
             )
         return value
 
@@ -260,6 +336,7 @@ def load_export_config(project_dir: Path) -> ExportConfig:
 
 __all__ = [
     "BRIEF_FILENAME",
+    "DEFAULT_COVER_AS",
     "DEFAULT_OUT",
     "DEFAULT_STRIP",
     "EXPORT_FRONTMATTER_KEY",

@@ -59,13 +59,22 @@ by the `lib/cli.py` entry point above. The steps it composes:
 
 `config.load_export_config(project_dir)` parses the optional `export:` block
 from the BRIEF frontmatter (`order`, `include_research`, `include_refs`,
-`include_assets`, `strip`, `out` — all optional; zero-config exports
-everything in `documents:` order with the default strip list into `SHARE/`).
+`include_assets`, `strip`, `out`, `cover`, `cover_as` — all optional;
+zero-config exports everything in `documents:` order with the default strip
+list into `SHARE/`, and no cover file is copied).
 `load_project_brief_strict(project_dir)` supplies the `documents:` list.
 
+`cover` (issue #757) points at a recipient-facing cover note living OUTSIDE
+the out dir (e.g. a project-root file) that the apply step copies into the
+export root — as `README.md` by default, or the `cover_as` override — on
+every run, so it survives the marker-guarded blow-away rebuild and rides
+along in `--zip`.
+
 Hard errors at this step: missing `BRIEF.md`; malformed frontmatter; an
-`export:` block with unknown keys, a non-list `order`, or an `out` name
-containing path separators.
+`export:` block with unknown keys, a non-list `order`, an `out` name
+containing path separators, a `cover` path with a leading path separator
+or a `..` path-traversal component, or a `cover_as` name containing path
+separators.
 
 ### 2. Collect + plan
 
@@ -87,9 +96,16 @@ top-level PDFs (SHA-256).
   top-level files.
 - `NN-<slug>/refs/` from the thread root when `include_refs` and non-empty.
 - `research/` once at the export root when `include_research` and present.
+- The `export.cover` source file (when configured) as a top-level file at
+  the export root — sibling to `EXPORT.md`, not inside any `NN-<slug>/`
+  doc dir — named `cover_as` (default `README.md`).
 
 Hard errors at this step: `export.order` naming a slug not in `documents:`;
-`export.out` colliding with a document slug, `research/`, or `refs/`.
+`export.out` colliding with a document slug, `research/`, or `refs/`;
+`export.cover` not resolving to an existing file under the project root;
+`export.cover_as` colliding with a reserved top-level export-root name —
+the `EXPORT.md` marker, `research/`, or a planned `NN-<slug>/` doc
+directory.
 
 Per-doc resolution failures (unstarted thread; a dangling pinned symlink
 with no fallback) are NOT hard errors — they become findings; the other
@@ -98,8 +114,9 @@ docs still export; the run exits nonzero.
 ### 3. Report
 
 Print the markdown report: project root, out dir + its current guard state,
-ordering source, and per-doc sections (resolved version + resolution mode,
-file counts, refs counts, PDF fingerprints, notes). In `--dry-run` mode the
+ordering source, per-doc sections (resolved version + resolution mode, file
+counts, refs counts, PDF fingerprints, notes), and the cover-note source +
+destination when `export.cover` is configured. In `--dry-run` mode the
 command stops here — nothing is written.
 
 ### 4. Apply (marker-guarded blow-away rebuild)
@@ -140,6 +157,11 @@ the rebuild was refused, verification failed, or any doc failed to resolve
 - Malformed `export:` block (unknown key, bad `out`, non-string entries):
   hard-fail naming the field.
 - `export.order` slug not in `documents:`: hard-fail naming the slug.
+- `export.cover` set but not resolving to an existing file under the
+  project root (issue #757): hard-fail at plan time, no writes.
+- `export.cover_as` colliding with the `EXPORT.md` marker, `research/`, or
+  a planned `NN-<slug>/` doc directory (issue #757): hard-fail at plan
+  time, no writes.
 - Non-empty out dir without the `EXPORT.md` marker: refusal, no deletion,
   nonzero exit.
 - Unresolvable doc: finding + nonzero exit; other docs still export.

@@ -16,6 +16,7 @@ to an email:
 ```
 <project>/SHARE/
   EXPORT.md                # auto-generated provenance index (also the rebuild marker)
+  README.md                # optional recipient-facing cover note (export.cover, issue #757)
   00-<slug>/
     <slug>.md              # body from the .latest-resolved version dir
     <slug>.pdf             # rendered output, when present
@@ -84,6 +85,8 @@ export:
     - "*.tmp"
     - ".tmp*"
   out: SHARE                # output dir name under the project root
+  cover: SHARE-README.md    # optional recipient-facing cover note (see below)
+  cover_as: README.md       # optional dest filename under the out dir
 ```
 
 Zero-config works: with no `export:` block, every `documents:` entry exports
@@ -96,6 +99,22 @@ keys, so the `export:` block is safe in any BRIEF today.
 ordering — slugs omitted from `order` are excluded (with a note in the
 summary and in `EXPORT.md`); slugs in `order` that don't appear in
 `documents:` are a hard error naming the slug.
+
+`cover` semantics (issue #757): `EXPORT.md` is machine provenance, not a
+human cover note — and because the out dir is a marker-guarded blow-away
+rebuild, a hand-written `SHARE/README.md` is deleted on every re-export.
+`export.cover` points at a durable source file living OUTSIDE the out dir
+(e.g. a project-root file like `SHARE-README.md`, never itself exported);
+the apply step copies it into the export root — as `README.md` by default,
+or the `cover_as` name — on every run, so rebuilds and `--zip` include it
+automatically. `cover` is a path relative to the project root (a bare
+filename or a nested relative path like `refs/cover-note.md`; a leading
+`/` or any `..` component is a hard error at parse time); the source file
+must exist (hard error at plan time otherwise), and `cover_as` must be a
+bare filename that does not collide with a reserved top-level export-root
+name — the `EXPORT.md` marker, `research/`, or a planned `NN-<slug>/` doc
+directory (hard error at plan time). With no `cover` key, no cover file is
+copied — zero-config behavior is unchanged.
 
 ## Commands
 
@@ -171,15 +190,18 @@ packaging convention; lib loaded under the unique package name
 PR #362 / #372 precedent):
 
 - `test_project_share_config.py` — `export:` block parsing + defaults +
-  malformed shapes.
+  malformed shapes, including `cover` / `cover_as` parsing and type
+  validation.
 - `test_project_share_collect.py` — `.latest` precedence (pinned symlink >
   real dir > walk-to-highest), deref provenance, refs detection, PDF
   SHA-256, per-doc failure capture.
 - `test_project_share_plan.py` — ordering semantics, strip filtering,
-  include toggles, out-name collision guard.
+  include toggles, out-name collision guard, `export.cover` inclusion +
+  missing-source hard error + `cover_as`/`EXPORT.md` collision guard.
 - `test_project_share_apply.py` — full-layout assertions, EXPORT.md
-  contents, zip, findings, and the AC-8 regression that `SHARE/` does not
-  trip `load_project_brief_strict` slug-divergence validation.
+  contents, zip, findings, the AC-8 regression that `SHARE/` does not
+  trip `load_project_brief_strict` slug-divergence validation, and
+  `export.cover` surviving a rebuild + landing in the `--zip` archive.
 - `test_project_share_dry_run.py` — snapshot-and-diff: dry-run leaves the
   project tree byte-identical (SHA-256 per file).
 - `test_project_share_idempotent.py` — re-run rebuilds cleanly; stale doc
