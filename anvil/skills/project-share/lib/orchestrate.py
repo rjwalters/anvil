@@ -138,6 +138,12 @@ def _format_plan_report(plan: SharePlan, dry_run: bool) -> str:
             f"### `research/` — shared pool, {len(plan.research_files)} files"
         )
         lines.append("")
+    if plan.cover_file is not None:
+        lines.append(
+            f"### Cover note — `{plan.cover_file.target_rel}` "
+            f"(from `{plan.cover_file.source}`)"
+        )
+        lines.append("")
     for note in plan.notes:
         lines.append(f"- note: {note}")
     if plan.notes:
