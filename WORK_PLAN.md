@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-29 (Guide triage pass)*
+*Last updated: 2026-07-29 (Guide triage pass, later same-day update)*
 
 ---
 
@@ -14,24 +14,27 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 *Empty.* #779 (`test(memo): stale weasyprint-detection test fails when binary is not on PATH`) merged via PR #781 and closed on 2026-07-29 — see `WORK_LOG.md`.
 
-## Ready for Work (`loom:issue`) — implementation complete, pending merge
+## Ready for Work (`loom:issue`)
+
+*Empty.* All three open `loom:issue` issues now also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge, so there is no unbuilt ready work to dispatch a Builder onto.
+
+## Blocked (`loom:blocked`) — implementation complete, pending merge
 
 | Issue | Title | Tier | Status |
 |---|---|---|---|
-| #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `loom:pr` (Judge-approved, mergeable) |
-| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting`, `loom:curated` | PR #763 open, `loom:pr` (Judge-approved, mergeable) |
-| #751 | evidence grades leak into reader prose — preservation contract needs a rendering rule | `tier:goal-supporting`, `loom:blocked` (dependency: PR #773 unmerged) | PR #773 open, `loom:pr` (Judge-approved, mergeable) |
+| #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `loom:pr` (Judge-approved, mergeable); blocked 2026-07-29 to prevent duplicate Builder dispatch |
+| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` | PR #763 open, `loom:pr` (Judge-approved, mergeable); blocked 2026-07-29 to prevent duplicate Builder dispatch |
+| #751 | evidence grades leak into reader prose — preservation contract needs a rendering rule | `tier:goal-supporting` | PR #773 open, `loom:pr` (Judge-approved, mergeable, but `mergeable_state: dirty` — needs a rebase before merge) |
 
-**Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763`, `773` (Champion/human).
+**Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763`, `773` (Champion/human); #773 needs a rebase first.
 
-## Blocked (`loom:blocked`)
+Each of the three carries a documented unblock condition: PR merges → issue auto-closes; PR closes without merging → remove `loom:blocked`, issue re-enters normal triage.
 
-- **#764** — Tracker: retire local `.claude/commands/loom/sweep.md --claim-owned` patch once Loom is upgraded. The 2026-07-29 Loom v0.16.0 upgrade (PR — commit `bf47bcb`) landed the trigger condition; Curator verified ACs 1–2 (patch superseded, upstream `sweep.md` natively handles `--claim-owned`). AC 3 (one daemon-dispatched sweep completing end-to-end post-upgrade) is still unobserved as of PR #777/#778 — `sweeps.json` is empty. Stays blocked pending that observation; not a dependency-resolution unblock.
-- **#751** — see table above; blocked on PR #773 merging (self-referential — the fix is already built).
+**#764** (Tracker: retire local `.claude/commands/loom/sweep.md --claim-owned` patch) has since **closed** (2026-07-29, manual closure — the tracked Loom v0.16.0 upgrade landed the trigger condition) and is no longer part of the open backlog; see `WORK_LOG.md`.
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-*No new issues.* #746 and #743 both currently show a live `loom:curating` claim — the Curator is re-verifying their (already-open) implementing PRs (#761, #763) remain unmerged, per its documented re-check cadence. This is a transient bookkeeping claim, not new backlog.
+*No new issues.* No issue currently carries a `loom:curating` claim.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -43,7 +46,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-Four open issues total as of 2026-07-29 (down from five now that #779 merged and closed — see `WORK_LOG.md` for the ~86-PR merge record since the last Work Plan refresh). The backlog is effectively **drained of unbuilt ready work**: every `loom:issue` issue already has a complete, Judge-approved PR; the only blocked issue with real dependency content (#751) is blocked on its own already-built PR merging; #764 is a self-tracking migration-verification issue waiting on one live daemon sweep cycle, not on other issues. The rate-limiting step across the board is **merging open PRs #761 / #763 / #773**, not Builder dispatch. Note PR #773 (closes #751) currently shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean.
+Three open issues total as of 2026-07-29 (down from four now that #764 closed manually — see `WORK_LOG.md`). The backlog is fully **drained of unbuilt ready work**: all three open `loom:issue` issues (#746, #743, #751) now also carry `loom:blocked`, each already has a complete, Judge-approved, mergeable PR (#761, #763, #773 respectively) awaiting human/Champion merge. The rate-limiting step across the board is **merging those three PRs**, not Builder dispatch or triage prioritization. Note PR #773 (closes #751) currently shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean. With zero unblocked ready issues, the `loom:urgent` queue is correctly empty.
 
 ### Recurring themes the next wave of issues will likely touch
 
