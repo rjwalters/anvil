@@ -452,10 +452,12 @@ def test_memo_revise_render_call_is_non_blocking():
 def test_memo_revise_preserves_existing_steps():
     """Backwards-compat invariant: the prior memo-revise procedure steps survive.
 
-    The "Produce the body" step accepts either the slug-echo phrasing
-    ("Produce `<thread>.md`") or the legacy literal ("Produce `memo.md`"),
-    so this regression guard stays meaningful through the issue #295
-    project-org model lock.
+    The "Produce the body" step accepts the slug-echo phrasing
+    ("Produce `<thread>.md`"), the legacy literal ("Produce `memo.md`"),
+    or the skeleton-first phrasing per issue #752 ("Update `skeleton.md`,
+    then produce `<thread>.md`"), so this regression guard stays
+    meaningful through the issue #295 project-org model lock and the
+    #752 skeleton-first rewrite.
     """
     body = _read(REVISE_MD)
     for marker in (
@@ -474,11 +476,17 @@ def test_memo_revise_preserves_existing_steps():
             "backwards-compat AC)"
         )
     # The "Produce <body>" step accepts the slug-echo shape per #295
-    # ("Produce `<thread>.md`") or the legacy literal ("Produce `memo.md`").
-    assert "Produce `<thread>.md`" in body or "Produce `memo.md`" in body, (
+    # ("Produce `<thread>.md`"), the legacy literal ("Produce `memo.md`"),
+    # or the skeleton-first shape per #752 ("... then produce `<thread>.md`").
+    assert (
+        "Produce `<thread>.md`" in body
+        or "Produce `memo.md`" in body
+        or "produce `<thread>.md`" in body
+    ), (
         "memo-revise.md MUST preserve the 'Produce <body markdown>' step "
-        "(issue #190 backwards-compat AC); slug-echo phrasing per #295 is "
-        "accepted in addition to the legacy literal."
+        "(issue #190 backwards-compat AC); slug-echo phrasing per #295 and "
+        "the #752 skeleton-first phrasing are accepted in addition to the "
+        "legacy literal."
     )
 
 

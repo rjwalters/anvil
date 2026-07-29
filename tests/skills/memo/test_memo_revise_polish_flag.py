@@ -74,12 +74,20 @@ def test_no_polish_flag_advance_true_refuses():
         "memo-revise.md step 4 MUST keep the advance==true pre-check prose"
     )
     # The default-refuse path must be conditioned on the absence of
-    # --polish — otherwise the regression guard is meaningless.
+    # --polish — otherwise the regression guard is meaningless. Issue #754
+    # widened the conditional to "neither `--polish` nor `--reject` was
+    # passed" (--reject bypasses the same precondition), so that phrasing
+    # is accepted too.
     lowered = body.lower()
-    assert "polish` was not passed" in lowered or "polish was not passed" in lowered, (
+    assert (
+        "polish` was not passed" in lowered
+        or "polish was not passed" in lowered
+        or "neither `--polish` nor `--reject` was passed" in lowered
+    ), (
         "memo-revise.md step 4 MUST condition the default-refuse path on "
-        "the absence of --polish so the no-flag invocation stays "
-        "byte-identical to current behavior (issue #201 AC1)"
+        "the absence of --polish (alone, or via the #754 'neither "
+        "`--polish` nor `--reject`' phrasing) so the no-flag invocation "
+        "stays byte-identical to current behavior (issue #201 AC1)"
     )
 
 
