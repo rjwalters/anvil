@@ -115,26 +115,24 @@ def test_check_pandoc_returns_false_when_absent(monkeypatch):
     assert check_pandoc_available() is False
 
 
-def test_check_weasyprint_returns_true_when_on_path(monkeypatch):
-    """``check_weasyprint_available`` returns ``True`` when
-    ``shutil.which`` finds ``weasyprint``.
-    """
-    monkeypatch.setattr(
-        shutil,
-        "which",
-        lambda name: "/usr/local/bin/weasyprint"
-        if name == "weasyprint"
-        else None,
-    )
-    assert check_weasyprint_available() is True
-
-
 def test_check_weasyprint_returns_false_when_absent(monkeypatch):
     """``check_weasyprint_available`` returns ``False`` when
     ``shutil.which`` returns ``None``.
     """
     monkeypatch.setattr(shutil, "which", lambda name: None)
     assert check_weasyprint_available() is False
+
+
+# NOTE (issue #779): there is deliberately no
+# ``test_check_weasyprint_returns_true_when_on_path`` here. Unlike
+# ``check_pandoc_available``/``check_wkhtmltopdf_available``,
+# ``check_weasyprint_available`` gained a second stage in #308/#311 — a
+# ``subprocess.run(["weasyprint", "--version"])`` runtime smoke test on top
+# of the ``shutil.which`` presence check. A PATH-only mock here would call
+# the real ``subprocess.run`` (no real ``weasyprint`` binary needed to
+# reproduce: it fails on any machine/CI container without one installed).
+# The correct two-stage-mocked coverage for the True path already lives in
+# ``tests/lib/test_render.py::test_check_weasyprint_available_true_when_version_exits_0``.
 
 
 def test_check_wkhtmltopdf_returns_true_when_on_path(monkeypatch):
