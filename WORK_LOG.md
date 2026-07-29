@@ -16,6 +16,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - **PR #776**: feat(project-share): add `export.cover` / `cover_as` durable cover-note knob (closes #757)
 - **PR #777**: config: enable autonomous work-finder in committed loom config
 - **PR #778**: fix(config): merge duplicate autonomous blocks into one
+- **PR #781**: test(memo): remove stale weasyprint on-PATH test superseded by #308/#311 (closes #779)
 - **Guide note**: as of this pass, three issues remain open with fully-implemented, Judge-approved PRs pending human/Champion merge: #746↔PR #761, #743↔PR #763, #751↔PR #773. All three represent completed Builder work, not backlog needing new dispatch.
 
 ### 2026-07-28
