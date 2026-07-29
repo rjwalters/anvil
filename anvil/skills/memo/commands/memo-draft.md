@@ -7,7 +7,7 @@ description: Drafter command for the memo skill. Produces a new memo version dir
 
 **Role**: drafter.
 **Reads**: `<thread>/BRIEF.md` (if present), the resolved refs-dir list returned by `anvil/skills/memo/lib/refs_resolver.py::resolve_refs_dirs(<thread_dir>)` — `<thread>/refs/**` for the legacy single-thread shape; plus `<portfolio>/research/**` for the portfolio-shared shape (issue #280) when a sibling `<portfolio>/research/` directory exists. For revise-from-feedback path: also the latest `<thread>.{N}/` and all `<thread>.{N}.*/` critic siblings.
-**Writes**: `<thread>.{N+1}/` containing `<thread>.md`, optional `exhibits/`, and `_progress.json`.
+**Writes**: `<thread>.{N+1}/` containing `skeleton.md` (issue #752), `<thread>.md`, optional `exhibits/`, and `_progress.json`.
 
 ## Inputs
 
@@ -17,23 +17,40 @@ description: Drafter command for the memo skill. Produces a new memo version dir
 - **`<thread>.0.perspective/` or latest `<thread>.{N}.perspective/`** (optional, load-bearing if present): pre-draft external-substrate sibling produced by `memo-perspective`. When present, the drafter reads `notes.md` (narrative synthesis: comparable / market positioning + gaps) and `candidates.md` (structured comparables / cited research / market reports / customer evidence / regulatory entries with source URLs) and uses them as context for the Market & competitive framing, Evidence, Risks, and Financial reasoning sections. Per `anvil/lib/snippets/perspective.md` §"State-machine non-gating", absence does NOT block drafting — the drafter proceeds normally without a perspective sibling, exactly as memo threads have always done. The perspective sibling is opt-in input, not required output.
 - **Prior version + critic siblings** (revise-from-feedback path only): in normal flow, revision is handled by `memo-revise`. `memo-draft` is the entry point for new threads. For threads where the user wants to start fresh from feedback (rare), this path is available — but `memo-revise` is preferred because it preserves the changelog mapping.
 
+## CLI flags
+
+### `--skeleton-gate` (optional, off by default) — issue #752
+
+Operator checkpoint between the skeleton and its expansion. When passed, `memo-draft` writes `skeleton.md` (step 5f), records `phases.skeleton.state = done`, and **stops before drafting the body** — the drafter prints the skeleton path and a one-line instruction to review it, then exits WITHOUT writing `<thread>.md`. The operator reads (and, if needed, edits in place) the seven-sentence claim tree, then re-runs `memo-draft <thread>` (no flag) to expand the approved skeleton into the body.
+
+The gate is the cheap, in-band realization of the issue #752 canary evidence: in the sentinel thread every expensive failure (four ratchet cycles, a rejected 43/44 memo) would have been caught at the seven-sentence stage if the operator had corrected the root claim before 3,000 words calcified around it. Cost of the checkpoint is one minute of operator attention on the skeleton versus a full revise cycle.
+
+**Resumption is byte-identical to the normal path.** On the second (bodyless) run, step 2's resume check finds `phases.skeleton.state == done` + `skeleton.md` present but `phases.draft.state != done` and no `<thread>.md`; it treats the skeleton as approved substrate and proceeds to step 6 (expand the body) WITHOUT rewriting the skeleton. The drafter MUST NOT overwrite an operator-edited `skeleton.md` on the resumption run — the skeleton is read-as-approved once `phases.skeleton.state == done`.
+
+**Non-blocking, opt-in.** Absence of the flag is the default single-pass behavior: the drafter authors the skeleton (step 5f) and expands it into the body (step 6) in one run, no operator pause. The flag changes only whether the drafter stops between the two sub-steps.
+
 ## Outputs
 
 A new version directory:
 
 ```
 <thread>.{N+1}/
-  <thread>.md            Memo body (markdown)
+  skeleton.md        Recursive claim tree the body expands (issue #752): root claim + one claim per section, authored BEFORE the body
+  <thread>.md            Memo body (markdown) — an expansion of skeleton.md
   exhibits/          Inline tables, charts, source data referenced from <thread>.md (created as needed)
   _progress.json     Phase state with draft: done after successful write
 ```
 
 For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
 
+`skeleton.md` is immutable with the version dir (same contract as `<thread>.md`). It is authored first (step 5f below) and the body is an expansion of it; the reviser edits the skeleton — in the *next* version dir — before touching the body (see `commands/memo-revise.md` §"Skeleton-first revision"). Backwards-compat: a version dir with no `skeleton.md` (every memo drafted before issue #752) is a fully legal `DRAFTED` state; the reviewer notes the absence observationally and takes no deduction.
+
 ## Procedure
 
 1. **Discover thread state**: enumerate existing `<thread>.{N}/` dirs. Compute the next `N`.
 2. **Resume check**: if `<thread>.{N+1}/_progress.json` exists with `draft.state == in_progress`, treat as a crashed prior run. Delete any partial `<thread>.md` and re-draft. If `draft.state == done`, the version is already drafted — exit early with a notice (this command is idempotent: it does not overwrite a completed draft).
+
+   **Skeleton-gate resume (issue #752).** If `phases.skeleton.state == done` AND `skeleton.md` exists AND `draft.state != done` AND `<thread>.md` is absent, this is the second run of a `--skeleton-gate` two-phase draft (or a resumed crash after the skeleton was written). Treat the on-disk `skeleton.md` as **approved substrate** — do NOT re-author or overwrite it (the operator may have edited it in place) — and skip step 5f, proceeding directly to step 6 to expand the body. Re-reading `skeleton.md` as the plan for the body expansion is the load-bearing behavior here.
 3. **Read inputs**: load `BRIEF.md` (if present) and enumerate the **resolved refs-dir list** returned by `anvil/skills/memo/lib/refs_resolver.py::resolve_refs_dirs(<thread_dir>)` — `[<thread>/refs/]` for the legacy single-thread shape, OR `[<thread>/refs/, <portfolio>/research/]` for the portfolio-shared shape (issue #280) when a sibling `<portfolio>/research/` directory exists. **Read all text-readable files in the resolved list (markdown `.md`, plain text `.txt`, JSON `.json`) into context as source-of-truth for claims in their domain** (CVs for biographical claims, filings for sized public claims, papers for technical-claim citations, transcripts for quotation/tone, emails for traction claims, portfolio-level vertical briefs / comp matrices / case studies for cross-thread market context, strongman files for thesis / counter-argument substrate per the §"Strongman drafter contract" below). **Per-thread precedence on filename collision**: when the same basename exists in both `<thread>/refs/` and `<portfolio>/research/`, the per-thread copy wins (the resolver returns it first; the drafter picks the first match when iterating by basename — a thread that wants to override a portfolio-level fact with its own copy uses this hook). If a claim conflicts with the content of a source-of-truth document anywhere in the resolved list (per-thread `refs/` or portfolio-level `research/`), **the `refs/` document wins** — the same precedence rule as the pre-#280 contract, extended to apply to portfolio-level `research/` source-of-truth materials too — the drafter MUST either rewrite the claim to agree with the source or flag the conflict explicitly in prose.
 
    **Strongman drafter contract (issue #330)**: when `strongman-for.md` and/or `strongman-against.md` files are present anywhere in the resolved refs-dir list (per-thread `<thread>/refs/`, per-thread `<thread>/refs/<topic>/`, or portfolio-level `<portfolio>/research/<topic>-analysis/` — see SKILL.md §"Source-of-truth materials" §"Strongman scoping convention" for the scoping rules), the drafter:
@@ -89,7 +106,18 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
    - **Record the consulted exemplar paths in `_progress.json.metadata.voice_exemplars`** (a list of path strings, written as part of step 4's metadata) so the reviewer can verify grounding actually happened. Omit the field entirely when the tier is inactive.
    - **Quote a corpus passage when justifying a register or mode choice** in the drafter's self-check — the same evidence discipline the reviewer applies at review time (see `memo-review.md` step 4l + the dim 8 voice-grounding sub-step).
    - **Declared-but-missing docs do not block drafting**: proceed with whatever resolved (the helper carries missing files as structured `missing: true` entries); the reviewer surfaces the broken declaration as a `major` finding at review time.
-6. **Draft the memo**: produce `<thread>.md` with:
+5f. **Author the skeleton BEFORE the body (skeleton-first drafting)** — issue #752. Before writing any body prose, author `<thread>.{N+1}/skeleton.md` — a recursive claim tree that fixes the memo's communicative intent so the body can be an *expansion* of a stated plan rather than prose that is written, then summarized, then scored claim-by-claim. The canary evidence: a sentinel-thread memo scored 43/44 (advance:true, 0 critical) yet the operator called it "almost word-soup … not having a clear understanding of what we are trying to communicate" — every atom was true, sourced, and hedged, but the whole did not transmit the plan, because nothing owned the intent as a first-class artifact. The skeleton is that artifact.
+
+   Write `skeleton.md` per `templates/skeleton.md.template` (copy it into the version dir and fill it in), honoring three contract rules:
+
+   - **Root claim (exactly one sentence)** — what a reader must take away from the whole memo. A claim, not a topic. This is the single sentence the operator would correct first at a `--skeleton-gate` checkpoint (in the sentinel canary, the one-line root correction — from a competitive-positioning claim to a value-migration thesis — reshaped the entire document and snapped the three deliverables into 1:1 alignment with the thesis's three legs, a coherence no amount of body-level revision had produced in five versions).
+   - **One claim per planned section (a claim, not a topic)** — "The economics force a $457–$1,314 enterprise price and today it sits $14 above the kill line", never "Economics". Nest sub-claims under a section claim when the section carries more than one load-bearing assertion (the tree is recursive).
+   - **Plain-language constraint** — no term may appear in the skeleton that a domain-literate outsider could not parse UNLESS the skeleton itself defines it inline. This forces the jargon question to be settled BEFORE the body calcifies around undefined coinages ("harness-native efficiency", "the substrate under the primitive", "the escalation floor is invariant") or a variable defined once in a subordinate clause that then load-bears a whole section. A coinage that is not defined in the skeleton is a skeleton defect the drafter fixes here, not a prose defect the reviewer catches later.
+
+   Record `phases.skeleton.state = done`, `phases.skeleton.started/completed = <ISO>` in `_progress.json` (step 4's shallow-merge recipe). When `--skeleton-gate` is set, **stop here** per §"CLI flags" §"`--skeleton-gate`" — print the skeleton path and exit WITHOUT writing the body; the operator reviews (and optionally edits) the claim tree and re-runs `memo-draft <thread>` to expand it. When the flag is absent, fall through to step 6 in the same run.
+
+   `skeleton.md` ships in the version dir alongside the body and is **immutable with it** (same contract as `<thread>.md`). The reviewer back-checks skeleton→body derivation at review time using the same verdict tags as the summary↔detail leg (see `commands/memo-review.md` step 4e §"Skeleton↔section derivation leg" and `rubric.md` §"Summary-detail consistency" §"Skeleton↔section derivation leg (issue #752)").
+6. **Draft the memo**: produce `<thread>.md` as an **expansion of the approved `skeleton.md`** (step 5f) — every body section must remain answerable to its skeleton section claim, and the body as a whole must deliver the skeleton's root claim. Do NOT introduce a load-bearing section or a load-bearing coinage that the skeleton does not already carry; if the act of drafting surfaces a genuinely new load-bearing claim, add it to `skeleton.md` first (still in this same version dir, before `phases.draft.state == done`), then expand it — the skeleton stays the source of truth for intent. Produce `<thread>.md` with:
    - **Header**: thread slug, date, iteration, author (model identifier).
    - **Executive summary** (3–5 sentences): the recommendation + the one-sentence ask.
    - **Thesis** (named, falsifiable): what must be true for the recommendation to hold.
@@ -112,7 +140,7 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`.
    - **Recommendation**: the explicit ask, restated, with check size or scope.
 7. **Create exhibits** (inline only — full figure generation belongs to `memo-figures`): any tables or simple inline data structures referenced from the body should land in `exhibits/` as `.md` or `.csv` files. Image generation is deferred to `memo-figures`.
 8. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO timestamp>`.
-9. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted acme-seed.1/ (acme-seed.md: 1240 words, 2 exhibits)` — the body filename echoes the thread slug per #295). When `target_length` is set, also report whether the produced word count falls in-range (e.g., `... 1240 words, target 1800–2400 — under target`).
+9. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted acme-seed.1/ (skeleton.md: 1 root + 6 section claims; acme-seed.md: 1240 words, 2 exhibits)` — the body filename echoes the thread slug per #295). When `target_length` is set, also report whether the produced word count falls in-range (e.g., `... 1240 words, target 1800–2400 — under target`). Under `--skeleton-gate` the drafter stops after the skeleton and reports instead `Wrote skeleton acme-seed.1/skeleton.md (1 root + 6 section claims) — review, then re-run 'memo-draft acme-seed' to expand the body`.
 9.5. **Render the body to PDF (non-blocking — YOU run this)**: after the draft is written and `phases.draft.state == done` is recorded (step 8), **you — the agent executing this command — MUST run the render-phase CLI** on the version directory you just wrote. There is no other runtime that performs this step: when an LLM agent drives this lifecycle, the agent IS the runtime (issue #472).
 
        python3 .anvil/skills/memo/lib/render_phase.py <thread>.{N}/
@@ -162,6 +190,7 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   "version": 1,
   "thread": "<slug>",
   "phases": {
+    "skeleton": { "state": "done", "started": "<ISO>", "completed": "<ISO>" },
     "draft": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
   },
   "metadata": {
@@ -176,6 +205,8 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   }
 }
 ```
+
+`phases.skeleton` (issue #752) records that the skeleton-first sub-step (step 5f) ran before the body. `state == done` means `skeleton.md` was authored (and, under `--skeleton-gate`, that the drafter stopped there for operator review). The block is a **sub-step of `DRAFTED`, not a new state** — SKILL.md §"State machine" still derives `DRAFTED` from `phases.draft == done`. Absence of the `phases.skeleton` block (and of `skeleton.md`) is a **fully legal `DRAFTED` state** — every memo version drafted before issue #752 has this shape, and the reviewer's skeleton back-check falls back to `ran: false` observationally with no deduction. The block participates in the standard shallow-merge rule per `anvil/lib/snippets/progress.md`.
 
 `metadata.max_iterations` and `metadata.iteration_cap_rationale` are the resolved effective cap and (when set) the paired operator-supplied rationale from the BRIEF override (issue #349 — see step 4 for the resolution rules). When the per-document BRIEF override is in effect, `max_iterations` carries the elevated value and `iteration_cap_rationale` carries the verbatim operator-supplied justification string. When the override is absent, `iteration_cap_rationale` is `null` (or omitted; readers tolerate both shapes for backwards-compat with pre-issue-#349 version dirs). Both fields participate in the standard shallow-merge rule per `anvil/lib/snippets/progress.md` — any subsequent command that touches `_progress.json` preserves them. Per-version mirroring of the rationale gives every version dir a self-contained audit trail of the cap that was in effect when it was produced.
 
