@@ -438,6 +438,107 @@ def test_long_sentence_density_disable_via_config():
     assert _active(res) == []
 
 
+# ---------------------------------------------------------------------------
+# no-grade-tags-in-body (issue #751): internal evidence-grade taxonomy
+# leaking into reader-facing prose
+# ---------------------------------------------------------------------------
+
+
+def test_grade_tag_fires_on_each_documented_keyword():
+    for tag in (
+        "[SOLID]",
+        "[DERIVED]",
+        "[ASSUMPTION]",
+        "[MEDIUM]",
+        "[HIGH]",
+        "[LOW]",
+    ):
+        ids = [
+            f.rule_id
+            for f in _active(lint_rhetoric(f"A claim graded {tag} here.\n"))
+        ]
+        assert ids == ["no-grade-tags-in-body"], tag
+
+
+def test_grade_tag_fires_on_elaborated_estimate_tag():
+    """The canary's memo.5 §5 instance: a multi-word elaboration after
+    the grade keyword, closed by the bracket."""
+    text = (
+        "...computed at 23.5% more expensive per solved task "
+        "([ESTIMATE from SOLID inputs], from an API price and accuracy "
+        "table under a conservative nested-accuracy assumption)\n"
+    )
+    assert [f.rule_id for f in _active(lint_rhetoric(text))] == [
+        "no-grade-tags-in-body"
+    ]
+
+
+def test_grade_tag_fires_on_colon_elaborated_medium_tag():
+    """The canary's memo.5 §9 risk 7 instance: a colon-elaborated tag
+    that even smuggles a drafter-directed instruction into prose."""
+    text = (
+        "Applied Compute reportedly raised $80M led by Kleiner Perkins "
+        "[MEDIUM: vendor research post, not a funding primary; verify "
+        "before treating as load-bearing]\n"
+    )
+    assert [f.rule_id for f in _active(lint_rhetoric(text))] == [
+        "no-grade-tags-in-body"
+    ]
+
+
+def test_grade_tag_no_false_positive_on_ordinary_citation_brackets():
+    text = (
+        "A claim with a citation [1] and another [Smith et al. 2020] "
+        "and a source-of-truth pointer [refs/cv.pdf].\n"
+    )
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_grade_tag_sources_block_exempt():
+    """A grade tag inside a '## Sources' section is the tag's documented
+    home (rubric.md §'Grade-tag leakage (issue #751)') and MUST NOT fire,
+    while the same tag shape outside the section still fires."""
+    text = (
+        "Leaked before the section: [HIGH] risk.\n"
+        "\n"
+        "## Sources\n"
+        "\n"
+        "- Founder interview [SOLID] verified directly.\n"
+        "- Comp data [DERIVED] from public filings.\n"
+        "\n"
+        "## Risks\n"
+        "\n"
+        "Leaked after the section closes: [LOW] confidence.\n"
+    )
+    hits = [(f.rule_id, f.line) for f in _active(lint_rhetoric(text))]
+    assert hits == [
+        ("no-grade-tags-in-body", 1),
+        ("no-grade-tags-in-body", 10),
+    ]
+
+
+def test_grade_tag_sources_block_exempt_covers_nested_subheading():
+    """A '###' sub-heading inside '## Sources' stays inside the section
+    (mirrors the migrate.py §Sources boundary rule); only a heading of
+    equal-or-shallower depth closes it."""
+    text = (
+        "## Sources\n"
+        "\n"
+        "### Founder interviews\n"
+        "\n"
+        "- [ASSUMPTION] still inside the Sources section.\n"
+    )
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_grade_tag_disable_via_config():
+    res = lint_rhetoric(
+        "A claim graded [SOLID] here.\n",
+        extra_rules={"disable": ["no-grade-tags-in-body"]},
+    )
+    assert _active(res) == []
+
+
 def test_long_sentence_density_excludes_code_and_comments():
     """Long "sentences" inside fenced code / HTML comments do not count."""
     fenced_long = "w " * 45 + ".\n"
@@ -503,6 +604,27 @@ def test_validate_rule_long_sentence_invalid_sentence_word_threshold(tmp_path):
     config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
     assert len(config) == 1
     assert "sentence_word_threshold" in config[0].message
+
+
+def test_grade_tag_sources_block_exempt_is_opt_in():
+    """A consumer rule without ``sources_block_exempt`` set is NOT
+    exempted inside a Sources section — the exemption is per-rule, not
+    a global scan exclusion."""
+    res = lint_rhetoric(
+        "## Sources\n\nA plain phrase match should still fire here.\n",
+        extra_rules={
+            "rules": [
+                {
+                    "id": "test-always-fires",
+                    "kind": "phrase",
+                    "pattern": "plain phrase match",
+                    "message": "test rule",
+                }
+            ]
+        },
+    )
+    ids = [f.rule_id for f in _active(res)]
+    assert "test-always-fires" in ids
 
 
 # ---------------------------------------------------------------------------
