@@ -287,7 +287,7 @@ When NEITHER `--plan` NOR `--apply` is passed, the reviser executes the legacy 1
    If the BRIEF cannot be loaded (no BRIEF, malformed YAML, etc.), use the fallback — `load_project_brief` returns `None` on every absence path. If the BRIEF parses but the paired override is malformed (`max_iterations` set without rationale, `< 4`, non-integer cap, etc.), the parser raised `ValueError` at load time — the reviser propagates that error rather than degrading silently (the BRIEF-side surface is the schema-of-record). The schema violation is itself the actionable error: the operator either fixes the BRIEF or removes the override.
 
    If `N + 1 > effective_max_iterations`, exit with the **BLOCKED notice** per §"BLOCKED notice" below — human review required.
-4. **Verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` and there are no critical flags AND `--polish` was NOT passed, exit with a notice: the thread is `READY`, no revision needed. (Default behavior is to refuse to revise an already-passing version.)
+4. **Verdict pre-check**: parse `<thread>.{N}.review/verdict.md`. If `advance == true` and there are no critical flags AND neither `--polish` nor `--reject` was passed, exit with a notice: the thread is `READY`, no revision needed. (Default behavior is to refuse to revise an already-passing version.)
 
    **NO-GO refusal (issue #559).** Before the `advance == true` check, parse the prior review's `verdict.md` via `anvil/lib/critics.py::parse_memo_verdict_no_go`. If the function returns `True` AND `--override-no-go "<reason>"` was NOT passed, the thread is in **NO-GO terminal state** — refuse to proceed with the documented error message:
 
@@ -576,6 +576,32 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
     },
     "revision_mode": "polish",
     "revise_force_reason": "Sharpen the conditional terms in Recommendation; reviewer noted dim 4 at 5/6 with specific suggestion."
+  }
+}
+```
+
+The `operator_reject` shape (issue #754) is the same version-dir shape with the reject-mode audit-trail fields instead — `revision_mode: "operator_reject"` and `reject_reason` in place of `revise_force_reason`:
+
+```json
+{
+  "version": 1,
+  "thread": "<slug>",
+  "phases": {
+    "revise": { "state": "done", "started": "<ISO>", "completed": "<ISO>" }
+  },
+  "metadata": {
+    "iteration": <N+1>,
+    "max_iterations": 4,
+    "iteration_cap_rationale": null,
+    "revised_from": <N>,
+    "scope": "important",
+    "target_length_resolved": {
+      "min_words": 2000,
+      "max_words": 2800,
+      "source": "overrides.10"
+    },
+    "revision_mode": "operator_reject",
+    "reject_reason": "Almost word-soup; the reader learns nothing interesting. Restate the thesis root as one corrected sentence and rebuild the skeleton around the Gate-4-flipping break-even re-run."
   }
 }
 ```
