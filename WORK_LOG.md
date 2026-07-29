@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-29
 
+- **Issue #764** (closed): Tracker: retire local `.claude/commands/loom/sweep.md --claim-owned` patch when the Loom install is upgraded — closed manually (no PR); the tracked Loom v0.16.0 upgrade landed the trigger condition.
 - **PR #765**: fix: bump Pillow floor to >=12.3.0, resolving 13 Dependabot alerts (closes #744)
 - **PR #769**: feat(memo): add `memo-revise --reject "<reason>"` — lifecycle verb for operator rejection of an advancing version (closes #754)
 - **PR #770**: feat(memo): add memo-comprehension cold-reader critic — atom-level plan-reconstruction verification decoupled from the drafter (closes #753)
@@ -18,6 +19,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - **PR #778**: fix(config): merge duplicate autonomous blocks into one
 - **PR #781**: test(memo): remove stale weasyprint on-PATH test superseded by #308/#311 (closes #779)
 - **Guide note**: as of this pass, three issues remain open with fully-implemented, Judge-approved PRs pending human/Champion merge: #746↔PR #761, #743↔PR #763, #751↔PR #773. All three represent completed Builder work, not backlog needing new dispatch.
+- **Guide note (later pass)**: applied `loom:blocked` to #746 and #743 (previously unblocked despite each having an open, Judge-approved, mergeable PR — #761 and #763 respectively) to prevent duplicate Builder dispatch, mirroring the existing #751/#773 pattern. All three open issues now carry `loom:blocked`; the `loom:urgent` queue is empty because there is no unbuilt ready work — the rate-limiting step is merging #761/#763/#773.
 
 ### 2026-07-28
 
