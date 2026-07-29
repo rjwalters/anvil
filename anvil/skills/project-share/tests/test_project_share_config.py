@@ -42,6 +42,13 @@ class TestZeroConfigDefaults(unittest.TestCase):
         self.assertIn("_*.json", DEFAULT_STRIP)
         self.assertIn(".tmp*", DEFAULT_STRIP)
 
+    def test_default_strip_covers_bytecode_and_os_droppings(self) -> None:
+        """Issue #756: Python bytecode caches and macOS `.DS_Store` files
+        must never reach an outside recipient by default."""
+        self.assertIn("__pycache__", DEFAULT_STRIP)
+        self.assertIn("*.pyc", DEFAULT_STRIP)
+        self.assertIn(".DS_Store", DEFAULT_STRIP)
+
 
 class TestExportBlockParsing(unittest.TestCase):
     def test_full_block_parses(self) -> None:
