@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-30 (Guide triage pass, #809 claimed — moved from Ready for Work to In Progress)*
+*Last updated: 2026-07-30 (Guide triage pass, #809 closed via merged PR #812 — removed from Urgent/In Progress)*
 
 ---
 
@@ -11,10 +11,9 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 | Issue | Title | Tier |
 |---|---|---|
-| #809 | curator: blocked-pending-PR guard's marker read is GraphQL-backed — silently bootstrap-reposts when GraphQL quota is exhausted | `tier:maintenance` |
 | #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
 
-Both urgent issues are now `loom:building` — no triage action needed, work is already in progress. #809 (dependency-free GraphQL-fallback fix) was claimed by a Builder since the last pass; #800 remains claimed with PR #805 open, Judge-approved, `mergeable_state: clean`, awaiting human/Champion merge. Urgent count: 2/3.
+#800 is `loom:building` — no triage action needed, work is already in progress (PR #805 open, Judge-approved, `mergeable_state: clean`, awaiting human/Champion merge). Urgent count: 1/3 — no further promotion needed since the rest of the backlog is either building or blocked-pending-merge, not unclaimed ready work.
 
 ## In Progress (`loom:building`)
 
@@ -22,13 +21,12 @@ Both urgent issues are now `loom:building` — no triage action needed, work is 
 |---|---|---|---|
 | #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` | PR #805 open (`Closes #800`), Judge-approved (`loom:pr`), `mergeable_state: clean` — awaiting human/Champion merge |
 | #806 | curator: unknown `mergeable_state` causes false-positive churn in blocked-pending-PR guard | `tier:maintenance` | Claimed by a Builder; no PR yet as of this pass |
-| #809 | curator: blocked-pending-PR guard's marker read is GraphQL-backed — silently bootstrap-reposts when GraphQL quota is exhausted | `tier:maintenance` | `loom:urgent`; claimed by a Builder since the last pass (claim age ~1m at check time), no PR yet |
 
-All three checked this pass via `loom-recover-orphans --verbose` — claim ages ~2h17m (#800), ~1h56m (#806), and ~1m (#809), all well under the 4h staleness threshold, so none are orphaned.
+Both checked this pass (GraphQL quota exhausted, so `loom-recover-orphans` couldn't fetch its own issue list via `gh issue list`; cross-checked manually via REST + the tool's sweep-journal liveness source instead) — claim ages ~2h13m (#800, real open PR) and ~2h13m (#806, no PR yet but sweep-journal shows no live-issue conflict and this repo's established staleness threshold is 4h per the prior pass's note) — neither orphaned.
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* No unclaimed `loom:issue` work is available this pass — the only two `loom:issue` issues (#746, #743) also carry `loom:blocked` (see below), and #809 (previously the sole ready pick) has since been claimed and moved to "In Progress".
+*Empty.* No unclaimed `loom:issue` work is available this pass — the only two `loom:issue` issues (#746, #743) also carry `loom:blocked` (see below).
 
 ## Blocked (`loom:blocked`) — implementation complete, pending merge
 
@@ -40,6 +38,8 @@ All three checked this pass via `loom-recover-orphans --verbose` — claim ages 
 **Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763` (Champion/human).
 
 Each carries a documented unblock condition: PR merges → issue auto-closes; PR closes without merging → remove `loom:blocked`, issue re-enters normal triage.
+
+**#809** (curator blocked-pending-PR guard's GraphQL-backed marker read) **closed** 2026-07-30 via merged PR #812 — no longer part of the open backlog; see `WORK_LOG.md`.
 
 **#802** (blocked-pending-PR guard concurrent-dispatch race) **closed** 2026-07-30 via merged PR #804 — no longer part of the open backlog; see `WORK_LOG.md`.
 
@@ -63,7 +63,7 @@ Each carries a documented unblock condition: PR merges → issue auto-closes; PR
 
 ## Backlog state
 
-Five open issues total as of 2026-07-30: #800, #806, and #809 are all `loom:building` and confirmed not orphaned (claim ages ~2h17m, ~1h56m, and ~1m respectively); #746 and #743 are `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #802 closed 2026-07-30 via merged PR #804; #751 closed 2026-07-30 via merged PR #773; #796 closed 2026-07-30 via merged PR #798. No unclaimed ready work remains — the entire backlog is either building or blocked-pending-merge. The one concurrent need this pass: **merge open PRs** (#761, #763, #805) to clear the blocked/building backlog; #806 and #809 have no open PR yet.
+Four open issues total as of 2026-07-30: #800 and #806 are `loom:building` and confirmed not orphaned; #746 and #743 are `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #809 closed 2026-07-30 via merged PR #812; #802 closed via merged PR #804; #751 closed via merged PR #773; #796 closed via merged PR #798. No unclaimed ready work remains — the entire backlog is either building or blocked-pending-merge. The one concurrent need this pass: **merge open PRs** (#761, #763, #805) to clear the blocked/building backlog; #806 has no open PR yet.
 
 ### Recurring themes the next wave of issues will likely touch
 
