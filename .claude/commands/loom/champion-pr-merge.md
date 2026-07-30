@@ -67,6 +67,8 @@ fi
 
 **Rationale**: Small PRs are easier to revert if problems arise. The size limit is configurable via `.loom/config.json` to allow teams to tune the risk/autonomy tradeoff. The `loom:auto-merge-ok` label provides a per-PR escape hatch for large but safe PRs.
 
+**On failure**: a size-limit failure (no `loom:auto-merge-ok` override) is handled by the dedicated size-limit policy (see "PR Rejection Workflow → Size-limit failure"), not the generic transient-failure path — it is commented once per unchanged verdict (idempotently) while **keeping `loom:pr`** (human-clearable via the override label, not routed to Doctor).
+
 ### 3. Critical File Exclusion Check
 - [ ] No changes to critical configuration or infrastructure files
 
@@ -676,6 +678,52 @@ Keeping \`loom:pr\` label. Champion will retry on the next tick once the blockin
 ```
 
 **Do NOT remove the `loom:pr` label for transient failures** — the next tick retries automatically.
+
+### Size-limit failure (size check failed, no override) — comment once per unchanged verdict, keep `loom:pr`
+
+A PR that fails the Size Check (criterion #2) and lacks `loom:auto-merge-ok` is **neither transient nor stale** — it cannot clear on its own, but it also isn't stuck in the sense the stale-PR path means. It is **human-clearable**: a human (or Judge) can add `loom:auto-merge-ok`, or the PR can be split into smaller PRs. Treating it as a plain transient failure (comment + keep label + retry every tick) means Champion re-posts an identical "Cannot Auto-Merge: Size Check" comment on every ~10-minute cron tick forever (observed on PR #763 and PR #761 — see issue #784).
+
+Mirror the stale-PR idempotency pattern (`<!-- champion:stale-pr-notice -->`), but:
+- **Keep `loom:pr`** — do NOT route to Doctor / `loom:changes-requested`. This is not a rebase/refresh problem; it's a size-policy decision only a human/Judge can waive.
+- **Embed the current line count in the marker** so a later verdict change (PR edited, lines added/removed) is detected and allowed to re-comment — the guard only suppresses re-posting the *same* verdict, not all future comments.
+
+```bash
+PR_NUMBER=<number>
+# TOTAL is the line count computed in the Size Check (criterion #2) above.
+
+# Find the most recently posted size-limit notice (if any) and extract the
+# line count it was posted at.
+LAST_MARKER=$(gh pr view "$PR_NUMBER" --json comments --jq -r '.comments[].body' \
+  | grep -oE '<!-- champion:size-limit-notice:lines=[0-9]+ -->' | tail -1)
+LAST_LINES=$(echo "$LAST_MARKER" | grep -oE '[0-9]+')
+
+# Idempotency guard: only re-comment if no notice has been posted yet, or the
+# verdict has changed (the PR's line count is different from the last time
+# Champion posted). Same line count as last notice => unchanged verdict => skip.
+if [ -n "$LAST_MARKER" ] && [ "$LAST_LINES" = "$TOTAL" ]; then
+  echo "Size-limit notice already posted for #$PR_NUMBER at $TOTAL lines — skipping (unchanged verdict)"
+else
+  SIZE_LIMIT=$(jq -r '.champion.auto_merge_max_lines // 200' .loom/config.json 2>/dev/null || echo 200)
+  gh pr comment "$PR_NUMBER" --body "<!-- champion:size-limit-notice:lines=$TOTAL -->
+**Champion: Cannot Auto-Merge (Size Check)**
+
+This PR cannot be automatically merged:
+
+- Size Check: $TOTAL lines changed, which exceeds the configured limit of $SIZE_LIMIT lines.
+
+**Next steps:**
+- Split this PR into smaller PRs (recommended), or
+- Add the \`loom:auto-merge-ok\` label to explicitly waive the size limit for this PR.
+
+Keeping \`loom:pr\` label — this is human-clearable, not routed to Doctor. Champion will not re-post this notice again unless the line count changes; it will re-evaluate normally (and merge automatically) once \`loom:auto-merge-ok\` is added or the PR is resized.
+
+---
+*Automated by Champion role*"
+  echo "Posted size-limit notice for #$PR_NUMBER at $TOTAL lines"
+fi
+```
+
+**Do NOT remove the `loom:pr` label for size-limit failures** — unlike the stale-PR case, this stays in the auto-merge queue so it can merge automatically the moment `loom:auto-merge-ok` is added or the PR shrinks under the limit.
 
 ### Stale PR (recency check failed) — comment once, route to Doctor
 
