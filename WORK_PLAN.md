@@ -9,7 +9,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* #796 (the Curator label-flap bug that previously held the only `loom:urgent`) closed 2026-07-30 via merged PR #798 — see `WORK_LOG.md`. The two remaining open issues (#746, #743, below) are both `loom:blocked` pending merge of their own already-approved PRs, so there is no unbuilt ready work to prioritize.
+| Issue | Title | Tier |
+|---|---|---|
+| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
+
+#800 is the only ready, unblocked issue in the backlog — marked urgent to fast-track the only available Builder pickup. #796 (the Curator label-flap bug that previously held the only `loom:urgent`) closed 2026-07-30 via merged PR #798 — see `WORK_LOG.md`.
 
 ## In Progress (`loom:building`)
 
@@ -17,7 +21,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* Both remaining open `loom:issue` issues also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge, so there is no unbuilt ready work to dispatch a Builder onto.
+| Issue | Title | Tier |
+|---|---|---|
+| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
+
+Filed by `loom:auditor` from a main-branch audit; already curated with root cause, affected files, and test plan. The other two open `loom:issue` issues also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge.
 
 ## Blocked (`loom:blocked`) — implementation complete, pending merge
 
@@ -50,7 +58,7 @@ Each carries a documented unblock condition: PR merges → issue auto-closes; PR
 
 ## Backlog state
 
-Two open issues total as of 2026-07-30: #746 and #743, both `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #751 closed 2026-07-30 via merged PR #773; #796 closed 2026-07-30 via merged PR #798. The rate-limiting step for #746/#743 is **merging #761/#763**, not Builder dispatch or triage prioritization. With zero unblocked *ready* issues, the `loom:urgent` queue is correctly empty.
+Three open issues total as of 2026-07-30: #800 (ready, `loom:urgent`), plus #746 and #743, both `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #751 closed 2026-07-30 via merged PR #773; #796 closed 2026-07-30 via merged PR #798. The rate-limiting step for #746/#743 is **merging #761/#763**, not Builder dispatch or triage prioritization. #800 is a fresh `loom:auditor`-filed bug and the only unblocked ready issue, so it now carries the sole `loom:urgent`.
 
 ### Recurring themes the next wave of issues will likely touch
 
