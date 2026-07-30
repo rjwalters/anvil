@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-30
 
+- **PR #773**: feat(memo): add evidence-grade rendering rule so grade tags stay out of reader prose (closes #751)
 - **PR #786**: docs(curator): add idempotency guard for blocked-pending-PR re-checks (closes #785)
 - **PR #787**: docs(champion): make size-limit rejection comment idempotent, not re-posted every tick (closes #784)
 - **PR #791**: fix(champion): drop stray -r from LAST_MARKER `gh pr view` --jq call (closes #788)
