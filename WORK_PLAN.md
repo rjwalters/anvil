@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-30 (Guide triage pass, #806 closed via merged PR #814 — removed from In Progress; #800 moved from `loom:building` to `loom:blocked` pending PR #805 merge)*
+*Last updated: 2026-07-30 (Guide triage pass — shifted `loom:urgent` from #800 to #743: oldest open issue, broadest blast radius (every installed skill's render-phase CLI path), and its PR #763 is the smallest/lowest-risk of the three stalled PRs)*
 
 ---
 
@@ -11,9 +11,9 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 | Issue | Title | Tier |
 |---|---|---|
-| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
+| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` |
 
-Urgent count: 1/3 — no further promotion needed. All three open issues are equally blocked-pending-merge (implementation complete, awaiting a human/Champion merge decision), so there is no differential Builder-priority signal to convey by adding #746/#743 to the urgent set too.
+Urgent count: 1/3. All three open issues remain equally blocked-pending-merge (implementation complete, awaiting a human/Champion merge decision); #743 is flagged as the merge-priority signal for humans reviewing the stalled-PR queue — oldest issue, broadest impact (affects every installed skill, not one), and lowest-risk fix (278 lines).
 
 ## In Progress (`loom:building`)
 
