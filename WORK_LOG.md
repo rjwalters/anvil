@@ -6,6 +6,9 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-30
 
+- **PR #805**: fix(install): ship vocab_reminder default word list to installed lib mirror (closes #800)
+- **PR #763**: fix(install): ship skill lib/ to the documented direct-invocation path (closes #743)
+- **PR #761**: feat(memo): add cross-version drift check to memo-review (closes #746)
 - **PR #814**: fix(curator): normalize unknown mergeable_state in blocked-pending-PR guard (closes #806)
 - **PR #812**: fix(curator): make blocked-pending-PR guard's marker read REST-backed and fail-closed on read failure (closes #809)
 - **PR #804**: docs(curator): add time-debounce to blocked-pending-PR guard to fix concurrent-dispatch race (closes #802)
