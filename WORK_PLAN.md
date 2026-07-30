@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-29 (Guide triage pass, later same-day update)*
+*Last updated: 2026-07-30 (Guide triage pass)*
 
 ---
 
@@ -12,7 +12,9 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.* #779 (`test(memo): stale weasyprint-detection test fails when binary is not on PATH`) merged via PR #781 and closed on 2026-07-29 — see `WORK_LOG.md`.
+| Issue | Title | Claimed |
+|---|---|---|
+| #788 | champion-pr-merge: size-limit idempotency guard uses invalid `gh --jq -r` syntax, silently reintroducing the repost-loop bug | 2026-07-30, Builder actively working |
 
 ## Ready for Work (`loom:issue`)
 
@@ -46,7 +48,7 @@ Each of the three carries a documented unblock condition: PR merges → issue au
 
 ## Backlog state
 
-Three open issues total as of 2026-07-29 (down from four now that #764 closed manually — see `WORK_LOG.md`). The backlog is fully **drained of unbuilt ready work**: all three open `loom:issue` issues (#746, #743, #751) now also carry `loom:blocked`, each already has a complete, Judge-approved, mergeable PR (#761, #763, #773 respectively) awaiting human/Champion merge. The rate-limiting step across the board is **merging those three PRs**, not Builder dispatch or triage prioritization. Note PR #773 (closes #751) currently shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean. With zero unblocked ready issues, the `loom:urgent` queue is correctly empty.
+Four open `loom:issue` issues total as of 2026-07-30: three blocked (#746, #743, #751, each with a complete, Judge-approved, mergeable PR — #761, #763, #773 respectively — awaiting human/Champion merge) plus one newly claimed and actively building (#788, a follow-up fix for the size-limit idempotency guard shipped in PR #787). The rate-limiting step for the blocked trio is **merging those three PRs**, not Builder dispatch or triage prioritization. Note PR #773 (closes #751) currently shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean. With zero unblocked *ready* issues (the only non-building, non-blocked backlog is empty), the `loom:urgent` queue is correctly empty.
 
 ### Recurring themes the next wave of issues will likely touch
 
