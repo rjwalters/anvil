@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-30 (Guide triage pass)*
+*Last updated: 2026-07-30 (Guide triage pass, #802/#800 building)*
 
 ---
 
@@ -11,21 +11,23 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 | Issue | Title | Tier |
 |---|---|---|
+| #802 | Blocked-pending-PR guard races under concurrent Curator dispatch, reintroducing comment/claim churn | `tier:goal-supporting` |
 | #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
 
-#800 is the only ready, unblocked issue in the backlog — marked urgent to fast-track the only available Builder pickup. #796 (the Curator label-flap bug that previously held the only `loom:urgent`) closed 2026-07-30 via merged PR #798 — see `WORK_LOG.md`.
+Both carry `loom:urgent` from prior triage passes and are now claimed and building — no triage action needed; work is already in progress.
 
 ## In Progress (`loom:building`)
 
-*Empty.*
+| Issue | Title | Tier |
+|---|---|---|
+| #802 | Blocked-pending-PR guard races under concurrent Curator dispatch, reintroducing comment/claim churn | `tier:goal-supporting` |
+| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
+
+Both freshly claimed (checked via `loom-recover-orphans`, label age ~2m as of this pass) — not orphaned.
 
 ## Ready for Work (`loom:issue`)
 
-| Issue | Title | Tier |
-|---|---|---|
-| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
-
-Filed by `loom:auditor` from a main-branch audit; already curated with root cause, affected files, and test plan. The other two open `loom:issue` issues also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge.
+*Empty.* The two remaining open `loom:issue` issues (#746, #743) also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge.
 
 ## Blocked (`loom:blocked`) — implementation complete, pending merge
 
@@ -58,7 +60,7 @@ Each carries a documented unblock condition: PR merges → issue auto-closes; PR
 
 ## Backlog state
 
-Three open issues total as of 2026-07-30: #800 (ready, `loom:urgent`), plus #746 and #743, both `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #751 closed 2026-07-30 via merged PR #773; #796 closed 2026-07-30 via merged PR #798. The rate-limiting step for #746/#743 is **merging #761/#763**, not Builder dispatch or triage prioritization. #800 is a fresh `loom:auditor`-filed bug and the only unblocked ready issue, so it now carries the sole `loom:urgent`.
+Four open issues total as of 2026-07-30: #802 and #800, both `loom:urgent` + `loom:building` (freshly claimed, not orphaned), plus #746 and #743, both `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #751 closed 2026-07-30 via merged PR #773; #796 closed 2026-07-30 via merged PR #798. The rate-limiting step for #746/#743 is **merging #761/#763**, not Builder dispatch or triage prioritization. No triage action is available this pass: the only ready work is already claimed, and the only blocked work is correctly blocked pending merge.
 
 ### Recurring themes the next wave of issues will likely touch
 
