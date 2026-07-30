@@ -1151,7 +1151,19 @@ fi
 #       Auxiliary `__init__.py` files for the skill package and its lib
 #       subpackage are sourced from the source tree (when present) so
 #       `anvil.skills.<name>.lib.foo` resolves cleanly.
+#   * Skill Python `lib/` subdir (when present) ALSO -> .anvil/skills/<name>/lib/
+#       The documented direct-invocation location (issue #743). Every
+#       SKILL.md's lifecycle wiring tells the executing agent to run phase
+#       CLIs as a filesystem path — `python3 .anvil/skills/<name>/lib/
+#       <script>.py ...` — not a Python import. Prior to #743 that path
+#       never existed post-install (only the importable mirror above did),
+#       silently breaking every documented render-phase invocation. This
+#       copy is a sibling of the importable mirror, not a replacement: both
+#       land the same bytes, at two paths, for two different callers (an
+#       agent running the CLI as a script vs. a critic module importing
+#       shared helpers).
 #
+
 # Override detection decision matrix (issue #152) — applies to the skill-
 # body destination (.anvil/skills/<name>/):
 #
@@ -1174,11 +1186,15 @@ fi
 #   --force passed                             Overwrite unconditionally.
 #                                              Record new hash.
 #
-# The skill Python `lib/` -> .anvil/anvil/skills/<name>/lib/ copy is
-# unconditional (it's importable code, not a consumer-override target);
-# consumers extending skill behavior do so via siblings under
-# .anvil/skills/<name>/, not by editing .anvil/anvil/skills/<name>/lib/
-# in place. This mirrors the framework-lib treatment in Stage 5.
+# The skill Python `lib/` -> .anvil/anvil/skills/<name>/lib/ copy (and its
+# .anvil/skills/<name>/lib/ sibling, #743) is unconditional (it's importable
+# / runnable code, not a consumer-override target); consumers extending
+# skill behavior do so via siblings under .anvil/skills/<name>/ (commands/,
+# templates/, etc.), not by editing either lib/ copy in place. This mirrors
+# the framework-lib treatment in Stage 5. Both lib/ copies are excluded from
+# the skill body's override-detection hash (dir_hash_body_only /
+# dirs_identical_body_only below), so they always refresh — even when the
+# body itself is skipped as consumer-modified.
 info "Stage 7: copy selected skills"
 SRC_SKILLS_INIT="$ANVIL_ROOT/anvil/skills/__init__.py"
 DST_PKG_SKILLS="$DST_ANVIL_PKG/skills"
@@ -1231,6 +1247,18 @@ for skill in "${SELECTED_SKILLS[@]}"; do
   dst_skill="$TARGET/.anvil/skills/$skill"
   src_skill_lib="$src_skill/lib"
   dst_skill_pylib="$DST_PKG_SKILLS/$skill/lib"
+  # Documented consumer-invocation path (issue #743): every SKILL.md's
+  # lifecycle wiring instructs the executing agent to run phase CLIs as
+  # `python3 .anvil/skills/<skill>/lib/<script>.py ...` — a plain filesystem
+  # path, not a Python import. That path is a SIBLING of the importable
+  # mirror above ($dst_skill_pylib, under .anvil/anvil/skills/<skill>/lib/),
+  # not a replacement for it: the mirror stays the canonical
+  # `anvil.skills.<name>.lib.*` import target (issue #230), while this copy
+  # exists solely so the documented direct-invocation path resolves on disk.
+  # Excluded from the body's override-detection hash (dir_hash_body_only /
+  # dirs_identical_body_only already prune "lib") so shipping this copy
+  # never flips a skill's consumer-modified status.
+  dst_skill_bodylib="$dst_skill/lib"
   src_skill_init="$src_skill/__init__.py"
   dst_skill_pyinit="$DST_PKG_SKILLS/$skill/__init__.py"
   # Flatten namespace into the directory name (depth 1). Claude Code's skill
@@ -1281,6 +1309,8 @@ for skill in "${SELECTED_SKILLS[@]}"; do
         if [[ -d "$src_skill_lib" ]]; then
           do_action "install $dst_skill_pylib from $src_skill_lib (importable mirror)" \
             replace_tree "$src_skill_lib" "$dst_skill_pylib"
+          do_action "install $dst_skill_bodylib from $src_skill_lib (documented invocation path, #743)" \
+            replace_tree "$src_skill_lib" "$dst_skill_bodylib"
         fi
         if [[ -f "$src_skill_init" ]]; then
           do_action "install $dst_skill_pyinit from $src_skill_init" \
@@ -1298,6 +1328,8 @@ for skill in "${SELECTED_SKILLS[@]}"; do
         if [[ -d "$src_skill_lib" ]]; then
           do_action "install $dst_skill_pylib from $src_skill_lib (importable mirror)" \
             replace_tree "$src_skill_lib" "$dst_skill_pylib"
+          do_action "install $dst_skill_bodylib from $src_skill_lib (documented invocation path, #743)" \
+            replace_tree "$src_skill_lib" "$dst_skill_bodylib"
         fi
         if [[ -f "$src_skill_init" ]]; then
           do_action "install $dst_skill_pyinit from $src_skill_init" \
@@ -1320,6 +1352,12 @@ for skill in "${SELECTED_SKILLS[@]}"; do
   if [[ -d "$src_skill_lib" ]]; then
     do_action "install $dst_skill_pylib from $src_skill_lib (importable mirror)" \
       replace_tree "$src_skill_lib" "$dst_skill_pylib"
+    # ALSO copy it to the documented direct-invocation path (issue #743):
+    # .anvil/skills/<name>/lib/. The body copy above stripped dst/lib (it
+    # excludes lib/ by design — the override hash is body-only), so this
+    # recreates it fresh every install, same as the importable mirror.
+    do_action "install $dst_skill_bodylib from $src_skill_lib (documented invocation path, #743)" \
+      replace_tree "$src_skill_lib" "$dst_skill_bodylib"
   fi
 
   # Copy the skill's package __init__.py into the importable mirror so
