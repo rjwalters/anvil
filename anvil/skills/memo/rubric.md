@@ -494,6 +494,47 @@ This sub-rule closes the **back-check triangle**:
 
 The three legs share the **shape** (explicit-skip convention, top-level `_summary.md` block sibling to `lint` / `render_gate`, critical-flag-candidate pathway feeding the existing "no critical flags" verdict clause, `findings.md` subsection, fixture-anchored Phase B) but **deliberately preserve divergent verdict-tag vocabularies** — each leg's vocabulary is canon for that leg; the divergence is signal, not noise (the same way severity vocabularies diverge between reviewer-judgment blocks and mechanical lints per the §"Summary-detail consistency" §"Severity ladder" notes).
 
+## Version drift
+
+Deterministic, mechanical **cross-version comparison** between `<thread>.{N}/` and `<thread>.{N-1}/` (and, when available, `<thread>.{N-2}/`) — issue #746. This sub-rule is a different animal from the back-check triangle above: those are reviewer-judgment checks *within* one version (or between one version and another thread's *current state*); this one is a pure-stdlib arithmetic comparison *across a thread's own version history*, computed by `anvil/skills/memo/lib/version_drift.py`.
+
+**Why the existing rubric can't catch this.** `memo-review` deliberately scores each version "on its own rubric merits" — the reviewer does not read prior-pass metadata, and `metadata.scope` is documented as not-read-by-reviewer (see `commands/memo-revise.md`'s `_progress.json.metadata.scope` documentation: "The reviewer at the next pass does NOT read `metadata.scope`... it scores `<thread>.{N+1}/` on its own rubric merits"). That doctrine is correct for *scores*: reading the prior score before assigning the current one would anchor the judgment and defeat the point of a fresh read. But the same doctrine is wrong for *style trends* — a document that gets a few percentage points denser every revision cycle looks, at every single review, like a static style choice, because no phase in the lifecycle is allowed to look backward. The canary evidence (studio, praetor thread, 2026-07-27) is the worked example: a 4-version thread whose bold-word share ratcheted 19.9% → 20.7% → 25.1% → 25.5% across four reviews, none of which could see the trend, even though this happened **under the anvil#241 fix** (`--scope important` default, dim 9 as "explicit countervailing pressure against bloat" — see §"Dim 9 — rhetorical economy" below). The judgment-based countermeasure did not hold on its own; that is evidence the sensor was missing, not just the weight.
+
+**Output channel.** Findings surface in their own `_summary.md.version_drift` top-level block (sibling to the existing `lint`, `render_gate`, and back-check top-level blocks, NOT nested under `lint` — see the schema notes at `commands/memo-review.md` step 9) AND, unlike the reviewer-judgment back-checks above, directly in `comments.md` at `scope: reduce, major` (see `commands/memo-review.md` step 8). The direct `comments.md` write is load-bearing, not decorative: `memo-revise`'s default `--scope important` filter reads `comments.md` severity tags, not `_summary.md` structured blocks, so a finding that only lived in `_summary.md.version_drift` would be invisible to the default revision pass. This sub-rule **does NOT add a rubric dimension** and **does NOT alter the /44 total** — same non-scoring posture as the back-check triangle.
+
+### The seven metrics
+
+Computed for each resolved version (`N`, `N-1`, and `N-2` when available):
+
+- `word_count` — total words in the body.
+- `bold_span_count` — number of `**bold**` markdown spans.
+- `bold_word_share` — words wrapped in bold spans as a percentage of `word_count`.
+- `hedge_marker_count` — hits against a fixed lexicon (`reportedly`, `roughly`, `founder-reported`, `unreplicated`) plus parenthetical caveat spans (`(unconfirmed)`, `(self-reported)`, `(pending confirmation)`, etc.).
+- `meta_commentary_count` — hits against a fixed lexicon of self-referential phrases (`as noted above`, `as previously mentioned`, `to reiterate`, ...). An interim default pending the canonical meta-commentary rule set anvil#745 is adding to `anvil.lib.rhetoric_lint`; a follow-on MAY swap the lexicon to delegate to the shared lint once #745 ships without a schema change here.
+- `mean_sentence_length` — mean words per sentence (headings, code fences, and blank lines excluded).
+- `exhibit_count` — files under `exhibits/`.
+
+### Densification metrics and the finding rule
+
+Only three of the seven metrics are **densification metrics**: `bold_word_share`, `hedge_marker_count`, `meta_commentary_count`. The other four (`word_count`, `bold_span_count`, `mean_sentence_length`, `exhibit_count`) are reported for operator context but never emit a finding — a longer memo, or one with more bold spans in absolute terms as the document grows, is not necessarily a *denser* one.
+
+A finding fires when a densification metric **increased in both of the last two version transitions** (`N-2 → N-1` AND `N-1 → N`). This requires three versions with readable bodies. When only `N` and `N-1` are available (a thread with exactly two versions, or `N-2`'s body is missing), the check still runs and reports the single transition in `_summary.md.version_drift.transitions.prior_to_current`, but emits **no findings** — a single-transition increase is observational only, because a legitimate revision can add emphasis once. The rule exists to catch the *ratchet*, not any one increase.
+
+### Severity and scope
+
+Every finding this sub-rule emits is fixed at **`severity: major`, `scope: reduce`** — not a per-instance judgment call, unlike the back-check triangle's severity ladders. This is deliberate: the finding is inherently structural (a metric that increased across two consecutive transitions is definitionally not a one-off), and the natural resolution is inherently subtractive (cut the ratcheted bold spans / hedges / meta-commentary back toward the earlier version's level), which is exactly what `scope: reduce` signals to the reviser per §"Scope tagging (comments.md)" below.
+
+### Critical-flag integration (none)
+
+**This sub-rule never sets `critical_flag`.** There is no `critical_flag_candidate` field on the `version_drift` block and the verdict aggregation at `commands/memo-review.md` step 7 does not read it — a deliberate departure from the back-check triangle above, all three of whose critical-severity verdict tags DO plug into the critical-flag pathway. A densification ratchet is a style-quality defect the reviser must address (hence `major` + direct `comments.md` echo), not a "would a sophisticated reader stop reading" deal-breaker (the bar for `critical_flag`).
+
+### Related (composition with dim 9 and scope tagging)
+
+This sub-rule composes with two existing primitives rather than duplicating either:
+
+- **Dim 9 (Rhetorical economy)** — see §"Dim 9 — rhetorical economy" below — gives the **score** a countervailing pressure against bloat within a single version. Version drift gives the **cross-version trend** a sensor dim 9 cannot have by construction (dim 9 scores `<thread>.{N}/` in isolation). The two are complementary, not overlapping: a memo can score dim 9 at full weight on every individual version (no version, read alone, looks bloated) while still ratcheting a densification metric across versions — that is precisely the failure mode the canary evidence demonstrates.
+- **`scope: reduce` echoes (comments.md)** — see §"Scope tagging (comments.md)" §"Dim 9 echo rule" below — is the existing mechanism the dim 9 anti-pattern-instance echo uses to reach `comments.md`. Version drift is a **second, independent source** of `scope: reduce, major` comments, alongside the dim 9 echo. `_summary.md.scope_distribution.reduce` (see §"`_summary.md.scope_distribution` operator-visible signal" below) counts both sources together — an operator auditing "is this reviewer surfacing both directions" does not need to distinguish which mechanism produced a given `scope: reduce` entry.
+
 ## Length targets (dim 7)
 
 When the document's BRIEF entry declares a `target_length` (see `SKILL.md` §Length targets), dim 7 *Scope discipline* compares the produced memo's word count against the declared range rather than judging length against an implicit default.
