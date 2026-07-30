@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-30 (Guide triage pass, #802/#800 building)*
+*Last updated: 2026-07-30 (Guide triage pass, #802 closed)*
 
 ---
 
@@ -11,19 +11,17 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 | Issue | Title | Tier |
 |---|---|---|
-| #802 | Blocked-pending-PR guard races under concurrent Curator dispatch, reintroducing comment/claim churn | `tier:goal-supporting` |
 | #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
 
-Both carry `loom:urgent` from prior triage passes and are now claimed and building — no triage action needed; work is already in progress.
+#800 carries `loom:urgent` from a prior triage pass and is claimed and building (PR #805 open, not yet Judge-approved) — no triage action needed; work is already in progress. #802 (previously the other urgent+building issue) closed 2026-07-30 via merged PR #804.
 
 ## In Progress (`loom:building`)
 
-| Issue | Title | Tier |
-|---|---|---|
-| #802 | Blocked-pending-PR guard races under concurrent Curator dispatch, reintroducing comment/claim churn | `tier:goal-supporting` |
-| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
+| Issue | Title | Tier | Status |
+|---|---|---|---|
+| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` | PR #805 open (`Closes #800`), awaiting Judge review |
 
-Both freshly claimed (checked via `loom-recover-orphans`, label age ~2m as of this pass) — not orphaned.
+Checked via `loom-recover-orphans` this pass — claim is fresh, not orphaned.
 
 ## Ready for Work (`loom:issue`)
 
@@ -39,6 +37,8 @@ Both freshly claimed (checked via `loom-recover-orphans`, label age ~2m as of th
 **Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763` (Champion/human).
 
 Each carries a documented unblock condition: PR merges → issue auto-closes; PR closes without merging → remove `loom:blocked`, issue re-enters normal triage.
+
+**#802** (blocked-pending-PR guard concurrent-dispatch race) **closed** 2026-07-30 via merged PR #804 — no longer part of the open backlog; see `WORK_LOG.md`.
 
 **#751** (evidence grades leak into reader prose) **closed** 2026-07-30 via merged PR #773 — no longer part of the open backlog; see `WORK_LOG.md`.
 
@@ -60,7 +60,7 @@ Each carries a documented unblock condition: PR merges → issue auto-closes; PR
 
 ## Backlog state
 
-Four open issues total as of 2026-07-30: #802 and #800, both `loom:urgent` + `loom:building` (freshly claimed, not orphaned), plus #746 and #743, both `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #751 closed 2026-07-30 via merged PR #773; #796 closed 2026-07-30 via merged PR #798. The rate-limiting step for #746/#743 is **merging #761/#763**, not Builder dispatch or triage prioritization. No triage action is available this pass: the only ready work is already claimed, and the only blocked work is correctly blocked pending merge.
+Three open issues total as of 2026-07-30: #800 (`loom:urgent` + `loom:building`, PR #805 open awaiting Judge review), plus #746 and #743, both `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #802 closed 2026-07-30 via merged PR #804; #751 closed 2026-07-30 via merged PR #773; #796 closed 2026-07-30 via merged PR #798. The rate-limiting step for #746/#743 is **merging #761/#763**, not Builder dispatch or triage prioritization. No triage action is available this pass: the only ready work is already claimed, and the only blocked work is correctly blocked pending merge.
 
 ### Recurring themes the next wave of issues will likely touch
 
