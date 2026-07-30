@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # test-curator-blocked-pr-guard.sh - Regression coverage for the curator
-# "Blocked-pending-PR re-checks" idempotency guard's REST-backed marker read
-# and its fail-closed behavior on read failure (#809).
+# "Blocked-pending-PR re-checks" idempotency guard's REST-backed marker read,
+# its fail-closed behavior on read failure (#809), and its normalization of
+# a transient `mergeable_state: unknown` reading so it is never mistaken for
+# a real state change (#806).
 #
 # The guard is a documented bash reference script embedded in
 # `.loom/roles/curator.md` / `.claude/commands/loom/curator.md` (kept
@@ -22,6 +24,16 @@
 #   5. A stale marker with an unchanged state is a true no-op (self-healing
 #      unclaim only).
 #   6. A stale marker with a changed mergeable_state re-bootstraps.
+#   7. (#806) A current reading of `unknown` against a stale prior marker
+#      never posts a fresh marker (self-healing unclaim only).
+#   8. (#806) `unknown` as the very first-ever reading (no prior marker)
+#      still bootstraps normally.
+#   9. (#806) Two consecutive `unknown` readings against the same
+#      unchanged prior marker both skip without posting.
+#  10. (#806) An `unknown` reading immediately followed by a genuine
+#      `clean` -> `dirty` transition still fires a fresh marker.
+#  11. (#806) The full `clean -> unknown -> clean -> unknown` sequence
+#      observed live on #746 produces zero fresh marker posts.
 #
 # Usage:
 #   bash .loom/scripts/tests/test-curator-blocked-pr-guard.sh
@@ -334,6 +346,134 @@ assert_contains "$CALLS7" "issue comment 42 --body" \
     "stale + changed state: posts a fresh marker comment"
 assert_contains "$CALLS7" "issue edit 42 --remove-label loom:curating" \
     "stale + changed state: unclaims after posting"
+
+# ---------------------------------------------------------------------------
+# Group 8 (#806): current reading of 'unknown' against a stale prior marker
+# (state clean) never posts a fresh marker - self-healing unclaim only.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Group 8: current 'unknown' reading against stale prior marker skips (#806)"
+
+SCRATCH8=$(mktemp -d /tmp/loom-curator-guard-8.XXXXXX)
+trap 'rm -rf "$SCRATCH8"' EXIT
+CALLS8=$(run_scenario "$SCRATCH8" "$STALE_SAME_FIXTURE" "0" "loom:curating" "42" "763" "unknown")
+rm -rf "$SCRATCH8"
+trap - EXIT
+
+assert_not_contains "$CALLS8" "issue comment" \
+    "unknown reading: no fresh comment posted"
+assert_not_contains "$CALLS8" "--add-label loom:curating" \
+    "unknown reading: no fresh claim"
+assert_contains "$CALLS8" "issue edit 42 --remove-label loom:curating" \
+    "unknown reading: self-healing unclaim runs since loom:curating was dangling"
+
+# ---------------------------------------------------------------------------
+# Group 9 (#806): 'unknown' as the very first-ever reading (no prior marker)
+# still bootstraps normally - nothing yet to preserve.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Group 9: 'unknown' with no prior marker still bootstraps (#806 edge case a)"
+
+SCRATCH9=$(mktemp -d /tmp/loom-curator-guard-9.XXXXXX)
+trap 'rm -rf "$SCRATCH9"' EXIT
+CALLS9=$(run_scenario "$SCRATCH9" "[]" "0" "" "42" "763" "unknown")
+rm -rf "$SCRATCH9"
+trap - EXIT
+
+assert_contains "$CALLS9" "issue edit 42 --add-label loom:curating" \
+    "unknown + no prior marker: claims loom:curating"
+assert_contains "$CALLS9" "issue comment 42 --body" \
+    "unknown + no prior marker: posts a fresh marker comment"
+assert_contains "$CALLS9" "issue edit 42 --remove-label loom:curating" \
+    "unknown + no prior marker: unclaims after posting"
+
+# ---------------------------------------------------------------------------
+# Group 10 (#806): two consecutive 'unknown' readings against the same
+# unchanged prior marker both skip without posting.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Group 10: two consecutive 'unknown' readings both skip (#806 edge case b)"
+
+SCRATCH10A=$(mktemp -d /tmp/loom-curator-guard-10a.XXXXXX)
+trap 'rm -rf "$SCRATCH10A"' EXIT
+CALLS10A=$(run_scenario "$SCRATCH10A" "$STALE_SAME_FIXTURE" "0" "" "42" "763" "unknown")
+rm -rf "$SCRATCH10A"
+trap - EXIT
+
+SCRATCH10B=$(mktemp -d /tmp/loom-curator-guard-10b.XXXXXX)
+trap 'rm -rf "$SCRATCH10B"' EXIT
+# Second reading sees the *same* fixture, since the first unknown reading
+# never wrote a fresh marker - this is the load-bearing assertion of #806.
+CALLS10B=$(run_scenario "$SCRATCH10B" "$STALE_SAME_FIXTURE" "0" "" "42" "763" "unknown")
+rm -rf "$SCRATCH10B"
+trap - EXIT
+
+assert_not_contains "$CALLS10A" "issue comment" \
+    "first consecutive unknown reading: no comment posted"
+assert_not_contains "$CALLS10B" "issue comment" \
+    "second consecutive unknown reading: no comment posted"
+
+# ---------------------------------------------------------------------------
+# Group 11 (#806): an 'unknown' reading immediately followed by a genuine
+# clean -> dirty transition still fires a fresh marker - the unknown
+# normalization must not mask a real transition.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Group 11: unknown then genuine clean->dirty transition still fires (#806 edge case c)"
+
+SCRATCH11A=$(mktemp -d /tmp/loom-curator-guard-11a.XXXXXX)
+trap 'rm -rf "$SCRATCH11A"' EXIT
+CALLS11A=$(run_scenario "$SCRATCH11A" "$STALE_SAME_FIXTURE" "0" "" "42" "763" "unknown")
+rm -rf "$SCRATCH11A"
+trap - EXIT
+
+SCRATCH11B=$(mktemp -d /tmp/loom-curator-guard-11b.XXXXXX)
+trap 'rm -rf "$SCRATCH11B"' EXIT
+# The marker is still recording the last *real* state (clean) since the
+# unknown reading above never overwrote it - this is what lets the genuine
+# transition below still compare correctly against "clean", not "unknown".
+CALLS11B=$(run_scenario "$SCRATCH11B" "$STALE_SAME_FIXTURE" "0" "" "42" "763" "dirty")
+rm -rf "$SCRATCH11B"
+trap - EXIT
+
+assert_not_contains "$CALLS11A" "issue comment" \
+    "unknown pass: no comment posted"
+assert_contains "$CALLS11B" "issue edit 42 --add-label loom:curating" \
+    "genuine clean->dirty transition: claims loom:curating"
+assert_contains "$CALLS11B" "issue comment 42 --body" \
+    "genuine clean->dirty transition: posts a fresh marker comment"
+assert_contains "$CALLS11B" "mergeable_state:dirty" \
+    "genuine clean->dirty transition: fresh marker records the new state"
+
+# ---------------------------------------------------------------------------
+# Group 12 (#806): replay the exact #746 oscillation sequence
+# (clean -> unknown -> clean -> unknown) and assert zero fresh marker posts
+# across the whole sequence, since the underlying PR state never actually
+# changed - the transient 'unknown' blips must not each trigger a re-post.
+# ---------------------------------------------------------------------------
+echo ""
+echo "Group 12: full #746 clean/unknown oscillation sequence produces zero posts (#806)"
+
+TOTAL_COMMENT_POSTS=0
+for STEP_STATE in clean unknown clean unknown; do
+    SCRATCH12=$(mktemp -d /tmp/loom-curator-guard-12.XXXXXX)
+    trap 'rm -rf "$SCRATCH12"' EXIT
+    CALLS12=$(run_scenario "$SCRATCH12" "$STALE_SAME_FIXTURE" "0" "" "42" "763" "$STEP_STATE")
+    rm -rf "$SCRATCH12"
+    trap - EXIT
+    if [[ "$CALLS12" == *"issue comment"* ]]; then
+        TOTAL_COMMENT_POSTS=$((TOTAL_COMMENT_POSTS + 1))
+    fi
+done
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ "$TOTAL_COMMENT_POSTS" -eq 0 ]]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo -e "  ${GREEN}PASS${NC}: clean/unknown oscillation sequence produced $TOTAL_COMMENT_POSTS fresh marker posts (expected 0)"
+else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo -e "  ${RED}FAIL${NC}: clean/unknown oscillation sequence produced $TOTAL_COMMENT_POSTS fresh marker posts (expected 0)"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
