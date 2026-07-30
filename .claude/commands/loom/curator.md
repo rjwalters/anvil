@@ -706,7 +706,7 @@ GitHub automatically checks boxes when issues close. When you see all boxes chec
 2. Remove `loom:blocked` label and add `loom:curated`: `gh issue edit <number> --remove-label "loom:blocked" --remove-label "loom:curating" --add-label "loom:curated"`
 3. Issue awaits `loom:issue` promotion (human, Champion, or a `/loom:sweep` orchestrator) before Workers can claim
 
-### Blocked-pending-PR re-checks (idempotency guard, #785, extended #796)
+### Blocked-pending-PR re-checks (idempotency guard, #785, extended #796/#798, debounced #802)
 
 A different `loom:blocked` case: the issue is blocked not on an unmet
 Dependencies checkbox but on an **already-open PR that implements it** (e.g. a
@@ -731,8 +731,59 @@ decision — BEFORE ever calling `gh issue edit <number> --add-label
 "loom:curating"` for a blocked-pending-PR re-check.** Do not claim first and
 decide second.
 
+**Concurrent-dispatch race (#802) and why a time debounce is needed in
+addition to the state comparison.** The state comparison in steps 3-4 below
+(same PR + same `mergeable_state` as the last marker → no-op) is correct for a
+single serialized dispatch, but it is a check-then-act race under **concurrent**
+Curator dispatch: if two or more sessions evaluate this guard against the same
+blocked issue within the same short window, every session's read of "the last
+marker" (step 2) happens before any of their own writes (step 4's comment) have
+landed. Each session independently sees "no matching prior marker" and
+concludes it must claim/comment/unclaim — reproducing the exact churn this
+guard exists to prevent, just shifted onto marker-bearing comments instead of
+freeform ones. This is exactly what was observed live on #743: a burst of
+20+ near-identical marker comments within a ~10 minute window, even though the
+underlying PR's `mergeable_state` never changed during that window. The state
+comparison alone cannot close this gap — it only ever compares against
+whichever marker *this session's own read* happened to see, and concurrent
+reads can all see the same stale (or absent) marker.
+
+The fix is a **time-based debounce, evaluated before the state comparison**:
+if the most recent marker comment — regardless of whether its `pr:` /
+`mergeable_state:` payload matches the current values — was posted less than
+`COOLDOWN_SECONDS` (3 minutes; comfortably inside the 2-5 minute window the
+issue that introduced this fix, #802, calls out) ago, skip unconditionally.
+Treat this as "another concurrent session already just checked this," not as
+"state changed, re-verify." This is deliberately more conservative than the
+state comparison: it can suppress a *genuine* state change for up to the
+cooldown window if that change is first observed while another session's
+marker is still fresh. That is an accepted, bounded trade-off, not a
+regression — the next re-check, once the cooldown elapses, still runs the
+state comparison and posts a fresh marker if the state differs from the (now
+debounce-cleared) last one. In other words: the debounce only ever *delays* a
+genuine state-change comment by at most `COOLDOWN_SECONDS`; it never
+permanently suppresses one, and it introduces no new external coordination
+primitive (no new label, no lock file) — it reads the same marker comment's
+timestamp the state comparison already reads.
+
+**Known residual edge case (accepted, not fixed here):** the very first time
+this guard ever runs for a given issue — before any marker comment exists —
+there is nothing yet to debounce against, so N sessions racing that specific
+moment can still each independently take the "no prior marker" branch and post
+their own. This is a narrow, self-resolving case: it can only recur while zero
+markers exist, which stops being true within seconds of the first comment
+landing (every dispatch from that point on has a marker to debounce against).
+It is not the sustained, many-minutes-long churn #743 exhibited (which had
+existing prior markers throughout and is what this debounce targets); adding a
+true compare-and-swap for this one-time bootstrap moment would require an
+external coordination primitive, which is exactly what #802 asks this fix to
+avoid unless the debounce proves insufficient.
+
 **Marker convention** — any comment reporting a blocked-pending-PR re-check
-result carries a marker encoding the PR number and its `mergeable_state`:
+result carries a marker encoding the PR number and its `mergeable_state`. Its
+own `createdAt` timestamp (already returned by `gh issue view --json
+comments`) doubles as the debounce clock — no separate timestamp field is
+embedded in the marker body:
 
 ```
 <!-- curator:blocked-pending-pr-notice -->
@@ -747,57 +798,95 @@ result carries a marker encoding the PR number and its `mergeable_state`:
    read-only check and does not require holding `loom:curating`.
 2. Find the most recent comment on the issue containing
    `<!-- curator:blocked-pending-pr-notice -->`, and read its embedded `pr:` /
-   `mergeable_state:` values (if no such comment exists yet, this is the first
-   check — always claim, comment, unclaim, per step 4).
-3. **Same PR number AND same `mergeable_state` as that marker** → this re-check
-   found no state change: a true no-op. **Do not add `loom:curating` at all
-   for this pass** — no claim, no comment, no unclaim, zero label-mutating API
-   calls. **Self-healing exception**: if `loom:curating` is already present on
-   the issue (e.g. left over from a stale or crashed prior pass), remove it —
-   don't leave a dangling claim — but still skip adding a fresh one and skip
-   the comment.
-4. **PR number changed, `mergeable_state` changed (e.g. `clean` → `dirty`,
-   itself a real signal worth surfacing), or no prior marker** → claim
-   (`gh issue edit <number> --add-label "loom:curating"`), post a fresh
-   comment with the updated marker, then unclaim (`gh issue edit <number>
-   --remove-label "loom:curating"`) — the same sequence as before #796, just
-   reordered so the claim happens only after step 3 determines a write is
-   actually needed.
+   `mergeable_state:` values plus its `createdAt` timestamp (if no such
+   comment exists yet, there is nothing to debounce or compare against — skip
+   straight to step 4's "no prior marker" branch: always claim, comment,
+   unclaim).
+3. **(#802) Time debounce — evaluate this BEFORE the state comparison.** If a
+   prior marker exists and its `createdAt` is less than `COOLDOWN_SECONDS`
+   (3 minutes) old, **this pass skips unconditionally** — regardless of
+   whether the marker's `pr:` / `mergeable_state:` match the current values.
+   No claim, no comment, no unclaim beyond the same self-healing exception as
+   step 4. This is what prevents a burst of concurrent dispatches from each
+   independently concluding "no matching prior marker, must recomment": only
+   the session (if any) that lands outside every other session's cooldown
+   window ever reaches step 4.
+4. **State comparison — only reached once the cooldown has elapsed (or there
+   is no prior marker at all):**
+   - **Same PR number AND same `mergeable_state` as that marker** → this
+     re-check found no state change: a true no-op. **Do not add
+     `loom:curating` at all for this pass** — no claim, no comment, no
+     unclaim, zero label-mutating API calls. **Self-healing exception**: if
+     `loom:curating` is already present on the issue (e.g. left over from a
+     stale or crashed prior pass), remove it — don't leave a dangling claim —
+     but still skip adding a fresh one and skip the comment.
+   - **PR number changed, `mergeable_state` changed (e.g. `clean` → `dirty`,
+     itself a real signal worth surfacing), or no prior marker** → claim
+     (`gh issue edit <number> --add-label "loom:curating"`), post a fresh
+     comment with the updated marker, then unclaim (`gh issue edit <number>
+     --remove-label "loom:curating"`) — the same sequence as before #796,
+     just reordered so the claim happens only after steps 3-4 determine a
+     write is actually needed.
 
 ```bash
 ISSUE=<number>
 PR_NUMBER=<pr-number>
 STATE=<mergeable_state>   # e.g. clean, dirty, unknown
 MARKER="<!-- curator:blocked-pending-pr-notice -->"
+COOLDOWN_SECONDS=180   # 3 minutes — concurrent-dispatch debounce window (#802)
 
 LAST=$(gh issue view "$ISSUE" --json comments \
   | jq --arg m "$MARKER" '[.comments[] | select(.body | contains($m))] | last // empty')
 
-LAST_PR=$(printf '%s' "$LAST" | jq -r '.body // ""' | grep -oE '<!-- pr:[0-9]+ -->' | grep -oE '[0-9]+' || true)
-LAST_STATE=$(printf '%s' "$LAST" | jq -r '.body // ""' | sed -nE 's/.*<!-- mergeable_state:([a-zA-Z_]+) -->.*/\1/p')
-
-if [ -n "$LAST" ] && [ "$LAST_PR" = "$PR_NUMBER" ] && [ "$LAST_STATE" = "$STATE" ]; then
-  echo "No state change since last check (PR #$PR_NUMBER, $STATE) — true no-op, skipping claim/comment/unclaim"
-  # Self-healing: remove a dangling loom:curating claim if one is present,
-  # but do NOT add a fresh one and do NOT comment.
-  CURRENT_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")')
-  case ",$CURRENT_LABELS," in
-    *,loom:curating,*) gh issue edit "$ISSUE" --remove-label "loom:curating" ;;
-  esac
-else
+post_fresh_marker() {
   gh issue edit "$ISSUE" --add-label "loom:curating"
   gh issue comment "$ISSUE" --body "$MARKER
 <!-- pr:$PR_NUMBER -->
 <!-- mergeable_state:$STATE -->
 **Curator re-check**: still blocked pending #$PR_NUMBER (\`mergeable_state: $STATE\`)."
   gh issue edit "$ISSUE" --remove-label "loom:curating"
+}
+
+unclaim_if_dangling() {
+  CURRENT_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")')
+  case ",$CURRENT_LABELS," in
+    *,loom:curating,*) gh issue edit "$ISSUE" --remove-label "loom:curating" ;;
+  esac
+}
+
+if [ -z "$LAST" ]; then
+  # No prior marker at all — nothing to debounce or compare against; bootstrap.
+  post_fresh_marker
+  exit 0
+fi
+
+LAST_PR=$(printf '%s' "$LAST" | jq -r '.body // ""' | grep -oE '<!-- pr:[0-9]+ -->' | grep -oE '[0-9]+' || true)
+LAST_STATE=$(printf '%s' "$LAST" | jq -r '.body // ""' | sed -nE 's/.*<!-- mergeable_state:([a-zA-Z_]+) -->.*/\1/p')
+LAST_AT=$(printf '%s' "$LAST" | jq -r '.createdAt')
+LAST_EPOCH=$(date -u -d "$LAST_AT" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s)
+NOW_EPOCH=$(date -u +%s)
+AGE=$(( NOW_EPOCH - LAST_EPOCH ))
+
+if [ "$AGE" -lt "$COOLDOWN_SECONDS" ]; then
+  echo "Marker posted ${AGE}s ago (< ${COOLDOWN_SECONDS}s cooldown) — a concurrent dispatch already just checked this; skipping unconditionally (#802 debounce)"
+  unclaim_if_dangling   # self-healing only; do NOT comment or add a fresh claim
+elif [ "$LAST_PR" = "$PR_NUMBER" ] && [ "$LAST_STATE" = "$STATE" ]; then
+  echo "No state change since last check (PR #$PR_NUMBER, $STATE) — true no-op, skipping claim/comment/unclaim"
+  unclaim_if_dangling
+else
+  post_fresh_marker
 fi
 ```
 
-This guard now governs **both** the no-op re-check comment **and** the
-claim/unclaim label mutation — closing the gap #785 left open (its comment
-was deduped here, but the claim was not, which is what #796 found and fixed).
-The existing exit conditions are unchanged and are not gated by the marker:
+This guard now governs **three** things: the no-op re-check comment (#785),
+the claim/unclaim label mutation (#796/#798), and — as of #802 — the
+concurrent-dispatch race where multiple sessions racing the read-then-write
+sequence within the same short window each independently conclude a write is
+needed. Each prior fix closed a gap the previous one left open (#785 deduped
+only the comment; #796/#798 found and fixed the claim it left unguarded;
+#802's debounce closes the remaining concurrency gap in the guard's read of
+"the last marker" itself). The existing exit conditions are unchanged and are
+not gated by the marker or the debounce:
 - **PR merges** → the issue auto-closes (via the PR's `Closes #N`); no Curator
   action needed.
 - **PR closes without merging** → remove `loom:blocked` (atomic transition,
