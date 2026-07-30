@@ -6,27 +6,26 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ---
 
+<!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
 *No issues currently carry the `loom:urgent` label.* The three open `loom:issue` issues (below) each already have a complete, Judge-approved, mergeable PR awaiting human/Champion merge — there is no unbuilt work to prioritize among them. Urgent labeling would misrepresent the queue; see "Backlog state" below.
 
 ## In Progress (`loom:building`)
 
-| Issue | Title | Claimed |
-|---|---|---|
-| #788 | champion-pr-merge: size-limit idempotency guard uses invalid `gh --jq -r` syntax, silently reintroducing the repost-loop bug | 2026-07-30, Builder actively working |
+*Empty.* #788 (the size-limit idempotency-guard follow-up) closed via PR #791 — no issue currently carries `loom:building`.
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* All three open `loom:issue` issues now also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge, so there is no unbuilt ready work to dispatch a Builder onto.
+*Empty.* All three open `loom:issue` issues still also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge, so there is no unbuilt ready work to dispatch a Builder onto.
 
 ## Blocked (`loom:blocked`) — implementation complete, pending merge
 
 | Issue | Title | Tier | Status |
 |---|---|---|---|
-| #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `loom:pr` (Judge-approved, mergeable); blocked 2026-07-29 to prevent duplicate Builder dispatch |
-| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` | PR #763 open, `loom:pr` (Judge-approved, mergeable); blocked 2026-07-29 to prevent duplicate Builder dispatch |
-| #751 | evidence grades leak into reader prose — preservation contract needs a rendering rule | `tier:goal-supporting` | PR #773 open, `loom:pr` (Judge-approved, mergeable, but `mergeable_state: dirty` — needs a rebase before merge) |
+| #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `mergeable_state: clean`; blocked 2026-07-29 to prevent duplicate Builder dispatch |
+| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` | PR #763 open, `mergeable_state: clean`; blocked 2026-07-29 to prevent duplicate Builder dispatch. Also still carries `loom:curating` (Curator re-check pass) |
+| #751 | evidence grades leak into reader prose — preservation contract needs a rendering rule | `tier:goal-supporting` | PR #773 open, `mergeable_state: dirty` — needs a rebase before merge |
 
 **Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763`, `773` (Champion/human); #773 needs a rebase first.
 
@@ -36,7 +35,7 @@ Each of the three carries a documented unblock condition: PR merges → issue au
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-*No new issues.* No issue currently carries a `loom:curating` claim.
+*No new issues in `loom:triage`.* #743 (listed above under Blocked) still carries a `loom:curating` claim from Curator's standing re-check pass on the #763 blocked-pending-PR condition — not new triage work.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -48,7 +47,7 @@ Each of the three carries a documented unblock condition: PR merges → issue au
 
 ## Backlog state
 
-Four open `loom:issue` issues total as of 2026-07-30: three blocked (#746, #743, #751, each with a complete, Judge-approved, mergeable PR — #761, #763, #773 respectively — awaiting human/Champion merge) plus one newly claimed and actively building (#788, a follow-up fix for the size-limit idempotency guard shipped in PR #787). The rate-limiting step for the blocked trio is **merging those three PRs**, not Builder dispatch or triage prioritization. Note PR #773 (closes #751) currently shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean. With zero unblocked *ready* issues (the only non-building, non-blocked backlog is empty), the `loom:urgent` queue is correctly empty.
+Three open `loom:issue` issues total as of 2026-07-30, all blocked (#746, #743, #751), each with a complete, Judge-approved, mergeable PR — #761, #763, #773 respectively — awaiting human/Champion merge. #788 (the prior "In Progress" entry) closed 2026-07-30 via PR #791. The rate-limiting step for the blocked trio is **merging those three PRs**, not Builder dispatch or triage prioritization. PR #773 (closes #751) still shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean. With zero unblocked *ready* issues, the `loom:urgent` queue is correctly empty.
 
 ### Recurring themes the next wave of issues will likely touch
 
@@ -59,6 +58,7 @@ Forward-looking signals from `ROADMAP.md` "Near-Term Themes" (dormant until cana
 3. **Memo-side render-gate analog** (markdown-appropriate length proxy + clean-output gate).
 4. **Render-gate consumer ergonomics** (per-thread overrides at scale).
 5. **Cross-skill lint sharing** (deck/slides `marp_lint` consolidation).
+<!-- guide:plan-body:end -->
 
 ## How this file is maintained
 
