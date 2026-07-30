@@ -706,7 +706,7 @@ GitHub automatically checks boxes when issues close. When you see all boxes chec
 2. Remove `loom:blocked` label and add `loom:curated`: `gh issue edit <number> --remove-label "loom:blocked" --remove-label "loom:curating" --add-label "loom:curated"`
 3. Issue awaits `loom:issue` promotion (human, Champion, or a `/loom:sweep` orchestrator) before Workers can claim
 
-### Blocked-pending-PR re-checks (idempotency guard, #785, extended #796/#798, debounced #802, fail-closed REST read #809)
+### Blocked-pending-PR re-checks (idempotency guard, #785, extended #796/#798, debounced #802, fail-closed REST read #809, unknown-state normalized #806)
 
 A different `loom:blocked` case: the issue is blocked not on an unmet
 Dependencies checkbox but on an **already-open PR that implements it** (e.g. a
@@ -796,6 +796,30 @@ takes the bootstrap branch; a call that errors outright takes neither the
 bootstrap branch nor the debounce/state-comparison branches below, because
 there is nothing valid to compare against or bootstrap from.
 
+**Unknown-`mergeable_state` normalization (#806) — a transient GitHub
+recomputation blip is not a state change.** `mergeable_state: unknown` is
+GitHub's sentinel for "still (re)computing mergeability," not a durable PR
+property — it self-resolves to `clean`/`dirty` within seconds, independent of
+any real change to the PR. Comparing it as an ordinary value in step 4's state
+comparison means every `clean → unknown → clean` blip GitHub emits produces a
+spurious "state changed" verdict once the #802 debounce has elapsed, even
+though nothing about the PR actually changed. The fix: when the **current**
+`STATE` reads `unknown` and a prior marker exists, step 4 treats this pass as
+inconclusive — same observable outcome as the debounce-skip branch (no claim,
+no comment; self-healing unclaim only) — and, critically, **does not post a
+fresh marker**, so the last marker's recorded state is left untouched. That
+preserves the last known **real** (`clean`/`dirty`/other non-`unknown`) state
+across the `unknown` reading, so the *next* real-state reading is compared
+against that last real state, not against `unknown`. This check only applies
+once a prior marker exists to preserve — the "no prior marker" bootstrap
+branch is unaffected, so an `unknown` reading with nothing yet to compare
+against still bootstraps normally, exactly as any other first-ever reading
+does. Because the check inspects only the *current* reading, a genuine
+`clean → dirty` (or `dirty → clean`) transition observed on a later,
+non-`unknown` pass still fires a fresh marker exactly as before — this is
+additive, not a replacement for the existing debounce (#802) or state
+comparison.
+
 **Marker convention** — any comment reporting a blocked-pending-PR re-check
 result carries a marker encoding the PR number and its `mergeable_state`. Its
 own `created_at` timestamp (returned by the REST comments endpoint above)
@@ -843,13 +867,25 @@ the marker body:
      `loom:curating` is already present on the issue (e.g. left over from a
      stale or crashed prior pass), remove it — don't leave a dangling claim —
      but still skip adding a fresh one and skip the comment.
-   - **PR number changed, `mergeable_state` changed (e.g. `clean` → `dirty`,
-     itself a real signal worth surfacing), or no prior marker** → claim
-     (`gh issue edit <number> --add-label "loom:curating"`), post a fresh
-     comment with the updated marker, then unclaim (`gh issue edit <number>
-     --remove-label "loom:curating"`) — the same sequence as before #796,
-     just reordered so the claim happens only after steps 3-4 determine a
-     write is actually needed.
+   - **Current `mergeable_state` is `unknown` AND a prior marker exists
+     (#806)** → GitHub is still (re)computing mergeability; this is not a
+     real signal. Treat it the same as the debounce-skip branch: no claim, no
+     comment, self-healing unclaim only — and, critically, do **not** post a
+     fresh marker, so the last marker's recorded (real) state is preserved
+     for the next comparison. This branch is checked before the
+     changed/unchanged comparison below, so an `unknown` reading never
+     counts as "changed" on its own and never overwrites the last known real
+     state.
+   - **PR number changed, `mergeable_state` changed to a value other than
+     `unknown` (e.g. `clean` → `dirty`, itself a real signal worth
+     surfacing), or no prior marker** → claim (`gh issue edit <number>
+     --add-label "loom:curating"`), post a fresh comment with the updated
+     marker, then unclaim (`gh issue edit <number> --remove-label
+     "loom:curating"`) — the same sequence as before #796, just reordered so
+     the claim happens only after steps 3-4 determine a write is actually
+     needed. (An `unknown` reading with **no** prior marker still takes this
+     branch and bootstraps normally — see #806 above — since there is
+     nothing yet to preserve.)
 
 ```bash
 ISSUE=<number>
@@ -905,6 +941,9 @@ AGE=$(( NOW_EPOCH - LAST_EPOCH ))
 if [ "$AGE" -lt "$COOLDOWN_SECONDS" ]; then
   echo "Marker posted ${AGE}s ago (< ${COOLDOWN_SECONDS}s cooldown) — a concurrent dispatch already just checked this; skipping unconditionally (#802 debounce)"
   unclaim_if_dangling   # self-healing only; do NOT comment or add a fresh claim
+elif [ "$STATE" = "unknown" ]; then
+  echo "Current mergeable_state is 'unknown' (GitHub still (re)computing) — inconclusive, not a real signal; skipping without overwriting the last known real state ($LAST_STATE) (#806)"
+  unclaim_if_dangling   # self-healing only; do NOT comment, do NOT post a fresh marker (preserves LAST_STATE for the next real-state comparison)
 elif [ "$LAST_PR" = "$PR_NUMBER" ] && [ "$LAST_STATE" = "$STATE" ]; then
   echo "No state change since last check (PR #$PR_NUMBER, $STATE) — true no-op, skipping claim/comment/unclaim"
   unclaim_if_dangling
@@ -913,15 +952,20 @@ else
 fi
 ```
 
-This guard now governs **three** things: the no-op re-check comment (#785),
-the claim/unclaim label mutation (#796/#798), and — as of #802 — the
-concurrent-dispatch race where multiple sessions racing the read-then-write
-sequence within the same short window each independently conclude a write is
-needed. Each prior fix closed a gap the previous one left open (#785 deduped
-only the comment; #796/#798 found and fixed the claim it left unguarded;
-#802's debounce closes the remaining concurrency gap in the guard's read of
-"the last marker" itself). The existing exit conditions are unchanged and are
-not gated by the marker or the debounce:
+This guard now governs **four** things: the no-op re-check comment (#785),
+the claim/unclaim label mutation (#796/#798), the concurrent-dispatch race
+where multiple sessions racing the read-then-write sequence within the same
+short window each independently conclude a write is needed (#802), and — as
+of #806 — the single-session false positive where a transient
+`mergeable_state: unknown` reading gets compared as if it were a durable
+state and mistaken for a real transition. Each prior fix closed a gap the
+previous one left open (#785 deduped only the comment; #796/#798 found and
+fixed the claim it left unguarded; #802's debounce closes the concurrency gap
+in the guard's read of "the last marker" itself; #806's `unknown`
+normalization closes the remaining gap that survives even fully serialized,
+single-session dispatch once the debounce has elapsed). The existing exit
+conditions are unchanged and are not gated by the marker, the debounce, or the
+`unknown` check:
 - **PR merges** → the issue auto-closes (via the PR's `Closes #N`); no Curator
   action needed.
 - **PR closes without merging** → remove `loom:blocked` (atomic transition,
