@@ -47,6 +47,28 @@
   consistency checking, a structured facts-register companion input, and
   a full `nitas-mama` dogfood worked example.
 
+### Fixed
+
+- **`vocab_reminder`'s shipped-default word list now reachable in installed
+  consumer repos** (#800). `anvil/lib/vocab_reminder.py`'s
+  `DEFAULT_WORD_LIST_PATH` resolves relative to `__file__` as
+  `<lib>/../templates/voice/vocab.words.txt` — correct in the dev tree, but
+  from the installed module's location (`.anvil/anvil/lib/vocab_reminder.py`)
+  it resolved to `.anvil/anvil/templates/voice/vocab.words.txt`, a path
+  `install-anvil.sh` never populated (Stage 5 copied only `anvil/lib`; Stage
+  7.9 scaffolds the same source file to a *different*, consumer-owned
+  destination, `.anvil/voice/VOCABULARY.words.txt`, gated on `essay`/`memo`
+  being selected). The documented "works out of the box" zero-config
+  fallback was dead on arrival for every installed consumer, returning
+  `no words available to sample` (exit 1) instead of a sample. Stage 5 now
+  ships one narrow, unconditional copy —
+  `anvil/templates/voice/vocab.words.txt` ->
+  `.anvil/anvil/templates/voice/vocab.words.txt` — mirroring the
+  "importable mirror, always refreshed" discipline already used for
+  `anvil/lib -> .anvil/anvil/lib`, rather than fixing the path-resolution
+  logic itself (the constant was correct once the file it expects actually
+  exists at that path).
+
 ## [0.10.1] — 2026-07-21
 
 ### Summary

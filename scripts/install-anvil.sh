@@ -1100,6 +1100,30 @@ if [[ -d "$SRC_LIB" ]]; then
     do_action "install $DST_ANVIL_PKG/__init__.py from $SRC_ANVIL_INIT" \
       copy_file_with_parents "$SRC_ANVIL_INIT" "$DST_ANVIL_PKG/__init__.py"
   fi
+
+  # Ship the vocab_reminder default word list into the importable mirror
+  # (issue #800). `anvil/lib/vocab_reminder.py`'s DEFAULT_WORD_LIST_PATH is
+  # computed relative to `__file__` as `<lib>/../templates/voice/vocab.words.txt`
+  # — a dev-tree-only assumption. From the installed module's location
+  # (.anvil/anvil/lib/vocab_reminder.py) that resolves to
+  # .anvil/anvil/templates/voice/vocab.words.txt, which no other stage ever
+  # populates: Stage 7.9 below scaffolds the same source file to a DIFFERENT,
+  # consumer-owned destination (.anvil/voice/VOCABULARY.words.txt) used only by
+  # the sibling-file resolution path, and only when essay/memo is selected.
+  # This is a narrow, single-file, unconditional copy (not a whole-tree
+  # anvil/templates mirror) — deliberately mirrors the anvil/lib copy's
+  # "importable mirror, always refreshed" discipline rather than Stage 7.9's
+  # consumer-scaffold (hash-tracked, skill-gated, override-preserving) model,
+  # because this file is package data the shipped default reads, not a
+  # consumer-editable starter doc.
+  SRC_VOCAB_DEFAULT="$ANVIL_ROOT/anvil/templates/voice/vocab.words.txt"
+  if [[ -f "$SRC_VOCAB_DEFAULT" ]]; then
+    do_action "install $DST_ANVIL_PKG/templates/voice/vocab.words.txt from $SRC_VOCAB_DEFAULT" \
+      copy_file_with_parents "$SRC_VOCAB_DEFAULT" "$DST_ANVIL_PKG/templates/voice/vocab.words.txt"
+  else
+    warn "source vocab default word list not found: $SRC_VOCAB_DEFAULT (skipping)"
+  fi
+
   # Suppress post-action confirmation under --dry-run; the [dry-run] line above
   # is the truthful record (issue #81). Stage 1-4/10 diagnostic ok: lines stay.
   [[ "$DRY_RUN" == true ]] || ok "framework lib installed (importable as anvil.lib.*)"
