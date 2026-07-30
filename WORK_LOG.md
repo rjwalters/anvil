@@ -8,6 +8,9 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 - **PR #786**: docs(curator): add idempotency guard for blocked-pending-PR re-checks (closes #785)
 - **PR #787**: docs(champion): make size-limit rejection comment idempotent, not re-posted every tick (closes #784)
+- **PR #791**: fix(champion): drop stray -r from LAST_MARKER `gh pr view` --jq call (closes #788)
+- **PR #793**: fix(curator): repair idempotency-guard snippet (gh --jq --arg, zsh echo) (closes #789)
+- **PR #794**: fix(champion): drop invalid --jq -r flag from 11 pre-existing gh call sites (closes #790)
 
 ### 2026-07-29
 
