@@ -706,7 +706,7 @@ GitHub automatically checks boxes when issues close. When you see all boxes chec
 2. Remove `loom:blocked` label and add `loom:curated`: `gh issue edit <number> --remove-label "loom:blocked" --remove-label "loom:curating" --add-label "loom:curated"`
 3. Issue awaits `loom:issue` promotion (human, Champion, or a `/loom:sweep` orchestrator) before Workers can claim
 
-### Blocked-pending-PR re-checks (idempotency guard, #785, extended #796/#798, debounced #802)
+### Blocked-pending-PR re-checks (idempotency guard, #785, extended #796/#798, debounced #802, fail-closed REST read #809)
 
 A different `loom:blocked` case: the issue is blocked not on an unmet
 Dependencies checkbox but on an **already-open PR that implements it** (e.g. a
@@ -779,11 +779,28 @@ true compare-and-swap for this one-time bootstrap moment would require an
 external coordination primitive, which is exactly what #802 asks this fix to
 avoid unless the debounce proves insufficient.
 
+**Read-failure handling (#809) — a failed read is never evidence of
+absence.** The marker read below uses the REST endpoint (`gh api
+repos/{owner}/{repo}/issues/$ISSUE/comments`, with `{owner}`/`{repo}`
+auto-filled by `gh api` the same way `judge.md`'s stale-claim check already
+does) instead of the GraphQL-backed `gh issue view --json comments` — REST
+`core` and GraphQL are separate quota buckets, so exhaustion of one no longer
+starves the other. That swap alone isn't sufficient, though: the prior
+GraphQL-backed read could *also* fail outright (rate limit, network error,
+any non-zero exit), and the old script folded that failure into "no prior
+marker" — silently bootstrap-reposting on every dispatch during an outage.
+**A failed read must skip this pass unconditionally: no claim, no comment,
+no unclaim — not even the self-healing exception in `unclaim_if_dangling`.**
+Only a *successful* call that legitimately returns zero matching comments
+takes the bootstrap branch; a call that errors outright takes neither the
+bootstrap branch nor the debounce/state-comparison branches below, because
+there is nothing valid to compare against or bootstrap from.
+
 **Marker convention** — any comment reporting a blocked-pending-PR re-check
 result carries a marker encoding the PR number and its `mergeable_state`. Its
-own `createdAt` timestamp (already returned by `gh issue view --json
-comments`) doubles as the debounce clock — no separate timestamp field is
-embedded in the marker body:
+own `created_at` timestamp (returned by the REST comments endpoint above)
+doubles as the debounce clock — no separate timestamp field is embedded in
+the marker body:
 
 ```
 <!-- curator:blocked-pending-pr-notice -->
@@ -796,14 +813,20 @@ embedded in the marker body:
 1. Determine the implementing PR's current number and `mergeable_state` (`gh pr
    view <PR_NUMBER> --json state,mergeable,mergeStateStatus`). This is a
    read-only check and does not require holding `loom:curating`.
-2. Find the most recent comment on the issue containing
+2. Read the issue's comments via REST (`gh api
+   repos/{owner}/{repo}/issues/$ISSUE/comments`). **If this call fails
+   outright (non-zero exit — e.g. an exhausted quota bucket or a network
+   error), stop here: skip this pass entirely, no claim, no comment, no
+   unclaim (#809).** A failed read is never treated as "no prior marker" —
+   only proceed past this step once the call has actually succeeded. On a
+   successful call, find the most recent returned comment containing
    `<!-- curator:blocked-pending-pr-notice -->`, and read its embedded `pr:` /
-   `mergeable_state:` values plus its `createdAt` timestamp (if no such
-   comment exists yet, there is nothing to debounce or compare against — skip
-   straight to step 4's "no prior marker" branch: always claim, comment,
-   unclaim).
+   `mergeable_state:` values plus its `created_at` timestamp (if the call
+   succeeded but no such comment exists — a genuine confirmed-empty result —
+   there is nothing to debounce or compare against — skip straight to step
+   4's "no prior marker" branch: always claim, comment, unclaim).
 3. **(#802) Time debounce — evaluate this BEFORE the state comparison.** If a
-   prior marker exists and its `createdAt` is less than `COOLDOWN_SECONDS`
+   prior marker exists and its `created_at` is less than `COOLDOWN_SECONDS`
    (3 minutes) old, **this pass skips unconditionally** — regardless of
    whether the marker's `pr:` / `mergeable_state:` match the current values.
    No claim, no comment, no unclaim beyond the same self-healing exception as
@@ -835,8 +858,19 @@ STATE=<mergeable_state>   # e.g. clean, dirty, unknown
 MARKER="<!-- curator:blocked-pending-pr-notice -->"
 COOLDOWN_SECONDS=180   # 3 minutes — concurrent-dispatch debounce window (#802)
 
-LAST=$(gh issue view "$ISSUE" --json comments \
-  | jq --arg m "$MARKER" '[.comments[] | select(.body | contains($m))] | last // empty')
+COMMENTS_JSON=$(gh api "repos/{owner}/{repo}/issues/$ISSUE/comments" --paginate 2>&1)
+READ_STATUS=$?
+if [ "$READ_STATUS" -ne 0 ]; then
+  # Read failed outright (rate limit, network error, ...) — this is NOT
+  # evidence that no prior marker exists. Skip this pass unconditionally:
+  # no claim, no comment, no unclaim, not even the self-healing exception
+  # below. (#809 — do not fall through to post_fresh_marker.)
+  echo "Comment read failed (exit $READ_STATUS): $COMMENTS_JSON — skipping this pass, no mutations"
+  exit 0
+fi
+
+LAST=$(printf '%s' "$COMMENTS_JSON" \
+  | jq --arg m "$MARKER" '[.[] | select(.body | contains($m))] | last // empty')
 
 post_fresh_marker() {
   gh issue edit "$ISSUE" --add-label "loom:curating"
@@ -848,21 +882,22 @@ post_fresh_marker() {
 }
 
 unclaim_if_dangling() {
-  CURRENT_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")')
+  CURRENT_LABELS=$(gh api "repos/{owner}/{repo}/issues/$ISSUE" --jq '[.labels[].name] | join(",")' 2>/dev/null)
   case ",$CURRENT_LABELS," in
     *,loom:curating,*) gh issue edit "$ISSUE" --remove-label "loom:curating" ;;
   esac
 }
 
 if [ -z "$LAST" ]; then
-  # No prior marker at all — nothing to debounce or compare against; bootstrap.
+  # Read succeeded but found zero matching comments — genuine confirmed-empty
+  # result, nothing to debounce or compare against; bootstrap.
   post_fresh_marker
   exit 0
 fi
 
 LAST_PR=$(printf '%s' "$LAST" | jq -r '.body // ""' | grep -oE '<!-- pr:[0-9]+ -->' | grep -oE '[0-9]+' || true)
 LAST_STATE=$(printf '%s' "$LAST" | jq -r '.body // ""' | sed -nE 's/.*<!-- mergeable_state:([a-zA-Z_]+) -->.*/\1/p')
-LAST_AT=$(printf '%s' "$LAST" | jq -r '.createdAt')
+LAST_AT=$(printf '%s' "$LAST" | jq -r '.created_at')
 LAST_EPOCH=$(date -u -d "$LAST_AT" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s)
 NOW_EPOCH=$(date -u +%s)
 AGE=$(( NOW_EPOCH - LAST_EPOCH ))
