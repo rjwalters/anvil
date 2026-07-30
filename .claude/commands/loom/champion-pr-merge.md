@@ -84,7 +84,7 @@ fi
 **Verification command**:
 ```bash
 # Get all changed files
-FILES=$(gh pr view <number> --json files --jq -r '.files[].path')
+FILES=$(gh pr view <number> --json files --jq '.files[].path')
 
 # Define critical patterns (extend as needed)
 CRITICAL_PATTERNS=(
@@ -118,7 +118,7 @@ echo "PASS: No critical files modified"
 **Verification command**:
 ```bash
 # Check merge status
-MERGEABLE=$(gh pr view <number> --json mergeable --jq -r '.mergeable')
+MERGEABLE=$(gh pr view <number> --json mergeable --jq '.mergeable')
 
 # Verify mergeable state
 if [ "$MERGEABLE" != "MERGEABLE" ]; then
@@ -142,7 +142,7 @@ echo "PASS: No merge conflicts"
 **Verification command**:
 ```bash
 # Get PR last update time
-UPDATED_AT=$(gh pr view <number> --json updatedAt --jq -r '.updatedAt')
+UPDATED_AT=$(gh pr view <number> --json updatedAt --jq '.updatedAt')
 
 # Convert to Unix timestamp
 UPDATED_TS=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$UPDATED_AT" +%s 2>/dev/null || \
@@ -326,7 +326,7 @@ fi
 
 # Check each linked issue
 for issue in $LINKED_ISSUES; do
-  ISSUE_STATE=$(gh issue view "$issue" --json state --jq -r '.state' 2>&1)
+  ISSUE_STATE=$(gh issue view "$issue" --json state --jq '.state' 2>&1)
 
   if [ "$ISSUE_STATE" = "CLOSED" ]; then
     echo "Issue #$issue is closed (auto-closed by PR merge)"
@@ -360,7 +360,7 @@ for blocked in $BLOCKED_ISSUES; do
   echo "Checking if #$blocked can be unblocked..."
 
   # Get the issue body to check ALL dependencies
-  BLOCKED_BODY=$(gh issue view "$blocked" --json body --jq -r '.body')
+  BLOCKED_BODY=$(gh issue view "$blocked" --json body --jq '.body')
 
   # Extract all referenced dependencies
   ALL_DEPS=$(echo "$BLOCKED_BODY" | grep -Eo "(Blocked by|Depends on|Requires) #[0-9]+" | grep -Eo "[0-9]+" | sort -u)
@@ -368,7 +368,7 @@ for blocked in $BLOCKED_ISSUES; do
   # Check if ALL dependencies are now closed
   ALL_RESOLVED=true
   for dep in $ALL_DEPS; do
-    DEP_STATE=$(gh issue view "$dep" --json state --jq -r '.state' 2>/dev/null)
+    DEP_STATE=$(gh issue view "$dep" --json state --jq '.state' 2>/dev/null)
     if [ "$DEP_STATE" != "CLOSED" ]; then
       echo "  Still blocked: dependency #$dep is still open"
       ALL_RESOLVED=false
@@ -464,7 +464,7 @@ echo "Found $TOTAL_TODOS TODOs ($CRITICAL_COUNT critical, $STANDARD_COUNT standa
 # Stage 2: Parse PR Body Sections
 # ============================================
 
-PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq -r '.body // ""')
+PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body // ""')
 
 # Extract follow-on sections (case-insensitive matching)
 FOLLOWON_SECTION=""
@@ -540,11 +540,11 @@ fi
 
 # Get original issue title if available
 if [ -n "$ORIGINAL_ISSUE" ]; then
-  ORIGINAL_TITLE=$(gh issue view "$ORIGINAL_ISSUE" --json title --jq -r '.title' 2>/dev/null || echo "")
+  ORIGINAL_TITLE=$(gh issue view "$ORIGINAL_ISSUE" --json title --jq '.title' 2>/dev/null || echo "")
   PARENT_REF="Follow-on from PR #$PR_NUMBER which closed #$ORIGINAL_ISSUE"
   CONTEXT_LINE="**$ORIGINAL_TITLE** was implemented in PR #$PR_NUMBER."
 else
-  PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq -r '.title')
+  PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq '.title')
   PARENT_REF="Follow-on from PR #$PR_NUMBER"
   CONTEXT_LINE="**$PR_TITLE** was merged in PR #$PR_NUMBER."
 fi
