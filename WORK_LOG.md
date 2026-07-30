@@ -4,6 +4,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-07-30
+
+- **PR #786**: docs(curator): add idempotency guard for blocked-pending-PR re-checks (closes #785)
+- **PR #787**: docs(champion): make size-limit rejection comment idempotent, not re-posted every tick (closes #784)
+
 ### 2026-07-29
 
 - **Issue #764** (closed): Tracker: retire local `.claude/commands/loom/sweep.md --claim-owned` patch when the Loom install is upgraded — closed manually (no PR); the tracked Loom v0.16.0 upgrade landed the trigger condition.
