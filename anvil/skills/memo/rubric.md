@@ -547,6 +547,20 @@ The dim 7 justification SHOULD record **both** numbers when both are available (
 
 **Backwards-compat**: when the BRIEF declares no `voice:` block (or an empty one), the calibration does NOT fire — no suffix, no corpus-quote requirement, no `_summary.md.voice_grounding` block. Dim 8 scores against its standard calibration **byte-identically** to pre-#461 behavior. The audit trail of an active calibration is the `scoring.md` suffix plus the `_summary.md.voice_grounding` block (`commands/memo-review.md` step 9).
 
+### Grade-tag leakage (issue #751)
+
+Evidence-grade tags (e.g., `[SOLID]`, `[DERIVED]`, `[ASSUMPTION]`, `[ESTIMATE from SOLID inputs]`, `[MEDIUM]`/`[HIGH]`/`[LOW]` confidence markers) are internal provenance metadata from the drafting pipeline, not reader-facing content. Per `commands/memo-draft.md` §"Evidence-grade rendering convention (issue #751)", they are preserved in the apparatus — the `BRIEF.md` §Sources block, an exhibit ledger (the Exhibit-D shape from §"Label-once-then-ledger convention (issue #747)"), or a `refs/<key>.md` stub — and NEVER transcribed into body prose. A graded claim carries a plain-language hedge proportional to its grade in the body instead ("a computed estimate," "reportedly," "unverified").
+
+**Deduction.** A bracket-taxonomy tag surviving in body prose (`<thread>.md` outside the Sources block / an exhibit ledger table) is a dim 8 register defect: it tells the reader they are looking at an internal working document, and — per the canary's second worked instance — sometimes smuggles a drafter-directed instruction ("verify before treating as load-bearing") into reader-facing text. The deduction follows the same per-instance discipline as the dim 3 citation-hooks rule above: one or two leaked tags — single-point deduction; pervasive leakage across multiple sections — two-point deduction.
+
+**Instance-naming requirement.** The dim 8 justification MUST cite the specific leaked tags by location, matching the existing dim 3 citation-hooks and dim 9 redundant-provenance anchoring standard (e.g., "§5 carries `[ESTIMATE from SOLID inputs]` inline; §9 risk 7 carries `[MEDIUM: vendor research post...]` inline — both should render as plain-language hedges, not bracket tags — -1 on dim 8"). Vague "internal jargon leaked" deductions without named instances are not actionable for the reviser and SHOULD be avoided.
+
+**Sources-block / ledger exemption.** This rule scopes to body prose only. A grade tag inside the `BRIEF.md` §Sources section, an `exhibits/` ledger table, or a `refs/<key>.md` stub is the tag's documented home and is never deducted — the tag stays fully auditable, one hop away, exactly as the preservation contract requires.
+
+**Audience opt-out.** Internal-audience artifact types — e.g., a `position-paper` written for the studio's own use, or a research-synthesis thread with no external reader — MAY opt out of this rule via a `dim_8_calibration` override on the document's `rubric_overrides:` block (see `SKILL.md` §"Rubric overrides and non-investment-memo shapes"), e.g. `dim_8_calibration: "internal-audience artifact — grade tags in body prose are acceptable; the register defect deduction does not apply."` Absent an override, the rule applies by default — external-audience is the default assumption for a memo.
+
+**Backwards-compat.** A memo with no evidence-grade tags anywhere is unaffected — there is nothing to leak, so this sub-rule never fires. This sub-rule adds no new dimension and no weight change; it is a deduction discipline attached to the existing dim 8 weight, the same non-invasive shape as the #747 label-once-then-ledger precedent.
+
 ## Dim 9 — rhetorical economy
 
 **Rhetorical economy** (weight: 4) — Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds?

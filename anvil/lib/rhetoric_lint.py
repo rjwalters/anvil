@@ -67,7 +67,10 @@ self-documenting for consumer files)::
          "max_per_1000_words": 8, "message": "..."},
         {"id": "long-sentence-density", "kind": "long_sentence",
          "sentence_word_threshold": 40, "max_per_1000_words": 4,
-         "message": "..."}
+         "message": "..."},
+        {"id": "no-internal-jargon", "kind": "regex",
+         "sources_block_exempt": True,
+         "pattern": "\\\\bTBD-INTERNAL\\\\b", "message": "..."}
       ],
       "disable": ["<default-rule-id>", "..."]
     }
@@ -84,6 +87,19 @@ regardless of overall density, but not on the same em-dash mid-document.
 Unknown or absent ``scope`` coerces to ``"body"``. ``scope`` is
 meaningless for ``frequency`` rules (frequency is always document-level)
 and is not stored on them.
+
+Sources-block exemption: ``phrase`` and ``regex`` rules accept an
+optional boolean ``sources_block_exempt`` key (default ``False``,
+issue #751). When ``True``, lines inside a ``Sources`` heading section
+(any ATX heading ``#``..``####`` whose text is exactly ``Sources``,
+case-insensitive — the memo apparatus convention documented in
+``anvil.skills.memo.lib.migrate``'s ``## Sources`` parser; the section
+runs to the next heading of equal or higher level) are excluded from
+that rule's matching, regardless of ``scope``. This lets a rule police
+body prose while treating a legitimate apparatus section — e.g. a
+Sources / references block that intentionally carries internal
+provenance-grade tags — as its documented home rather than a leak. The
+default ``no-grade-tags-in-body`` rule (below) is the first consumer.
 
 Merge semantics: consumer rules are appended to the framework defaults;
 a consumer rule whose ``id`` collides with a default **replaces** it;
@@ -122,12 +138,23 @@ Default rule set
 ----------------
 
 :data:`DEFAULT_RHETORIC_RULES` is the in-module default set (the
-``DEFAULT_PLACEHOLDER_PATTERNS`` precedent): ~25 conservative,
+``DEFAULT_PLACEHOLDER_PATTERNS`` precedent): ~30 conservative,
 high-confidence AI-tells. Inclusion bar: the phrase must be (a) a
 documented LLM-overuse marker and (b) rare in competent human
 business/technical prose. Common discourse markers (``moreover``,
 ``furthermore``, ``however``) are explicitly excluded — too many false
 positives on good prose.
+
+The ``no-grade-tags-in-body`` default (issue #751) is a narrower,
+register-discipline rule rather than an AI-tell: it flags an internal
+evidence-grade taxonomy (``[SOLID]``, ``[DERIVED]``, ``[ASSUMPTION]``,
+``[ESTIMATE ...]``, ``[MEDIUM]``/``[HIGH]``/``[LOW]``) leaking into
+body prose — provenance metadata that belongs in the Sources block /
+an exhibit ledger / a ``refs/`` stub, never inline (see
+``anvil/skills/memo/rubric.md`` §"Dim 8 — voice-grounding calibration"
+§"Grade-tag leakage (issue #751)"). It sets ``sources_block_exempt:
+True`` so the Sources block itself — the tag's documented home — never
+self-triggers the rule.
 
 Public API
 ----------
@@ -459,6 +486,21 @@ DEFAULT_RHETORIC_RULES: tuple[dict, ...] = (
             "sentence."
         ),
     },
+    {
+        "id": "no-grade-tags-in-body",
+        "kind": RULE_KIND_REGEX,
+        # An internal evidence-grade taxonomy leaking into body prose
+        # (issue #751): a bracket opening on a grade keyword, optionally
+        # followed by elaboration (e.g. "ESTIMATE from SOLID inputs" or
+        # "MEDIUM: vendor research post ..."), closed by the next "]".
+        # ``[^\[\]]*`` stops at a nested/adjacent bracket so an ordinary
+        # citation marker like "[1]" or "[Smith 2020]" never matches (no
+        # grade keyword at the open) and this rule can't swallow past a
+        # real closing bracket into unrelated text.
+        "pattern": r"\[(?:SOLID|DERIVED|ASSUMPTION|ESTIMATE|MEDIUM|HIGH|LOW)\b[^\[\]]*\]",
+        "sources_block_exempt": True,
+        "message": "Evidence-grade tag leaked into body prose; preserve the grade in the Sources block / an exhibit ledger / a refs/ stub and use a plain-language hedge in prose instead (rubric.md §\"Grade-tag leakage (issue #751)\").",
+    },
 )
 
 
@@ -556,6 +598,18 @@ _HEADING_RE = re.compile(r"^#{1,6}\s")
 # noise ("Dr. Smith", "e.g. foo") produces occasional over-splits, which is
 # tolerated rather than specially handled (see the module docstring).
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+# ATX heading line, depth-capturing variant. Used by
+# :func:`_sources_block_lines` to track section boundaries (needs the
+# ``#`` count; ``_HEADING_RE`` above only needs a yes/no match).
+_HEADING_DEPTH_RE = re.compile(r"^(#{1,6})\s")
+
+# A "Sources" heading (``#``..``####`` depth — matches the memo
+# apparatus convention in ``anvil.skills.memo.lib.migrate``'s
+# ``## Sources`` parser). Case-insensitive; the heading text must be
+# exactly "Sources" (no trailing prose) to avoid matching an unrelated
+# heading that merely contains the word.
+_SOURCES_HEADING_RE = re.compile(r"^#{1,4}\s+Sources\s*$", re.IGNORECASE)
 
 
 def _scannable_lines(text: str) -> list[str]:
@@ -677,6 +731,39 @@ def _first_prose_lineno(
             continue
         return i + 1
     return None
+
+
+def _sources_block_lines(raw_text: str) -> set[int]:
+    """1-based line numbers inside a ``Sources`` heading section.
+
+    Mirrors the boundary rule from
+    ``anvil.skills.memo.lib.migrate``'s ``## Sources`` parser: a
+    ``Sources`` section runs from the line *after* the heading to the
+    next heading of **equal or higher level** (fewer or equal ``#``
+    characters), or end of document. The heading line itself is not
+    "inside" the section. A document with no ``Sources`` heading (or
+    with the word appearing only inside a longer heading, e.g. "##
+    Sources and Methods") returns an empty set — matched exactly
+    against ``anvil/lib/rhetoric_lint.py``'s ``_SOURCES_HEADING_RE``.
+
+    Used by rules declaring ``sources_block_exempt: true`` (issue
+    #751) to treat the Sources block as a legitimate apparatus home
+    rather than a body-prose leak.
+    """
+    inside: set[int] = set()
+    section_depth: Optional[int] = None
+    for i, raw_line in enumerate(raw_text.splitlines(), start=1):
+        depth_match = _HEADING_DEPTH_RE.match(raw_line)
+        if depth_match:
+            depth = len(depth_match.group(1))
+            if section_depth is not None and depth <= section_depth:
+                section_depth = None  # a same-or-shallower heading closes it
+            if _SOURCES_HEADING_RE.match(raw_line):
+                section_depth = depth
+                continue  # the heading line itself is not "inside"
+        if section_depth is not None:
+            inside.add(i)
+    return inside
 
 
 def _collect_disabled_lines(
@@ -845,6 +932,11 @@ def _validate_rule(rule: object) -> tuple[Optional[dict], Optional[str]]:
         # absent values coerce to ``"body"`` — the original behavior.
         scope_raw = rule.get("scope", "body")
         normalized["scope"] = "first-line" if scope_raw == "first-line" else "body"
+        # Sources-block exemption (issue #751): opt-in bool, defaults
+        # False. Any non-``True`` value (missing key, non-bool) coerces
+        # to False rather than erroring — this is a permissive modifier,
+        # not a validated enum like ``scope``.
+        normalized["sources_block_exempt"] = rule.get("sources_block_exempt") is True
         # Compile now so a malformed regex is a config finding, not a
         # mid-scan crash.
         try:
@@ -1061,6 +1153,8 @@ def lint_rhetoric(
     # cached across rules — the tokenization does not depend on any
     # per-rule setting, only ``sentence_word_threshold`` does.
     sentence_word_counts: Optional[list[int]] = None
+    # Computed once for all ``sources_block_exempt`` rules (issue #751).
+    sources_lines = _sources_block_lines(text)
 
     for rule in rules:
         if rule["kind"] == RULE_KIND_LONG_SENTENCE:
@@ -1112,10 +1206,16 @@ def lint_rhetoric(
             continue
         regex = rule["_compiled"]
         rule_scope = rule.get("scope", "body")
+        rule_sources_exempt = rule.get("sources_block_exempt", False)
         for lineno, line in enumerate(scan_lines, start=1):
             # Positional rules evaluate only the first prose line; when
             # there is none (empty / all-excluded doc), they never fire.
             if rule_scope == "first-line" and lineno != first_prose_lineno:
+                continue
+            # Sources-block exemption (issue #751): the block is the
+            # tag's documented home, not a leak — skip entirely (no
+            # finding at all, not even suppressed-info).
+            if rule_sources_exempt and lineno in sources_lines:
                 continue
             for m in regex.finditer(line):
                 if lineno in disabled_lines:
