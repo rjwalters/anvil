@@ -217,6 +217,13 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
    - **When active**: read the resolved docs into context (values doc for stances / anti-stances / standing / voice signatures; style guide for register / cadence rules; vocabulary doc for AI-tell guidance — judgment-side notes only, deterministic counting is the rhetoric lint's job per issue #463; corpus exemplars as voice ground truth). Also read `<thread>.{N}/_progress.json.metadata.voice_exemplars` when present (the drafter's record of which exemplars it consulted) so the reviewer can verify grounding actually happened.
    - **Declared-but-missing docs keep the tier ACTIVE**: record each `missing: true` entry as a **`major` finding in `comments.md`** directing the operator to create the file or fix the declared path — a broken declaration is a defect to surface, not an opt-out (the `report/lib/customer_context.py` posture). The remaining resolved docs still feed the dim 8 calibration.
    - **Cache the resolved list** as `voice_docs_resolved` for the dim 8 sub-step at step 5, the critical-flag check at step 6, and the `_summary.md.voice_grounding` block at step 9.
+4m. **Run version-drift check (Phase A, deterministic mechanical metrics)** — issue #746:
+   - Invoke `anvil/skills/memo/lib/version_drift.py`'s `compute_drift(<thread>.{N}/)`. This sub-step is the structural opposite of the reviewer-judgment back-checks at steps 4e-4g: those exist as reviewer-prose precisely because scoring stays anchored to "score the version in front of you on its own rubric merits" — no prior-pass metadata is read. That doctrine is correct for *scores* (it prevents anchoring) but wrong for *style trends*: a memo that gets a few percentage points denser every revision cycle looks, at every single review, like a static style choice. This check is the missing cross-version sensor, and it is **purely mechanical** — no judgment, no LLM variance, pure-stdlib arithmetic over the current and prior version bodies.
+   - The function resolves `<thread>.{N-1}/` and, when available, `<thread>.{N-2}/` from the portfolio root (`<thread>.{N}/`'s parent directory) by parsing the `<thread>.<N>` naming convention off the version dir's own name — no separate lookup input is needed. For each resolved version it computes seven mechanical metrics: `word_count`, `bold_span_count`, `bold_word_share` (% of words wrapped in `**bold**` spans), `hedge_marker_count` (fixed lexicon: "reportedly", "roughly", "founder-reported", "unreplicated", plus parenthetical caveat spans like `(unconfirmed)` / `(self-reported)`), `meta_commentary_count` (a fixed lexicon of self-referential phrases — an interim default pending the canonical meta-commentary rule set anvil#745 is adding to `anvil.lib.rhetoric_lint`; a follow-on MAY swap this module's lexicon to delegate to the shared lint once #745 ships), `mean_sentence_length`, and `exhibit_count` (files under `exhibits/`).
+   - **Graceful-skip when there is no prior version to compare**: `N == 1` (first version of the thread), or `<thread>.{N-1}/` (or its body file) does not exist or is unreadable, returns `VersionDriftResult(ran=False, reason="...")` with zero findings. `memo-review` proceeds normally — this is the steady-state default for every thread's first iteration and remains byte-identical to pre-#746 behavior.
+   - **Finding rule — two-transition monotonic densification**: the function always computes the `<thread>.{N-1}/ → <thread>.{N}/` transition, and — only when `<thread>.{N-2}/` is ALSO present with a readable body — the `<thread>.{N-2}/ → <thread>.{N-1}/` transition. Of the seven metrics, only the three **densification metrics** — `bold_word_share`, `hedge_marker_count`, `meta_commentary_count` — participate in the finding rule (the other four are reported for context but a longer memo, or one with more bold spans in absolute terms, is not necessarily a *denser* one). A densification metric that increased in **both** transitions emits ONE `DriftFinding` naming the metric and the full three-point trajectory (e.g., `19.9% → 20.7% → 25.1%`). A metric that increased across only a single transition — including the common case where `<thread>.{N-2}/` is unavailable and only one transition is measurable — is **observational only**: a legitimate revision can add emphasis once; the rule exists to catch the *ratchet*, not any single increase.
+   - **Every finding is fixed at `severity: major`, `scope: reduce`** (`anvil/skills/memo/lib/version_drift.py::FINDING_SEVERITY` / `FINDING_SCOPE`) — this is the issue's explicit contract, not a per-instance judgment call. **This check never sets `critical_flag`** — it has no `critical_flag_candidate` field and never forces `advance: false`; it is a `comments.md` / `_summary.md` observation only, the same gating posture as the numeric-consistency check at step 4k.
+   - **Cache the structured `VersionDriftResult`** for the `comments.md` write at step 8 (see the dedicated sub-bullet there — this is the load-bearing consumption path, since `memo-revise`'s default `--scope important` filter reads `comments.md` severity tags, NOT `_summary.md` structured blocks) and the `_summary.md.version_drift` block at step 9.
 5. **Score each dimension** (1–9 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (heading, excerpt, exhibit) from the memo.
@@ -370,6 +377,16 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
    2. Explicitly acknowledge that the addition fits within dim 9's budget without compression cost (e.g., "The risk section currently runs short — adding this risk fits without trimming elsewhere.").
 
    Comments lacking the trim-candidate clause are **automatically downgraded from `major` to `minor`** — the bar for unconditional expansion at `major` severity is "the dim 9 budget can absorb it." A `scope: expand` comment at `minor` severity does NOT carry the trim-candidate requirement (the additive cost is small enough that the budget is implicit). A `scope: expand` comment at `nit` severity (single-word / single-clause additions like a missing definition or a one-line clarification) is also exempt.
+
+   **Version-drift echo (issue #746, always `scope: reduce`, `major`)**: every `DriftFinding` in the `VersionDriftResult` cached at step 4m becomes ONE `comments.md` entry at `scope: reduce, major` — fixed, not derived per-instance (`anvil/skills/memo/lib/version_drift.py::FINDING_SEVERITY` / `FINDING_SCOPE`). This is the **load-bearing consumption path** for the version-drift check: `memo-revise`'s default `--scope important` filter reads `comments.md` severity tags, not `_summary.md` structured blocks, so a finding that only lands in `_summary.md.version_drift` would be invisible to the default revision pass. The location anchor is document-wide (the metric is computed over the whole body, not one section) — use `Document-wide` as the heading location. Shape:
+
+   ```
+   ### Document-wide — scope: reduce, major
+   Excerpt: "bold-word share: 19.9% → 20.7% → 25.1% (acme.1 → acme.2 → acme.3)"
+   Comment: Bold-word share increased in both of the last two version transitions — the memo is on a densification ratchet no single review caught because each pass scores the version in front of it on its own rubric merits. Cut bold-word share back toward the acme.1 level (19.9%) rather than adding further emphasis in this revision.
+   ```
+
+   When step 4m's `VersionDriftResult.findings` is empty (whether because the check did not run — first version, missing prior — or because it ran cleanly with no two-transition ratchet), no `comments.md` entry is written for this check; there is no explicit-skip placeholder in `comments.md` (unlike the `findings.md` subsection at step 9, which always records the outcome).
 
    **Heading shape**: the `scope` label appears in the comment heading after the severity, separated by a comma:
 
@@ -782,6 +799,47 @@ A thread MAY surface non-investment-memo calibration guidance in two places:
      strongman-against.md files scanned: refs/strongman-against.md
      strongman-for.md files scanned: refs/strongman-for.md
      Objections enumerated: 5
+     ```
+   - The top-level `version_drift` block (issue #746) is populated from the cached `VersionDriftResult.to_dict()` returned by step 4m. The block lives at the **top level** of `_summary.md` (sibling to the existing `lint`, `render_gate`, `summary_detail_consistency`, `cross_thread_cite_consistency`, `strongman_back_check`, and `scope_distribution` top-level blocks), NOT nested under `lint` — rationale: unlike the mechanical `lint.*` checks (which scan the CURRENT version's body against fixed rules), this block reports a **cross-version comparison** and carries its own `metrics` / `transitions` sub-shape that would not fit the `lint.*` `errors`/`warnings`/`infos` convention. Shape (verbatim `VersionDriftResult.to_dict()`):
+     - `ran` (`bool`): whether the check ran. `False` for the first version of a thread (`N=1`) or when `<thread>.{N-1}/` (or its body) is missing/unreadable.
+     - `reason` (`str`, only when `ran: false`): short tag naming why the check did not run (e.g., `"first version of thread (N=1); no prior version to compare"`, `"prior version dir acme-seed.1/ not found (or its body file is missing/unreadable)"`).
+     - `current_version` / `prior_version` (`int`, only when `ran: true`): the `N` and `N-1` version numbers compared.
+     - `earliest_version` (`int | null`, only when `ran: true`): the `N-2` version number when a third data point was resolvable; `null` when only one transition is measurable (thread has exactly two usable versions).
+     - `metrics` (`dict[str, dict]`, only when `ran: true`): keyed by version number as a string (`"1"`, `"2"`, `"3"`); each entry is one `VersionMetrics.to_dict()` — `{version, word_count, bold_span_count, bold_word_count, bold_word_share, hedge_marker_count, meta_commentary_count, mean_sentence_length, exhibit_count}`.
+     - `transitions` (`dict[str, dict]`, only when `ran: true`): `"prior_to_current"` (always present) and `"earliest_to_prior"` (present only when `earliest_version` is non-null). Each transition is keyed by metric name; each per-metric entry is `{from, to, delta, increased}`.
+     - `findings_count` (`int`, only when `ran: true`): total count of two-transition monotonic-densification findings.
+     - `findings` (`list[dict]`, only when `ran: true`): one entry per `DriftFinding`. Per-finding fields: `metric` (one of `bold_word_share` / `hedge_marker_count` / `meta_commentary_count`), `metric_label` (human-readable name), `versions` (the `[N-2, N-1, N]` list), `values` (matching raw metric values), `trajectory` (formatted three-point string, e.g. `"19.9% → 20.7% → 25.1%"`), `severity` (always `"major"`), `scope` (always `"reduce"`), `message`, `suggested_fix`.
+   - **The `version_drift` block NEVER participates in `critical_flag`.** It has no `critical_flag_candidate` field and the verdict aggregation logic at step 7 does not read it — this is a deliberate departure from the summary-detail / cross-thread-cite / strongman back-checks above, which DO have a critical-flag pathway. The version-drift check is purely a `comments.md` / `_summary.md` observation (see step 8's dedicated sub-bullet — every finding lands as a `scope: reduce, major` `comments.md` entry, which is what makes it actionable under the default `--scope important` reviser).
+   - **Findings subsection (always emitted)**: write a `## Version drift findings` subsection into `findings.md` (sibling to the existing `## Parity-lint findings (memo↔deck, optional)`, `## Summary-detail consistency findings`, `## Cross-thread cite consistency findings`, and `## Strongman back-check findings` subsections). The subsection is **always present** (emitted even when `ran: false`) so the operator sees WHY the check did or did not fire. Three shapes:
+
+     When findings are present:
+
+     ```
+     ## Version drift findings
+
+     Each entry comes from the version-drift check (step 4m, issue #746). The check is purely mechanical (`anvil/skills/memo/lib/version_drift.py`) — no reviewer judgment, no LLM variance. A metric fires only when it increased in BOTH of the last two version transitions; a single-transition increase is observational only. Every finding here is ALSO written to `comments.md` at `scope: reduce, major` (see step 8) — that is the load-bearing consumption path for the default `--scope important` reviser.
+
+     Compared: acme-seed.1 → acme-seed.2 → acme-seed.3
+
+     1. **[major]** bold-word share increased in both of the last two version transitions: 19.9% → 20.7% → 25.1%. Cut back toward the acme-seed.1 level (19.9%) rather than adding further emphasis in this revision.
+     ```
+
+     Or, when the check did not run (first version, or no prior version dir):
+
+     ```
+     ## Version drift findings
+
+     _Skipped: first version of thread (N=1); no prior version to compare._
+     ```
+
+     Or, when the check ran cleanly (no two-transition ratchet on any densification metric):
+
+     ```
+     ## Version drift findings
+
+     _No version drift findings._
+
+     Compared: acme-seed.2 → acme-seed.3 (single transition; acme-seed.1 unavailable)
      ```
    - The top-level `scorecard_lint` block (issue #392) is populated from the cached `scorecard_lint_block` returned by step 7b. The block lives at the **top level** of `_summary.md` (sibling to `lint`, `render_gate`, `rubric`, and the back-check blocks), NOT nested under `lint` — it validates the review's *own* scorecard against the *stamped* rubric, a self-check rather than an artifact check, and keeping it distinct preserves the existing `lint` namespace's "checks against the memo body" reading. Shape:
      - `ran` (`bool`): always `true` for new reviews — the arithmetic check is deterministic and has no graceful-degrade path (its inputs are this command's own outputs).

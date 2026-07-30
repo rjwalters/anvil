@@ -4,6 +4,25 @@
 
 ### Added
 
+- **memo-review: version-drift check** (#746). New step 4m invokes
+  `anvil/skills/memo/lib/version_drift.py` (pure-stdlib, deterministic)
+  to compare `<thread>.{N}/` against `<thread>.{N-1}/` (and, when
+  available, `<thread>.{N-2}/`) on seven mechanical metrics — word
+  count, bold span count, bold-word share, hedge-marker count,
+  meta-commentary count, mean sentence length, exhibit count. A finding
+  fires only when a densification metric (bold-word share,
+  hedge-marker count, meta-commentary count) increased in BOTH of the
+  last two version transitions — a single-transition increase stays
+  observational. Every finding is fixed at `severity: major`, `scope:
+  reduce` and is echoed directly into `comments.md` (the load-bearing
+  path, since `memo-revise`'s default `--scope important` reads
+  `comments.md`, not `_summary.md`); the check never sets
+  `critical_flag`. Closes the sensor gap the anvil#241 dim-9
+  countervailing-pressure fix could not close on its own — no phase in
+  the lifecycle could previously see a cross-version trend, so a memo
+  that densifies a few points every revision looks, at every single
+  review, like a static style choice.
+
 - **New skill: `anvil:memoir`** (#740). Chaptered narrative nonfiction
   reconstructed from a private evidentiary corpus (family memoirs, oral
   histories, biography-from-archive, interview-grounded long-form
