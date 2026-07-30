@@ -25,10 +25,16 @@ If a number is provided (e.g., `/curator 42`):
    ```bash
    gh issue edit <number> --add-label "loom:curating"
    ```
+   **Exception — blocked-pending-PR re-check (#796):** if the target issue
+   already carries `loom:blocked` because it is waiting on an already-open
+   implementing PR (not an unmet Dependencies checkbox), do **not** claim
+   yet. Jump to "Blocked-pending-PR re-checks" below and run its guard
+   first — that guard decides whether this pass claims at all, to avoid
+   claim/unclaim churn on a true no-op pass.
 2. **Skip** the "Finding Work" section entirely
 3. Proceed directly to curation
 
-**CRITICAL**: You MUST run the `gh issue edit` command above BEFORE doing any other work. The `loom:curating` label signals that you have claimed the issue and prevents duplicate work.
+**CRITICAL**: You MUST run the `gh issue edit` command above BEFORE doing any other work (unless the blocked-pending-PR exception above applies). The `loom:curating` label signals that you have claimed the issue and prevents duplicate work.
 
 If no argument is provided, use the normal "Finding Work" workflow below.
 
@@ -210,6 +216,12 @@ gh issue edit <number> --add-label "loom:curating"
 ```
 
 This signals to other Curators that you're working on this issue. The search command above already filters out claimed issues, so you won't see issues other Curators are enhancing.
+
+**Exception — blocked-pending-PR re-check (#796):** if the issue is
+`loom:blocked` waiting on an open implementing PR (see "Blocked-pending-PR
+re-checks" below), do **not** claim unconditionally here. Run that section's
+guard first — it determines whether this pass needs to claim at all. Claiming
+before running the guard recreates the label-flap loop #796 fixed.
 
 ## Before Starting Curation
 
@@ -694,7 +706,7 @@ GitHub automatically checks boxes when issues close. When you see all boxes chec
 2. Remove `loom:blocked` label and add `loom:curated`: `gh issue edit <number> --remove-label "loom:blocked" --remove-label "loom:curating" --add-label "loom:curated"`
 3. Issue awaits `loom:issue` promotion (human, Champion, or a `/loom:sweep` orchestrator) before Workers can claim
 
-### Blocked-pending-PR re-checks (idempotency guard, #785)
+### Blocked-pending-PR re-checks (idempotency guard, #785, extended #796)
 
 A different `loom:blocked` case: the issue is blocked not on an unmet
 Dependencies checkbox but on an **already-open PR that implements it** (e.g. a
@@ -706,6 +718,19 @@ pure noise. This mirrors the idempotency defect Champion fixed for its own
 stale-PR path (`STALE_MARKER="<!-- champion:stale-pr-notice -->"` + `grep -qF`
 guard, `champion-pr-merge.md` "Stale PR (recency check failed)").
 
+**This guard covers the claim/unclaim label mutation too, not just the
+comment (#796).** #785's original guard deduped only the *comment* — it left
+"Argument Handling" / "Claiming Work" claiming `loom:curating`
+unconditionally before this check ever ran, so a true no-op pass still
+produced a `loom:curating` label-add followed by a label-remove on **every**
+dispatch. Left unattended, that is exactly the tight `labeled`/`unlabeled`
+churn loop #796 found running on #743 for ~14 hours (67 cycles, cadence
+accelerating to under a minute apart), burning API calls with zero
+observable effect. **Run this entire guard — including the claim
+decision — BEFORE ever calling `gh issue edit <number> --add-label
+"loom:curating"` for a blocked-pending-PR re-check.** Do not claim first and
+decide second.
+
 **Marker convention** — any comment reporting a blocked-pending-PR re-check
 result carries a marker encoding the PR number and its `mergeable_state`:
 
@@ -715,20 +740,29 @@ result carries a marker encoding the PR number and its `mergeable_state`:
 <!-- mergeable_state:<STATE> -->
 ```
 
-**Guard — before posting a "still blocked" comment:**
+**Guard — run BEFORE claiming and BEFORE posting a "still blocked" comment:**
 
 1. Determine the implementing PR's current number and `mergeable_state` (`gh pr
-   view <PR_NUMBER> --json state,mergeable,mergeStateStatus`).
+   view <PR_NUMBER> --json state,mergeable,mergeStateStatus`). This is a
+   read-only check and does not require holding `loom:curating`.
 2. Find the most recent comment on the issue containing
    `<!-- curator:blocked-pending-pr-notice -->`, and read its embedded `pr:` /
    `mergeable_state:` values (if no such comment exists yet, this is the first
-   check — always comment).
+   check — always claim, comment, unclaim, per step 4).
 3. **Same PR number AND same `mergeable_state` as that marker** → this re-check
-   found no state change. **Skip the comment entirely** (silent no-op) — do
-   not re-derive and re-post a conclusion that was already posted.
+   found no state change: a true no-op. **Do not add `loom:curating` at all
+   for this pass** — no claim, no comment, no unclaim, zero label-mutating API
+   calls. **Self-healing exception**: if `loom:curating` is already present on
+   the issue (e.g. left over from a stale or crashed prior pass), remove it —
+   don't leave a dangling claim — but still skip adding a fresh one and skip
+   the comment.
 4. **PR number changed, `mergeable_state` changed (e.g. `clean` → `dirty`,
-   itself a real signal worth surfacing), or no prior marker** → post a fresh
-   comment with the updated marker.
+   itself a real signal worth surfacing), or no prior marker** → claim
+   (`gh issue edit <number> --add-label "loom:curating"`), post a fresh
+   comment with the updated marker, then unclaim (`gh issue edit <number>
+   --remove-label "loom:curating"`) — the same sequence as before #796, just
+   reordered so the claim happens only after step 3 determines a write is
+   actually needed.
 
 ```bash
 ISSUE=<number>
@@ -743,17 +777,27 @@ LAST_PR=$(printf '%s' "$LAST" | jq -r '.body // ""' | grep -oE '<!-- pr:[0-9]+ -
 LAST_STATE=$(printf '%s' "$LAST" | jq -r '.body // ""' | sed -nE 's/.*<!-- mergeable_state:([a-zA-Z_]+) -->.*/\1/p')
 
 if [ -n "$LAST" ] && [ "$LAST_PR" = "$PR_NUMBER" ] && [ "$LAST_STATE" = "$STATE" ]; then
-  echo "No state change since last check (PR #$PR_NUMBER, $STATE) — skipping comment"
+  echo "No state change since last check (PR #$PR_NUMBER, $STATE) — true no-op, skipping claim/comment/unclaim"
+  # Self-healing: remove a dangling loom:curating claim if one is present,
+  # but do NOT add a fresh one and do NOT comment.
+  CURRENT_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")')
+  case ",$CURRENT_LABELS," in
+    *,loom:curating,*) gh issue edit "$ISSUE" --remove-label "loom:curating" ;;
+  esac
 else
+  gh issue edit "$ISSUE" --add-label "loom:curating"
   gh issue comment "$ISSUE" --body "$MARKER
 <!-- pr:$PR_NUMBER -->
 <!-- mergeable_state:$STATE -->
 **Curator re-check**: still blocked pending #$PR_NUMBER (\`mergeable_state: $STATE\`)."
+  gh issue edit "$ISSUE" --remove-label "loom:curating"
 fi
 ```
 
-This guard governs **only** the no-op re-check comment. The existing exit
-conditions are unchanged and are not gated by the marker:
+This guard now governs **both** the no-op re-check comment **and** the
+claim/unclaim label mutation — closing the gap #785 left open (its comment
+was deduped here, but the claim was not, which is what #796 found and fixed).
+The existing exit conditions are unchanged and are not gated by the marker:
 - **PR merges** → the issue auto-closes (via the PR's `Closes #N`); no Curator
   action needed.
 - **PR closes without merging** → remove `loom:blocked` (atomic transition,
