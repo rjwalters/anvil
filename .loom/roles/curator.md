@@ -694,6 +694,71 @@ GitHub automatically checks boxes when issues close. When you see all boxes chec
 2. Remove `loom:blocked` label and add `loom:curated`: `gh issue edit <number> --remove-label "loom:blocked" --remove-label "loom:curating" --add-label "loom:curated"`
 3. Issue awaits `loom:issue` promotion (human, Champion, or a `/loom:sweep` orchestrator) before Workers can claim
 
+### Blocked-pending-PR re-checks (idempotency guard, #785)
+
+A different `loom:blocked` case: the issue is blocked not on an unmet
+Dependencies checkbox but on an **already-open PR that implements it** (e.g. a
+Builder opened a PR and marked the issue blocked pending its merge, or a
+Dependencies entry points at an open PR rather than an issue). A re-check that
+simply confirms "the PR is still open, nothing changed" is **not** grounds for a
+fresh comment — repeatedly re-deriving and re-posting the same conclusion is
+pure noise. This mirrors the idempotency defect Champion fixed for its own
+stale-PR path (`STALE_MARKER="<!-- champion:stale-pr-notice -->"` + `grep -qF`
+guard, `champion-pr-merge.md` "Stale PR (recency check failed)").
+
+**Marker convention** — any comment reporting a blocked-pending-PR re-check
+result carries a marker encoding the PR number and its `mergeable_state`:
+
+```
+<!-- curator:blocked-pending-pr-notice -->
+<!-- pr:<PR_NUMBER> -->
+<!-- mergeable_state:<STATE> -->
+```
+
+**Guard — before posting a "still blocked" comment:**
+
+1. Determine the implementing PR's current number and `mergeable_state` (`gh pr
+   view <PR_NUMBER> --json state,mergeable,mergeStateStatus`).
+2. Find the most recent comment on the issue containing
+   `<!-- curator:blocked-pending-pr-notice -->`, and read its embedded `pr:` /
+   `mergeable_state:` values (if no such comment exists yet, this is the first
+   check — always comment).
+3. **Same PR number AND same `mergeable_state` as that marker** → this re-check
+   found no state change. **Skip the comment entirely** (silent no-op) — do
+   not re-derive and re-post a conclusion that was already posted.
+4. **PR number changed, `mergeable_state` changed (e.g. `clean` → `dirty`,
+   itself a real signal worth surfacing), or no prior marker** → post a fresh
+   comment with the updated marker.
+
+```bash
+ISSUE=<number>
+PR_NUMBER=<pr-number>
+STATE=<mergeable_state>   # e.g. clean, dirty, unknown
+MARKER="<!-- curator:blocked-pending-pr-notice -->"
+
+LAST=$(gh issue view "$ISSUE" --json comments \
+  --jq --arg m "$MARKER" '[.comments[] | select(.body | contains($m))] | last // empty')
+
+LAST_PR=$(echo "$LAST" | jq -r '.body // ""' | grep -oE '<!-- pr:[0-9]+ -->' | grep -oE '[0-9]+' || true)
+LAST_STATE=$(echo "$LAST" | jq -r '.body // ""' | sed -nE 's/.*<!-- mergeable_state:([a-zA-Z_]+) -->.*/\1/p')
+
+if [ -n "$LAST" ] && [ "$LAST_PR" = "$PR_NUMBER" ] && [ "$LAST_STATE" = "$STATE" ]; then
+  echo "No state change since last check (PR #$PR_NUMBER, $STATE) — skipping comment"
+else
+  gh issue comment "$ISSUE" --body "$MARKER
+<!-- pr:$PR_NUMBER -->
+<!-- mergeable_state:$STATE -->
+**Curator re-check**: still blocked pending #$PR_NUMBER (\`mergeable_state: $STATE\`)."
+fi
+```
+
+This guard governs **only** the no-op re-check comment. The existing exit
+conditions are unchanged and are not gated by the marker:
+- **PR merges** → the issue auto-closes (via the PR's `Closes #N`); no Curator
+  action needed.
+- **PR closes without merging** → remove `loom:blocked` (atomic transition,
+  same as any other unblock) so the issue re-enters normal triage.
+
 ## Issue Quality Checklist
 
 Before marking an issue as `loom:curated`, ensure it has:
