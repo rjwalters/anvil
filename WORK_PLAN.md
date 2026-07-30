@@ -9,33 +9,36 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*No issues currently carry the `loom:urgent` label.* The three open `loom:issue` issues (below) each already have a complete, Judge-approved, mergeable PR awaiting human/Champion merge — there is no unbuilt work to prioritize among them. Urgent labeling would misrepresent the queue; see "Backlog state" below.
+- **#796**: Curator role stuck in runaway `loom:curating` label-flap loop on issue #743 — already `loom:building`; a Builder claimed it 2026-07-30, so no new urgent labeling is needed here (Guide never marks building issues urgent, it just isn't demoting this either).
+
+No other issue qualifies: the two remaining open issues (#746, #743, below) are both `loom:blocked` pending merge of their own already-approved PRs — there is no unbuilt ready work to prioritize among them.
 
 ## In Progress (`loom:building`)
 
-*Empty.* #788 (the size-limit idempotency-guard follow-up) closed via PR #791 — no issue currently carries `loom:building`.
+- **#796**: Curator role stuck in runaway `loom:curating` label-flap loop on issue #743. Claimed by a Builder 2026-07-30; not stale per `loom-recover-orphans` (claim age well under the 4h reclaim threshold).
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* All three open `loom:issue` issues still also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge, so there is no unbuilt ready work to dispatch a Builder onto.
+*Empty.* Both remaining open `loom:issue` issues also carry `loom:blocked` (see below) — each already has a complete, Judge-approved, mergeable PR awaiting human/Champion merge, so there is no unbuilt ready work to dispatch a Builder onto.
 
 ## Blocked (`loom:blocked`) — implementation complete, pending merge
 
 | Issue | Title | Tier | Status |
 |---|---|---|---|
 | #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `mergeable_state: clean`; blocked 2026-07-29 to prevent duplicate Builder dispatch |
-| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` | PR #763 open, `mergeable_state: clean`; blocked 2026-07-29 to prevent duplicate Builder dispatch. Also still carries `loom:curating` (Curator re-check pass) |
-| #751 | evidence grades leak into reader prose — preservation contract needs a rendering rule | `tier:goal-supporting` | PR #773 open, `mergeable_state: dirty` — needs a rebase before merge |
+| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` | PR #763 open, `mergeable_state: clean`; blocked 2026-07-29 to prevent duplicate Builder dispatch. Also the subject of #796 (Curator label-flap bug), listed above under In Progress |
 
-**Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763`, `773` (Champion/human); #773 needs a rebase first.
+**Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763` (Champion/human).
 
-Each of the three carries a documented unblock condition: PR merges → issue auto-closes; PR closes without merging → remove `loom:blocked`, issue re-enters normal triage.
+Each carries a documented unblock condition: PR merges → issue auto-closes; PR closes without merging → remove `loom:blocked`, issue re-enters normal triage.
+
+**#751** (evidence grades leak into reader prose) **closed** 2026-07-30 via merged PR #773 — no longer part of the open backlog; see `WORK_LOG.md`.
 
 **#764** (Tracker: retire local `.claude/commands/loom/sweep.md --claim-owned` patch) has since **closed** (2026-07-29, manual closure — the tracked Loom v0.16.0 upgrade landed the trigger condition) and is no longer part of the open backlog; see `WORK_LOG.md`.
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-*No new issues in `loom:triage`.* #743 (listed above under Blocked) still carries a `loom:curating` claim from Curator's standing re-check pass on the #763 blocked-pending-PR condition — not new triage work.
+*No new issues in `loom:triage`.* #743 (listed above under Blocked) still carries a `loom:curating` claim from Curator's re-check pass — this is the subject of the runaway label-flap bug tracked by #796, not new triage work.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -47,7 +50,7 @@ Each of the three carries a documented unblock condition: PR merges → issue au
 
 ## Backlog state
 
-Three open `loom:issue` issues total as of 2026-07-30, all blocked (#746, #743, #751), each with a complete, Judge-approved, mergeable PR — #761, #763, #773 respectively — awaiting human/Champion merge. #788 (the prior "In Progress" entry) closed 2026-07-30 via PR #791. The rate-limiting step for the blocked trio is **merging those three PRs**, not Builder dispatch or triage prioritization. PR #773 (closes #751) still shows a `dirty` mergeable_state (merge conflict with `main`) — it will need a rebase before it can merge, unlike #761/#763 which are clean. With zero unblocked *ready* issues, the `loom:urgent` queue is correctly empty.
+Three open issues total as of 2026-07-30: #746 and #743 (both `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR — #761 and #763 respectively — awaiting human/Champion merge), and #796 (`loom:building` + `loom:urgent`, a genuine bug in the Curator role's blocked-pending-PR re-check logic, actively claimed). #751 closed 2026-07-30 via merged PR #773. The rate-limiting step for #746/#743 is **merging #761/#763**, not Builder dispatch or triage prioritization. With zero unblocked *ready* issues, the `loom:urgent` queue correctly holds only the one already-building bug fix.
 
 ### Recurring themes the next wave of issues will likely touch
 
