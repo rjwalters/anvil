@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-30
 
+- **PR #804**: docs(curator): add time-debounce to blocked-pending-PR guard to fix concurrent-dispatch race (closes #802)
 - **PR #798**: fix(curator): stop claim/unclaim churn on blocked-pending-PR no-op re-checks (closes #796)
 - **PR #773**: feat(memo): add evidence-grade rendering rule so grade tags stay out of reader prose (closes #751)
 - **PR #786**: docs(curator): add idempotency guard for blocked-pending-PR re-checks (closes #785)
