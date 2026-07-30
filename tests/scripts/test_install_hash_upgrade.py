@@ -106,13 +106,26 @@ def _read_manifest(target: Path) -> dict:
 
 
 def _shell_dir_hash(d: Path) -> str:
-    """Recompute the directory hash the installer's ``dir_hash`` shell helper
-    would produce, so the test can assert byte-identity with the manifest.
+    """Recompute the directory hash the installer's ``dir_hash_body_only``
+    shell helper would produce, so the test can assert byte-identity with the
+    manifest.
 
     The installer's helper does::
 
-        ( cd $d && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 )
+        ( cd $d && find . -type f -not -path "./lib/*" -not -path "./lib" -print0 \\
+            | LC_ALL=C sort -z | xargs -0 shasum -a 256 )
             | shasum -a 256 | awk '{print $1}'
+
+    The ``skill_hashes.<name>`` entry recorded in the manifest is always the
+    body-only digest (``lib/`` excluded) — the importable-mirror split
+    (issue #230) and its documented-invocation-path sibling (issue #743, the
+    ``.anvil/skills/<name>/lib/`` copy) are both unconditional code, not
+    consumer-override targets, so neither should flip a skill's
+    consumer-modified status. Since #743, ``.anvil/skills/<name>/lib/``
+    genuinely exists on disk, so a naive full-tree hash of the dst would
+    diverge from the recorded body-only hash even with zero consumer edits —
+    excluding ``lib/`` here keeps this test's recomputation aligned with what
+    the installer actually records.
 
     We shell out the same pipeline rather than reimplement it in Python — the
     contract under test is precisely "the value in skill_hashes matches the
@@ -121,7 +134,8 @@ def _shell_dir_hash(d: Path) -> str:
     """
 
     inner = subprocess.run(
-        "find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256",
+        'find . -type f -not -path "./lib/*" -not -path "./lib" -print0 '
+        "| LC_ALL=C sort -z | xargs -0 shasum -a 256",
         shell=True,
         cwd=d,
         capture_output=True,
