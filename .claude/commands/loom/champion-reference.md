@@ -290,6 +290,31 @@ gh issue create --title "Follow-on: Work identified in PR #$PR_NUMBER" --label "
 
 ---
 
+### Edge Case 15: Size-Limit Failure Repeats Across Cron Ticks
+
+**Scenario**: PR exceeds `champion.auto_merge_max_lines` (default 200) and lacks the `loom:auto-merge-ok` override. This is neither transient (it won't clear on its own) nor stale (recency is fine) — it is **human-clearable**: a human/Judge can add `loom:auto-merge-ok`, or the PR can be split. Naively treating this as a plain transient failure (comment + keep label + retry every tick) means Champion re-posts an identical "Cannot Auto-Merge: Size Check" comment on every ~10-minute cron tick forever (observed on PR #763 and PR #761 — see issue #784).
+
+**Handling**:
+```bash
+TOTAL=$((ADDITIONS + DELETIONS))
+LAST_MARKER=$(gh pr view "$PR_NUMBER" --json comments --jq -r '.comments[].body' \
+  | grep -oE '<!-- champion:size-limit-notice:lines=[0-9]+ -->' | tail -1)
+LAST_LINES=$(echo "$LAST_MARKER" | grep -oE '[0-9]+')
+
+if [ -n "$LAST_MARKER" ] && [ "$LAST_LINES" = "$TOTAL" ]; then
+  echo "Size-limit notice already posted at $TOTAL lines — skipping (unchanged verdict)"
+  # keep loom:pr, do not comment again
+fi
+```
+
+**Decision**: **Comment once per unchanged verdict, keep `loom:pr`** — do NOT route to Doctor / `loom:changes-requested`.
+
+**Rationale**: Unlike the stale-PR case, a size-limit failure is not a rebase/refresh problem; it's a size-policy decision only a human/Judge can waive (or the PR can be resized). Routing it out of the queue to Doctor would be wrong — the PR should stay eligible to merge automatically the instant `loom:auto-merge-ok` is added or the diff shrinks under the limit. So `loom:pr` is preserved, and only the *comment* is idempotency-guarded.
+
+**Action** (single authoritative policy — implemented in `champion-pr-merge.md` → "PR Rejection Workflow → Size-limit failure"): mirror the stale-PR idempotency marker pattern (`<!-- champion:stale-pr-notice -->`) with a size-specific marker (`<!-- champion:size-limit-notice:lines=<N> -->`) that embeds the line count the notice was posted at, so a later verdict change (PR edited, line count changed) is detected and allowed to re-comment — the guard only suppresses re-posting the *same* verdict, not all future comments. See `champion-pr-merge.md` for the exact commands.
+
+---
+
 ## Summary: Edge Case Decision Matrix
 
 | Edge Case | Decision | Action |
@@ -305,6 +330,7 @@ gh issue create --title "Follow-on: Work identified in PR #$PR_NUMBER" --label "
 | Mixed-state CI | Fail on `fail`/`cancel` | `pending` defers; `skipping` is OK |
 | Unknown critical file | Miss | Needs pattern update |
 | Exactly at size limit | Allow | Limit is inclusive |
+| Size-limit failure (no override) | Keep `loom:pr` | Comment once per unchanged verdict (idempotent marker), NOT routed to Doctor |
 | API rate limit | Error | Comment and continue |
 | Multiple approvals | Allow | Label is source of truth |
 | Follow-on indicators found | Create | If thresholds met |
