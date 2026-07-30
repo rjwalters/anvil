@@ -693,7 +693,7 @@ PR_NUMBER=<number>
 
 # Find the most recently posted size-limit notice (if any) and extract the
 # line count it was posted at.
-LAST_MARKER=$(gh pr view "$PR_NUMBER" --json comments --jq -r '.comments[].body' \
+LAST_MARKER=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[].body' \
   | grep -oE '<!-- champion:size-limit-notice:lines=[0-9]+ -->' | tail -1)
 LAST_LINES=$(echo "$LAST_MARKER" | grep -oE '[0-9]+')
 
