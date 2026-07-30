@@ -737,10 +737,10 @@ STATE=<mergeable_state>   # e.g. clean, dirty, unknown
 MARKER="<!-- curator:blocked-pending-pr-notice -->"
 
 LAST=$(gh issue view "$ISSUE" --json comments \
-  --jq --arg m "$MARKER" '[.comments[] | select(.body | contains($m))] | last // empty')
+  | jq --arg m "$MARKER" '[.comments[] | select(.body | contains($m))] | last // empty')
 
-LAST_PR=$(echo "$LAST" | jq -r '.body // ""' | grep -oE '<!-- pr:[0-9]+ -->' | grep -oE '[0-9]+' || true)
-LAST_STATE=$(echo "$LAST" | jq -r '.body // ""' | sed -nE 's/.*<!-- mergeable_state:([a-zA-Z_]+) -->.*/\1/p')
+LAST_PR=$(printf '%s' "$LAST" | jq -r '.body // ""' | grep -oE '<!-- pr:[0-9]+ -->' | grep -oE '[0-9]+' || true)
+LAST_STATE=$(printf '%s' "$LAST" | jq -r '.body // ""' | sed -nE 's/.*<!-- mergeable_state:([a-zA-Z_]+) -->.*/\1/p')
 
 if [ -n "$LAST" ] && [ "$LAST_PR" = "$PR_NUMBER" ] && [ "$LAST_STATE" = "$STATE" ]; then
   echo "No state change since last check (PR #$PR_NUMBER, $STATE) — skipping comment"
