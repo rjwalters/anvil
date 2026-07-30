@@ -297,7 +297,7 @@ gh issue create --title "Follow-on: Work identified in PR #$PR_NUMBER" --label "
 **Handling**:
 ```bash
 TOTAL=$((ADDITIONS + DELETIONS))
-LAST_MARKER=$(gh pr view "$PR_NUMBER" --json comments --jq -r '.comments[].body' \
+LAST_MARKER=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[].body' \
   | grep -oE '<!-- champion:size-limit-notice:lines=[0-9]+ -->' | tail -1)
 LAST_LINES=$(echo "$LAST_MARKER" | grep -oE '[0-9]+')
 
