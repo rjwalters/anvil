@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-30 (Guide triage pass, #809 closed via merged PR #812 — removed from Urgent/In Progress)*
+*Last updated: 2026-07-30 (Guide triage pass, #806 closed via merged PR #814 — removed from In Progress; #800 moved from `loom:building` to `loom:blocked` pending PR #805 merge)*
 
 ---
 
@@ -13,31 +13,29 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 |---|---|---|
 | #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` |
 
-#800 is `loom:building` — no triage action needed, work is already in progress (PR #805 open, Judge-approved, `mergeable_state: clean`, awaiting human/Champion merge). Urgent count: 1/3 — no further promotion needed since the rest of the backlog is either building or blocked-pending-merge, not unclaimed ready work.
+Urgent count: 1/3 — no further promotion needed. All three open issues are equally blocked-pending-merge (implementation complete, awaiting a human/Champion merge decision), so there is no differential Builder-priority signal to convey by adding #746/#743 to the urgent set too.
 
 ## In Progress (`loom:building`)
 
-| Issue | Title | Tier | Status |
-|---|---|---|---|
-| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` | PR #805 open (`Closes #800`), Judge-approved (`loom:pr`), `mergeable_state: clean` — awaiting human/Champion merge |
-| #806 | curator: unknown `mergeable_state` causes false-positive churn in blocked-pending-PR guard | `tier:maintenance` | Claimed by a Builder; no PR yet as of this pass |
-
-Both checked this pass (GraphQL quota exhausted, so `loom-recover-orphans` couldn't fetch its own issue list via `gh issue list`; cross-checked manually via REST + the tool's sweep-journal liveness source instead) — claim ages ~2h13m (#800, real open PR) and ~2h13m (#806, no PR yet but sweep-journal shows no live-issue conflict and this repo's established staleness threshold is 4h per the prior pass's note) — neither orphaned.
+*Empty.* No issue is currently claimed by a Builder.
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* No unclaimed `loom:issue` work is available this pass — the only two `loom:issue` issues (#746, #743) also carry `loom:blocked` (see below).
+*Empty.* No unclaimed `loom:issue` work is available this pass — all three open `loom:issue` issues (#800, #746, #743) also carry `loom:blocked` (see below).
 
 ## Blocked (`loom:blocked`) — implementation complete, pending merge
 
 | Issue | Title | Tier | Status |
 |---|---|---|---|
-| #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `mergeable_state: clean`; blocked 2026-07-29 to prevent duplicate Builder dispatch |
-| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` | PR #763 open, `mergeable_state: clean`; blocked 2026-07-29 to prevent duplicate Builder dispatch |
+| #800 | vocab_reminder: shipped-default word list unreachable in installed consumer repos (`DEFAULT_WORD_LIST_PATH` dead path) | `tier:goal-supporting` | PR #805 open, `mergeable_state: clean`, 316 lines (over the 200-line auto-merge limit; size-notice marker posted) |
+| #746 | memo-review: version-drift block — no lifecycle phase can see monotonic densification across revise cycles | `tier:goal-supporting` | PR #761 open, `mergeable_state: clean`, 1268 lines (over the 200-line auto-merge limit; size-notice marker posted) |
+| #743 | Consumer install omits `skills/*/lib/` — SKILL.md's documented render-phase CLI path does not exist | `tier:goal-supporting` | PR #763 open, `mergeable_state: clean`, 287 lines (over the 200-line auto-merge limit; size-notice marker posted) |
 
-**Action needed is a merge, not a Builder dispatch.** Recommend `./.loom/scripts/merge-pr.sh 761`, `763` (Champion/human).
+**Action needed is a human merge decision, not a Builder dispatch.** All three PRs are Judge-approved (`loom:pr`) and clean, but each exceeds Champion's 200-line auto-merge limit with no `loom:auto-merge-ok` override yet. Recommend a human either adds `loom:auto-merge-ok` to #805/#761/#763, or splits them.
 
 Each carries a documented unblock condition: PR merges → issue auto-closes; PR closes without merging → remove `loom:blocked`, issue re-enters normal triage.
+
+**#806** (curator unknown-`mergeable_state` churn) **closed** 2026-07-30 via merged PR #814 — no longer part of the open backlog; see `WORK_LOG.md`.
 
 **#809** (curator blocked-pending-PR guard's GraphQL-backed marker read) **closed** 2026-07-30 via merged PR #812 — no longer part of the open backlog; see `WORK_LOG.md`.
 
@@ -63,7 +61,7 @@ Each carries a documented unblock condition: PR merges → issue auto-closes; PR
 
 ## Backlog state
 
-Four open issues total as of 2026-07-30: #800 and #806 are `loom:building` and confirmed not orphaned; #746 and #743 are `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#761 and #763 respectively) awaiting human/Champion merge. #809 closed 2026-07-30 via merged PR #812; #802 closed via merged PR #804; #751 closed via merged PR #773; #796 closed via merged PR #798. No unclaimed ready work remains — the entire backlog is either building or blocked-pending-merge. The one concurrent need this pass: **merge open PRs** (#761, #763, #805) to clear the blocked/building backlog; #806 has no open PR yet.
+Three open issues total as of 2026-07-30: #800, #746, and #743 are all `loom:issue` + `loom:blocked`, each with a complete, Judge-approved, mergeable PR (#805, #761, #763 respectively) stalled above Champion's 200-line auto-merge limit and awaiting a human merge decision. #806 closed 2026-07-30 via merged PR #814; #809 closed via merged PR #812; #802 closed via merged PR #804; #751 closed via merged PR #773; #796 closed via merged PR #798. No unclaimed ready work remains and nothing is currently `loom:building`. The one concurrent need this pass: **a human adds `loom:auto-merge-ok` (or splits) PRs #805/#761/#763** to clear the entire open backlog.
 
 ### Recurring themes the next wave of issues will likely touch
 

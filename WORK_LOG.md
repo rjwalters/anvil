@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-30
 
+- **PR #814**: fix(curator): normalize unknown mergeable_state in blocked-pending-PR guard (closes #806)
 - **PR #812**: fix(curator): make blocked-pending-PR guard's marker read REST-backed and fail-closed on read failure (closes #809)
 - **PR #804**: docs(curator): add time-debounce to blocked-pending-PR guard to fix concurrent-dispatch race (closes #802)
 - **PR #798**: fix(curator): stop claim/unclaim churn on blocked-pending-PR no-op re-checks (closes #796)
