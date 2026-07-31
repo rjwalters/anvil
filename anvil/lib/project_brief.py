@@ -774,6 +774,7 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "web_search",
     "spec_ref",
     "code_ref",
+    "recommendation_target",
 }
 
 # Default iteration cap. The override floor mirrors the deck skill's
@@ -1732,6 +1733,34 @@ class BriefDocument(BaseModel):
               - slug: botho-consensus-spec
                 artifact_type: spec
                 code_ref: ../../src/**/*.rs
+    recommendation_target
+        Optional per-document declaration of the memo's decision
+        posture (issue #348, project-first fallback via issue #837):
+        one of ``"invest"``, ``"pass"``, ``"conditional"``, or
+        ``"undecided"``. Mirrors the thread-level ``<thread>/BRIEF.md``
+        informal frontmatter key of the same name (see
+        :func:`load_recommendation_target`) so a project migrated to
+        the canonical post-#295/#296 project-first layout — which has
+        no thread-level ``BRIEF.md`` at all — has a typed, on-disk
+        place to declare the same signal. :func:`load_recommendation_target_resolved`
+        is the dual-surface reader: it prefers a thread-level value
+        when present (byte-identical legacy behavior) and falls back
+        to this per-document field otherwise.
+
+        Deliberately **lenient**, the one exception to
+        ``BriefDocument``'s otherwise-STRICT per-field validation: an
+        unrecognized value (a typo like ``"Undecided"``, ``"tbd"``, a
+        non-string type) normalizes to ``None`` at parse time rather
+        than raising — mirroring the thread-level surface's closed-set
+        contract exactly, since this field is operator-declared
+        calibration posture, not structural configuration.
+
+        Example::
+
+            documents:
+              - slug: investment-memo
+                artifact_type: investment-memo
+                recommendation_target: undecided
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1763,6 +1792,15 @@ class BriefDocument(BaseModel):
     # to a single-element list, so downstream code always sees a list.
     spec_ref: Optional[List[str]] = Field(default=None)
     code_ref: Optional[List[str]] = Field(default=None)
+    # Hardcoded Literal (not referencing _RECOGNIZED_RECOMMENDATION_TARGETS,
+    # defined later in this module in the thread-level BRIEF helpers
+    # section) mirrors the render_engine field's precedent above — the
+    # constant is only consumed by _validate_recommendation_target, which
+    # is called at load_project_brief() runtime, long after module import
+    # completes, so no forward-reference reordering is needed.
+    recommendation_target: Optional[
+        Literal["invest", "pass", "conditional", "undecided"]
+    ] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -3180,6 +3218,35 @@ def _validate_web_search(raw: Any, field_path: str) -> Optional[bool]:
     return raw
 
 
+def _validate_recommendation_target(
+    raw: Any, field_path: str
+) -> Optional[Literal["invest", "pass", "conditional", "undecided"]]:
+    """Validate a raw per-document ``recommendation_target`` value (issue #837).
+
+    Deliberately **lenient** — the one exception to ``BriefDocument``'s
+    otherwise-STRICT per-field validation (contrast :func:`_validate_web_search`,
+    :func:`_validate_max_iterations`, which raise on a malformed value).
+    Mirrors :func:`load_recommendation_target`'s thread-level closed-set
+    contract exactly: ``None`` and every value not in
+    :data:`_RECOGNIZED_RECOMMENDATION_TARGETS` (typos like ``"Undecided"``,
+    ``"tbd"``, non-string types) normalizes to ``None`` rather than
+    raising. This field is operator-declared calibration posture
+    metadata consumed by the reviewer's dim 1 calibration — a typo
+    should degrade to "no posture declared", not block the whole
+    project-level BRIEF from parsing.
+
+    ``field_path`` is accepted (unused in the body) to keep this
+    validator's signature consistent with its STRICT siblings in this
+    module — none of them are called positionally, so a future
+    behavior change here (e.g., a deprecation warning) can add a
+    field-path-qualified message without a call-site change.
+    """
+    del field_path  # unused — see docstring
+    if isinstance(raw, str) and raw in _RECOGNIZED_RECOMMENDATION_TARGETS:
+        return raw  # type: ignore[return-value]
+    return None
+
+
 def _validate_paired_iteration_cap_override(
     max_iterations: Optional[int],
     iteration_cap_rationale: Optional[str],
@@ -3388,6 +3455,11 @@ def _normalize_documents(
             field_path=f"documents[{i}].code_ref",
         )
 
+        recommendation_target = _validate_recommendation_target(
+            entry.get("recommendation_target"),
+            field_path=f"documents[{i}].recommendation_target",
+        )
+
         # Paired-override validation runs after the per-field validators
         # so the cross-field error names both keys with already-normalized
         # values (e.g., whitespace-only rationale → None → "missing").
@@ -3414,6 +3486,7 @@ def _normalize_documents(
                 web_search=web_search,
                 spec_ref=spec_ref,
                 code_ref=code_ref,
+                recommendation_target=recommendation_target,
             )
         except ValidationError as exc:
             raise ValueError(
@@ -4821,6 +4894,114 @@ def load_recommendation_target(
     return None
 
 
+def load_recommendation_target_resolved(
+    thread_dir: Path,
+    project_dir: Optional[Path] = None,
+    slug: Optional[str] = None,
+) -> Tuple[
+    Optional[Literal["invest", "pass", "conditional", "undecided"]],
+    Literal["thread", "project", "default"],
+]:
+    """Resolve ``recommendation_target`` across BOTH BRIEF surfaces (issue #837).
+
+    :func:`load_recommendation_target` reads ONLY the legacy thread-level
+    ``<thread_dir>/BRIEF.md`` surface. Under the post-#295/#296
+    project-first layout there IS no thread-level ``BRIEF.md`` — per-
+    thread config lives entirely in the project-root ``BRIEF.md``'s
+    ``documents:`` frontmatter — so that helper unconditionally returns
+    ``None`` for a migrated project and the #348 dim-1 calibration never
+    fires. This resolver tries both surfaces, in precedence order, and
+    reports WHICH surface (if any) supplied the value so the caller can
+    record it for debuggability (the ``source`` half of the return
+    tuple; see ``memo-review.md``'s ``_summary.md.recommendation_target_resolved.source``
+    field).
+
+    Precedence
+    ----------
+    1. **Thread** — ``<thread_dir>/BRIEF.md`` (the legacy freeform-prose
+       surface read by :func:`load_recommendation_target`). Checked
+       FIRST so a project still using the legacy per-thread shape
+       resolves byte-identically to pre-#837 behavior — a value here
+       always wins over a project-level declaration, even if both are
+       present. This preserves the historical single-surface contract
+       for any thread that hasn't migrated.
+    2. **Project** — the project-root ``BRIEF.md``'s matching
+       ``documents:`` entry (:func:`load_project_brief` +
+       :meth:`ProjectBrief.document_for_slug`), read only when the
+       thread-level surface resolved to ``None`` (absent file, no
+       frontmatter, missing key, or an unrecognized value).
+    3. **Default** — neither surface supplied a recognized value.
+       Byte-identical to the pre-#837 "no calibration" behavior.
+
+    Parameters
+    ----------
+    thread_dir
+        The thread root directory (holds the thread-level ``BRIEF.md``,
+        if any, and the ``<slug>.{N}/`` version dirs) — NOT a version
+        subdirectory and NOT the project root.
+    project_dir
+        The project root (the directory containing the project-level
+        ``BRIEF.md`` with the typed ``documents:`` schema). Defaults to
+        ``thread_dir.parent`` — the standard project-first layout
+        convention (mirrors ``load_rubric_overrides_for_slug``'s
+        call-site convention documented in ``memo-review.md`` step 4i).
+        Pass explicitly only when the on-disk layout diverges from this
+        default.
+    slug
+        The document slug used to look up the matching ``documents:``
+        entry. Defaults to ``thread_dir.name`` — the directory-name-
+        echoes-slug convention enforced by
+        :func:`_validate_slug_directory_divergence`. Pass explicitly
+        only when the slug diverges from the thread directory name.
+
+    Returns
+    -------
+    Tuple[Optional[str], str]
+        ``(value, source)`` where ``value`` is one of ``"invest"`` /
+        ``"pass"`` / ``"conditional"`` / ``"undecided"`` / ``None``, and
+        ``source`` is one of ``"thread"`` / ``"project"`` / ``"default"``
+        naming which surface (if any) supplied ``value``.
+
+    Notes
+    -----
+    **Never raises** — mirrors the lenient contract of both underlying
+    readers. A structurally invalid project-level BRIEF (the ONLY path
+    that can raise inside :func:`load_project_brief`) degrades to
+    ``(None, "default")`` for THIS resolver rather than propagating,
+    the same "degrade to empty/default rather than break the reviewer"
+    posture as :func:`load_rubric_overrides_for_slug`.
+    """
+    if not isinstance(thread_dir, Path):
+        try:
+            thread_dir = Path(thread_dir)
+        except Exception:
+            return None, "default"
+
+    thread_value = load_recommendation_target(thread_dir)
+    if thread_value is not None:
+        return thread_value, "thread"
+
+    resolved_project_dir = project_dir if project_dir is not None else thread_dir.parent
+    resolved_slug = slug if slug is not None else thread_dir.name
+
+    try:
+        brief = load_project_brief(resolved_project_dir)
+    except ValueError:
+        # Structurally invalid project BRIEF. Lenient degrade — same
+        # posture as load_rubric_overrides_for_slug: a malformed BRIEF
+        # must not break the reviewer's dim-1 calibration lookup.
+        return None, "default"
+
+    if brief is None:
+        return None, "default"
+
+    doc = brief.document_for_slug(resolved_slug)
+    if doc is None or doc.recommendation_target is None:
+        return None, "default"
+
+    return doc.recommendation_target, "project"
+
+
 # ---------------------------------------------------------------------------
 # Body-filename helper (issue #295)
 # ---------------------------------------------------------------------------
@@ -4898,6 +5079,7 @@ __all__ = [
     "load_project_brief",
     "load_project_brief_strict",
     "load_recommendation_target",
+    "load_recommendation_target_resolved",
     "load_rubric_overrides_for_slug",
     "resolve_code_ref",
     "resolve_corpus_dirs",
