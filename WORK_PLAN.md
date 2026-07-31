@@ -2,18 +2,18 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-31 (Guide triage pass — one new issue, #818, filed by the Auditor; still pre-curation, no `loom:issue`/tier label yet, so nothing changes in the sections below)*
+*Last updated: 2026-07-31 (Guide triage pass — #818 has moved past curation: it now carries `loom:issue` + `tier:goal-supporting` + `loom:building`, and its fix is already up for review as PR #821)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* No open issues exist to prioritize.
+*Empty.* No open issues exist to prioritize — the sole open issue (#818) is already claimed by a Builder, so there is no unbuilt ready work to rank.
 
 ## In Progress (`loom:building`)
 
-- **#818**: install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs (`tier:goal-supporting`) — claimed by a Builder 2026-07-31; no worktree/PR yet as of this pass, well under the 4h orphan-recovery threshold.
+- **#818**: install-anvil.sh copies stale `__pycache__`/`.pyc`/`.DS_Store` into consumer installs — fix implemented in PR #821 (`loom:review-requested` + `loom:reviewing`, mergeable, awaiting Judge verdict).
 
 ## Ready for Work (`loom:issue`)
 
@@ -37,7 +37,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**One open issue, zero open PRs, as of 2026-07-31.** Issue #818 (`install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs`) was filed by the Auditor during a main-branch validation pass — same bug class as #756/PR #774, but in the primary installer's `copy_tree`/`replace_tree`/`copy_lib_preserving_overrides` helpers rather than the opt-in `project-share` export path. It has since been curated (`tier:goal-supporting`) and claimed by a Builder (`loom:building`) — outside Guide's triage scope now that it's in progress. Nothing is ready, blocked, or in active triage. Next action is the Builder landing a PR for #818, not further Guide triage.
+**One open issue, one open PR, as of 2026-07-31.** Issue #818 (`install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs`, filed by the Auditor during a main-branch validation pass — same bug class as #756/PR #774, but in the primary installer's `copy_tree`/`replace_tree`/`copy_lib_preserving_overrides` helpers rather than the opt-in `project-share` export path) has since been approved and claimed: it now carries `loom:issue`, `tier:goal-supporting`, and `loom:building`. Its fix landed as PR #821, currently `loom:review-requested`/`loom:reviewing` and mergeable — closes #818 on merge. Nothing is ready, blocked, or in active triage, and `loom:urgent` stays empty since the only open issue is already in flight. Next action is the Judge verdict on PR #821, not further Guide triage.
 
 ### Recurring themes the next wave of issues will likely touch
 
