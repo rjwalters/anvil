@@ -361,6 +361,44 @@ _FRACTION_RES: Tuple[re.Pattern, ...] = (
     re.compile(r"(?<![\w.])(?P<a>\d[\d,]*)\s*/\s*(?P<b>\d[\d,]*)(?![\w%])"),
 )
 
+# The bare slash-fraction pattern above (index 1) also matches
+# season/fiscal-year labels like "2018/19" or "2018/2019" — a=2018,
+# b=19 is NOT a fraction and must not become _PairShape evidence
+# (issue #836: "2018/19 baseline" sharing a paragraph with an
+# unrelated "40% of ..." claim produced a bogus 2018/19 = 10621%
+# percent_mismatch). Identity-checked against this specific pattern in
+# _extract_shapes so the "of"/"out of" pattern (index 0) and
+# _PAIR_RES are untouched — genuine fractions like "47 of 94" / "47/94"
+# keep working unchanged.
+_SLASH_FRACTION_RE = _FRACTION_RES[1]
+
+
+def _is_season_fiscal_year_label(a_raw: str, b_raw: str) -> bool:
+    """True when a slash pair looks like a season/fiscal-year label.
+
+    Two shapes, both anchored on the existing ``_YEAR_MIN``/``_YEAR_MAX``
+    calendar-year heuristic (module-level, reused rather than
+    duplicated):
+
+    - ``YYYY/YY`` (e.g. ``2018/19``): numerator is a bare 4-digit year,
+      denominator is a bare 1-2 digit integer.
+    - ``YYYY/YYYY`` (e.g. ``2018/2019``): both operands are bare 4-digit
+      years.
+
+    A comma anywhere in either operand (e.g. ``2,018``) disqualifies it
+    — ``str.isdigit()`` returns ``False`` for a comma-bearing string, so
+    that case falls through to "not a label" for free.
+    """
+
+    def _is_year(raw: str) -> bool:
+        return len(raw) == 4 and raw.isdigit() and _YEAR_MIN <= int(raw) <= _YEAR_MAX
+
+    if not _is_year(a_raw):
+        return False
+    if b_raw.isdigit() and len(b_raw) <= 2:
+        return True
+    return _is_year(b_raw)
+
 # Explicit pair shapes (ratio / relative-change evidence): "from 120 ms
 # to 15 ms", "120 vs 15", "120 → 15". Currency prefixes tolerated, and
 # (mirroring _CURRENCY_RE) currency-prefixed operands carry an optional
@@ -495,6 +533,10 @@ def _extract_shapes(
     shapes: List[_PairShape] = []
     for pattern in patterns:
         for m in pattern.finditer(masked):
+            if pattern is _SLASH_FRACTION_RE and _is_season_fiscal_year_label(
+                m.group("a"), m.group("b")
+            ):
+                continue
             try:
                 a = _shape_operand(m, "a", "ca", "sa")
                 b = _shape_operand(m, "b", "cb", "sb")
