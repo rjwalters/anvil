@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-31
 
+- **PR #826**: docs: Guide document maintenance update (WORK_LOG/WORK_PLAN refresh for #824/PR #825 closure)
 - **PR #825**: fix: ignore .loom/.daemon.flags and .loom/runtimes/ in loom-managed gitignore block (closes #824)
 - **PR #821**: fix(install): strip __pycache__/*.pyc/.DS_Store cruft from every tree-copy site (closes #818)
 
