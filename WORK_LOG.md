@@ -4,6 +4,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-07-31
+
+- **PR #821**: fix(install): strip __pycache__/*.pyc/.DS_Store cruft from every tree-copy site (closes #818)
+
 ### 2026-07-30
 
 - **PR #805**: fix(install): ship vocab_reminder default word list to installed lib mirror (closes #800)
