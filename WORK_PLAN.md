@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-31 (Guide triage pass — #818 closed when PR #821 merged; the backlog is now fully empty: no open issues in any state)*
+*Last updated: 2026-07-31 (Guide triage pass — #824 closed when PR #825 merged; the backlog is now fully empty: no open issues in any state)*
 
 ---
 
@@ -13,7 +13,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.* #818's fix merged as PR #821 — closed 2026-07-31; see `WORK_LOG.md`.
+*Empty.* #824's fix merged as PR #825 — closed 2026-07-31; see `WORK_LOG.md`.
 
 ## Ready for Work (`loom:issue`)
 
@@ -37,7 +37,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Zero open issues, zero open PRs (excluding this docs PR), as of 2026-07-31.** Issue #818 (`install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs`, filed by the Auditor during a main-branch validation pass) was fixed by PR #821, which merged 2026-07-31 and closed #818. Nothing is ready, building, blocked, or in active triage, and `loom:urgent` stays empty since there is no open work to rank. Next action is whatever the Auditor, a human, or an Architect/Hermit proposal surfaces next — there is no pending Guide triage work.
+**Zero open issues, zero open PRs (excluding this docs PR), as of 2026-07-31.** Issue #824 (`gitignore gap: .loom/.daemon.flags and .loom/runtimes/ cause false-positive dirty-main-worktree detection`) was fixed by PR #825, which merged 2026-07-31 and closed #824. Nothing is ready, building, blocked, or in active triage, and `loom:urgent` stays empty since there is no open work to rank. Next action is whatever the Auditor, a human, or an Architect/Hermit proposal surfaces next — there is no pending Guide triage work.
 
 ### Recurring themes the next wave of issues will likely touch
 
