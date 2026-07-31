@@ -99,6 +99,8 @@ LOOM_OWNED_PREFIXES=(
     ".loom/logs/"
     ".loom/worktrees/"
     ".loom-managed"
+    ".loom/.daemon.flags"
+    ".loom/runtimes/"
 )
 
 # is_loom_owned <repo-relative-path> -> 0 if the path is a Loom-owned transient.

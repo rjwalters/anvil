@@ -340,6 +340,37 @@ else
 fi
 rm -rf "$REPO"
 
+# -------- Test 21: .loom/.daemon.flags and .loom/runtimes/ excluded (#824) --------
+echo "Test 21: daemon flags file + runtimes dir excluded despite stale .gitignore (exit 0)"
+REPO=$(make_repo_stale_gitignore)
+touch "$REPO/.loom/.daemon.flags"
+mkdir -p "$REPO/.loom/runtimes/node-20"
+echo '{"node":"20.0.0"}' > "$REPO/.loom/runtimes/node-20/manifest.json"
+# Sanity: without the internal filter these WOULD show as untracked dirt.
+if [[ -z "$(git -C "$REPO" status --porcelain)" ]]; then
+    fail "Test 21 setup: expected untracked .daemon.flags/runtimes in a stale-gitignore repo"
+fi
+( cd "$REPO" && "$SCRIPT" >/dev/null 2>&1 ); RC=$?
+if [[ "$RC" -eq 0 ]]; then
+    pass "exit 0 with only .loom/.daemon.flags and .loom/runtimes/ present (stale .gitignore)"
+else
+    fail "expected 0 (daemon flags/runtimes filtered), got $RC"
+fi
+
+# -------- Test 22: real stray alongside daemon flags/runtimes -> exit 3 naming only the stray --------
+echo "Test 22: real stray still flagged, daemon flags/runtimes not (exit 3)"
+echo "real contamination" > "$REPO/stray_source.py"
+out=$( cd "$REPO" && "$SCRIPT" 2>&1 ); RC=$?
+if [[ "$RC" -eq 3 ]] \
+   && echo "$out" | grep -q "stray_source.py" \
+   && ! echo "$out" | grep -q "\.daemon\.flags" \
+   && ! echo "$out" | grep -q "runtimes"; then
+    pass "exit 3 naming the real stray, excluding .daemon.flags/runtimes"
+else
+    fail "expected 3 reporting only stray_source.py, got rc=$RC; out=$out"
+fi
+rm -rf "$REPO"
+
 # -------- Summary --------
 echo ""
 if [[ "$TESTS_FAILED" -eq 0 ]]; then
