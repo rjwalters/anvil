@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-31
 
+- **PR #831**: docs: Guide document maintenance update (WORK_LOG entry for PR #830, which merged after generating itself and so wasn't recorded in its own run)
 - **PR #830**: docs: Guide document maintenance update (WORK_LOG entry for PR #829, which merged after generating itself and so wasn't recorded in its own run)
 - **PR #829**: docs: Guide document maintenance update (WORK_LOG entry for PR #828, which merged after generating itself and so wasn't recorded in its own run)
 - **PR #828**: docs: Guide document maintenance update (WORK_LOG entry for PR #827, which merged after generating itself and so wasn't recorded in its own run)
