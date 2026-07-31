@@ -44,9 +44,11 @@ uv.lock
 .loom-managed
 .loom/.daemon.pid
 .loom/.daemon.log
+.loom/.daemon.flags
 .loom/daemon.sock
 .loom/daemon-loop.pid
 .loom/daemon-metrics.json
+.loom/runtimes/
 .loom/loom-source-path
 .loom/spawn-loop-state.json
 .loom/spawn-loop.pid
