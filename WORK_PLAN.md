@@ -13,7 +13,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.* No issue is currently claimed by a Builder.
+- **#818**: install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs (`tier:goal-supporting`) — claimed by a Builder 2026-07-31; no worktree/PR yet as of this pass, well under the 4h orphan-recovery threshold.
 
 ## Ready for Work (`loom:issue`)
 
@@ -37,7 +37,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**One open issue, zero open PRs, as of 2026-07-31.** Issue #818 (`install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs`) was filed by the Auditor during a main-branch validation pass — same bug class as #756/PR #774, but in the primary installer's `copy_tree`/`replace_tree`/`copy_lib_preserving_overrides` helpers rather than the opt-in `project-share` export path. It carries only `loom:auditor` — no `loom:issue`, no tier label — so it is pre-curation and outside Guide's triage scope this pass (Guide does not add `loom:issue`; that's Curator/Champion's call). Nothing is ready, building, blocked, or in active triage. Next action is Curator picking up #818, not further Guide triage.
+**One open issue, zero open PRs, as of 2026-07-31.** Issue #818 (`install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs`) was filed by the Auditor during a main-branch validation pass — same bug class as #756/PR #774, but in the primary installer's `copy_tree`/`replace_tree`/`copy_lib_preserving_overrides` helpers rather than the opt-in `project-share` export path. It has since been curated (`tier:goal-supporting`) and claimed by a Builder (`loom:building`) — outside Guide's triage scope now that it's in progress. Nothing is ready, blocked, or in active triage. Next action is the Builder landing a PR for #818, not further Guide triage.
 
 ### Recurring themes the next wave of issues will likely touch
 
