@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-07-30 (Guide triage pass — the three previously-blocked PRs (#805/#763/#761) all merged, closing #800/#743/#746; the open backlog is now empty)*
+*Last updated: 2026-07-31 (Guide triage pass — one new issue, #818, filed by the Auditor; still pre-curation, no `loom:issue`/tier label yet, so nothing changes in the sections below)*
 
 ---
 
@@ -37,7 +37,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Zero open issues and zero open PRs as of 2026-07-30.** The last three blocked-pending-merge issues (#800, #746, #743) closed when their Judge-approved PRs (#805, #761, #763) merged, clearing the size-limit-stalled queue that had persisted for most of 2026-07-30. Nothing is ready, building, blocked, or in triage. The backlog is fully drained — next action is filing new issues (via `anvil:project-scout`, canary friction reports, or direct proposals), not triaging existing ones.
+**One open issue, zero open PRs, as of 2026-07-31.** Issue #818 (`install-anvil.sh copies stale __pycache__/.pyc/.DS_Store into consumer installs`) was filed by the Auditor during a main-branch validation pass — same bug class as #756/PR #774, but in the primary installer's `copy_tree`/`replace_tree`/`copy_lib_preserving_overrides` helpers rather than the opt-in `project-share` export path. It carries only `loom:auditor` — no `loom:issue`, no tier label — so it is pre-curation and outside Guide's triage scope this pass (Guide does not add `loom:issue`; that's Curator/Champion's call). Nothing is ready, building, blocked, or in active triage. Next action is Curator picking up #818, not further Guide triage.
 
 ### Recurring themes the next wave of issues will likely touch
 
