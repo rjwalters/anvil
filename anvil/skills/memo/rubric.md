@@ -32,7 +32,7 @@ When the `rubric_overrides:` block is absent on the matching document entry, the
 
 ## Dim 1 — `recommendation_target: undecided` calibration
 
-**Trigger** (issue #348). When the thread-level `<thread>/BRIEF.md`'s YAML frontmatter declares `recommendation_target: undecided` (the documented default for fresh-thread v1s per `templates/BRIEF.fresh.md.example` — *"the job of v1 is to resolve the recommendation target, not to defend a predetermined one"*), the reviewer scores dim 1 (Recommendation clarity, weight 5) on **decision-framework clarity** rather than **recommendation clarity**. The reviewer reads the value via `anvil/skills/memo/lib/project_brief.py::load_recommendation_target(thread_dir)` and dispatches per the rules below.
+**Trigger** (issue #348; dual-surface resolution via issue #837). When `recommendation_target: undecided` is declared on EITHER the legacy thread-level `<thread>/BRIEF.md`'s YAML frontmatter OR the matching `documents:` entry on the project-root `BRIEF.md` (the post-#295/#296 project-first shape has no thread-level BRIEF at all, so this second surface is the only place a migrated project can declare the signal), the reviewer scores dim 1 (Recommendation clarity, weight 5) on **decision-framework clarity** rather than **recommendation clarity**. The reviewer reads the value via `anvil/lib/project_brief.py::load_recommendation_target_resolved(thread_dir, project_dir, slug)`, which checks the thread-level surface first (so a legacy-shape thread resolves byte-identically to pre-#837 behavior) and falls back to the project-level surface when the thread-level surface has no recognized value, and dispatches per the rules below. The resolver's `source` return value (`"thread"` / `"project"` / `"default"`) is recorded in `_summary.md.recommendation_target_resolved.source` for debuggability (`commands/memo-review.md` step 9).
 
 **Why the existing dim 1 wording is unfair to pre-decision memos.** Dim 1 as written above scores "a single unambiguous recommendation (invest / pass / conditional) with stated check size or scope" — verbatim language that penalizes a v1 memo whose explicit job is to enumerate the open questions a recommendation would have to answer rather than to pre-commit to one. The studio canary's `clear-signal` and `open-assay` threads both surfaced this failure mode: each received 30-/44-class verdicts whose dim 1 deductions were structurally unjust given the operator had explicitly declared the thread was in pre-decision mode. This sub-rule closes the gap by routing the reviewer's dim 1 scoring through the operator's declared posture.
 
@@ -59,15 +59,15 @@ The suffix sits **between the artifact-type overlay suffix (if any) and the per-
 
 In practice the typical fresh-thread investment-memo case fires only (1) + (3) — the `investment-memo` overlay is identity (no dim 1 prose) and a fresh thread is unlikely to also carry a per-doc `dim_1_calibration` calibration override.
 
-**Backwards-compat — zero-impact when the trigger value is absent or non-`undecided`**. This calibration is **byte-identically inert** when any of the following hold:
+**Backwards-compat — zero-impact when the trigger value is absent or non-`undecided`**. This calibration is **byte-identically inert** when any of the following hold, on BOTH surfaces:
 
-- No `<thread>/BRIEF.md` exists.
-- BRIEF exists but has no YAML frontmatter or has malformed YAML frontmatter.
-- Frontmatter has no `recommendation_target` key.
-- `recommendation_target` value is not in the closed set (`invest` / `pass` / `conditional` / `undecided`) — e.g., a typo (`Undecided`, `tbd`, `?`) resolves to `None` and the calibration does not fire.
-- `recommendation_target` is one of the decided values (`invest`, `pass`, `conditional`) — the calibration does not fire; dim 1 scores against the standard "single unambiguous recommendation" calibration verbatim.
+- Neither `<thread>/BRIEF.md` nor the project-root `BRIEF.md`'s matching `documents:` entry exists.
+- The BRIEF(s) that exist have no YAML frontmatter, malformed YAML frontmatter, or (project-level) no matching `documents:` entry for this slug.
+- Neither surface's frontmatter/entry has a `recommendation_target` key.
+- `recommendation_target` value is not in the closed set (`invest` / `pass` / `conditional` / `undecided`) on either surface — e.g., a typo (`Undecided`, `tbd`, `?`) resolves to `None` on that surface and the calibration does not fire from it.
+- `recommendation_target` is one of the decided values (`invest`, `pass`, `conditional`) on the surface that resolves — the calibration does not fire; dim 1 scores against the standard "single unambiguous recommendation" calibration verbatim.
 
-The contract is: the only path through this section is `recommendation_target == "undecided"` AND the value parsed cleanly from `<thread>/BRIEF.md`. Every other path is byte-identical to pre-#348 behavior.
+The contract is: the only path through this section is the resolver returning `value == "undecided"` (from EITHER surface, thread taking precedence when both are present). Every other path is byte-identical to pre-#348 behavior for a legacy thread-level-only project, and — prior to issue #837 — was silently always-inert for a project-first-shape project (the dead-code regression #837 fixes).
 
 ## Scoring guidance
 
