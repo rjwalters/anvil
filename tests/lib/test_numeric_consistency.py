@@ -335,6 +335,42 @@ class TestScaleSuffixShapes:
         shapes = _extract_shapes(body, _paragraph_index(body), _FRACTION_RES)
         assert [(s.a, s.b) for s in shapes] == [(47.0, 94.0), (47.0, 94.0)]
 
+    # -- #836: season/fiscal-year labels excluded from fraction shapes --
+
+    def test_season_fiscal_year_label_yyyy_yy_no_shape(self) -> None:
+        # "2018/19" must not become fraction evidence at all.
+        body = "Funding reflects the 2018/19 baseline for the region.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _FRACTION_RES)
+        assert shapes == []
+
+    def test_season_fiscal_year_label_yyyy_yyyy_no_shape(self) -> None:
+        # "2018/2019" (both operands full years) is excluded the same way.
+        body = "Funding reflects the 2018/2019 baseline for the region.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _FRACTION_RES)
+        assert shapes == []
+
+    def test_season_label_does_not_false_positive_percent_of_claim(self) -> None:
+        # The exact issue #836 repro: a "2018/19" label sharing a
+        # paragraph with an unrelated "X% of" claim must NOT produce a
+        # percent_mismatch (previously: 2018/19 read as 2018/19 =
+        # 10621.1%, flagged against the unrelated 40%).
+        body = "Funding covers 40% of the 2018/19 baseline budget for the region.\n"
+        findings, _, _ = check_text(body)
+        assert findings == []
+
+    def test_season_label_yyyy_yyyy_does_not_false_positive_percent_of_claim(self) -> None:
+        body = "Funding covers 40% of the 2018/2019 baseline budget for the region.\n"
+        findings, _, _ = check_text(body)
+        assert findings == []
+
+    def test_non_year_two_digit_fraction_still_evidenced(self) -> None:
+        # A genuine non-year two-digit fraction ("12/45") must keep
+        # producing fraction evidence — the guard is year-anchored, not
+        # a blanket "small denominator" exclusion.
+        body = "The committee approved 12/45 of the applications.\n"
+        shapes = _extract_shapes(body, _paragraph_index(body), _FRACTION_RES)
+        assert [(s.a, s.b) for s in shapes] == [(12.0, 45.0)]
+
     # -- #491: two-letter financial suffixes (bn / mn / tn) --
 
     def test_bn_currency_pair_true_negative(self) -> None:
