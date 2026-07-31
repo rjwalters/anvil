@@ -925,15 +925,29 @@ update_work_log() {
   local last_pr=$(work_log_max_pr)
   local last_issue=$(work_log_max_issue)
 
-  # Get newly merged PRs (after high-water mark)
-  local new_prs=$(gh pr list --state merged --limit 50 --json number,title,mergedAt \
-    --jq "[.[] | select(.number > $last_pr)] | sort_by(.mergedAt) | reverse")
+  # Get newly merged PRs (after high-water mark), excluding pure
+  # docs-maintenance PRs (this function's own PR from a prior cycle — one
+  # whose changed files are entirely WORK_LOG.md/WORK_PLAN.md/README.md).
+  # Without this filter, a docs-maintenance PR always merges *after*
+  # generating itself, so its own number is never recorded in WORK_LOG.md;
+  # the next cycle then sees it as "new" and files a follow-up PR whose only
+  # content is a one-line entry logging the previous docs-maintenance PR —
+  # an unbroken, self-perpetuating treadmill (issue #834). A PR whose diff
+  # touches nothing but these three files carries no historical signal, so
+  # it is permanently excluded rather than merely skipped once.
+  local new_prs=$(gh pr list --state merged --limit 50 --json number,title,mergedAt,files \
+    --jq "[.[] | select(.number > $last_pr)
+                | select(([.files[].path] - [\"WORK_LOG.md\", \"WORK_PLAN.md\", \"README.md\"]) | length > 0)]
+          | sort_by(.mergedAt) | reverse")
 
   # Get newly closed issues (after high-water mark)
   local new_issues=$(gh issue list --state closed --limit 50 --json number,title,closedAt \
     --jq "[.[] | select(.number > $last_issue)] | sort_by(.closedAt) | reverse")
 
-  # If nothing new, skip
+  # If nothing new, skip. Because pure docs-maintenance PRs are filtered out
+  # above, a cycle whose only unrecorded merge is the previous docs PR lands
+  # here with an empty new_prs set — no follow-up PR is filed, which also
+  # satisfies the "no-gap threshold" behavior from issue #834's option 3.
   if [ "$(echo "$new_prs" | jq 'length')" -eq 0 ] && [ "$(echo "$new_issues" | jq 'length')" -eq 0 ]; then
     echo "No new merged PRs or closed issues. WORK_LOG.md is current."
     return 1
