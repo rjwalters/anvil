@@ -386,10 +386,17 @@ do_action() {
 
 # Compare two directory trees byte-by-byte. Returns 0 if identical, 1 if any
 # file differs (or files exist on one side but not the other).
+#
+# Excludes __pycache__/*.pyc/.DS_Store (issue #818): a dev checkout that has
+# run pytest/pip install -e accumulates these under the source tree, but the
+# post-copy strip_pycache_artifacts step (see copy_tree et al.) never lets
+# them reach the installed destination. Without this exclusion, a dev-machine
+# source tree with stray build artifacts would never compare "identical" to
+# its own (correctly cruft-free) installed copy.
 dirs_identical() {
   local a="$1" b="$2"
   # diff -r exit codes: 0 = identical, 1 = differs, 2 = trouble
-  diff -r -q "$a" "$b" >/dev/null 2>&1
+  diff -r -q --exclude=__pycache__ --exclude='*.pyc' --exclude=.DS_Store "$a" "$b" >/dev/null 2>&1
 }
 
 # Compute a stable content hash for a directory tree. Used to record the
@@ -405,10 +412,19 @@ dirs_identical() {
 # `shasum -a 256`, then the concatenated digests fed through one more
 # `shasum -a 256`. `shasum -a 256` is present on macOS and Linux by default;
 # no new dependencies (subprocess-only philosophy per pyproject.toml).
+#
+# Excludes __pycache__/*.pyc/.DS_Store (issue #818) for the same reason as
+# `dirs_identical` above: the hash is computed over the SOURCE tree (which may
+# carry dev-machine build artifacts) and compared against the installed
+# destination (which never does, post-strip) — the digest must be invariant
+# to that cruft or every "unmodified since install" skill would spuriously
+# read as consumer-modified on the very next run.
 dir_hash() {
   local d="$1"
   [[ -d "$d" ]] || { echo ""; return; }
-  ( cd "$d" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 ) \
+  ( cd "$d" && find . -type f -not -path '*/__pycache__/*' \
+      -not -name '*.pyc' -not -name '.DS_Store' -print0 \
+    | LC_ALL=C sort -z | xargs -0 shasum -a 256 ) \
     | shasum -a 256 \
     | awk '{print $1}'
 }
@@ -602,6 +618,19 @@ read_recorded_installed_skills() {
     || true
 }
 
+# Strip dev-machine cruft that a bare `cp -R` would otherwise physically copy
+# into a consumer install (issue #818): __pycache__/ dirs, *.pyc files (which
+# may have been compiled under a different Python version than the
+# consumer's), and macOS Finder .DS_Store files. Portable across BSD find
+# (macOS) and GNU find (Linux CI runners) — no GNU-only flags.
+strip_pycache_artifacts() {
+  local dst="$1"
+  [[ -d "$dst" ]] || return 0
+  find "$dst" -depth \
+    \( -type d -name '__pycache__' -o -type f -name '*.pyc' -o -type f -name '.DS_Store' \) \
+    -exec rm -rf {} +
+}
+
 # Copy a directory tree's CONTENTS (not the wrapper dir) into dest, creating
 # dest if needed. `cp -R src/. dest` copies contents while preserving the dest
 # directory itself. All paths are passed as bash positional args (no shell
@@ -609,6 +638,7 @@ read_recorded_installed_skills() {
 copy_tree() {
   local src="$1" dst="$2"
   mkdir -p "$dst" && cp -R "$src/." "$dst/"
+  strip_pycache_artifacts "$dst"
 }
 
 # Wipe and replace a directory tree's contents from source. Used for skill
@@ -616,6 +646,7 @@ copy_tree() {
 replace_tree() {
   local src="$1" dst="$2"
   rm -rf "$dst" && mkdir -p "$dst" && cp -R "$src/." "$dst/"
+  strip_pycache_artifacts "$dst"
 }
 
 # Copy a single file to a destination path, creating intermediate dirs.
@@ -710,6 +741,10 @@ copy_lib_preserving_overrides() {
     fi
   done
   rm -rf "$stash"
+  # Strip dev-machine __pycache__/*.pyc/.DS_Store cruft (issue #818). Done
+  # last so a restored override file is never itself accidentally swept up
+  # (in practice override targets never match these patterns anyway).
+  strip_pycache_artifacts "$dst"
 }
 
 # Write the thin Claude registration shim for a skill. Called from both the
@@ -1243,16 +1278,23 @@ fi
 copy_skill_body_excluding_lib() {
   local src="$1" dst="$2"
   rm -rf "$dst" && mkdir -p "$dst" && cp -R "$src/." "$dst/" && rm -rf "$dst/lib"
+  strip_pycache_artifacts "$dst"
 }
 
 # Mirror of `dir_hash` that EXCLUDES the lib/ subdir from the digest. Used
 # for both `dirs_identical` and the recorded-hash comparison so override-
 # detection operates on the body-only view (consumers don't override the
 # importable Python under the skill's lib/).
+#
+# Also excludes __pycache__/*.pyc/.DS_Store (issue #818) — see `dir_hash`'s
+# comment for why the digest must be invariant to dev-machine build artifacts
+# that `copy_skill_body_excluding_lib`'s post-copy strip never lets reach the
+# installed destination.
 dir_hash_body_only() {
   local d="$1"
   [[ -d "$d" ]] || { echo ""; return; }
-  ( cd "$d" && find . -type f -not -path "./lib/*" -not -path "./lib" -print0 \
+  ( cd "$d" && find . -type f -not -path "./lib/*" -not -path "./lib" \
+      -not -path '*/__pycache__/*' -not -name '*.pyc' -not -name '.DS_Store' -print0 \
     | LC_ALL=C sort -z | xargs -0 shasum -a 256 ) \
     | shasum -a 256 \
     | awk '{print $1}'
@@ -1260,10 +1302,12 @@ dir_hash_body_only() {
 
 # Mirror of `dirs_identical` that treats the lib/ subdir as out-of-scope
 # for the consumer-modification check (issue #230 — lib/ moves to the
-# importable mirror but the body's override semantics shouldn't churn).
+# importable mirror but the body's override semantics shouldn't churn). Also
+# excludes __pycache__/*.pyc/.DS_Store (issue #818), for the same reason as
+# `dirs_identical` above.
 dirs_identical_body_only() {
   local a="$1" b="$2"
-  diff -r -q --exclude=lib "$a" "$b" >/dev/null 2>&1
+  diff -r -q --exclude=lib --exclude=__pycache__ --exclude='*.pyc' --exclude=.DS_Store "$a" "$b" >/dev/null 2>&1
 }
 
 for skill in "${SELECTED_SKILLS[@]}"; do

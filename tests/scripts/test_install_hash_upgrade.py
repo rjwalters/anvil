@@ -112,7 +112,8 @@ def _shell_dir_hash(d: Path) -> str:
 
     The installer's helper does::
 
-        ( cd $d && find . -type f -not -path "./lib/*" -not -path "./lib" -print0 \\
+        ( cd $d && find . -type f -not -path "./lib/*" -not -path "./lib" \\
+            -not -path '*/__pycache__/*' -not -name '*.pyc' -not -name '.DS_Store' -print0 \\
             | LC_ALL=C sort -z | xargs -0 shasum -a 256 )
             | shasum -a 256 | awk '{print $1}'
 
@@ -127,6 +128,11 @@ def _shell_dir_hash(d: Path) -> str:
     excluding ``lib/`` here keeps this test's recomputation aligned with what
     the installer actually records.
 
+    Also excludes ``__pycache__``/``*.pyc``/``.DS_Store`` (issue #818): the
+    installer's own ``dir_hash_body_only`` excludes these too, so a dev
+    checkout with stray build artifacts under the source tree still hashes
+    identically to the (always cruft-free, post-strip) installed dst.
+
     We shell out the same pipeline rather than reimplement it in Python — the
     contract under test is precisely "the value in skill_hashes matches the
     value `shasum -a 256` would produce". A Python-side reimplementation
@@ -134,8 +140,9 @@ def _shell_dir_hash(d: Path) -> str:
     """
 
     inner = subprocess.run(
-        'find . -type f -not -path "./lib/*" -not -path "./lib" -print0 '
-        "| LC_ALL=C sort -z | xargs -0 shasum -a 256",
+        "find . -type f -not -path \"./lib/*\" -not -path \"./lib\" "
+        "-not -path '*/__pycache__/*' -not -name '*.pyc' -not -name '.DS_Store' "
+        "-print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256",
         shell=True,
         cwd=d,
         capture_output=True,
