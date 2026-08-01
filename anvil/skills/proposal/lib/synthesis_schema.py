@@ -46,10 +46,21 @@ The schema follows the precedent set by ``anvil/lib/review_schema.py``:
    pressure mechanisms, scope-control filters) can cross-reference
    gaps against rubric pressure. The list MAY be empty for
    cross-cutting gaps.
-6. **Versioning**: ``schema_version`` is pinned to ``"1"`` here too.
+6. **Outstanding dependencies are NOT gaps** (issue #842/#843): the
+   top-level ``outstanding_dependencies`` field carries still-pending
+   ``[PENDING <source>]`` labels from the
+   ``anvil/lib/pending_marker.py`` gate's ``<thread>.{N}.pending/``
+   sidecar. These are deliberately excluded from ``gaps``/``singletons``
+   — a pending marker is an honest disclosure that a value does not
+   exist yet, not a defect the reviser resolves in prose (see
+   ``anvil/lib/snippets/pending_marker.md``). The list is purely
+   visibility; it never drives a reviser response and gates only the
+   READY/AUDITED terminal transition (enforced independently by the
+   consuming skill, not by this schema).
+7. **Versioning**: ``schema_version`` is pinned to ``"1"`` here too.
    Additive fields are NOT a bump; only an on-disk breaking change
    bumps.
-7. **Pydantic models** since pydantic is already a base dep per
+8. **Pydantic models** since pydantic is already a base dep per
    ``pyproject.toml`` and gives validation + JSON Schema export for
    free (see ``anvil/lib/export_schema.py``).
 
@@ -270,6 +281,21 @@ class GapList(BaseModel):
             "Findings that did NOT cluster. The reviser still sees "
             "them but with 'one finding, one response' framing. Empty "
             "list is valid: every finding clustered into a gap."
+        ),
+    )
+    outstanding_dependencies: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Still-pending [PENDING <source>] source labels sourced "
+            "from the <thread>.{N}.pending/ sidecar's outstanding_sources "
+            "(issue #842/#843; the pending-measurement placeholder gate "
+            "in anvil/lib/pending_marker.py). Deliberately separate from "
+            "gaps and singletons: a pending marker is an honest "
+            "disclosure that a value does not exist yet, not a defect "
+            "the reviser addresses in prose. The list gates only the "
+            "READY/AUDITED terminal transition; it never contributes a "
+            "Gap or Singleton entry. Empty (the default) when no "
+            ".pending/ sibling exists or it carries no active markers."
         ),
     )
 
