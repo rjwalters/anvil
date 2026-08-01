@@ -42,6 +42,34 @@
   scoring-guidance note); `proposal`/`memo`/`report` adoption is
   deferred to the Phase 2–5 sub-issues (#843–#846).
 
+- **`anvil:proposal` / `anvil:memo` / `anvil:report` — pending-measurement
+  placeholder gate adoption** (#841, closing out the parent tracking
+  issue's remaining phases). Wires the `anvil/lib/pending_marker.py`
+  primitive (shipped for `anvil:paper` per the entry above) into the
+  three remaining named skills, following the "adopting the convention
+  in a skill" recipe in `anvil/lib/snippets/pending_marker.md`:
+  - `proposal-review` step 4l / `proposal-audit` step 11b run the gate
+    against `proposal.tex` (via `--body`, since the module's `<slug>.md`/
+    `main.tex` auto-detect doesn't match this skill's fixed filename);
+    `proposal-revise` gets the no-fabrication carve-out; the
+    `READY`/`AUDITED` terminal transition holds on an active marker.
+  - `memo-review` step 4n runs the gate against `<thread>.md` (auto-
+    detected); `memo-revise` gets the carve-out; since `memo` has no
+    separate audit phase, the `READY` terminal transition is held by a
+    distinct `ready` computation (separate from `advance`) documented in
+    `memo-review` step 7 and `memo.md`'s state table.
+  - `report-review` step 4f / `report-audit` step 10b run the gate
+    against `report.md` (via `--body`); `report-revise` gets the
+    carve-out; `report-promote` additionally re-checks the gate before
+    `CUSTOMER-READY` as defense-in-depth alongside the machine-checkable
+    `AUDITED` precondition.
+  Each skill's `rubric.md` gains the "Pending-measurement markers do not
+  incur a dimension penalty" scoring-guidance note and an "Outstanding
+  dependencies (not critical flags)" section mirroring `paper/rubric.md`.
+  No lib or schema changes — this is skill-wiring only, reusing the
+  distinct `pending_dependency` `CriticalFlag` type and terminal-gate
+  contract shipped in the paper Phase 1.
+
 - **memo-review: version-drift check** (#746). New step 4m invokes
   `anvil/skills/memo/lib/version_drift.py` (pure-stdlib, deterministic)
   to compare `<thread>.{N}/` against `<thread>.{N-1}/` (and, when
