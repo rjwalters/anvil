@@ -4,6 +4,27 @@
 
 ### Added
 
+- **`anvil:paper` — pending-measurement placeholder gate** (#841). New
+  framework primitive `anvil/lib/pending_marker.py` (fifth member of the
+  deterministic-checks family alongside `numeric_consistency.py`,
+  `render_gate.py`, `marp_lint.py`, `revise_consistency.py`) detects
+  well-formed `[PENDING <source>]` / `[PENDING: <source>]` placeholders
+  — a first-class convention for a load-bearing number that genuinely
+  doesn't exist yet (a training run still running, a benchmark queued,
+  a vendor quote not returned), documented in
+  `anvil/lib/snippets/pending_marker.md`. A well-formed marker is scored
+  as a known-incomplete disclosure, NOT a defect (no dimension
+  penalty), but — being a binary, judgment-free fact — deterministically
+  blocks `READY`/`AUDITED` via a `CriticalFlag` until the marker is
+  replaced with its real value. Optional `<thread>/BRIEF.md`
+  frontmatter `pending_sources:` lets a thread declare which sources it
+  expects to resolve, surfaced as `outstanding_sources` /
+  `resolved_sources` for reporting. Phase 1 wires this into
+  `anvil:paper` (`paper-review` step 4g at review time, `paper-audit`
+  step 6b as the terminal gate, plus a new `rubric.md` critical-flag
+  entry and scoring-guidance note); `proposal`/`memo`/`report` adoption
+  is deferred to fast-follow issues per the curator's Phase 1 scoping.
+
 - **memo-review: version-drift check** (#746). New step 4m invokes
   `anvil/skills/memo/lib/version_drift.py` (pure-stdlib, deterministic)
   to compare `<thread>.{N}/` against `<thread>.{N-1}/` (and, when
