@@ -42,6 +42,27 @@
   scoring-guidance note); `proposal`/`memo`/`report` adoption is
   deferred to the Phase 2–5 sub-issues (#843–#846).
 
+- **`anvil:memo` — pending-measurement placeholder gate adoption**
+  (#845; Phase 4 of parent tracking issue #841). Wires the #842
+  `anvil/lib/pending_marker.py` primitive into `anvil:memo`, following
+  essay's step-3a deterministic-gate wiring pattern. New `memo-review`
+  step 4n runs `anvil.lib.pending_marker` unconditionally against the
+  memo body, writing the `<thread>.{N}.pending/_review.json` sidecar
+  auto-discovered alongside `.review/`. The emitted `pending_dependency`
+  flag is surfaced in `verdict.md` as an "Outstanding dependencies"
+  note (never a dimension penalty, never a forced `advance: false`) and
+  gates the `READY`/`AUDITED` terminal transition via new clauses in
+  `SKILL.md`'s state-machine table. `memo-revise` re-checks the
+  `.pending/` sibling on every revision pass and carries a new
+  "Notes for the reviser agent" carve-out: never fabricate a value to
+  clear the flag; carry the marker forward verbatim until it resolves.
+  A new `SKILL.md` §"Pending-marker terminal gate" section and a
+  `rubric.md` "Outstanding dependencies (not critical flags)" section
+  document the composition with memo's existing `NO-GO` thesis-failure
+  terminal sink (#559) as explicitly orthogonal — a pending marker is
+  never itself grounds for `no_go`, and a NO-GO memo may still carry
+  unresolved markers (moot once NO-GO fires).
+
 - **memo-review: version-drift check** (#746). New step 4m invokes
   `anvil/skills/memo/lib/version_drift.py` (pure-stdlib, deterministic)
   to compare `<thread>.{N}/` against `<thread>.{N-1}/` (and, when

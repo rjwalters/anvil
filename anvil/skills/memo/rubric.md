@@ -82,6 +82,8 @@ Suggested calibration:
 
 **Quoted evidence (issue #464).** Every justification follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `<thread>.md` with a location anchor — `("the quoted span" — §2.1)` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The reviewer self-checks its `scoring.md` against the body via `anvil/lib/evidence_check.py` before the review sidecar lands (see `commands/memo-review.md` step 7c); a quote that does not appear verbatim in the body is fabricated evidence and the justification must be re-derived. No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
 
+**Pending-measurement markers do not incur a dimension penalty (issues #842/#845).** A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) is an honest disclosure that a specific number is not yet available (a term sheet not yet signed, a customer reference not yet returned, a benchmark still running) — it is NOT a defect and MUST NOT be scored down on any dimension (Market & competitive framing dim 5 and Financial reasoning dim 6 are the dimensions most tempting to mark down for "missing numbers"; do not). The reviewer scores the surrounding argument's soundness *assuming* the pending value resolves as described. The gap is tracked separately — and independently of both dimension scoring AND the blocking-verdict path — as an **outstanding dependency** (the specially-resolved `pending_dependency` flag; see §"Outstanding dependencies (not critical flags)" below), which holds only the `READY`/`AUDITED` terminal transition and is orthogonal to the NO-GO thesis-failure terminal sink (see `SKILL.md` §"Pending-marker terminal gate"): a NO-GO memo may still carry pending markers (moot once NO-GO fires), and an unresolved pending marker is never itself grounds for NO-GO. Double-penalizing (a low dimension score AND a blocked verdict) would punish exactly the honest disclosure this convention exists to encourage.
+
 ## Citation hooks (dim 3)
 
 Per the `memo-draft` *Evidence* contract, every **named author-year citation** and every **load-bearing quantitative claim** (dollar amounts, percentages, dates, multipliers anchoring an argument) should carry one of three hooks: (a) an inline footnote naming the source, (b) a `<thread>/refs/<key>.md` stub (which MAY be as minimal as `# TODO: source for <claim>`), or (c) an explicit in-prose hedge ("reportedly", "estimated", "roughly", "~"). The reviewer applies a **per-instance deduction** on dim 3 *Evidence quality* for unhooked load-bearing claims.
@@ -697,7 +699,7 @@ New reviews produced **after** this contract ships MUST carry scope labels per t
 
 - **≥35/44** — advance to `READY` (or to next step in the lifecycle).
 - **<35/44** — block; revise.
-- **Any critical flag set** — block regardless of total. The next revision must address the flagged issue specifically and the reviewer must re-evaluate the flag before the threshold check applies.
+- **Any critical flag set** — block regardless of total. The next revision must address the flagged issue specifically and the reviewer must re-evaluate the flag before the threshold check applies. **Excludes** the specially-resolved `pending_dependency` flag (issues #842/#845) — see §"Outstanding dependencies (not critical flags)" below.
 
 ## Critical flags
 
@@ -708,17 +710,25 @@ A critical flag is an issue severe enough that **a sophisticated reader would im
 - **Recommendation contradicts thesis** — Memo recommends invest while the thesis it presents is unsupported (or recommends pass while the thesis is strongly supported and unrebutted).
 - **Risks section omits a known dealbreaker** — A risk the reviewer can identify from the memo's own evidence is absent from the risks section.
 
-The reviewer should also raise a flag for any other issue that, in their judgment, meets the standard above — the four examples are starting points, not a closed set.
+The reviewer should also raise a flag for any other issue that, in their judgment, meets the standard above — the four examples are starting points, not a closed set. An **unresolved pending marker is deliberately NOT in this list** — see the next section.
+
+## Outstanding dependencies (not critical flags — issues #842/#845)
+
+An **unresolved pending marker** is a distinct, specially-resolved category with the opposite verdict posture from an ordinary critical flag:
+
+- **Unresolved pending marker** — A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) remains in the body. `memo-review` step 4n runs `anvil/lib/pending_marker.py` unconditionally, which emits a specially-resolved `pending_dependency`-typed flag (the additive type from `anvil/lib/convergence.py`, modeled on the `no_go` precedent above) whenever any active marker is still present — **deterministic, not a reviewer judgment call**. A well-formed marker is an **honest disclosure of a genuinely outstanding value, not a defect**: it does NOT lower any dimension score (see the "Pending-measurement markers do not incur a dimension penalty" note above) and it does NOT force `advance: false` the way a real critical flag does (`convergence.blocking_critical_flags` filters it out). Instead it is surfaced as an *outstanding dependency* in `verdict.md` and gates **only** the `READY`/`AUDITED` terminal transition (`SKILL.md` §"Pending-marker terminal gate"), separately from the score/verdict path. It clears once the marker is replaced with its **real value** — which is the ONLY correct resolution; the reviser must never fabricate a value to clear it (see `commands/memo-revise.md` §"Notes for the reviser agent").
+- **Orthogonal to NO-GO** — a pending marker is never itself grounds for the `no_go` promotion (`SKILL.md` §"NO-GO terminal state" documents the exact — and exclusive — trigger set), and a NO-GO memo may still carry pending markers unresolved (moot once NO-GO fires). Neither code path consults the other's outcome.
 
 ## Verdict format
 
 The reviewer writes a `verdict.md` at the top of the review sibling dir with:
 
 1. **Total score**: `XX / 44`.
-2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 35` AND `no unresolved critical flag`.)
+2. **Decision**: `advance: true` or `advance: false`. (`advance: true` requires both `total ≥ 35` AND `no unresolved critical flag`; an unresolved `pending_dependency` flag does NOT affect this decision — see §"Outstanding dependencies" above.)
 3. **Critical flags** (if any): bullet list, each with one-paragraph justification.
 4. **Dimension summary**: a markdown table of per-dimension scores (full detail lives in `scoring.md`).
 5. **Top 3 revision priorities** (if `advance: false`): the highest-leverage changes the reviser should focus on.
+6. **Outstanding dependencies** (if any, issues #842/#845): each active `[PENDING <source>]` marker's source label, stated explicitly as holding the `READY` transition — NOT a scored defect.
 
 ## Output layout
 
