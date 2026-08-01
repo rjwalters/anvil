@@ -483,7 +483,7 @@ def test_placeholder_default_patterns(
     # default pattern that maps cleanly.
     patterns_hit = {p["pattern"] for p in r.placeholders}
     assert r"\bTODO\b" in patterns_hit
-    assert r"\[TBD\]" in patterns_hit
+    assert r"\[TBD(?:[:\s][^\]]*)?\]" in patterns_hit
     assert r"\(figure\)" in patterns_hit
     assert r"\.MISSING\b" in patterns_hit
     assert DIM_PLACEHOLDERS in r.failed_gates
@@ -522,6 +522,62 @@ def test_placeholder_clean_source_passes(
     )
     assert r.placeholders == []
     assert DIM_PLACEHOLDERS not in r.failed_gates
+
+
+# -----------------------------------------------------------------------------
+# Broadened [TBD ...] / [FIXME ...] bracket coverage (issue #855)
+# -----------------------------------------------------------------------------
+
+
+def test_placeholder_tbd_and_fixme_with_qualifier_match(tmp_path: Path) -> None:
+    """[TBD: ...] and [FIXME ...] with a trailing qualifier are flagged —
+    the pre-#855 exact-match-only `\\[TBD\\]` pattern missed these."""
+    from anvil.lib.render_gate import _scan_placeholders
+
+    src = tmp_path / "body.tex"
+    src.write_text(
+        "The vendor quote is [TBD: vendor quote] as of today.\n"
+        "This value [FIXME: recheck against the spec sheet] needs review.\n",
+        encoding="utf-8",
+    )
+    hits = _scan_placeholders([src], DEFAULT_PLACEHOLDER_PATTERNS)
+    matches = {h["match"] for h in hits}
+    assert "[TBD: vendor quote]" in matches
+    assert "[FIXME: recheck against the spec sheet]" in matches
+
+
+def test_placeholder_bare_tbd_and_fixme_still_match(tmp_path: Path) -> None:
+    """Bare [TBD] / [FIXME] (no qualifier) still match after broadening."""
+    from anvil.lib.render_gate import _scan_placeholders
+
+    src = tmp_path / "body.tex"
+    src.write_text("Cost is [TBD]. Approach is [FIXME].\n", encoding="utf-8")
+    hits = _scan_placeholders([src], DEFAULT_PLACEHOLDER_PATTERNS)
+    matches = {h["match"] for h in hits}
+    assert "[TBD]" in matches
+    assert "[FIXME]" in matches
+
+
+def test_placeholder_tbd_fixme_do_not_touch_pending_marker_handling(
+    tmp_path: Path,
+) -> None:
+    """A fixture with [TBD: ...], [FIXME: ...], and a well-formed
+    [PENDING ...] marker: the first two flag, the PENDING marker does not —
+    the broadened patterns must not reintroduce a PENDING match."""
+    from anvil.lib.render_gate import _scan_placeholders
+
+    src = tmp_path / "body.tex"
+    src.write_text(
+        "Vendor quote: [TBD: vendor quote]\n"
+        "Recheck: [FIXME: recheck]\n"
+        "Benchmark accuracy: [PENDING benchmark-run]\n",
+        encoding="utf-8",
+    )
+    hits = _scan_placeholders([src], DEFAULT_PLACEHOLDER_PATTERNS)
+    matches = {h["match"] for h in hits}
+    assert "[TBD: vendor quote]" in matches
+    assert "[FIXME: recheck]" in matches
+    assert all("PENDING" not in m for m in matches)
 
 
 # -----------------------------------------------------------------------------
