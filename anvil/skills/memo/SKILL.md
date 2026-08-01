@@ -286,9 +286,9 @@ The perspective sibling is intentionally allowed at `.0.perspective/` (before th
 | `DRAFTED` | Latest `<thread>.{N}/` exists with `<thread>.md` (body filename echoes the slug per #295) and `_progress.json.draft == done`; no sibling review at the same `N`. (`skeleton.md` + `phases.skeleton == done` are a sub-step of `DRAFTED`, not a gate — issue #752; their absence is a legal `DRAFTED` state) |
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` |
-| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag |
+| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag AND no unresolved `[PENDING <source>]` marker (issue #842/#845 — see `anvil/lib/snippets/pending_marker.md` and §"Pending-marker terminal gate" below) |
 | `NO-GO` | Latest `<thread>.{N}.review/verdict.md` records `**Verdict**: NO-GO` AND no `<thread>.{N+1}/` exists. Terminal sink — the evaluator concluded the *thesis itself* fails (issue #559). Resurrection requires `memo-revise <thread> --override-no-go "<rationale>"` and produces `<thread>.{N+1}/` with `metadata.no_go_overridden = true`. |
-| `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version |
+| `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version (which already requires no unresolved `[PENDING <source>]` marker, transitively — issue #845) |
 
 Thresholds: ≥35/44 advances. <35/44 requires revision. Any critical flag short-circuits regardless of total — block until addressed. **Red-team critical flags** (issue #560 — `redteam_survives` and `redteam_unengaged` emitted by the optional `<thread>.{N}.redteam/` adversarial critic on load-bearing objections that the memo does not defeat) participate in this standard `advance` aggregation via the existing pathway — `anvil/lib/critics.py::aggregate` unions them into the verdict's critical-flag list exactly like every other load-bearing back-check critical flag. A load-bearing `SURVIVES` (or `UNENGAGED`) finding at iteration `max_iterations - 1` or later promotes to a `no_go` critical flag at memo-review step 7 and routes to the **NO-GO** terminal state instead of `BLOCK`/`REVISE` (issue #559) — see §"NO-GO terminal state" below.
 
@@ -348,6 +348,20 @@ The `parse_memo_verdict_no_go` and `parse_memo_verdict_kill_rationale` helpers i
 The operator override is intentionally **friction-ful** (required verbatim rationale, no `--polish` analog that silently bypasses) because NO-GO exists precisely to make killing easy and resurrecting hard — the inverse of the default lifecycle's bias. The reviser's verdict pre-check at `memo-revise` step 4 refuses to proceed against a NO-GO `verdict.md` unless `--override-no-go "<reason>"` is passed; the rationale surface is the same shape as the `--polish "<reason>"` shape (non-empty, whitespace-rejected).
 
 Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Consumer overrides land via the **per-document iteration-cap paired override** on the project BRIEF (issue #349 — `BriefDocument.max_iterations` + `BriefDocument.iteration_cap_rationale`); see "Per-document override contract" below for the full spec. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+
+### Pending-marker terminal gate (issues #842/#845)
+
+`anvil:memo` adopts the framework-level `anvil/lib/pending_marker.py` primitive (see `anvil/lib/snippets/pending_marker.md`) to give a drafter a first-class way to disclose a genuinely-outstanding value (a term sheet not yet signed, a customer reference not yet returned, a benchmark still running) instead of fabricating a plausible number or hand-waving around the gap. `memo-review` runs the check unconditionally (step 4n) and writes a `<thread>.{N}.pending/` sidecar carrying the specially-resolved, additive `pending_dependency`-typed `CriticalFlag` whenever a well-formed `[PENDING <source>]` / `[PENDING: <source>]` marker remains active in the body.
+
+The flag is **visible but never blocking**: it never forces `Verdict.BLOCK` and never deducts a dimension score (`rubric.md` §"Outstanding dependencies (not critical flags)"). It is surfaced in `verdict.md` as an *outstanding dependency* and gates **only** the `READY`/`AUDITED` terminal transition — the SKILL.md state-machine table above requires zero unresolved markers for both rows. Resolving a marker means replacing its bracketed text with the real value once it genuinely exists; the reviser (`memo-revise.md` §"Notes for the reviser agent") is explicitly instructed to never fabricate a value to clear it.
+
+**Composition with the NO-GO terminal sink (issue #559) — the two signals are orthogonal and MUST NOT be conflated:**
+
+- A pending marker is never, by itself, grounds for a `no_go` promotion. The `_classify_no_go_eligibility` policy (§"NO-GO terminal state" above) only escalates on `redteam_survives`, `Strongman: NOT_ADDRESSED (load-bearing)`, and `Summary-detail consistency: CONTRADICTED` — `pending_dependency` is not, and will never be, in that trigger set.
+- A **NO-GO** memo may still carry active pending markers in its body — that is expected and harmless. Once NO-GO fires, the pending marker's terminal-transition gate is moot: a NO-GO thread is not headed to `READY` regardless of any marker's state, and `memo-review` does not need to special-case a NO-GO verdict to suppress the pending gate — the state-machine table already routes a NO-GO thread away from the `READY` row entirely.
+- Conversely, resolving every outstanding pending marker never overrides or suppresses a `no_go` verdict — the two code paths read independent evidence (the pending sidecar's `outstanding_sources` vs. the aggregated `no_go`-typed critical flag) and neither one's outcome is consulted by the other's classification logic.
+
+See `commands/memo-review.md` step 4n and `commands/memo-revise.md` §"Notes for the reviser agent" for the wiring.
 
 ### Per-document override contract
 
