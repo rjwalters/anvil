@@ -1101,3 +1101,51 @@ def clean_source_no_refs(tmp_path) -> Path:
     p = tmp_path / "prose.md"
     p.write_text("# A chapter\n\nAll prose, no figures here.\n", encoding="utf-8")
     return p
+
+
+# ---------------------------------------------------------------------------
+# Check 6 carve-out for well-formed [PENDING <source>] markers (issue #842)
+# ---------------------------------------------------------------------------
+
+
+def test_pending_marker_carveout_only_flags_generic_placeholder(
+    tmp_path: Path,
+) -> None:
+    """A doc mixing a legitimate [PENDING ...] marker and an unrelated [TBD]
+    placeholder: only the [TBD] should be flagged by the placeholder scan."""
+    from anvil.lib.render_gate import (
+        DEFAULT_MEMO_PLACEHOLDER_PATTERNS,
+        _scan_placeholders,
+    )
+
+    src = tmp_path / "body.md"
+    src.write_text(
+        "The benchmark reaches [PENDING benchmark-run-2024-11] accuracy.\n"
+        "The vendor cost is [TBD].\n",
+        encoding="utf-8",
+    )
+    hits = _scan_placeholders([src], DEFAULT_MEMO_PLACEHOLDER_PATTERNS)
+    matches = {h["match"] for h in hits}
+    assert "[TBD]" in matches
+    # The well-formed pending marker is carved out — never flagged.
+    assert all("PENDING" not in h["match"] for h in hits)
+
+
+def test_pending_marker_carveout_custom_bracket_pattern(tmp_path: Path) -> None:
+    """Even a skill-supplied pattern that WOULD match the marker text is
+    carved out when the hit falls inside a well-formed pending marker."""
+    from anvil.lib.render_gate import _scan_placeholders
+
+    src = tmp_path / "body.md"
+    src.write_text(
+        "Value is [PENDING vendor-quote] today.\n"
+        "Bare bracket [PENDING] is malformed, not a marker.\n",
+        encoding="utf-8",
+    )
+    # A greedy bracket pattern that would catch BOTH bracketed spans.
+    hits = _scan_placeholders([src], (r"\[[^\]]*\]",))
+    matches = {h["match"] for h in hits}
+    # The well-formed marker is excluded; the source-less [PENDING] (not a
+    # well-formed marker) is still flagged as a generic bracket placeholder.
+    assert "[PENDING vendor-quote]" not in matches
+    assert "[PENDING]" in matches

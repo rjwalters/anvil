@@ -723,10 +723,15 @@ def aggregate(reviews: List[Review]) -> AggregatedReview:
     if threshold is None:
         threshold = sum(s.max for s in aggregated_scores)
 
+    # ``pending_dependency`` flags (issue #842) are visible in
+    # ``critical_flags`` for the terminal-state gate but must NOT force
+    # ``Verdict.BLOCK`` — exclude them from the generic-critical trigger.
+    from anvil.lib.convergence import blocking_critical_flags
+
     verdict = _compute_verdict_impl(
         total=total,
         threshold=threshold,
-        any_critical=bool(critical_flags)
+        any_critical=bool(blocking_critical_flags(critical_flags))
         or any(s.critical for s in aggregated_scores),
         critical_flags=critical_flags,
     )
@@ -834,7 +839,11 @@ def compute_verdict(
         provided.
     """
     eff_threshold = threshold if threshold is not None else agg.threshold
-    any_critical = bool(agg.critical_flags) or any(
+    # ``pending_dependency`` flags (issue #842) stay visible in
+    # ``agg.critical_flags`` but never contribute to the BLOCK trigger.
+    from anvil.lib.convergence import blocking_critical_flags
+
+    any_critical = bool(blocking_critical_flags(agg.critical_flags)) or any(
         s.critical for s in agg.scores
     )
 
