@@ -67,7 +67,7 @@ convention closes.
 
 ## Not a defect — but not silently ignored either
 
-A well-formed pending marker gets two, deliberately different,
+A well-formed pending marker gets three, deliberately different,
 treatments from a consuming skill's critics:
 
 1. **No dimension score penalty.** A reviewer scoring the artifact
@@ -76,44 +76,79 @@ treatments from a consuming skill's critics:
    reproducibility dimension should not mark down for "missing data"
    when the data is honestly declared as pending). The marker is a
    disclosure, not a defect.
-2. **Blocks `READY`/`AUDITED` until resolved.** An artifact with any
-   unresolved pending marker cannot reach a terminal state. Resolving a
-   marker means replacing its bracketed text with the real value — at
-   that point the next detector pass finds nothing and the gate
-   clears. This is enforced via the standard critical-flag short-circuit
-   mechanism (see `critics.md` and the consuming skill's `rubric.md`),
-   not by asking a reviewer to remember to check.
+2. **Never a blocking `Verdict.BLOCK`.** The marker surfaces as a
+   specially-resolved `pending_dependency`-typed `CriticalFlag` (an
+   *additive* flag type — see below), which is **visible** in the
+   aggregate but is filtered out of the ordinary blocking-critical-flag
+   trigger (`convergence.blocking_critical_flags`). It does NOT tank the
+   review/audit verdict the way a fabricated-citation flag does. This is
+   the load-bearing distinction: routing a pending marker through the
+   ordinary `Verdict.BLOCK` path would tell the reviser (per a skill's
+   "critical flags MUST be addressed" prose) to *resolve* it in prose —
+   i.e. to invent the still-outstanding number, the exact fabrication
+   this convention exists to prevent.
+3. **Gates `READY`/`AUDITED` — separately.** An artifact with any
+   unresolved pending marker cannot reach a terminal state. This is
+   enforced by a **separate terminal-state check** the consuming skill
+   runs before promoting to `READY`/`AUDITED`
+   (`convergence.has_pending_dependency_flag(aggregate.critical_flags)`,
+   or a deterministic re-run of the CLI + its exit code), decoupled from
+   the score/verdict path. Resolving a marker means replacing its
+   bracketed text with the real value — at that point the next detector
+   pass finds nothing and the gate clears.
 
-Combining these two rules matters: double-penalizing (a low dimension
-score **and** a blocked verdict) punishes the honest disclosure the
-convention exists to encourage, which pushes drafters right back
-toward fabrication or hand-waving. The critical flag alone communicates
-"not done yet"; the dimension scores should reflect the argument's
-soundness *assuming* the pending value resolves as described.
+Combining these rules matters: double-penalizing (a low dimension score
+**and** a blocked verdict) punishes the honest disclosure the
+convention exists to encourage, which pushes drafters right back toward
+fabrication or hand-waving. The outstanding-dependency surface alone
+communicates "not done yet"; the dimension scores reflect the
+argument's soundness *assuming* the pending value resolves as
+described.
+
+## The distinct, specially-resolved flag type
+
+`pending_dependency` is an **additive** `CriticalFlag.type` value (no
+schema-version bump), modeled on the `no_go` precedent
+(`anvil/lib/convergence.py`) — but with the *opposite* posture. Where a
+`no_go` flag is a *stronger* terminator than a generic critical flag
+(short-circuiting to `Verdict.NO_GO`), a `pending_dependency` flag is a
+*weaker* signal: it never forces `Verdict.BLOCK` and never deducts a
+dimension score. It carries its own priority tier in
+`compute_verdict`/`decide_termination`:
+
+- `convergence.blocking_critical_flags(flags)` — the blocking subset,
+  with `pending_dependency` filtered out. `critics.py` computes
+  `any_critical` from this subset, so a pending-only review yields a
+  score-driven verdict (`ADVANCE`/`REVISE`), never `BLOCK`.
+- `convergence.has_pending_dependency_flag(flags)` — the terminal-state
+  query. The consuming skill calls this before promoting to
+  `READY`/`AUDITED`.
 
 ## The deterministic gate
 
 Unlike a nuanced judgment call (e.g. "does this citation actually
-support this claim?"), whether a well-formed marker is still present
-in the body is a binary, mechanical fact — there's no ambiguity to
-adjudicate. `anvil/lib/pending_marker.py` is therefore a **judgment-free
-deterministic gate**: it emits a `CriticalFlag` directly
-(`to_review(blocking=True)`) when any unresolved marker remains,
-rather than relying on an LLM reviewer to notice the marker text and
-decide, on its own initiative, to write a flag. This is the direct fix
-for the "ad-hoc per-thread prompt discipline" problem the convention
-exists to close — the gate does not depend on anyone remembering to
-check.
+support this claim?"), whether a well-formed marker is still present in
+the body is a binary, mechanical fact — there's no ambiguity to
+adjudicate. `anvil/lib/pending_marker.py` is therefore a
+**judgment-free deterministic gate**: it emits the `pending_dependency`
+flag (and per-marker `nit` findings) mechanically when any active
+marker remains, rather than relying on an LLM reviewer to notice the
+marker text and decide, on its own initiative, to write a flag. This is
+the direct fix for the "ad-hoc per-thread prompt discipline" problem
+the convention exists to close — the gate does not depend on anyone
+remembering to check.
 
-The same module also always emits an advisory `Finding` at the lowest
-schema severity (`"nit"`) per marker — a "known-incomplete, outstanding
-dependency" note for `verdict.md`/`findings.md`, independent of whether
-the consuming command runs the check in blocking mode.
+**Suppression.** A marker on a line carrying (or directly below) a
+`<!-- anvil-lint-disable: pending_marker -->` directive is recorded as
+a non-gating note and excluded from `outstanding_sources` — the same
+suppression convention every other deterministic-checks-family module
+honors. Use it only for a documentation passage that must show a
+live-looking marker outside a code fence.
 
 See the `anvil/lib/pending_marker.py` module docstring for the full
 detection/masking/severity contract, and `anvil/lib/numeric_consistency.py`
 for the sibling deterministic-checks-family precedent this module
-follows (masking, sidecar shape, `blocking=True` posture).
+follows (masking, sidecar shape, suppression convention).
 
 ## Sidecar shape
 
@@ -123,70 +158,85 @@ atomicity primitive (`anvil/lib/sidecar.py`). The `.pending` tag is a
 single path segment, so `anvil/lib/critics.py::discover_critics` picks
 it up automatically — no aggregator change is needed to wire a new
 consumer skill in. Because the check is deterministic and cheaply
-re-runnable, a later pass (e.g. a blocking audit-time run) freely
-overwrites an earlier pass's sidecar (e.g. an advisory review-time
-run) for the same version dir — the same deterministic-regeneration
+re-runnable, a later pass freely overwrites an earlier pass's sidecar
+for the same version dir — the same deterministic-regeneration
 carve-out `numeric_consistency.py` documents for its own sidecar.
 
 ## Optional `BRIEF.md` frontmatter: `pending_sources`
 
 A thread MAY declare the pending sources it expects to resolve over its
-lifetime in `<thread>/BRIEF.md` YAML frontmatter:
+lifetime in `<thread>/BRIEF.md` YAML frontmatter — a list of bare
+source labels, or `{source, expected_by}` mappings:
 
 ```yaml
 ---
 pending_sources:
   - benchmark-run-2024-11
-  - vendor-quote-acme
+  - source: vendor-quote-acme
+    expected_by: 2026-08-15
 ---
 ```
 
-`anvil/lib/pending_marker.py::load_expected_pending_sources` reads this
-list. It is **purely a reporting aid** — declaring a source here has NO
-effect on gating: an undeclared marker still blocks advancement, and a
-declared-but-never-written source is not itself a defect. What it
-enables is a critic reporting, e.g., *"3 of 5 declared pending sources
-resolved; 2 outstanding: vendor-quote-acme, benchmark-run-2024-11"* —
-visibility into which of the anticipated gaps are still open, without
-requiring the reviewer to scroll the whole body looking for brackets.
+Parsing/validation lives in `anvil/lib/project_brief.py`
+(`resolve_pending_sources`, modeled on the `spec_ref`/`code_ref`
+companion-input validators in that same file — NOT a bespoke parser in
+`pending_marker.py`). It is **purely a reporting aid** — declaring a
+source here has NO effect on gating: an undeclared marker still gates
+the terminal state, and a declared-but-never-written source is not
+itself a defect. What it enables is a critic reporting, e.g., *"3 of 5
+declared pending sources resolved; 2 outstanding: vendor-quote-acme,
+benchmark-run-2024-11"* — visibility into which of the anticipated gaps
+are still open, without requiring the reviewer to scroll the whole body
+looking for brackets.
 
 ## Adopting the convention in a skill
 
 To wire this convention into a skill's review/audit lifecycle:
 
 1. In the skill's `<skill>-review` command, invoke
-   `python -m anvil.lib.pending_marker <thread>.{N}/ --write-review --blocking`
+   `python -m anvil.lib.pending_marker <thread>.{N}/ --write-review`
    (or the `check_pending_markers` / `write_review_dir` Python API
    directly). This is an unconditional step — no per-thread opt-in
-   needed, mirroring `numeric_consistency`'s always-on posture. Because
-   the check is judgment-free, run it in **blocking mode directly** at
-   review time (unlike the numeric-consistency arithmetic check, which
-   stays advisory and folds into the reviewer's own judgment) — see
-   "The deterministic gate" above for why.
+   needed, mirroring `numeric_consistency`'s always-on posture. The
+   emitted `pending_dependency` flag is safe to write unconditionally:
+   it is specially resolved and never forces `Verdict.BLOCK` (see "The
+   distinct, specially-resolved flag type" above).
 2. Fold `result.outstanding_sources` / `result.resolved_sources` into
    the reviewer's `verdict.md`/`findings.md` as an explicit "Outstanding
    dependencies" note — this is the human-legible half of the
    acceptance criteria; the deterministic flag alone is not enough for
    an operator to know *what* is still pending.
-3. Add a critical-flag bullet to the skill's `rubric.md` documenting
-   the flag class (mirror the existing critical-flag list format —
-   e.g. `paper/rubric.md`'s "Build / compile failure" entry, which
-   documents the analogous `artifact_verify` deterministic gate from
-   issue #663).
-4. Add a scoring-guidance note that a well-formed marker does not incur
-   a dimension penalty (see "Not a defect — but not silently ignored
-   either" above) — this is the rule an LLM reviewer is most likely to
-   get wrong by default (the instinct to mark down for "missing data"
-   is strong), so it needs to be explicit in the rubric, not merely
-   implied by this snippet.
-5. Optionally, re-run the check at the skill's terminal-gate/audit
+3. **Gate the terminal state separately.** Before promoting the thread
+   to `READY`/`AUDITED`, query
+   `convergence.has_pending_dependency_flag(aggregate.critical_flags)`
+   (or re-run the CLI and check its exit code / `pass` field) and hold
+   the terminal transition while any active marker remains. Do NOT wire
+   the pending marker into the ordinary blocking-verdict path.
+4. Document the category in the skill's `rubric.md` as an **outstanding
+   dependency, NOT a critical flag** (mirror `paper/rubric.md`'s
+   "Outstanding dependencies (not critical flags)" section), and add a
+   scoring-guidance note that a well-formed marker does not incur a
+   dimension penalty — the rule an LLM reviewer is most likely to get
+   wrong by default (the instinct to mark down for "missing data" is
+   strong).
+5. **Add the reviser carve-out.** In the skill's `<skill>-revise`
+   command, explicitly instruct the reviser to NEVER fabricate a value
+   to clear a `pending_dependency` flag — carry the marker forward
+   verbatim until the real value lands (mirror `paper/commands/paper-revise.md`'s
+   "NEVER fabricate a value to clear a `pending_dependency` flag" note).
+   This is the load-bearing prose fix: without it, a reviser following
+   the generic "critical flags MUST be addressed" instruction would
+   invent the number.
+6. Optionally, re-run the check at the skill's terminal-gate/audit
    phase too (defense in depth — useful when an operator runs the
    audit phase before the review loop reaches `READY`, which several
    skills' audit commands explicitly permit).
 
 No framework changes are required beyond these skill-local wiring
 steps — the discovery glob in `critics.md` picks up the new
-`.pending/` sidecar automatically.
+`.pending/` sidecar automatically, and the `pending_dependency` flag
+type is already resolved by the shared `convergence.py`/`critics.py`
+verdict path.
 
 ## See also
 

@@ -1,21 +1,31 @@
-"""Tests for ``anvil/lib/pending_marker.py`` (issue #841).
+"""Tests for ``anvil/lib/pending_marker.py`` (issues #841 / #842).
 
-Covers the acceptance criteria from the issue:
+Covers the Phase-1 acceptance criteria from #842:
 
 - A documented placeholder convention (``[PENDING <source>]``) with a
   lib-level helper for emitting (``emit_pending_marker``) and detecting
   (``find_pending_markers`` / ``check_pending_markers``) it.
 - A well-formed marker is recognized; malformed/near-miss text
   (``[PENDING]``, bare prose use of the word "pending") is NOT flagged.
-- Advisory mode emits informational (``nit``-severity) findings and no
-  ``CriticalFlag``; ``blocking=True`` emits a flag that forces
-  ``Verdict.BLOCK`` through ``compute_verdict`` — the "blocks
-  READY/AUDITED" gate.
+- The marker emits a **distinct, specially-resolved** ``pending_dependency``
+  ``CriticalFlag`` (additive schema type) that is VISIBLE in the aggregate
+  for the terminal-state gate but NEVER forces ``Verdict.BLOCK`` and NEVER
+  deducts a dimension score (every finding stays ``nit``/``info``). An
+  ordinary critical flag co-occurring still forces BLOCK. This is the
+  architecture #842 specifies (modeled on the ``no_go`` precedent) — it
+  is the guard against a reviser being told to "fix" an honest marker by
+  fabricating the number.
+- ``<!-- anvil-lint-disable: pending_marker -->`` suppression: a
+  suppressed marker becomes an ``info`` finding and never gates.
+- The terminal-state gate is a SEPARATE query
+  (``convergence.has_pending_dependency_flag`` / the CLI exit code),
+  decoupled from the score/verdict path.
 - The sidecar ``<thread>.{N}.pending/_review.json`` validates against
   the review schema and is discovered by ``critics.discover_critics``
   with no aggregator change.
-- Optional ``BRIEF.md`` frontmatter ``pending_sources:`` list surfaces
-  as ``expected_sources`` / ``resolved_sources`` for reporting.
+- Optional ``BRIEF.md`` frontmatter ``pending_sources:`` (parsed by
+  ``project_brief.resolve_pending_sources``) surfaces as
+  ``expected_sources`` / ``resolved_sources`` for reporting.
 - Edge cases: markers inside code fences are masked out; markers in a
   ``.tex`` body work the same as markdown.
 """
@@ -27,10 +37,14 @@ from pathlib import Path
 
 import pytest
 
+from anvil.lib.convergence import (
+    PENDING_DEPENDENCY_FLAG_TYPE,
+    blocking_critical_flags,
+    has_pending_dependency_flag,
+)
 from anvil.lib.critics import aggregate, compute_verdict, discover_critics
 from anvil.lib.pending_marker import (
     CRITICAL_PENDING_MARKER,
-    UNRESOLVED_PENDING_MARKER,
     check_pending_markers,
     check_text,
     emit_pending_marker,
@@ -39,7 +53,13 @@ from anvil.lib.pending_marker import (
     main,
     write_review_dir,
 )
-from anvil.lib.review_schema import Review, Verdict
+from anvil.lib.review_schema import (
+    CriticalFlag,
+    Kind,
+    Review,
+    Score,
+    Verdict,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -304,50 +324,165 @@ class TestExpectedPendingSources:
 
 
 # ---------------------------------------------------------------------------
-# AC: severity wiring — advisory vs blocking
+# AC (#842): distinct pending_dependency flag — visible but non-blocking
 # ---------------------------------------------------------------------------
 
 
-class TestSeverityWiring:
+class TestPendingDependencyFlagWiring:
     def _finding_result(self, tmp_path: Path):
         version_dir = make_memo_version_dir(tmp_path, PENDING_BODY)
         return version_dir, check_pending_markers(version_dir)
 
-    def test_advisory_findings_are_nit_severity_no_penalty(self, tmp_path: Path) -> None:
+    def test_findings_are_nit_severity_no_dimension_penalty(self, tmp_path: Path) -> None:
         version_dir, result = self._finding_result(tmp_path)
         review = result.to_review(version_dir=version_dir.name)
-        assert review.critical_flags == []
         assert len(review.findings) == 2
         assert all(f.severity == "nit" for f in review.findings)
+        # The module owns no rubric dimension — its one Score carries no int.
+        assert all(s.score is None for s in review.scores)
 
-    def test_advisory_verdict_not_blocked(self, tmp_path: Path) -> None:
+    def test_emits_one_pending_dependency_flag(self, tmp_path: Path) -> None:
+        version_dir, result = self._finding_result(tmp_path)
+        review = result.to_review(version_dir=version_dir.name)
+        assert len(review.critical_flags) == 1
+        flag = review.critical_flags[0]
+        # The specially-resolved, additive type — exact match, no colon suffix
+        # (mirrors the ``no_go`` precedent so convergence can discriminate it).
+        assert flag.type == PENDING_DEPENDENCY_FLAG_TYPE == CRITICAL_PENDING_MARKER
+        assert "benchmark-run-2024-11" in flag.justification
+        assert "vendor-quote-acme" in flag.justification
+
+    def test_pending_flag_alone_never_forces_block(self, tmp_path: Path) -> None:
         version_dir, result = self._finding_result(tmp_path)
         review = result.to_review(version_dir=version_dir.name)
         agg = aggregate([review])
+        # Visible in the aggregate ...
+        assert has_pending_dependency_flag(agg.critical_flags)
+        assert len(agg.critical_flags) == 1
+        # ... but the verdict is score-driven, NEVER BLOCK.
+        assert agg.verdict is not Verdict.BLOCK
         assert compute_verdict(agg, threshold=35) is not Verdict.BLOCK
 
-    def test_blocking_emits_one_flag_and_forces_block(self, tmp_path: Path) -> None:
+    def test_ordinary_critical_flag_still_blocks_alongside_pending(
+        self, tmp_path: Path
+    ) -> None:
         version_dir, result = self._finding_result(tmp_path)
-        review = result.to_review(version_dir=version_dir.name, blocking=True)
-        assert len(review.critical_flags) == 1
-        flag = review.critical_flags[0]
-        assert flag.type == f"{CRITICAL_PENDING_MARKER}:{UNRESOLVED_PENDING_MARKER}"
-        assert "benchmark-run-2024-11" in flag.justification
-        assert "vendor-quote-acme" in flag.justification
-        agg = aggregate([review])
+        pending_review = result.to_review(version_dir=version_dir.name)
+        ordinary = Review(
+            kind=Kind.JUDGMENT,
+            version_dir=version_dir.name,
+            critic_id="paper-review",
+            scores=[Score(dimension="rigor", score=3, max=9)],
+            critical_flags=[
+                CriticalFlag(type="factual_error", justification="A real defect.")
+            ],
+        )
+        agg = aggregate([pending_review, ordinary])
+        # Both flags visible; the ordinary one still forces BLOCK.
+        assert has_pending_dependency_flag(agg.critical_flags)
         assert compute_verdict(agg, threshold=35) is Verdict.BLOCK
 
-    def test_blocking_still_emits_nit_findings_not_upgraded(self, tmp_path: Path) -> None:
-        version_dir, result = self._finding_result(tmp_path)
-        review = result.to_review(version_dir=version_dir.name, blocking=True)
-        assert all(f.severity == "nit" for f in review.findings)
+    def test_blocking_critical_flags_excludes_pending(self) -> None:
+        pending = CriticalFlag(type=PENDING_DEPENDENCY_FLAG_TYPE, justification="p")
+        ordinary = CriticalFlag(type="factual_error", justification="d")
+        assert blocking_critical_flags([pending]) == []
+        assert blocking_critical_flags([pending, ordinary]) == [ordinary]
 
-    def test_blocking_on_clean_result_emits_nothing(self, tmp_path: Path) -> None:
+    def test_clean_result_emits_nothing(self, tmp_path: Path) -> None:
         version_dir = make_memo_version_dir(tmp_path, CLEAN_BODY)
         result = check_pending_markers(version_dir)
-        review = result.to_review(version_dir=version_dir.name, blocking=True)
+        review = result.to_review(version_dir=version_dir.name)
         assert review.critical_flags == []
         assert review.findings == []
+
+
+# ---------------------------------------------------------------------------
+# AC (#842): terminal-state gate is a SEPARATE query
+# ---------------------------------------------------------------------------
+
+
+class TestTerminalStateGate:
+    def test_has_pending_dependency_flag_query(self, tmp_path: Path) -> None:
+        version_dir = make_memo_version_dir(tmp_path, PENDING_BODY)
+        review = check_pending_markers(version_dir).to_review(
+            version_dir=version_dir.name
+        )
+        agg = aggregate([review])
+        # The consuming skill queries this BEFORE promoting to READY/AUDITED,
+        # independent of the (non-BLOCK) verdict.
+        assert has_pending_dependency_flag(agg.critical_flags) is True
+
+    def test_query_false_on_clean_body(self, tmp_path: Path) -> None:
+        version_dir = make_memo_version_dir(tmp_path, CLEAN_BODY)
+        review = check_pending_markers(version_dir).to_review(
+            version_dir=version_dir.name
+        )
+        agg = aggregate([review])
+        assert has_pending_dependency_flag(agg.critical_flags) is False
+
+    def test_query_accepts_bare_string_tags(self) -> None:
+        assert has_pending_dependency_flag([PENDING_DEPENDENCY_FLAG_TYPE]) is True
+        assert has_pending_dependency_flag(["factual_error"]) is False
+        assert has_pending_dependency_flag(None) is False
+
+
+# ---------------------------------------------------------------------------
+# AC (#842): <!-- anvil-lint-disable: pending_marker --> suppression
+# ---------------------------------------------------------------------------
+
+
+class TestSuppression:
+    def test_same_line_suppression(self) -> None:
+        body = "Value [PENDING foo] here <!-- anvil-lint-disable: pending_marker -->\n"
+        markers = find_pending_markers(body)
+        assert len(markers) == 1
+        assert markers[0].suppressed is True
+
+    def test_line_above_suppression(self) -> None:
+        body = "<!-- anvil-lint-disable: pending_marker -->\nValue is [PENDING foo].\n"
+        markers = find_pending_markers(body)
+        assert len(markers) == 1
+        assert markers[0].suppressed is True
+
+    def test_suppressed_marker_does_not_gate(self, tmp_path: Path) -> None:
+        body = "Value is [PENDING foo]. <!-- anvil-lint-disable: pending_marker -->\n"
+        version_dir = make_memo_version_dir(tmp_path, body)
+        result = check_pending_markers(version_dir)
+        assert result.passed() is True
+        assert result.outstanding_sources == []
+        assert result.to_critical_flags() == []
+
+    def test_suppressed_marker_recorded_without_flag(self, tmp_path: Path) -> None:
+        body = "Value is [PENDING foo]. <!-- anvil-lint-disable: pending_marker -->\n"
+        version_dir = make_memo_version_dir(tmp_path, body)
+        review = check_pending_markers(version_dir).to_review(
+            version_dir=version_dir.name
+        )
+        # Recorded for the audit trail (a non-gating "nit" finding whose
+        # rationale marks it suppressed) but NO pending_dependency flag.
+        assert review.critical_flags == []
+        assert len(review.findings) == 1
+        assert review.findings[0].severity == "nit"
+        assert "uppressed" in review.findings[0].rationale
+
+    def test_unrelated_lint_disable_does_not_suppress(self) -> None:
+        body = "Value [PENDING foo] <!-- anvil-lint-disable: numeric_consistency -->\n"
+        markers = find_pending_markers(body)
+        assert len(markers) == 1
+        assert markers[0].suppressed is False
+
+    def test_mixed_active_and_suppressed(self, tmp_path: Path) -> None:
+        body = (
+            "Active [PENDING live-one].\n"
+            "Suppressed [PENDING hushed]. <!-- anvil-lint-disable: pending_marker -->\n"
+        )
+        version_dir = make_memo_version_dir(tmp_path, body)
+        result = check_pending_markers(version_dir)
+        assert result.passed() is False
+        assert result.outstanding_sources == ["live-one"]
+        assert len(result.suppressed_markers) == 1
+        # Exactly one gating flag, for the active marker only.
+        assert len(result.to_critical_flags()) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -374,11 +509,19 @@ class TestSidecar:
         critics = discover_critics(version_dir)
         assert version_dir.parent / "acme-seed.1.pending" in critics
 
+    def test_sidecar_carries_pending_dependency_flag(self, tmp_path: Path) -> None:
+        version_dir = make_memo_version_dir(tmp_path, PENDING_BODY)
+        result = check_pending_markers(version_dir)
+        out = write_review_dir(version_dir, result)
+        payload = json.loads(out.read_text(encoding="utf-8"))
+        assert len(payload["critical_flags"]) == 1
+        assert payload["critical_flags"][0]["type"] == PENDING_DEPENDENCY_FLAG_TYPE
+
     def test_rerun_regenerates_idempotently(self, tmp_path: Path) -> None:
         version_dir = make_memo_version_dir(tmp_path, PENDING_BODY)
         result = check_pending_markers(version_dir)
         first = write_review_dir(version_dir, result)
-        second = write_review_dir(version_dir, result, blocking=True)
+        second = write_review_dir(version_dir, result)
         assert first == second
         assert second.is_file()
         leftovers = [p for p in version_dir.parent.iterdir() if p.name.endswith(".tmp")]
@@ -421,15 +564,16 @@ class TestCli:
     def test_missing_version_dir_exit_code_two(self, tmp_path: Path) -> None:
         assert main([str(tmp_path / "nope" / "nope.1")]) == 2
 
-    def test_blocking_flag_writes_flag_into_sidecar(
+    def test_write_review_flag_lands_in_sidecar(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
     ) -> None:
         version_dir = make_memo_version_dir(tmp_path, PENDING_BODY)
-        rc = main([str(version_dir), "--write-review", "--blocking"])
+        rc = main([str(version_dir), "--write-review"])
         assert rc == 1
         sidecar = version_dir.parent / "acme-seed.1.pending" / "_review.json"
         payload = json.loads(sidecar.read_text(encoding="utf-8"))
         assert len(payload["critical_flags"]) == 1
+        assert payload["critical_flags"][0]["type"] == PENDING_DEPENDENCY_FLAG_TYPE
 
     def test_body_override_for_legacy_thread(
         self, tmp_path: Path, capsys: pytest.CaptureFixture

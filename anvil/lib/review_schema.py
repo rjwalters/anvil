@@ -247,8 +247,26 @@ class CriticalFlag(BaseModel):
     """A top-level critical flag, short-circuiting the verdict.
 
     A critical flag indicates a defect severe enough that a sophisticated
-    reader would stop reading. Any critical flag forces ``Verdict.BLOCK``
+    reader would stop reading. Most critical flags force ``Verdict.BLOCK``
     regardless of total score.
+
+    Two ``type`` values are **specially resolved** (additive, no schema-
+    version bump — each carries its own priority tier in
+    ``anvil/lib/convergence.py``):
+
+    - ``"no_go"`` (issue #559) — a *stronger* terminator than a generic
+      critical flag: short-circuits to ``Verdict.NO_GO`` (thesis-failure
+      terminal sink).
+    - ``"pending_dependency"`` (issue #842) — a *weaker* signal than a
+      generic critical flag: an honestly-declared ``[PENDING <source>]``
+      value that is still outstanding. It is visible in
+      ``AggregatedReview.critical_flags`` for reporting, but it **never**
+      forces ``Verdict.BLOCK`` and **never** deducts a dimension score.
+      The terminal-state gate (READY / AUDITED) for an unresolved pending
+      marker is enforced *separately* by the consuming skill (via
+      ``convergence.has_pending_dependency_flag`` or a deterministic
+      re-run of ``anvil/lib/pending_marker.py``), decoupled from the
+      score/verdict path here.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -258,7 +276,12 @@ class CriticalFlag(BaseModel):
         description=(
             "Short tag, e.g. 'fabricated_traction', 'factual_error', "
             "'conflict_of_interest'. Skill-defined; the lib does not "
-            "enforce a vocabulary."
+            "enforce a vocabulary. Two values are specially resolved: "
+            "'no_go' (issue #559 — forces Verdict.NO_GO) and "
+            "'pending_dependency' (issue #842 — an outstanding "
+            "pending-measurement marker; visible for reporting but never "
+            "forces Verdict.BLOCK and never deducts a dimension score, "
+            "with the terminal-state gate enforced separately)."
         ),
     )
     justification: str = Field(
