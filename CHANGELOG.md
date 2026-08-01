@@ -4,6 +4,44 @@
 
 ### Added
 
+- **`anvil:paper` — pending-measurement placeholder gate** (#842; Phase
+  1 of parent tracking issue #841). New framework primitive
+  `anvil/lib/pending_marker.py` (fifth member of the deterministic-checks
+  family alongside `numeric_consistency.py`, `render_gate.py`,
+  `marp_lint.py`, `revise_consistency.py`) detects well-formed
+  `[PENDING <source>]` / `[PENDING: <source>]` placeholders — a
+  first-class convention for a load-bearing number that genuinely
+  doesn't exist yet (a training run still running, a benchmark queued,
+  a vendor quote not returned), documented in
+  `anvil/lib/snippets/pending_marker.md`, with
+  `<!-- anvil-lint-disable: pending_marker -->` suppression. A
+  well-formed marker is scored as a known-incomplete disclosure, NOT a
+  defect (no dimension penalty). It surfaces as a **distinct,
+  specially-resolved `pending_dependency` `CriticalFlag`** — an additive
+  schema type (no version bump) modeled on the `no_go` precedent, with
+  its own priority tier in `anvil/lib/convergence.py` /
+  `anvil/lib/critics.py`: **visible** in the aggregate as an outstanding
+  dependency but **never** forcing `Verdict.BLOCK` and **never**
+  deducting a dimension score. The `READY`/`AUDITED` terminal-state gate
+  is enforced **separately** (via
+  `convergence.has_pending_dependency_flag` / the CLI exit code),
+  decoupled from the score/verdict path — so a reviser is never
+  instructed to "resolve" an honest marker by fabricating the number
+  (the fabrication failure mode #841 exists to close). Optional
+  `<thread>/BRIEF.md` frontmatter `pending_sources:` (bare labels or
+  `{source, expected_by}` mappings, parsed by
+  `anvil/lib/project_brief.py::resolve_pending_sources`) lets a thread
+  declare which sources it expects to resolve, surfaced as
+  `outstanding_sources` / `resolved_sources` for reporting.
+  `anvil/lib/render_gate.py` Check 6 carves out well-formed markers so
+  the generic placeholder scan never double-flags them. Phase 1 wires
+  this into `anvil:paper` (`paper-review` step 4g at review time with the
+  terminal-state gate in step 7, `paper-audit` step 6b as the terminal
+  gate, a `paper-revise` no-fabrication carve-out, plus a `rubric.md`
+  "Outstanding dependencies (not critical flags)" section and
+  scoring-guidance note); `proposal`/`memo`/`report` adoption is
+  deferred to the Phase 2–5 sub-issues (#843–#846).
+
 - **memo-review: version-drift check** (#746). New step 4m invokes
   `anvil/skills/memo/lib/version_drift.py` (pure-stdlib, deterministic)
   to compare `<thread>.{N}/` against `<thread>.{N-1}/` (and, when

@@ -80,7 +80,7 @@
     },
     "CriticalFlag": {
       "additionalProperties": false,
-      "description": "A top-level critical flag, short-circuiting the verdict.\n\nA critical flag indicates a defect severe enough that a sophisticated\nreader would stop reading. Any critical flag forces ``Verdict.BLOCK``\nregardless of total score.",
+      "description": "A top-level critical flag, short-circuiting the verdict.\n\nA critical flag indicates a defect severe enough that a sophisticated\nreader would stop reading. Most critical flags force ``Verdict.BLOCK``\nregardless of total score.\n\nTwo ``type`` values are **specially resolved** (additive, no schema-\nversion bump \u2014 each carries its own priority tier in\n``anvil/lib/convergence.py``):\n\n- ``\"no_go\"`` (issue #559) \u2014 a *stronger* terminator than a generic\n  critical flag: short-circuits to ``Verdict.NO_GO`` (thesis-failure\n  terminal sink).\n- ``\"pending_dependency\"`` (issue #842) \u2014 a *weaker* signal than a\n  generic critical flag: an honestly-declared ``[PENDING <source>]``\n  value that is still outstanding. It is visible in\n  ``AggregatedReview.critical_flags`` for reporting, but it **never**\n  forces ``Verdict.BLOCK`` and **never** deducts a dimension score.\n  The terminal-state gate (READY / AUDITED) for an unresolved pending\n  marker is enforced *separately* by the consuming skill (via\n  ``convergence.has_pending_dependency_flag`` or a deterministic\n  re-run of ``anvil/lib/pending_marker.py``), decoupled from the\n  score/verdict path here.",
       "properties": {
         "evidence_span": {
           "anyOf": [
@@ -101,7 +101,7 @@
           "type": "string"
         },
         "type": {
-          "description": "Short tag, e.g. 'fabricated_traction', 'factual_error', 'conflict_of_interest'. Skill-defined; the lib does not enforce a vocabulary.",
+          "description": "Short tag, e.g. 'fabricated_traction', 'factual_error', 'conflict_of_interest'. Skill-defined; the lib does not enforce a vocabulary. Two values are specially resolved: 'no_go' (issue #559 \u2014 forces Verdict.NO_GO) and 'pending_dependency' (issue #842 \u2014 an outstanding pending-measurement marker; visible for reporting but never forces Verdict.BLOCK and never deducts a dimension score, with the terminal-state gate enforced separately).",
           "title": "Type",
           "type": "string"
         }

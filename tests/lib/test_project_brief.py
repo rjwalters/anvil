@@ -1119,3 +1119,109 @@ def test_malformed_spec_ref_list_element_raises_companion_ref_type_error(
         load_project_brief(project)
     assert excinfo.value.field == "spec_ref"
     assert isinstance(excinfo.value, ValueError)
+
+
+# ---------------------------------------------------------------------------
+# pending_sources thread-level frontmatter (issue #842)
+# ---------------------------------------------------------------------------
+
+from anvil.lib.project_brief import (  # noqa: E402
+    PendingSource,
+    PendingSourcesTypeError,
+    _validate_pending_sources,
+    resolve_pending_sources,
+)
+
+
+def _write_thread_brief(thread: Path, frontmatter: str) -> None:
+    """Write a thread-level BRIEF.md (freeform prose + frontmatter)."""
+    thread.mkdir(parents=True, exist_ok=True)
+    (thread / BRIEF_FILENAME).write_text(
+        f"---\n{textwrap.dedent(frontmatter)}---\n\n# Thread context\n",
+        encoding="utf-8",
+    )
+
+
+class TestPendingSourcesValidator:
+    def test_none_is_undeclared(self) -> None:
+        assert _validate_pending_sources(None) is None
+
+    def test_empty_list_is_off(self) -> None:
+        assert _validate_pending_sources([]) is None
+
+    def test_bare_string_labels(self) -> None:
+        out = _validate_pending_sources(["a", "b"])
+        assert out == [PendingSource(source="a"), PendingSource(source="b")]
+
+    def test_mapping_with_expected_by(self) -> None:
+        out = _validate_pending_sources(
+            [{"source": "vendor-quote", "expected_by": "2026-08-15"}]
+        )
+        assert out == [PendingSource(source="vendor-quote", expected_by="2026-08-15")]
+
+    def test_declaration_order_preserved(self) -> None:
+        out = _validate_pending_sources(["z", "a", "m"])
+        assert [p.source for p in out] == ["z", "a", "m"]
+
+    def test_non_list_raises(self) -> None:
+        with pytest.raises(PendingSourcesTypeError):
+            _validate_pending_sources("not-a-list")
+
+    def test_empty_label_raises(self) -> None:
+        with pytest.raises(PendingSourcesTypeError):
+            _validate_pending_sources(["  "])
+
+    def test_mapping_without_source_raises(self) -> None:
+        with pytest.raises(PendingSourcesTypeError):
+            _validate_pending_sources([{"expected_by": "soon"}])
+
+    def test_mapping_unknown_key_raises(self) -> None:
+        with pytest.raises(PendingSourcesTypeError):
+            _validate_pending_sources([{"source": "x", "bogus": 1}])
+
+    def test_type_error_is_value_error_subclass(self) -> None:
+        with pytest.raises(ValueError):
+            _validate_pending_sources(42)
+
+
+class TestResolvePendingSources:
+    def test_declared_resolves(self, tmp_path: Path) -> None:
+        thread = tmp_path / "acme-seed"
+        _write_thread_brief(
+            thread,
+            "            pending_sources:\n"
+            "              - benchmark-run-2024-11\n"
+            "              - source: vendor-quote-acme\n"
+            "                expected_by: 2026-08-15\n",
+        )
+        out = resolve_pending_sources(thread)
+        assert [(p.source, p.expected_by) for p in out] == [
+            ("benchmark-run-2024-11", None),
+            ("vendor-quote-acme", "2026-08-15"),
+        ]
+
+    def test_undeclared_returns_empty(self, tmp_path: Path) -> None:
+        thread = tmp_path / "acme-seed"
+        thread.mkdir()
+        # No BRIEF at all.
+        assert resolve_pending_sources(thread) == []
+        # BRIEF with frontmatter but no pending_sources key.
+        _write_thread_brief(thread, "            project: acme\n")
+        assert resolve_pending_sources(thread) == []
+
+    def test_declared_but_malformed_degrades_to_empty(self, tmp_path: Path) -> None:
+        thread = tmp_path / "acme-seed"
+        _write_thread_brief(thread, "            pending_sources: not-a-list\n")
+        # Lenient resolver swallows the (still-distinguishable) type error.
+        assert resolve_pending_sources(thread) == []
+
+    def test_no_frontmatter_returns_empty(self, tmp_path: Path) -> None:
+        thread = tmp_path / "acme-seed"
+        thread.mkdir()
+        (thread / BRIEF_FILENAME).write_text("# Just prose\n", encoding="utf-8")
+        assert resolve_pending_sources(thread) == []
+
+    def test_string_arg_coerced(self, tmp_path: Path) -> None:
+        thread = tmp_path / "acme-seed"
+        _write_thread_brief(thread, "            pending_sources:\n              - x\n")
+        assert resolve_pending_sources(str(thread)) == [PendingSource(source="x")]

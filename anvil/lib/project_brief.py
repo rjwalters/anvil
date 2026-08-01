@@ -4894,6 +4894,202 @@ def load_recommendation_target(
     return None
 
 
+# ---------------------------------------------------------------------------
+# Thread-level ``pending_sources`` frontmatter (issue #842)
+# ---------------------------------------------------------------------------
+#
+# The optional companion knob for ``anvil/lib/pending_marker.py``: a thread
+# MAY declare the pending-measurement sources it expects to resolve over its
+# lifetime in ``<thread>/BRIEF.md`` YAML frontmatter. This is a REPORTING AID
+# only — it has NO effect on the pending-marker gate itself (an undeclared
+# marker still gates; a declared-but-never-written source is not a defect).
+# The pending-marker critics use the declared source LABELS to report which
+# declared sources are already resolved vs. still outstanding.
+#
+# The validator/resolver are modeled on the ``spec_ref`` / ``code_ref``
+# companion-input pattern (:func:`_validate_companion_ref` /
+# :func:`resolve_spec_ref`) — the parsing/validation lives HERE (the module
+# that owns BRIEF frontmatter), not in a bespoke parser inside
+# ``pending_marker.py``. Unlike the companion-ref string/glob shape, a
+# pending source needs a small dedicated model — a bare label OR a
+# ``{source, expected_by}`` mapping — so it carries its own Pydantic type.
+
+
+class PendingSource(BaseModel):
+    """One declared pending-measurement source (issue #842).
+
+    A reporting-aid entry from a thread ``BRIEF.md``'s ``pending_sources``
+    frontmatter. ``source`` is the label a ``[PENDING <source>]`` body
+    marker names (a benchmark-run id, a vendor name, "Q3 earnings call");
+    ``expected_by`` is an optional free-form note on when it is expected to
+    resolve (a date, a milestone). Neither field gates anything.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(
+        ...,
+        description=(
+            "The pending source label — matches the ``<source>`` of a "
+            "``[PENDING <source>]`` body marker. Non-empty."
+        ),
+    )
+    expected_by: Optional[str] = Field(
+        None,
+        description=(
+            "Optional free-form note on when the value is expected to "
+            "resolve (a date, a milestone). Purely informational."
+        ),
+    )
+
+
+class PendingSourcesTypeError(ValueError):
+    """Raised when ``pending_sources`` is declared with the wrong shape (issue #842).
+
+    A distinguishable ``ValueError`` subclass mirroring
+    :class:`CompanionRefTypeError`: it lets the lenient resolver
+    (:func:`resolve_pending_sources`) tell "the whole BRIEF is
+    structurally invalid" apart from "the ``pending_sources`` block itself
+    is malformed" (a declared-but-broken reporting knob). Because it
+    subclasses ``ValueError``, strict callers still treat a malformed
+    ``pending_sources`` as a hard schema error.
+    """
+
+
+def _validate_pending_sources(
+    raw: Any, field_path: str = "pending_sources"
+) -> Optional[List[PendingSource]]:
+    """Validate a raw ``pending_sources`` frontmatter value (issue #842).
+
+    Accepts a YAML list whose elements are each EITHER a bare non-empty
+    string (the common case — normalized to ``PendingSource(source=...)``)
+    OR a mapping with a required non-empty ``source`` and an optional
+    ``expected_by``. Normalizes to ``Optional[List[PendingSource]]``.
+
+    Normalization rules (mirroring :func:`_validate_companion_ref`'s
+    declared-but-broken posture):
+
+    - ``raw is None`` → ``None`` (undeclared; reporting tier silent-off).
+    - ``raw`` an empty list → ``None`` (declared-but-empty is off).
+    - ``raw`` a list → one :class:`PendingSource` per element, preserving
+      declaration order. A malformed element (empty string, a mapping with
+      no/empty ``source``, an unknown key, or any non-str/non-mapping
+      value) raises :class:`PendingSourcesTypeError` (the whole knob is
+      poisoned, not the single element skipped).
+    - ``raw`` any other type (string, int, dict, …) → raise
+      :class:`PendingSourcesTypeError`.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise PendingSourcesTypeError(
+            f"BRIEF.{field_path} must be a list of source labels or "
+            f"{{source, expected_by}} mappings; got "
+            f"{type(raw).__name__}: {raw!r} — suggested fix: write it as a "
+            f"YAML list, e.g. `pending_sources: [benchmark-run-2024-11, "
+            f"vendor-quote-acme]`."
+        )
+    if len(raw) == 0:
+        return None
+    out: List[PendingSource] = []
+    for j, item in enumerate(raw):
+        if isinstance(item, str):
+            if not item.strip():
+                raise PendingSourcesTypeError(
+                    f"BRIEF.{field_path}[{j}] is an empty source label — "
+                    f"every entry must name a non-empty pending source."
+                )
+            out.append(PendingSource(source=item.strip()))
+            continue
+        if isinstance(item, dict):
+            source = item.get("source")
+            if not isinstance(source, str) or not source.strip():
+                raise PendingSourcesTypeError(
+                    f"BRIEF.{field_path}[{j}] must have a non-empty string "
+                    f"`source` key; got {item!r}."
+                )
+            expected_by = item.get("expected_by")
+            # ``expected_by`` is a free-form informational note. YAML parses
+            # a bare date (``2026-08-15``) as a ``datetime.date`` and a bare
+            # number as an int/float — coerce any scalar to its string form
+            # rather than rejecting it; reject only collection types (a list
+            # or mapping is a shape error, not a note).
+            if isinstance(expected_by, (list, dict)):
+                raise PendingSourcesTypeError(
+                    f"BRIEF.{field_path}[{j}].expected_by must be a scalar "
+                    f"note (a date, milestone, or string) when present; got "
+                    f"{type(expected_by).__name__}."
+                )
+            unknown = set(item) - {"source", "expected_by"}
+            if unknown:
+                raise PendingSourcesTypeError(
+                    f"BRIEF.{field_path}[{j}] has unknown key(s) "
+                    f"{sorted(unknown)}; only `source` and `expected_by` "
+                    f"are recognized."
+                )
+            out.append(
+                PendingSource(
+                    source=source.strip(),
+                    expected_by=(
+                        str(expected_by).strip()
+                        if expected_by is not None
+                        else None
+                    ),
+                )
+            )
+            continue
+        raise PendingSourcesTypeError(
+            f"BRIEF.{field_path}[{j}] must be a source label string or a "
+            f"{{source, expected_by}} mapping; got "
+            f"{type(item).__name__}: {item!r}."
+        )
+    return out
+
+
+def resolve_pending_sources(thread_dir: Path) -> List[PendingSource]:
+    """Read the optional ``pending_sources`` declarations for ``thread_dir``.
+
+    The companion-input resolver for ``anvil/lib/pending_marker.py`` (issue
+    #842), modeled on :func:`resolve_spec_ref`'s lenient posture. Reads
+    ``<thread_dir>/BRIEF.md`` (the thread-level freeform-prose surface, the
+    same one :func:`load_recommendation_target` reads), extracts its YAML
+    frontmatter via the shared :func:`_extract_frontmatter`, and validates
+    the ``pending_sources`` block via :func:`_validate_pending_sources`.
+
+    Lenient by design — never raises. Returns ``[]`` on EVERY absence /
+    malformed path (no BRIEF file, no frontmatter, no ``pending_sources``
+    key, an empty list, OR a malformed declaration): ``pending_sources`` is
+    a pure reporting aid, so a broken declaration degrades to "no declared
+    sources" rather than crashing the pending-marker gate (which functions
+    identically with or without declared sources). The distinguishable
+    :class:`PendingSourcesTypeError` is still raised by
+    :func:`_validate_pending_sources` for any strict caller that wants to
+    surface a malformed knob.
+    """
+    if not isinstance(thread_dir, Path):
+        try:
+            thread_dir = Path(thread_dir)
+        except Exception:
+            return []
+    brief_path = thread_dir / BRIEF_FILENAME
+    if not brief_path.is_file():
+        return []
+    try:
+        text = brief_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    fm = _extract_frontmatter(text)
+    if fm is None:
+        return []
+    try:
+        parsed = _validate_pending_sources(fm.get("pending_sources"))
+    except PendingSourcesTypeError:
+        # Declared-but-broken reporting knob — degrade to "no declared
+        # sources" (the gate is unaffected either way).
+        return []
+    return parsed or []
+
+
 def load_recommendation_target_resolved(
     thread_dir: Path,
     project_dir: Optional[Path] = None,
@@ -5058,6 +5254,8 @@ __all__ = [
     "MAX_DIM",
     "MEMO_ARTIFACT_TYPES",
     "MIN_DIM",
+    "PendingSource",
+    "PendingSourcesTypeError",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
     "ResolvedCodeRef",
@@ -5083,6 +5281,7 @@ __all__ = [
     "load_rubric_overrides_for_slug",
     "resolve_code_ref",
     "resolve_corpus_dirs",
+    "resolve_pending_sources",
     "resolve_rhetoric_rules",
     "resolve_spec_ref",
     "resolve_subject_voice_docs",

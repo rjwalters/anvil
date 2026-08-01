@@ -700,6 +700,23 @@ def _parse_overfull_boxes(log_text: str, threshold_pt: float) -> list[dict]:
     return hits
 
 
+# Well-formed pending-marker span (issue #842). A ``[PENDING <source>]`` /
+# ``[PENDING: <source>]`` placeholder is a *permitted* honest disclosure (a
+# value that does not exist yet), NOT a generic incompleteness placeholder —
+# so a placeholder-pattern hit that falls inside a well-formed pending marker
+# is excluded from Check 6. Kept as a local literal (rather than importing
+# ``pending_marker``) to avoid coupling the render gate's import graph to it;
+# the two regexes are documented to agree.
+_RENDER_GATE_PENDING_MARKER_RE = re.compile(
+    r"\[PENDING(?:\s*:\s*|\s+)[^\]\n]+?\s*\]"
+)
+
+
+def _pending_marker_spans(line: str) -> list[tuple[int, int]]:
+    """(start, end) offsets of every well-formed pending marker in ``line``."""
+    return [m.span() for m in _RENDER_GATE_PENDING_MARKER_RE.finditer(line)]
+
+
 def _scan_placeholders(
     source_paths: Iterable[Path],
     patterns: tuple[str, ...],
@@ -709,6 +726,11 @@ def _scan_placeholders(
     Each match: ``{pattern, path, line, match}``. Files that fail to read
     (binary, missing) are silently skipped — the gate's job is to surface
     matches, not to fail on a malformed input.
+
+    Well-formed ``[PENDING <source>]`` markers (issue #842) are carved out:
+    a placeholder hit whose span falls inside a pending marker on the same
+    line is skipped, so the generic placeholder scan never double-flags (and
+    hard-fails on) a marker this convention explicitly permits.
     """
     if not patterns:
         return []
@@ -722,17 +744,24 @@ def _scan_placeholders(
         except (UnicodeDecodeError, OSError):
             continue
         for lineno, line in enumerate(text.splitlines(), start=1):
+            pending_spans = _pending_marker_spans(line)
             for pattern_str, regex in compiled:
                 m = regex.search(line)
-                if m:
-                    hits.append(
-                        {
-                            "pattern": pattern_str,
-                            "path": str(path),
-                            "line": lineno,
-                            "match": m.group(0),
-                        }
-                    )
+                if not m:
+                    continue
+                # Carve-out: skip a hit that overlaps a well-formed pending
+                # marker (issue #842).
+                ms, me = m.span()
+                if any(ps <= ms and me <= pe for ps, pe in pending_spans):
+                    continue
+                hits.append(
+                    {
+                        "pattern": pattern_str,
+                        "path": str(path),
+                        "line": lineno,
+                        "match": m.group(0),
+                    }
+                )
     return hits
 
 
