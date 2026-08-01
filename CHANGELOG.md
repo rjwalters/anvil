@@ -115,6 +115,28 @@
 
 ### Fixed
 
+- **`numeric_consistency`'s percent check no longer pairs unrelated
+  numbers sharing a paragraph** (#854). The `X% of` proportion check
+  validated a percent claim against the NEAREST fraction shape in its
+  same-paragraph (±1) window regardless of subject, so
+  `anvil/lib/numeric_consistency.py::_check_proportion_claim` produced
+  a recurring `percent_mismatch` false positive at the censusapi
+  consumer: "An ink gate resolves 27.3% of readable cells" sharing a
+  paragraph with "18/18 pages of the test enumeration district
+  registered correctly" computed `18/18 = 100% != 27.3%`, even though
+  the two numbers describe different subjects (cells vs. pages). A
+  percent claim now only pairs with a fraction that shares a
+  **lexical anchor** — a content word present in both the claim's
+  sentence and the fraction's sentence, via new
+  `_anchor_tokens`/`_sentence_span` helpers — UNLESS some fraction in
+  the window already numerically satisfies the claim within tolerance
+  (that "prefer a matching pair over a mismatching one" behavior is
+  unchanged and still checked first, regardless of subject). A window
+  with only unrelated-subject fractions now silently skips instead of
+  flagging, matching the module's documented FP-averse/conservative
+  contract; a genuine same-subject mismatch across sentences still
+  fires.
+
 - **`vocab_reminder`'s shipped-default word list now reachable in installed
   consumer repos** (#800). `anvil/lib/vocab_reminder.py`'s
   `DEFAULT_WORD_LIST_PATH` resolves relative to `__file__` as
