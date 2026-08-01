@@ -151,6 +151,36 @@ The dim 6 audit-side justification (in the audit's `verdict.md` and `findings.md
 
 The deduction is applied entirely via auditor judgment — there is no automated `refs/` parsing in v0. See `commands/proposal-audit.md` §Procedure step 7 (refs back-check sub-step for non-cost claims) for the auditor-side procedure, `commands/proposal-review.md` §Procedure step 4 for the light reviewer-side mention, and `commands/proposal-draft.md` §Procedure step 3 for the drafter-side ingestion contract.
 
+## Dim 6 — `cost_basis` calibration
+
+**Trigger** (issue #840). The thread-level `<thread>/BRIEF.md`'s YAML frontmatter may declare a `cost_basis` key (`quoted` / `estimated` / `none`; default `quoted` when absent). This routes how dimension 6 (Cost credibility, weight 5) is scored and how `proposal-audit` step 7's sourceability walk behaves — the missing axis the pre-#840 rubric conflated with `customer_kind`: **whether priced claims have external sources at all**, orthogonal to who the customer is (an `internal` build spec still answers to a budget with priced lines that may or may not be vendor-sourced). Not every buildable-system proposal is a hardware system with vendor-sourceable BOM lines — a partnership/integration proposal (a data-backed challenge to another company) has no hardware BOM and no vendor quotes at all. The reviewer reads the value via `anvil/skills/proposal/lib/project_brief.py::load_cost_basis(thread_dir)` and dispatches per the rules below.
+
+- **`quoted`** (default; byte-identical to pre-#840 behavior). Dim 6 scores as written in the dimension table above — figures need a basis (planning range, vendor list price, quote), and `proposal-audit` step 7 back-checks BOM lines against `refs/` vendor quotes and datasheets per the existing sourceability walk.
+- **`estimated`**. The proposal has no vendor quotes — every priced figure is an internal engineering-effort estimate (`templates/proposal.tex.j2` emits estimate-labelled captions — "Materials subtotal (estimated)", an "ESTIMATE BASIS" preface, and an "ESTIMATE, NOT A QUOTE" cost-notes caption per issue #840). Dim 6 scores on **estimate-basis consistency**, not vendor sourceability:
+  - **Full weight (5/5)** — every priced figure is explicitly captioned as an estimate, the estimate basis is named (comparable prior work, engineering judgment, a named estimator) and internally consistent, and the arithmetic holds.
+  - **~75%** — figures are captioned as estimates and arithmetic holds, but the estimate basis is thin (named but not substantiated — e.g. "engineering judgment" with no comparable cited).
+  - **~50%** — some figures lack the estimate caption, or the basis is inconsistent across sections (one figure cites a comparable, another states nothing).
+  - **~25%** — figures read as if sourced (no estimate captioning) despite `cost_basis: estimated`, creating a misleading impression of vendor-backed pricing.
+  - **0** — arithmetic fails, or a figure is presented as a sourced quote it is not (a fabrication risk in an outward-facing document — this SHOULD also be considered a critical-flag-2 candidate per the audit's estimate-basis check).
+  - An unsourced figure is **NOT** a sourceability defect under this mode — the absence of a vendor quote is expected and correctly labelled, not a gap.
+- **`none`**. There is no hardware BOM and no vendor quotes at all (`templates/proposal.tex.j2` drops the priced-table section entirely and emits a "Cost Basis" section instead, deferring commercial terms to Open Decisions per issue #840). Dim 6 scores **full weight (5/5) by default** unless the proposal makes an un-deferred priced claim elsewhere in the body (a stray dollar figure outside §10 Open Decisions) — that is a contract violation of the declared `cost_basis: none` and should be penalized as if the figure were unsourced under `quoted` (the drafter cannot have it both ways: declare no pricing and then price something anyway). `proposal-audit` step 7's vendor-quote back-check sub-step does not run under this mode (see `commands/proposal-audit.md` step 7).
+
+**Interaction with the refs back-check (dim 6 + dim 4).** The §"Refs back-check (dim 6 + dim 4)" sub-rule above extends dim 6's scope to non-cost claims (scope, deliverability, comparable-project claims) sourced against `refs/` source-of-truth materials. That extension is **unaffected** by `cost_basis` — a `cost_basis: none` proposal can still make deliverability or comparable-project claims that back-check against `refs/`; only the **cost-line** portion of dim 6's sourceability walk is inactive under `none` (and reads through the estimate-basis lens instead of the vendor-quote lens under `estimated`).
+
+**Suffix shape (mandatory)**. The reviewer's dim 6 `scoring.md` justification MUST cite the resolved `cost_basis` value when it is `estimated` or `none` so the audit trail records why the calibration fired. The verbatim suffix appended to the dim 6 `scoring.md` cell is:
+
+```
+cost_basis: estimated — scoring dim 6 on estimate-basis consistency, not vendor sourceability
+```
+
+or
+
+```
+cost_basis: none — no hardware BOM / vendor quotes; dim 6 scores full weight absent a stray un-deferred priced claim
+```
+
+**Backwards-compat — byte-identical when the trigger value is absent or `quoted`**. This calibration is byte-identically inert when any of the following hold: no `<thread>/BRIEF.md` exists; the BRIEF has no YAML frontmatter or malformed frontmatter; the frontmatter has no `cost_basis` key; the value is not in the closed set (`quoted` / `estimated` / `none`) — e.g. a typo resolves to `None` and dim 6 scores against the standard calibration verbatim; or the value is explicitly `quoted`. Every other path is byte-identical to pre-#840 behavior.
+
 ## Dim 8 — `recommendation_target: undecided` calibration
 
 **Trigger** (issue #356). When the thread-level `<thread>/BRIEF.md`'s YAML frontmatter declares `recommendation_target: undecided` (the documented default for a fresh proposal thread per `templates/BRIEF.md.example` — *"the job of v1 is to resolve the open architectural / scope / cost decisions, not to defend a pre-committed recommendation"*), the reviewer scores dim 8 (Open decisions, weight 4) on **open-decision framing clarity** rather than the standard "are open decisions tracked honestly" reading. The reviewer reads the value via `anvil/skills/proposal/lib/project_brief.py::load_recommendation_target(thread_dir)` and dispatches per the rules below.
@@ -232,7 +262,7 @@ Suggested calibration:
 A critical flag is an issue severe enough that **the proposal cannot proceed as specified**, regardless of how well other dimensions score. The four named flags below are the disqualifiers for a buildable-system proposal; three of the four are **audit-owned** (`kind: tool_evidence` — set by `proposal-audit` from externally-verifiable checks per `anvil/lib/snippets/audit.md`). This list is the baseline, not a closed set.
 
 1. **Misses a stated hard constraint** *(review-owned)* — the design violates a constraint the customer declared non-negotiable (e.g. visible conduit when invisibility was required; sub-spec bandwidth when 10 Gbps was the floor). The proposal fails its own brief.
-2. **Cost estimate not credible / not sourceable** *(audit-owned)* — BOM or labor figures are unsourceable, internally arbitrary, or off by an order of magnitude. The auditor walks every priced line for a basis (planning range, vendor list price, quote) and flags any that has none or is implausible.
+2. **Cost estimate not credible / not sourceable** *(audit-owned)* — BOM or labor figures are unsourceable, internally arbitrary, or off by an order of magnitude. The auditor walks every priced line for a basis (planning range, vendor list price, quote) and flags any that has none or is implausible. Scored per the operative `cost_basis` (see §"Dim 6 — `cost_basis` calibration" below): under `estimated`, an unsourced-but-captioned internal estimate is expected, not a flag; under `none`, there is no BOM to flag unless the proposal makes a stray un-deferred priced claim anyway.
 3. **Not deliverable as resourced** *(audit/review-owned)* — there is no real path to the staff / contractors / tools / skills needed to build and maintain the system as proposed. The "workshop" / delivery-capability story is absent or hand-waved, so the proposal cannot be executed by the party it is pitched to.
 4. **Internal inconsistency** *(audit-owned)* — the proposal contradicts itself on a verifiable fact: optics link budget vs. stated run length; BOM quantities vs. topology (e.g. 7 spokes should imply 14 + 2 uplink = 16 transceivers); section subtotals or the project total that do not add up.
 
