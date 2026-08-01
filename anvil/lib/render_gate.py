@@ -207,6 +207,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
+from anvil.lib.pending_marker import mask_well_formed_markers
 from anvil.lib.review_schema import (
     CriticalFlag,
     Finding,
@@ -3129,8 +3130,19 @@ def _gate_memo(
             else DEFAULT_MEMO_PLACEHOLDER_PATTERNS
         )
         memo_source = memo_md.read_text(encoding="utf-8", errors="replace")
+        # Carve-out (issue #842): a well-formed `[PENDING <source>]` marker
+        # is a first-class, non-defect "known outstanding dependency"
+        # convention (anvil/lib/pending_marker.py) — mask well-formed
+        # marker spans out before pattern-matching so this generic
+        # incompleteness scan never double-flags one. Masking preserves
+        # offsets/line numbers (blanks characters, keeps newlines) and
+        # leaves a MALFORMED marker ([PENDING] / [PENDING   ]) untouched —
+        # that IS a defect and stays visible to any matching pattern. The
+        # <!-- anvil-lint-disable: ... --> directive syntax masking never
+        # touches HTML comments, so suppression detection is unaffected.
+        scan_source = mask_well_formed_markers(memo_source)
         active_hits, suppressed_hits = _scan_memo_placeholders(
-            memo_source, memo_patterns
+            scan_source, memo_patterns
         )
         if active_hits:
             failed.add(DIM_MEMO_PLACEHOLDERS)

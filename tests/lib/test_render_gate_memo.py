@@ -45,6 +45,7 @@ from anvil.lib.render_gate import (
     _select_memo_engine,
     gate,
 )
+from anvil.lib.pending_marker import mask_well_formed_markers
 from anvil.lib.review_schema import Kind, Review
 
 
@@ -1630,6 +1631,82 @@ def test_gate_memo_placeholder_scan_suppressed(
         if f.gate == DIM_MEMO_PLACEHOLDERS and f.severity == "info"
     ]
     assert len(info_hits) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Check 6 pending-marker carve-out (issue #842)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_memo_placeholders_well_formed_pending_marker_masked():
+    """A well-formed [PENDING <source>] marker, once masked, never trips
+    the generic placeholder scan (the module-level unit-test half of the
+    carve-out — see the gate()-level tests below for the integration
+    half)."""
+    source = "# Memo\nProse with [PENDING Q3 earnings report] still open.\n"
+    masked = mask_well_formed_markers(source)
+    active, suppressed = _scan_memo_placeholders(
+        masked, DEFAULT_MEMO_PLACEHOLDER_PATTERNS
+    )
+    assert active == [] and suppressed == []
+
+
+def test_scan_memo_placeholders_malformed_pending_marker_not_masked():
+    """A malformed marker ([PENDING] — no source) is NOT masked; it stays
+    visible to any placeholder pattern that happens to match it."""
+    source = "# Memo\nProse with [PENDING] and nothing else.\n"
+    masked = mask_well_formed_markers(source)
+    # Masking leaves the malformed marker's literal text untouched.
+    assert "[PENDING]" in masked
+
+
+def test_gate_memo_placeholder_scan_pending_marker_not_flagged(
+    monkeypatch, memo_version_dir, fake_pdfinfo_path
+):
+    """memo.md containing only a well-formed [PENDING <source>] marker
+    (no other placeholder) → Check 6 passes clean."""
+    _mock_full_render_chain(monkeypatch)
+    memo_md = memo_version_dir / "bessemer.md"
+    memo_md.write_text(
+        "# Memo\nStill waiting on [PENDING Q3 earnings report].\n",
+        encoding="utf-8",
+    )
+    r = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    assert DIM_MEMO_PLACEHOLDERS not in r.failed_gates
+    assert not any(
+        f.gate == DIM_MEMO_PLACEHOLDERS for f in r.findings
+    )
+
+
+def test_gate_memo_placeholder_scan_pending_marker_mixed_with_tbd(
+    monkeypatch, memo_version_dir, fake_pdfinfo_path
+):
+    """A doc mixing a legitimate [PENDING ...] marker with an unrelated
+    [TBD] placeholder → only [TBD] fails the gate (issue #842 edge case)."""
+    _mock_full_render_chain(monkeypatch)
+    memo_md = memo_version_dir / "bessemer.md"
+    memo_md.write_text(
+        "# Memo\n"
+        "Still waiting on [PENDING Q3 earnings report].\n"
+        "Unrelated gap here [TBD].\n",
+        encoding="utf-8",
+    )
+    r = gate(
+        kind="memo",
+        version_dir=memo_version_dir,
+        pdfinfo_path=fake_pdfinfo_path,
+    )
+    assert DIM_MEMO_PLACEHOLDERS in r.failed_gates
+    placeholder_findings = [
+        f for f in r.findings if f.gate == DIM_MEMO_PLACEHOLDERS
+    ]
+    assert len(placeholder_findings) == 1
+    assert "TBD" in placeholder_findings[0].message
+    assert "PENDING" not in placeholder_findings[0].message
 
 
 # ---------------------------------------------------------------------------

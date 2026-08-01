@@ -41,6 +41,37 @@ following conditions are evaluated in order — the **first** match wins:
 Defaults match the rationale in #27: ``window=1``, ``lookback=2`` — two
 consecutive rounds within ±1 trigger ``STALLED``.
 
+Pending-dependency discrimination (issue #842)
+-----------------------------------------------
+
+A second additive ``CriticalFlag.type`` value, ``"pending_dependency"``
+(:data:`PENDING_DEPENDENCY_FLAG_TYPE`), receives its own special-cased
+resolution — but the opposite treatment from ``no_go``. Where ``no_go``
+is the highest-priority terminator (it short-circuits everything), a
+``pending_dependency`` flag is the *lowest*-priority signal: it marks a
+**known, tracked** outstanding dependency (see
+``anvil/lib/pending_marker.py``, the ``[PENDING <source>]`` marker
+convention) that must stay visible for a terminal-state check to query,
+but must NEVER be scored as a defect and must NEVER force
+``Verdict.BLOCK`` the way an ordinary critical flag does.
+
+Concretely: ``pending_dependency``-typed entries are excluded from the
+"any blocking critical flag present" computation
+(:func:`_has_blocking_critical_flag`) used by both
+``decide_termination`` and ``anvil/lib/critics.py``'s
+``compute_verdict`` / ``aggregate``. A review whose ONLY critical flags
+are ``pending_dependency``-typed advances on score alone (subject to
+every other termination rule); a ``pending_dependency`` flag
+co-occurring with an ordinary critical flag does NOT suppress that
+ordinary flag's ``BLOCK`` — only the ``pending_dependency`` entries
+themselves are exempted. The flags remain fully visible in
+``AggregatedReview.critical_flags`` (deduplication and surfacing are
+unchanged), so a terminal-state check added by a Phase 2-5 sub-issue of
+#841 can query "any unresolved pending markers?" via
+:func:`_has_pending_dependency_flag` independent of the score/verdict
+path this module resolves. This issue ships the primitive only — no
+skill's terminal-state (READY/AUDITED) definition changes here.
+
 NO-GO discrimination (issue #559)
 ---------------------------------
 
@@ -88,6 +119,28 @@ TERMINATION_NO_GO = "NO_GO"
 # ``anvil/lib/snippets/state_machine.md`` §"Terminal verdict: NO-GO".
 NO_GO_FLAG_TYPE = "no_go"
 
+# The framework-reserved critical-flag type that marks a known, tracked
+# outstanding dependency (issue #842 — see ``anvil/lib/pending_marker.py``
+# and the module docstring §"Pending-dependency discrimination"). Additive;
+# no schema_version bump (follows the NO_GO_FLAG_TYPE precedent).
+PENDING_DEPENDENCY_FLAG_TYPE = "pending_dependency"
+
+# Critical-flag types that are EXCLUDED from the generic "any blocking
+# critical flag" computation (see :func:`_has_blocking_critical_flag`).
+# ``no_go`` is excluded here because it is resolved by its own
+# higher-priority branch in ``decide_termination`` / ``_compute_verdict_impl``
+# BEFORE the generic block check ever runs — excluding it from this set has
+# no observable effect on any no_go path (the no_go branch always returns
+# first) but keeps the set's membership self-documenting.
+# ``pending_dependency`` is excluded because, unlike every other flag type,
+# it must NEVER force ``Verdict.BLOCK`` (issue #842).
+_NON_BLOCKING_FLAG_TYPES = frozenset({NO_GO_FLAG_TYPE, PENDING_DEPENDENCY_FLAG_TYPE})
+
+
+def _flag_type(cf: Union[str, CriticalFlag]) -> str:
+    """Return the type tag of a critical flag in either accepted shape."""
+    return cf.type if isinstance(cf, CriticalFlag) else cf
+
 
 def _has_no_go_flag(
     critical_flags: Optional[List[Union[str, CriticalFlag]]],
@@ -100,14 +153,46 @@ def _has_no_go_flag(
     """
     if not critical_flags:
         return False
-    for cf in critical_flags:
-        if isinstance(cf, CriticalFlag):
-            if cf.type == NO_GO_FLAG_TYPE:
-                return True
-        elif isinstance(cf, str):
-            if cf == NO_GO_FLAG_TYPE:
-                return True
-    return False
+    return any(_flag_type(cf) == NO_GO_FLAG_TYPE for cf in critical_flags)
+
+
+def _has_pending_dependency_flag(
+    critical_flags: Optional[List[Union[str, CriticalFlag]]],
+) -> bool:
+    """Return True when ``critical_flags`` contains a ``pending_dependency``-typed entry.
+
+    The pending-dependency analog of :func:`_has_no_go_flag` (issue #842).
+    A Phase 2-5 terminal-state check queries this directly (independent of
+    the score/verdict path) to decide whether READY/AUDITED promotion
+    should wait on an outstanding ``[PENDING <source>]`` marker — see the
+    module docstring §"Pending-dependency discrimination".
+    """
+    if not critical_flags:
+        return False
+    return any(
+        _flag_type(cf) == PENDING_DEPENDENCY_FLAG_TYPE for cf in critical_flags
+    )
+
+
+def _has_blocking_critical_flag(
+    critical_flags: Optional[List[Union[str, CriticalFlag]]],
+) -> bool:
+    """Return True when ``critical_flags`` contains any flag OTHER than the
+    framework-reserved non-blocking types (``no_go``, ``pending_dependency``
+    — see :data:`_NON_BLOCKING_FLAG_TYPES`).
+
+    This is the generic "should this force Verdict.BLOCK" predicate used by
+    both :func:`decide_termination` and ``anvil/lib/critics.py``'s
+    ``compute_verdict`` / ``aggregate``. A list containing ONLY
+    ``pending_dependency`` (and/or ``no_go``) entries returns ``False`` — the
+    caller must still check :func:`_has_no_go_flag` separately for NO-GO's
+    higher-priority short-circuit.
+    """
+    if not critical_flags:
+        return False
+    return any(
+        _flag_type(cf) not in _NON_BLOCKING_FLAG_TYPES for cf in critical_flags
+    )
 
 
 def check_stable(
@@ -178,8 +263,12 @@ def decide_termination(
        ``"no_go"``). The legacy ``any_critical`` bool path NEVER triggers
        NO-GO — callers that have not migrated to the typed list continue
        to route through ``CRITICAL_FLAG`` exactly as before.
-    2. ``any_critical`` (or any non-``no_go`` critical flag in
-       ``critical_flags``) -> ``(BLOCK, "CRITICAL_FLAG")``
+    2. ``any_critical`` (or any critical flag in ``critical_flags`` other
+       than the framework-reserved ``no_go`` / ``pending_dependency`` types
+       — see :func:`_has_blocking_critical_flag`) -> ``(BLOCK,
+       "CRITICAL_FLAG")``. A ``pending_dependency``-typed flag (issue #842)
+       NEVER reaches this branch on its own — it is visible in the caller's
+       aggregated ``critical_flags`` but excluded from this computation.
     3. ``history[-1] >= threshold`` -> ``(ADVANCE, "THRESHOLD_MET")``
     4. ``iteration >= max_iterations`` -> ``(REVISE, "MAX_ITERATIONS")``.
        The verdict stays ``REVISE`` (not ``STALLED``) because hitting the cap
@@ -200,8 +289,11 @@ def decide_termination(
     any_critical:
         Whether the latest review surfaced any critical flag. Legacy
         pre-#559 shape; cannot trigger NO-GO on its own. When
-        ``critical_flags`` is also passed, ``any_critical`` is derived from
-        it (``bool(critical_flags)``) and the explicit kwarg is ignored.
+        ``critical_flags`` is also passed, the effective blocking signal is
+        ``_has_blocking_critical_flag(critical_flags) or any_critical`` (issue
+        #842) — a ``critical_flags`` list containing ONLY framework-reserved
+        non-blocking types (``no_go``, ``pending_dependency``) does not, by
+        itself, set the derived signal.
     iteration:
         Current iteration number (1-indexed). The iteration that just
         produced ``history[-1]``.
@@ -230,8 +322,12 @@ def decide_termination(
     # ``critical_flags`` is empty (per-dimension ``Score.critical`` rolls up
     # into ``any_critical`` without producing a top-level ``CriticalFlag``).
     # The composite contract is: NO-GO fires only from the typed list;
-    # generic CRITICAL_FLAG fires from EITHER the typed list OR the bool.
-    derived_any_critical = bool(critical_flags) or bool(any_critical)
+    # generic CRITICAL_FLAG fires from EITHER the typed list (excluding the
+    # framework-reserved non-blocking types — no_go, pending_dependency; see
+    # _has_blocking_critical_flag, issue #842) OR the bool.
+    derived_any_critical = _has_blocking_critical_flag(critical_flags) or bool(
+        any_critical
+    )
 
     # 1. NO-GO short-circuits everything (issue #559). Highest priority:
     #    the evaluator has concluded the thesis itself fails. Only fires
@@ -267,6 +363,7 @@ __all__ = [
     "TERMINATION_MAX_ITERATIONS",
     "TERMINATION_NO_GO",
     "NO_GO_FLAG_TYPE",
+    "PENDING_DEPENDENCY_FLAG_TYPE",
     "check_stable",
     "decide_termination",
 ]

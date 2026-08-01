@@ -4,6 +4,38 @@
 
 ### Added
 
+- **`[PENDING <source>]` marker primitive** (#842, phase 1 of the #841
+  epic). A first-class, framework-level convention for a **known,
+  tracked** outstanding dependency — distinct from a generic
+  incompleteness marker (`TODO` / `[TBD]`), which must never be scored
+  as a defect but must still gate terminal state until resolved.
+  `anvil/lib/pending_marker.py` (new module) detects well-formed
+  `[PENDING <source>]` markers vs malformed ones (`[PENDING]` with no
+  source — a genuine defect), supports a `--blocking` CLI mode, writes a
+  `<thread>.{N}.pending/_review.json` sidecar via `staged_sidecar`, and
+  honors `<!-- anvil-lint-disable: pending_marker -->` suppression — the
+  same shape as `numeric_consistency.py` (#462). The schema gains an
+  additive `CriticalFlag.type` value, `"pending_dependency"` (no
+  `schema_version` bump, following the `no_go` precedent from #559);
+  `anvil/lib/critics.py::compute_verdict`/`aggregate` and
+  `anvil/lib/convergence.py::decide_termination` resolve it distinctly
+  from an ordinary critical flag — visible in
+  `AggregatedReview.critical_flags` but explicitly EXCLUDED from forcing
+  `Verdict.BLOCK` and from dim-score deduction, so a future
+  terminal-state check can query it independently
+  (`_has_pending_dependency_flag`). `anvil/lib/project_brief.py` gains an
+  optional `pending_sources` frontmatter block
+  (`{source, expected_by}` pairs) and `resolve_pending_sources`, which
+  cross-references declared sources against actual body markers — the
+  same declared/undeclared/declared-but-missing/partial-resolve
+  activation contract as `spec_ref` (#686). `anvil/lib/render_gate.py`
+  Check 6 (the memo placeholder scan) gains a carve-out
+  (`mask_well_formed_markers`) so a well-formed `[PENDING <source>]`
+  marker is never double-flagged as a generic placeholder. This issue
+  ships the primitive only — no skill's `*-review.md`/`*-audit.md`
+  commands or terminal-state definition change; per-skill adoption is
+  Phase 2-5 of #841.
+
 - **memo-review: version-drift check** (#746). New step 4m invokes
   `anvil/skills/memo/lib/version_drift.py` (pure-stdlib, deterministic)
   to compare `<thread>.{N}/` against `<thread>.{N-1}/` (and, when
