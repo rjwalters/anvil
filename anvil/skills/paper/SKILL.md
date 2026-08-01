@@ -71,8 +71,10 @@ EMPTY → DRAFTED → REVIEWED → REVISED → … → READY → AUDITED
 | `DRAFTED` | Latest `<thread>.{N}/` exists with `main.tex` + `refs.bib` + `_progress.json.draft == done`; no sibling review at the same `N` |
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` |
-| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag (in either `.review/` or `.audit/`) |
-| `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version AND `audit/_progress.json.audit == done` AND `flags.md` records no unresolved critical flag |
+| `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag (in either `.review/` or `.audit/`) AND no unresolved `[PENDING <source>]` marker in the body (`paper-review` step 7's terminal gate) |
+| `AUDITED` | `<thread>.{N}.audit/` exists alongside a `READY` version AND `audit/_progress.json.audit == done` AND `flags.md` records no unresolved critical flag AND no unresolved `[PENDING <source>]` marker in the body (`paper-audit` step 6b's terminal gate) |
+
+> **Pending-marker gate is a separate terminal condition, not a critical flag (issue #842).** An unresolved `[PENDING <source>]` marker (an honest disclosure that a load-bearing value is not yet available — a training run still running, a benchmark queued, a vendor quote not returned) holds the READY and AUDITED transitions *independently of* the "no unresolved critical flag" clause above. It is deliberately **not** implied by that clause: the deterministic `pending_marker` gate (`anvil/lib/pending_marker.py`, wired at `paper-review` step 4g / step 7 and `paper-audit` step 6b) emits the specially-resolved `pending_dependency` flag type, which `convergence.blocking_critical_flags` filters *out* of the ordinary blocking-critical set — so it never forces `advance: false`, never lowers a dimension score (see `rubric.md`), and would be missed by a reader relying on the literal "no unresolved critical flag" wording. Resolving it means replacing the marker with the real value; **never fabricate a value to force the terminal transition.**
 
 Thresholds: **≥35/44** advances. **<35/44** requires revision. Any critical flag (from `.review/` OR `.audit/`) short-circuits regardless of total — block until addressed.
 
