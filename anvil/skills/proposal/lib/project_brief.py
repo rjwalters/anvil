@@ -1,10 +1,24 @@
-"""Thread-level ``BRIEF.md`` reader for the proposal skill (issue #356).
+"""Thread-level ``BRIEF.md`` reader for the proposal skill (issue #356, #840).
 
-This module ships a single load-bearing helper —
-:func:`load_recommendation_target` — that reads the informal-but-now-
-documented ``recommendation_target`` frontmatter key from a proposal
-thread's ``<thread>/BRIEF.md`` and resolves it to a typed signal the
-reviewer can dispatch on at dim 8 (Open decisions) scoring time.
+This module ships two load-bearing helpers:
+
+- :func:`load_recommendation_target` — reads the informal-but-now-
+  documented ``recommendation_target`` frontmatter key from a proposal
+  thread's ``<thread>/BRIEF.md`` and resolves it to a typed signal the
+  reviewer can dispatch on at dim 8 (Open decisions) scoring time.
+- :func:`load_cost_basis` (issue #840) — reads the ``cost_basis``
+  frontmatter key (``quoted`` / ``estimated`` / ``none``) and resolves
+  it to a typed signal the drafter, reviewer, and auditor dispatch on
+  for the priced-table contract and dim 6 (Cost credibility) scoring.
+  Not every proposal is a hardware system with vendor-sourceable BOM
+  lines (e.g. a partnership/integration proposal) — ``cost_basis``
+  makes that axis explicit and orthogonal to ``customer_kind`` (an
+  ``internal`` build spec still answers to a budget with priced lines
+  that may or may not be vendor-sourced).
+
+Both helpers share the same lenient, never-raises, closed-set contract
+documented below for :func:`load_recommendation_target`; the same
+contract applies verbatim to :func:`load_cost_basis`.
 
 Why this lives skill-local
 --------------------------
@@ -89,8 +103,18 @@ _FRONTMATTER_DELIM = "---"
 # promotion is a pure move.
 _RECOGNIZED_RECOMMENDATION_TARGETS = ("invest", "pass", "conditional", "undecided")
 
+# The closed set for `cost_basis` (issue #840). `quoted` is the default and
+# is byte-identical to pre-#840 behavior (vendor-sourced priced BOM);
+# `estimated` signals unsourced internal engineering estimates; `none`
+# signals no hardware BOM / no vendor quotes exist for this proposal at all.
+_RECOGNIZED_COST_BASES = ("quoted", "estimated", "none")
 
-__all__ = ["BRIEF_FILENAME", "load_recommendation_target"]
+
+__all__ = [
+    "BRIEF_FILENAME",
+    "load_recommendation_target",
+    "load_cost_basis",
+]
 
 
 def _extract_frontmatter(text: str) -> Optional[dict]:
@@ -216,5 +240,103 @@ def load_recommendation_target(
     # including booleans, ints, lists, dicts, None, and string typos —
     # falls through to None per the lenient contract.
     if isinstance(value, str) and value in _RECOGNIZED_RECOMMENDATION_TARGETS:
+        return value  # type: ignore[return-value]
+    return None
+
+
+def load_cost_basis(
+    thread_dir: Path,
+) -> Optional[Literal["quoted", "estimated", "none"]]:
+    """Read ``cost_basis`` from a thread-level ``BRIEF.md`` (issue #840).
+
+    Not every buildable-system proposal is a hardware system with
+    vendor-sourceable BOM lines — a partnership/integration proposal (a
+    data-backed challenge to another company, say) has no hardware BOM
+    and no vendor quotes at all. Pre-#840, the skill's template, rubric,
+    and audit all assumed a priced, vendor-sourced BOM unconditionally
+    (the Gossamer LAN worked example's shape), leaving a non-hardware
+    proposal with two bad options: manufacture hardware-shaped line
+    items to satisfy the template, or omit mandated sections and take a
+    structural hit.
+
+    ``cost_basis`` makes the missing axis explicit: **whether priced
+    claims have external sources at all** — orthogonal to
+    ``customer_kind`` (an ``internal`` build spec still answers to a
+    budget with priced lines that may or may not be vendor-sourced).
+
+    Parameters
+    ----------
+    thread_dir
+        The thread root directory (the directory holding ``BRIEF.md``
+        for the thread, e.g., ``<project>/<slug>/``). NOT a version
+        directory.
+
+    Returns
+    -------
+    Optional[Literal["quoted", "estimated", "none"]]
+        The verbatim ``cost_basis`` value when present and in the
+        closed set:
+
+        - ``"quoted"`` — priced lines are (or should be) sourced
+          against vendor quotes / datasheets / planning ranges. This is
+          the default reading when the key is absent — byte-identical
+          to pre-#840 behavior.
+        - ``"estimated"`` — priced lines are unsourced internal
+          engineering-effort estimates; the template emits estimate-
+          labelled captions and dim 6 (Cost credibility) calibrates on
+          estimate-basis consistency rather than vendor sourceability.
+        - ``"none"`` — there is no hardware BOM and no vendor quotes at
+          all; the template drops the priced-table requirement and
+          commercial terms move to Open Decisions.
+
+        ``None`` for every absence / malformed path:
+
+        - ``<thread_dir>/BRIEF.md`` does not exist.
+        - The file exists but has no YAML frontmatter (no opening
+          ``---`` delimiter, missing closing delimiter, malformed
+          YAML).
+        - The frontmatter is a parseable dict but contains no
+          ``cost_basis`` key.
+        - The frontmatter value is not in the closed set (``quoted`` /
+          ``estimated`` / ``none``) — e.g., ``Quoted`` (capitalized),
+          ``vendor``, an integer, a list, a null. Callers fall back to
+          byte-identical pre-#840 behavior (the same as ``"quoted"``)
+          for these noise values.
+
+    Notes
+    -----
+    Lenient by design — never raises. The contract mirrors
+    :func:`load_recommendation_target` exactly: every absence /
+    malformed path resolves to ``None``, preserving byte-identical
+    pre-#840 behavior for any thread that does not declare
+    ``cost_basis``.
+    """
+    if not isinstance(thread_dir, Path):
+        # Defensive: callers may inadvertently pass a string. The helper is
+        # documented to take a Path; convert rather than raise to preserve
+        # the lenient contract.
+        try:
+            thread_dir = Path(thread_dir)
+        except Exception:
+            return None
+
+    brief_path = thread_dir / BRIEF_FILENAME
+    if not brief_path.is_file():
+        return None
+
+    try:
+        text = brief_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    fm = _extract_frontmatter(text)
+    if fm is None:
+        return None
+
+    value = fm.get("cost_basis")
+    # Closed-set membership check. Anything not on the recognized list —
+    # including booleans, ints, lists, dicts, None, and string typos —
+    # falls through to None per the lenient contract.
+    if isinstance(value, str) and value in _RECOGNIZED_COST_BASES:
         return value  # type: ignore[return-value]
     return None

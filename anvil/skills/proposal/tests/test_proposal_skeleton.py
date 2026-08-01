@@ -335,6 +335,28 @@ class TestTemplate(unittest.TestCase):
         self.assertIn("4A6FA5", self.text)
         self.assertIn("signature_color", self.text)
 
+    def test_cost_basis_knob(self):
+        # Issue #840: `cost_basis` (quoted | estimated | none) gates the
+        # priced-table contract in section 7. Default is `quoted`, byte-
+        # identical to pre-#840 behavior (the Gossamer LAN worked example).
+        self.assertIn("cost_basis", self.text)
+        self.assertTrue(
+            re.search(r'cost_basis[^\n]*default\("quoted"\)', self.text),
+            "cost_basis must default to quoted in the template",
+        )
+        self.assertIn("estimated", self.text)
+
+    def test_cost_basis_none_drops_bom_section(self):
+        # `cost_basis: none` swaps section 7 for a lighter "Cost Basis"
+        # section that defers commercial terms to Open Decisions (§10)
+        # instead of requiring a priced BOM.
+        self.assertIn("Cost Basis", self.text)
+        self.assertTrue(
+            re.search(r'cost_basis_resolved\s*==\s*"none"', self.text)
+            or re.search(r'cost_basis_resolved\s*!=\s*"none"', self.text),
+            "template must branch section 7 on cost_basis_resolved",
+        )
+
 
 class TestExampleBrief(unittest.TestCase):
     """The Gossamer LAN grounding brief parses and is external/steel-blue."""
