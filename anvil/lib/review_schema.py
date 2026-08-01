@@ -258,7 +258,17 @@ class CriticalFlag(BaseModel):
         description=(
             "Short tag, e.g. 'fabricated_traction', 'factual_error', "
             "'conflict_of_interest'. Skill-defined; the lib does not "
-            "enforce a vocabulary."
+            "enforce a vocabulary. Two framework-reserved values receive "
+            "special resolution in anvil/lib/convergence.py and "
+            "anvil/lib/critics.py (both additive; no schema_version bump): "
+            "'no_go' (issue #559) is the highest-priority terminator — it "
+            "forces Verdict.NO_GO instead of Verdict.BLOCK. "
+            "'pending_dependency' (issue #842, anvil/lib/pending_marker.py) "
+            "marks a known, tracked outstanding dependency (a "
+            "'[PENDING <source>]' marker) — it is EXCLUDED from the "
+            "ordinary Verdict.BLOCK path and from dim-score deduction, "
+            "remaining visible in AggregatedReview.critical_flags for a "
+            "terminal-state check to query independently."
         ),
     )
     justification: str = Field(

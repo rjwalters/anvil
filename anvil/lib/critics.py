@@ -723,10 +723,19 @@ def aggregate(reviews: List[Review]) -> AggregatedReview:
     if threshold is None:
         threshold = sum(s.max for s in aggregated_scores)
 
+    # Imported lazily (mirrors the existing _has_no_go_flag lazy-import
+    # convention below) to avoid a hard module-load dependency on
+    # anvil.lib.convergence for callers that never touch verdict logic.
+    from anvil.lib.convergence import _has_blocking_critical_flag
+
     verdict = _compute_verdict_impl(
         total=total,
         threshold=threshold,
-        any_critical=bool(critical_flags)
+        # A pending_dependency-typed flag (issue #842) is EXCLUDED from
+        # this computation — it must never force Verdict.BLOCK on its own.
+        # It stays fully visible in `critical_flags` (below) for a
+        # terminal-state check to query independently.
+        any_critical=_has_blocking_critical_flag(critical_flags)
         or any(s.critical for s in aggregated_scores),
         critical_flags=critical_flags,
     )
@@ -792,7 +801,11 @@ def compute_verdict(
 
     Single-iteration semantics (when ``history`` is ``None``):
 
-    - BLOCK if any critical flag (either top-level or per-dimension critical).
+    - NO_GO if any top-level critical flag has ``type == "no_go"`` (#559).
+    - Else BLOCK if any OTHER critical flag (either top-level or
+      per-dimension critical) is present. A top-level critical flag typed
+      ``"pending_dependency"`` (#842) does NOT count towards this — it
+      stays visible in ``agg.critical_flags`` but never forces BLOCK.
     - Else ADVANCE if total >= threshold.
     - Else REVISE.
 
@@ -834,7 +847,14 @@ def compute_verdict(
         provided.
     """
     eff_threshold = threshold if threshold is not None else agg.threshold
-    any_critical = bool(agg.critical_flags) or any(
+    # Imported lazily (mirrors the decide_termination import below) to
+    # avoid a hard module-load dependency on anvil.lib.convergence for
+    # callers that never touch verdict logic. A pending_dependency-typed
+    # flag (issue #842) is EXCLUDED from this computation — see
+    # _has_blocking_critical_flag's docstring.
+    from anvil.lib.convergence import _has_blocking_critical_flag
+
+    any_critical = _has_blocking_critical_flag(agg.critical_flags) or any(
         s.critical for s in agg.scores
     )
 
@@ -879,6 +899,14 @@ def _compute_verdict_impl(
     # critical flag is present. The typed list is the canonical input; the
     # any_critical bool stays for byte-identical backwards-compat with
     # pre-#559 callers (which never pass a no_go flag).
+    #
+    # Both callers of this function (aggregate() and compute_verdict()
+    # above) already derive `any_critical` via
+    # convergence._has_blocking_critical_flag, which excludes
+    # pending_dependency-typed flags (issue #842) alongside no_go — so a
+    # `critical_flags` list containing ONLY pending_dependency entries
+    # reaches this function with `any_critical=False` and falls through to
+    # the ADVANCE/REVISE check below rather than forcing BLOCK.
     if critical_flags:
         # Lazy import — avoid hard dep when the typed list isn't passed.
         from anvil.lib.convergence import _has_no_go_flag

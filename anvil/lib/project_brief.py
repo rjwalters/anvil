@@ -309,6 +309,7 @@ from __future__ import annotations
 
 import glob as _glob
 import re
+from datetime import date
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -774,6 +775,7 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "web_search",
     "spec_ref",
     "code_ref",
+    "pending_sources",
     "recommendation_target",
 }
 
@@ -1446,6 +1448,26 @@ class ResolvedCorpusDir(BaseModel):
     )
 
 
+class PendingSourceEntry(BaseModel):
+    """One declared entry in a ``BriefDocument.pending_sources`` list (issue #842).
+
+    The frontmatter companion to the ``[PENDING <source>]`` inline body
+    marker (``anvil/lib/pending_marker.py``). ``source`` MUST match — after
+    both sides are whitespace-trimmed — the ``<source>`` text inside a
+    well-formed body marker for the declaration to "resolve"
+    (:func:`resolve_pending_sources`); ``expected_by`` is free-form
+    operator-facing metadata (a date or milestone string), never validated
+    against a schedule, only echoed in findings. Deliberately NOT a
+    filesystem companion-ref (unlike ``spec_ref``/``code_ref``): a pending
+    source names a conceptual outstanding dependency, not a path on disk.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(..., min_length=1)
+    expected_by: Optional[str] = Field(default=None)
+
+
 class BriefDocument(BaseModel):
     """One entry in the project BRIEF's ``documents:`` frontmatter list.
 
@@ -1733,6 +1755,45 @@ class BriefDocument(BaseModel):
               - slug: botho-consensus-spec
                 artifact_type: spec
                 code_ref: ../../src/**/*.rs
+    pending_sources
+        Optional declared list of **known, tracked** outstanding
+        dependencies for this document (issue #842) — the frontmatter
+        companion to the ``[PENDING <source>]`` inline body marker
+        (``anvil/lib/pending_marker.py``). Each entry is either a bare
+        string (shorthand for ``{source: <string>}``) or a mapping with
+        a required ``source`` (non-empty string — must match, verbatim
+        after whitespace-trimming, the ``<source>`` text inside a body
+        marker for the declaration to "resolve") and an optional
+        ``expected_by`` (free-form operator-facing string — a date or
+        milestone; never validated against a schedule, only echoed in
+        findings).
+
+        Type-and-shape validation only at parse time (list of strings
+        and/or ``{source, expected_by}`` mappings; a bare scalar string
+        normalizes to a one-element list — the same back-compat shape as
+        ``spec_ref``/``code_ref``). Cross-referencing declared sources
+        against the document body's actual markers is a
+        **resolution-time** concern (:func:`resolve_pending_sources`),
+        because it requires the document's rendered body text, which
+        BRIEF parsing must not depend on. The activation contract
+        mirrors ``spec_ref``'s (``anvil/skills/primer/SKILL.md``
+        §"Spec-ref contract"): **undeclared** → the tier is silent/off;
+        **declared and every source resolves** (a matching marker exists
+        for each) → the tier is clean; **declared but ZERO sources
+        resolve** → ``missing: true`` (the tier still activates,
+        degrading gracefully — no crash, no false critical flag);
+        **declared and SOME (not all) sources resolve** → a
+        partial-resolve result naming the unresolved entries.
+
+        Example::
+
+            documents:
+              - slug: q3-report
+                artifact_type: report
+                pending_sources:
+                  - source: Q3 earnings report
+                    expected_by: 2026-10-15
+                  - customer survey results
     recommendation_target
         Optional per-document declaration of the memo's decision
         posture (issue #348, project-first fallback via issue #837):
@@ -1792,6 +1853,10 @@ class BriefDocument(BaseModel):
     # to a single-element list, so downstream code always sees a list.
     spec_ref: Optional[List[str]] = Field(default=None)
     code_ref: Optional[List[str]] = Field(default=None)
+    # Declared known-pending-dependency entries (issue #842); normalized to
+    # a list by _validate_pending_sources (a bare string or bare-string
+    # list element shorthand for {source: <string>}).
+    pending_sources: Optional[List[PendingSourceEntry]] = Field(default=None)
     # Hardcoded Literal (not referencing _RECOGNIZED_RECOMMENDATION_TARGETS,
     # defined later in this module in the thread-level BRIEF helpers
     # section) mirrors the render_engine field's precedent above — the
@@ -3029,6 +3094,118 @@ def _validate_code_ref(raw: Any, field_path: str) -> Optional[List[str]]:
     )
 
 
+def _validate_pending_sources(
+    raw: Any, field_path: str
+) -> Optional[List[PendingSourceEntry]]:
+    """Validate a raw ``pending_sources`` value (issue #842).
+
+    Structurally similar to :func:`_validate_companion_ref` (scalar /
+    list-of-scalar back-compat shorthand, ``CompanionRefTypeError`` on a
+    malformed declaration — the #718 declared-but-broken posture) but the
+    element shape is NOT a path/glob string: each entry normalizes to a
+    :class:`PendingSourceEntry`.
+
+    - ``raw is None`` -> ``None`` (undeclared; tier INACTIVE).
+    - ``raw`` a **string** -> ``[PendingSourceEntry(source=raw.strip())]``
+      (empty/whitespace-only -> ``None``, mirroring ``spec_ref``).
+    - ``raw`` a **list** (empty list -> ``None``) of, per element:
+        - a non-empty **string** -> ``PendingSourceEntry(source=item.strip())``.
+        - a **mapping** with a required non-empty ``source`` string and an
+          optional ``expected_by`` string (any other key, a missing/empty
+          ``source``, or a non-string ``expected_by`` raises
+          :class:`CompanionRefTypeError` — the whole field is poisoned,
+          not the single element skipped, matching #718).
+        - anything else raises :class:`CompanionRefTypeError`.
+    - ``raw`` any other type -> raises :class:`CompanionRefTypeError`.
+
+    No cross-reference against the document body happens here — that is
+    :func:`resolve_pending_sources`'s job (a resolution-time concern; BRIEF
+    parsing must not depend on the document's rendered body text).
+    """
+    field = "pending_sources"
+    scalar_example = "Q3 earnings report"
+    list_example = (
+        "{source: Q3 earnings report, expected_by: 2026-10-15}, "
+        "customer survey results"
+    )
+
+    def _type_error(detail: str) -> "CompanionRefTypeError":
+        return CompanionRefTypeError(
+            f"BRIEF.{field_path}: {detail} — suggested fix: write each "
+            f"entry as a bare string (`{scalar_example!r}`) or a mapping "
+            f"with a `source` key and an optional `expected_by` key "
+            f"(e.g., `{field}: [{list_example}]`).",
+            field=field,
+        )
+
+    def _normalize_element(item: Any, idx: int) -> PendingSourceEntry:
+        if isinstance(item, str):
+            stripped = item.strip()
+            if not stripped:
+                raise _type_error(
+                    f"{field_path}[{idx}] is an empty/whitespace-only string"
+                )
+            return PendingSourceEntry(source=stripped)
+        if isinstance(item, dict):
+            unknown = set(item.keys()) - {"source", "expected_by"}
+            if unknown:
+                raise _type_error(
+                    f"{field_path}[{idx}] has unrecognized key(s) "
+                    f"{sorted(unknown)!r} (only `source` / `expected_by` "
+                    f"are recognized)"
+                )
+            source = item.get("source")
+            if not isinstance(source, str) or not source.strip():
+                raise _type_error(
+                    f"{field_path}[{idx}].source must be a non-empty "
+                    f"string; got {type(source).__name__}: {source!r}"
+                )
+            expected_by = item.get("expected_by")
+            # YAML parses an unquoted ISO date (2026-10-15) as a
+            # datetime.date, not a str — a natural, common authoring shape
+            # for this free-form field. Coerce date/datetime to their
+            # isoformat string rather than raising; any other non-string
+            # type is still a schema violation.
+            if isinstance(expected_by, date):
+                # datetime.datetime is itself a date subclass; one branch
+                # covers both a bare YAML date and a YAML timestamp.
+                expected_by = expected_by.isoformat()
+            elif expected_by is not None and not isinstance(expected_by, str):
+                raise _type_error(
+                    f"{field_path}[{idx}].expected_by must be a string "
+                    f"(or a YAML date); got {type(expected_by).__name__}: "
+                    f"{expected_by!r}"
+                )
+            return PendingSourceEntry(
+                source=source.strip(),
+                expected_by=(
+                    expected_by.strip()
+                    if isinstance(expected_by, str) and expected_by.strip()
+                    else None
+                ),
+            )
+        raise _type_error(
+            f"{field_path}[{idx}] must be a string or a mapping with a "
+            f"`source` key; got {type(item).__name__}: {item!r}"
+        )
+
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if not stripped:
+            return None
+        return [PendingSourceEntry(source=stripped)]
+    if isinstance(raw, list):
+        if len(raw) == 0:
+            return None
+        return [_normalize_element(item, j) for j, item in enumerate(raw)]
+    raise _type_error(
+        f"must be a string, a list of strings, or a list of "
+        f"{{source, expected_by}} mappings; got {type(raw).__name__}: {raw!r}"
+    )
+
+
 def _validate_render_lua_filters(
     raw: Any, field_path: str
 ) -> Optional[List[str]]:
@@ -3455,6 +3632,11 @@ def _normalize_documents(
             field_path=f"documents[{i}].code_ref",
         )
 
+        pending_sources = _validate_pending_sources(
+            entry.get("pending_sources"),
+            field_path=f"documents[{i}].pending_sources",
+        )
+
         recommendation_target = _validate_recommendation_target(
             entry.get("recommendation_target"),
             field_path=f"documents[{i}].recommendation_target",
@@ -3486,6 +3668,7 @@ def _normalize_documents(
                 web_search=web_search,
                 spec_ref=spec_ref,
                 code_ref=code_ref,
+                pending_sources=pending_sources,
                 recommendation_target=recommendation_target,
             )
         except ValidationError as exc:
@@ -4778,6 +4961,203 @@ def resolve_code_ref(
 
 
 # ---------------------------------------------------------------------------
+# Pending-sources resolution (issue #842)
+# ---------------------------------------------------------------------------
+#
+# Unlike spec_ref / code_ref, a pending_sources entry does NOT name a path
+# on disk — it names a conceptual outstanding dependency that "resolves"
+# when a matching [PENDING <source>] marker (anvil/lib/pending_marker.py)
+# exists in the document's CURRENT body text. That means resolution here
+# cannot walk a root filesystem the way _resolve_companion_element does;
+# it needs the actual rendered body text, which the caller supplies
+# directly (this module has no opinion on WHICH version of a multi-version
+# thread is "current" — that is the caller's / a skill command's job,
+# mirroring how numeric_consistency / pending_marker themselves take a
+# body path or text, not a slug).
+
+
+class ResolvedPendingSourceEntry(BaseModel):
+    """One resolved ``pending_sources`` entry (issue #842).
+
+    ``resolved`` is ``True`` iff at least one well-formed, unsuppressed
+    ``[PENDING <source>]`` marker in the scanned body text has a ``source``
+    that equals this entry's ``source`` after both sides are
+    whitespace-trimmed (case-sensitive — mirrors the marker grammar's own
+    case sensitivity, see ``anvil/lib/pending_marker.py``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    expected_by: Optional[str] = None
+    resolved: bool
+
+
+class ResolvedPendingSources(BaseModel):
+    """Result of :func:`resolve_pending_sources` for one document.
+
+    Missing-file results are carried as a **structured** ``missing: true``
+    entry — resolution never raises. A ``missing: true`` entry ACTIVATES
+    the pending-dependency tier and is a Phase 2-5 consuming skill's signal
+    to surface a finding (broken/stale declaration) while degrading
+    gracefully — the same defect-to-surface posture as ``spec_ref`` /
+    ``code_ref`` declared-but-missing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    declared: List[PendingSourceEntry] = Field(
+        default_factory=list,
+        description=(
+            "The declared entries from the BRIEF, in declaration order. "
+            "Empty when the field is malformed (see `error`)."
+        ),
+    )
+    entries: List[ResolvedPendingSourceEntry] = Field(
+        default_factory=list,
+        description=(
+            "Per-declared-entry resolution outcome, declaration order. "
+            "Empty when the field is malformed (see `error`)."
+        ),
+    )
+    missing: bool = Field(
+        ...,
+        description=(
+            "True when ZERO declared entries resolved against the scanned "
+            "body text (nothing usable at all), OR the declaration itself "
+            "was malformed (see `error`). A PARTIAL miss (some entries "
+            "resolve, some don't) is `missing=False` with a non-empty "
+            "`unresolved`."
+        ),
+    )
+    unresolved: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Declared `source` labels with no matching marker in the "
+            "scanned body text, in declaration order. Empty when every "
+            "declared entry resolves, and always empty when `missing` "
+            "(the all-unresolved case reduces to `missing=True` instead of "
+            "a full `unresolved` list, mirroring spec_ref/code_ref)."
+        ),
+    )
+    error: Optional[str] = Field(
+        None,
+        description=(
+            "Set when the raw `pending_sources` declaration was malformed "
+            "(issue #718 declared-but-broken posture) — the "
+            "CompanionRefTypeError message text, preserved so the operator "
+            "sees it instead of a silent swallow to the inactive path. "
+            "`declared`/`entries` are empty and `missing=True` in this case."
+        ),
+    )
+
+
+def resolve_pending_sources(
+    project_dir: Path,
+    slug: str,
+    body_text: str,
+) -> Optional[ResolvedPendingSources]:
+    """Resolve a document's ``pending_sources`` against its body text (issue #842).
+
+    Reads ``<project_dir>/BRIEF.md`` leniently, looks up the document by
+    ``slug``, and — when that document declares ``pending_sources`` —
+    cross-references each declared entry's ``source`` against the
+    well-formed, unsuppressed ``[PENDING <source>]`` markers found by
+    ``anvil/lib/pending_marker.py::scan_text`` in ``body_text`` (an
+    exact, whitespace-trimmed, case-sensitive match).
+
+    ``body_text`` is the caller's responsibility to supply (e.g. the
+    ``.latest``-resolved version's body content) — this resolver has no
+    opinion on which version of a multi-version thread is current, mirroring
+    how ``pending_marker`` itself operates on a body path/text rather than a
+    slug. Pass the empty string when no body is available yet; every
+    declared entry will resolve as unmatched.
+
+    **Never raises on absence.** A declared-but-all-unmatched
+    ``pending_sources`` comes back as a structured ``missing: true``
+    :class:`ResolvedPendingSources` — the tier still activates so a
+    consuming skill can surface a finding, degrading gracefully (no crash,
+    no false critical flag) — the same posture as :func:`resolve_spec_ref`.
+
+    A **malformed** ``pending_sources`` (declared but the wrong shape) is
+    NOT the inactive path (issue #718): it comes back as a structured
+    ``missing: true`` :class:`ResolvedPendingSources` with ``error`` set to
+    the validator's message, the same declared-but-broken posture as
+    :func:`resolve_spec_ref` / :func:`resolve_code_ref`.
+
+    Returns
+    -------
+    Optional[ResolvedPendingSources]
+        A resolved entry when the document declares ``pending_sources`` (or
+        declares one with the wrong shape — a ``missing: true`` entry with
+        ``error`` set); ``None`` when the tier is **INACTIVE**: no BRIEF,
+        malformed/structurally invalid BRIEF (lenient swallow, mirroring
+        :func:`resolve_spec_ref`), no matching document for ``slug``, or
+        that document declares no ``pending_sources``. Callers branch on
+        ``if resolved is None:`` for the byte-identical inactive path.
+    """
+    try:
+        brief = load_project_brief(project_dir)
+    except CompanionRefTypeError as exc:
+        # A companion-shaped field is declared but malformed (issue #718).
+        # If it is a malformed pending_sources, this is a
+        # declared-but-BROKEN declaration — ACTIVATE the tier via the
+        # `missing: true` + `error` path rather than silently swallowing
+        # to `None`. A malformed *other* companion field (spec_ref /
+        # code_ref) is unrelated; swallow it exactly as any other
+        # BRIEF-parse failure below.
+        if exc.field == "pending_sources":
+            return ResolvedPendingSources(missing=True, error=str(exc))
+        return None
+    except ValueError:
+        return None
+    if brief is None:
+        return None
+
+    doc = brief.document_for_slug(slug)
+    if doc is None or doc.pending_sources is None:
+        return None
+
+    declared = doc.pending_sources
+
+    # Imported lazily so a BRIEF-only consumer (no version text on disk
+    # yet) does not pay the pending_marker import cost.
+    from anvil.lib.pending_marker import scan_text
+
+    hits = scan_text(body_text)
+    resolved_sources = {
+        h.source for h in hits if h.well_formed and not h.suppressed
+    }
+
+    entries: List[ResolvedPendingSourceEntry] = []
+    unresolved: List[str] = []
+    for d in declared:
+        is_resolved = d.source in resolved_sources
+        entries.append(
+            ResolvedPendingSourceEntry(
+                source=d.source,
+                expected_by=d.expected_by,
+                resolved=is_resolved,
+            )
+        )
+        if not is_resolved:
+            unresolved.append(d.source)
+
+    if len(unresolved) == len(declared):
+        # ZERO entries resolved — the whole declaration is unusable
+        # (mirrors spec_ref/code_ref's all-missing -> missing=True).
+        return ResolvedPendingSources(
+            declared=declared, entries=entries, missing=True
+        )
+    return ResolvedPendingSources(
+        declared=declared,
+        entries=entries,
+        missing=False,
+        unresolved=unresolved,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Thread-level BRIEF.md helpers (issue #348)
 # ---------------------------------------------------------------------------
 #
@@ -5058,10 +5438,13 @@ __all__ = [
     "MAX_DIM",
     "MEMO_ARTIFACT_TYPES",
     "MIN_DIM",
+    "PendingSourceEntry",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
     "ResolvedCodeRef",
     "ResolvedCorpusDir",
+    "ResolvedPendingSourceEntry",
+    "ResolvedPendingSources",
     "ResolvedSpecRef",
     "ResolvedSubjectVoice",
     "ResolvedVoiceDoc",
@@ -5083,6 +5466,7 @@ __all__ = [
     "load_rubric_overrides_for_slug",
     "resolve_code_ref",
     "resolve_corpus_dirs",
+    "resolve_pending_sources",
     "resolve_rhetoric_rules",
     "resolve_spec_ref",
     "resolve_subject_voice_docs",
