@@ -37,7 +37,7 @@ A **proposal thread** is a single proposal for one buildable system, authored ac
   BRIEF.md                   Project-level brief (frontmatter `documents:` list + prose; config locus per #296)
   research/                  Optional shared evidence pool across documents
   <thread>/                  Thread root (named for the slug)
-    BRIEF.md                 Optional thread-level structured or freeform brief (frontmatter + prose; carries customer_kind / orientation knobs)
+    BRIEF.md                 Optional thread-level structured or freeform brief (frontmatter + prose; carries customer_kind / orientation / cost_basis knobs)
     refs/                    Optional reference material (site plans, datasheets, vendor quotes)
     <thread>.0.perspective/  Optional pre-draft external-substrate sibling (read-only)
       notes.md               Narrative synthesis: sourceability summary + gaps
@@ -166,6 +166,16 @@ A second optional frontmatter key, `orientation: portrait | landscape` (default 
 - **What it does NOT do**: it does not add, remove, or rename any section; it does not affect the rubric or any reviewer/auditor instruction; it does not change the typography or accent color. It is a pure layout knob.
 - **Backward compatibility**: when `orientation` is absent or `portrait`, the rendered PDF is identical to the pre-#247 behavior. The Gossamer LAN worked example (and every existing thread) is unaffected.
 
+## The `cost_basis` knob
+
+A third optional frontmatter key, `cost_basis: quoted | estimated | none` (default `quoted`; issue #840), captures **whether the proposal's priced claims have external sources at all** — the axis that `customer_kind` does not address (an `internal` build spec still answers to a budget with priced lines that may or may not be vendor-sourced). Not every buildable-system proposal is a hardware system with a vendor-sourceable BOM — a partnership/integration proposal (a data-backed challenge to another company) has no hardware BOM and no vendor quotes at all. UNLIKE `customer_kind`/`orientation`, this key **does** change section content, not just presentation:
+
+- **`quoted`** (default): unchanged pre-#840 behavior — a multi-section priced BOM + labor estimate + project total, sourced against vendor quotes / datasheets / planning ranges, back-checked by `proposal-audit` against `refs/`.
+- **`estimated`**: the same three tables, but every caption is estimate-labelled ("Materials subtotal (estimated)", an "ESTIMATE BASIS" preface, an "ESTIMATE, NOT A QUOTE" cost-notes caption) — the figures are internal engineering-effort estimates, not vendor quotes. Dim 6 (Cost credibility) calibrates on estimate-basis consistency rather than vendor sourceability; `proposal-audit` does not back-check these prices against `refs/` vendor quotes.
+- **`none`**: the priced-table requirement is dropped entirely — section 7 becomes a short "Cost Basis" section stating there is no hardware BOM / no vendor quotes, and commercial terms move to Open Decisions (§10). Dim 6 scores full weight by default; `proposal-audit` step 7's vendor-quote back-check sub-step is skipped.
+
+See `rubric.md` §"Dim 6 — `cost_basis` calibration" and `commands/proposal-audit.md` step 7 for the full reviewer/auditor-side wiring, and `templates/BRIEF.md.example` for the documented default.
+
 ## Progress tracking
 
 Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. The canonical schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/anvil/lib/snippets/progress.md`); every command in this skill follows that convention.
@@ -223,7 +233,7 @@ This skill ships with opinionated defaults. Consumers are expected to override l
 - `voice.md` (optional) — Studio or sales-engineering voice/style guidance the drafter reads in addition to its base prompt.
 - `rubric.overrides.md` (optional) — Add domain-specific critical-flag examples or adjust the open-ended "any deal-breaker" instruction.
 - `templates/anvil-proposal.cls` (optional) — A replacement LaTeX class (e.g., a studio house style or a different signature color).
-- `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted (see `templates/BRIEF.md.example`). The thread-level BRIEF frontmatter carries the `customer_kind` and `orientation` knobs; the per-document `max_iterations` override lives on the project-level `BRIEF.md` `documents:` entry per #296 (legacy `<thread>/.anvil.json` overrides are merged into the project BRIEF by `anvil:project-migrate`).
+- `BRIEF.md.example` — Reference brief shape; freeform prose with optional YAML frontmatter is accepted (see `templates/BRIEF.md.example`). The thread-level BRIEF frontmatter carries the `customer_kind`, `orientation`, and `cost_basis` knobs; the per-document `max_iterations` override lives on the project-level `BRIEF.md` `documents:` entry per #296 (legacy `<thread>/.anvil.json` overrides are merged into the project BRIEF by `anvil:project-migrate`).
 
 ## Git sync hook (opt-in, off by default)
 
