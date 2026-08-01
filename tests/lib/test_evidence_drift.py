@@ -31,7 +31,6 @@ from anvil.lib.evidence_drift import (
     STATUS_CLEAN,
     STATUS_DRIFT,
     STATUS_NO_SNAPSHOT,
-    EvidenceDriftResult,
     check_evidence_drift,
     check_thread_evidence_drift,
     compute_evidence_snapshot,
