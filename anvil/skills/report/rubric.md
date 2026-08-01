@@ -69,11 +69,20 @@ For a customer-facing report, the ≥39 threshold means the report has at most ~
 
 **Backwards-compat**: when the BRIEF declares no `voice:` block (or an empty one), the calibration does NOT fire — no suffix, no corpus-quote requirement, no `_summary.md.voice_grounding` block. Dim 8 scores against its standard recipient-calibration **byte-identically** to pre-#578 behavior (the #428/#452 contract). The audit trail of an active calibration is the `scoring.md` suffix plus the `_summary.md.voice_grounding` block (`commands/report-review.md`).
 
+**Pending-measurement markers do not incur a dimension penalty (issue #841).** A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) is an honest disclosure that a specific number is not yet available (a client-supplied figure not yet returned, an analysis still running) — it is NOT a defect and MUST NOT be scored down on any dimension. Score the surrounding argument's soundness *assuming* the pending value resolves as described. The gap is tracked separately as an **outstanding dependency** (see "Outstanding dependencies (not critical flags)" below), which holds only the `AUDITED`/`CUSTOMER-READY` terminal transitions.
+
 ## Advance threshold
 
-- **≥39/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling). This skill's terminal pre-promotion state is `AUDITED` (which for this skill means both `.review/` advance AND `.audit/` pass).
+- **≥39/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling). This skill's terminal pre-promotion state is `AUDITED` (which for this skill means both `.review/` advance AND `.audit/` pass AND no unresolved pending marker).
 - **<39/44** — block; revise.
 - **Any critical flag set** (in either `.review/` or `.audit/`) — block regardless of total. The next revision must address the flagged issue specifically and the relevant critic must re-evaluate the flag before the threshold check applies.
+- **Any unresolved pending marker** — does NOT block `advance`/`pass` (it is not a critical flag; see below), but DOES hold the thread short of `AUDITED` until the marker resolves (`commands/report-audit.md`'s terminal-gate step); `report-promote` additionally re-checks it before `CUSTOMER-READY`.
+
+## Outstanding dependencies (not critical flags — issue #841)
+
+An **unresolved pending marker** is deliberately NOT in the critical-flags list below — it is a distinct, specially-resolved category with the opposite verdict posture:
+
+- **Unresolved pending marker** — A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) remains in `report.md`. `report-review` step 4f and `report-audit` step 10b run `anvil/lib/pending_marker.py` unconditionally, which emits a specially-resolved `pending_dependency`-typed flag (the additive type from `anvil/lib/convergence.py`) whenever any active marker is still present — deterministic, not a reviewer/auditor judgment call. It does NOT lower any dimension score and does NOT force `advance: false` / `pass: false` (`convergence.blocking_critical_flags` filters it out). Instead it is surfaced as an *outstanding dependency* in `verdict.md` and gates **only** the `AUDITED`/`CUSTOMER-READY` terminal transitions, separately from the score/verdict path. It clears once the marker is replaced with its **real value** — the reviser must never fabricate a value to clear it (see `commands/report-revise.md`).
 
 ## Critical flags
 

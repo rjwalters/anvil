@@ -693,11 +693,20 @@ New reviews produced **after** this contract ships MUST carry scope labels per t
 - **Reviser additivity (#241)**: the reviser-side issue closes the consumption loop: when #241 ships, the reviser reads `scope: reduce` comments first, addresses them as compression directives, and only THEN consumes `scope: expand` comments at their declared severity. The two issues compose naturally: this rubric produces the labeled comment stream; #241 consumes it with the right ordering.
 - **Proposal-side mirror**: deferred per the same precedent that #245's deck-side mirror followed (ship the rubric-side primitive on the canary-surface skill first; mirror to siblings after one consumption cycle). The proposal-side dim 9 already shipped via PR #254, so the proposal-side scope-tagging mirror is a clean one-cycle follow-on.
 
+**Pending-measurement markers do not incur a dimension penalty (issue #841).** A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) is an honest disclosure that a specific number is not yet available (a diligence call not yet returned, a benchmark still running) — it is NOT a defect and MUST NOT be scored down on any dimension (Dim 3 *Evidence quality* and Dim 6 *Financial reasoning* are the ones most tempting to mark down for "missing data"; do not). Score the surrounding argument's soundness *assuming* the pending value resolves as described. The gap is tracked separately as an **outstanding dependency** (see "Outstanding dependencies (not critical flags)" below), which holds only the `READY` terminal transition.
+
 ## Advance threshold
 
-- **≥35/44** — advance to `READY` (or to next step in the lifecycle).
+- **≥35/44** — advance to `READY` (or to next step in the lifecycle), subject also to the pending-marker terminal gate below.
 - **<35/44** — block; revise.
 - **Any critical flag set** — block regardless of total. The next revision must address the flagged issue specifically and the reviewer must re-evaluate the flag before the threshold check applies.
+- **Any unresolved pending marker** — does NOT block `advance` (it is not a critical flag; see below), but DOES hold the thread at `REVIEWED` instead of `READY` until the marker resolves (`commands/memo-review.md` step 7's `ready` gate).
+
+## Outstanding dependencies (not critical flags — issue #841)
+
+An **unresolved pending marker** is deliberately NOT in the critical-flags list below — it is a distinct, specially-resolved category with the opposite verdict posture:
+
+- **Unresolved pending marker** — A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) remains in `<thread>.md`. `memo-review` step 4n runs `anvil/lib/pending_marker.py` unconditionally, which emits a specially-resolved `pending_dependency`-typed flag (the additive type from `anvil/lib/convergence.py`) whenever any active marker is still present — deterministic, not a reviewer judgment call. It does NOT lower any dimension score and does NOT force `advance: false` (`convergence.blocking_critical_flags` filters it out of the aggregated "no critical flags" clause). Instead it is surfaced as an *outstanding dependency* in `verdict.md` and gates **only** the `READY` terminal transition, separately from the score/verdict path. It clears once the marker is replaced with its **real value** — the reviser must never fabricate a value to clear it (see `commands/memo-revise.md`).
 
 ## Critical flags
 

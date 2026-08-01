@@ -251,6 +251,8 @@ Suggested calibration:
 
 **Quoted evidence (issue #464 / #475).** Every justification follows the quoted-evidence sub-rule in `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1: at least one verbatim inline quote from `proposal.tex` with a location anchor — `("the quoted span" — §2.1)` — per dimension, with the `no instance of <X> found` by-absence marker allowed at full weight only. The reviewer self-checks its `scoring.md` against the body via `anvil/lib/evidence_check.py` before the review sidecar lands (see `commands/proposal-review.md` step 5b); a quote that does not appear verbatim in the body is fabricated evidence and the justification must be re-derived. No weight or threshold changes — this is an evidence-discipline contract on the justification prose, not a scoring change.
 
+**Pending-measurement markers do not incur a dimension penalty (issue #841).** A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) is an honest disclosure that a specific number is not yet available (a vendor quote not yet returned, a bench measurement still running) — it is NOT a defect and MUST NOT be scored down on any dimension (Dim 6 *Cost credibility* is the dimension most tempting to mark down for "missing data"; do not). Score the surrounding argument's soundness *assuming* the pending value resolves as described. The gap is tracked separately as an **outstanding dependency** (see the "Outstanding dependencies (not critical flags)" section below), which holds only the READY/AUDITED terminal transition.
+
 ## Advance threshold
 
 - **≥35/44** — advance to `READY` (subject to also having `pass: true` in the audit sibling).
@@ -267,6 +269,12 @@ A critical flag is an issue severe enough that **the proposal cannot proceed as 
 4. **Internal inconsistency** *(audit-owned)* — the proposal contradicts itself on a verifiable fact: optics link budget vs. stated run length; BOM quantities vs. topology (e.g. 7 spokes should imply 14 + 2 uplink = 16 transceivers); section subtotals or the project total that do not add up.
 
 The reviewer and auditor should each raise a flag for any other issue that, in their judgment, meets the "cannot proceed as specified" bar above — these four are starting points, not a closed set.
+
+## Outstanding dependencies (not critical flags — issue #841)
+
+An **unresolved pending marker** is deliberately NOT in the critical-flags list above — it is a distinct, specially-resolved category with the opposite verdict posture:
+
+- **Unresolved pending marker** — A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) remains in `proposal.tex`. `proposal-review` step 4l and `proposal-audit` step 11b run `anvil/lib/pending_marker.py` unconditionally, which emits a specially-resolved `pending_dependency`-typed flag (the additive type from `anvil/lib/convergence.py`) whenever any active marker is still present — deterministic, not a reviewer judgment call. A well-formed marker is an **honest disclosure of a genuinely outstanding value, not a defect**: it does NOT lower any dimension score (see the "Pending-measurement markers do not incur a dimension penalty" note above) and it does NOT force a blocking verdict the way a real critical flag does (`convergence.blocking_critical_flags` filters it out). Instead it is surfaced as an *outstanding dependency* in `verdict.md` and gates **only** the READY/AUDITED terminal transition, separately from the score/verdict path. It clears once the marker is replaced with its **real value** — the reviser must never fabricate a value to clear it (see `commands/proposal-revise.md`).
 
 ## Verdict format
 
@@ -295,9 +303,10 @@ For the thread to reach the `AUDITED` state (this skill's terminal state):
 advance = review.advance == true       (total ≥ 35)
        AND audit.pass == true
        AND no unresolved critical flags in either sibling
+       AND no unresolved pending marker (issue #841 — see "Outstanding dependencies" above)
 ```
 
-If either sibling blocks, the thread stays in `REVIEWED+AUDITED` (with both verdicts written) and the operator runs `proposal-revise` to produce `<thread>.{N+1}/`, which is then re-reviewed and re-audited.
+If either sibling blocks, the thread stays in `REVIEWED+AUDITED` (with both verdicts written) and the operator runs `proposal-revise` to produce `<thread>.{N+1}/`, which is then re-reviewed and re-audited. A thread with a good score, `pass: true`, and zero critical flags but an active `[PENDING <source>]` marker also stays at `REVIEWED+AUDITED` — the pending gate is a separate, non-critical-flag hold on the terminal transition.
 
 ## Output layout
 
