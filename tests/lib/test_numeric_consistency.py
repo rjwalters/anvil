@@ -195,6 +195,57 @@ class TestTolerance:
 
 
 # ---------------------------------------------------------------------------
+# #854: percent claims only pair with a fraction that shares a subject
+# ---------------------------------------------------------------------------
+
+
+class TestProportionLexicalAnchor:
+    def test_census_reader_unrelated_fraction_does_not_false_positive(self) -> None:
+        # The exact issue #854 repro: "27.3% of readable cells" shares a
+        # paragraph with an unrelated "18/18 pages" fraction. 18/18 = 100%
+        # != 27.3%, but the two numbers describe different subjects (cells
+        # vs. pages) — must stay silent, not emit percent_mismatch.
+        body = (
+            "An ink gate resolves 27.3% of readable cells in the batch "
+            "scan. Separately, 18/18 pages of the test enumeration "
+            "district registered correctly.\n"
+        )
+        findings, _, claims = check_text(body)
+        assert claims == 1
+        assert findings == []
+
+    def test_same_subject_mismatch_across_sentences_still_flags(self) -> None:
+        # The anchor gate must not become so strict it re-introduces
+        # silent skips for a genuine mismatch: when the fraction's
+        # sentence names the SAME subject as the claim ("readable
+        # cells"), a real arithmetic disagreement still fires.
+        body = (
+            "An ink gate resolves 27.3% of readable cells in the batch "
+            "scan. In total, 20 of 100 readable cells passed the gate.\n"
+        )
+        findings, _, _ = check_text(body)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.code == PERCENT_MISMATCH
+        assert "20.0%" in f.message
+        assert "20" in f.message and "100" in f.message
+
+    def test_matching_value_still_silences_regardless_of_subject(self) -> None:
+        # Preserve the pre-#854 "prefer a matching pair over a
+        # mismatching one" behavior: if SOME fraction in the window
+        # numerically satisfies the claim, stay silent even though its
+        # subject differs from the claim's (matching pairs are always
+        # preferred over mismatching ones).
+        body = (
+            "An ink gate resolves 27% of readable cells in the batch "
+            "scan. Separately, 27 of 100 pages in the district registered.\n"
+        )
+        findings, _, claims = check_text(body)
+        assert claims == 1
+        assert findings == []
+
+
+# ---------------------------------------------------------------------------
 # Multiplier + relative-percent claims (pair-shape gated)
 # ---------------------------------------------------------------------------
 
