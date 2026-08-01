@@ -79,6 +79,7 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`. (Note: a `<thread>.
    - **Cite *command* choice matters, not just resolution.** Under the default `anvil-paper` class (natbib author-year mode) bare `\cite{key}` prints "Author (Year)", so choose among `\citet` / `\citeyearpar` / `\citep` per the "Citation-command choice under natbib author-year" rule below rather than defaulting to bare `\cite{key}`.
 8. **Create `figures/` skeleton**: `mkdir -p figures/src/`. Insert `\includegraphics{figures/<name>}` or `\input{figures/<name>.tex}` placeholders in the body where the brief or the structure calls for a figure. Actual figure generation is `paper-figures`'s job. If the brief supplies a `figures/src/` directory of scripts, copy them into the version dir's `figures/src/` so the figurer can pick them up.
 9. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO timestamp>`.
+9b. **Record the evidence-drift baseline (issue #857)**: invoke `uv run --project .anvil python -m anvil.lib.evidence_drift record <thread>/ <thread>.{N+1}/` (auto-detects the thread root as this version dir's parent). This computes the current `BRIEF.md` mtime and the max mtime under `<thread>/refs/**` and merges them into `<thread>.{N+1}/_progress.json.metadata.evidence_snapshot` — the baseline `paper-review` compares against later to detect thread-root evidence that changed after this version was drafted. Purely additive bookkeeping: never fails the draft, never gates anything. **Tooling-absent fallback**: when `uv` is not on `PATH` (mirrors step 4c/4b's fail-open ordering — issue #646), skip this step with a one-line notice; the next successful draft/revise pass records the baseline instead (see `anvil/lib/evidence_drift.py`'s bootstrap-safety contract — a missing snapshot is reported as clean, never a false positive).
 10. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted q3-method.1/ (main.tex: 4200 words, refs.bib: 18 entries, 3 figure placeholders)`).
 
 ## Citation-command choice under natbib author-year
@@ -164,10 +165,13 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   },
   "metadata": {
     "iteration": <N>,
-    "max_iterations": 4
+    "max_iterations": 4,
+    "evidence_snapshot": { "brief_mtime": 1732000000.0, "refs_mtime": null }
   }
 }
 ```
+
+`metadata.evidence_snapshot` is written by step 9b (`anvil/lib/evidence_drift.py::record_evidence_snapshot`, issue #857) — the BRIEF/refs mtime baseline `paper-review` compares against to detect thread-root evidence changed after this draft. Advisory bookkeeping only; absent on pre-#857 threads.
 
 Merge rule (shallow): read existing `_progress.json` if present, update only `phases.draft` and `metadata`, preserve all other fields. Use the read-merge-write recipe in `anvil/lib/snippets/progress.md`; use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 

@@ -4,6 +4,29 @@
 
 ### Added
 
+- **`anvil:paper` / `anvil:report` — BRIEF/refs evidence-drift advisory**
+  (#857). New framework primitive `anvil/lib/evidence_drift.py` detects
+  when a thread's `BRIEF.md` or `refs/**` change AFTER the latest
+  version was drafted/revised — the gap that let a censusapi thread
+  reach `AUDITED` on refs later found contaminated, and a `BRIEF.md`
+  retraction go unnoticed after a v1 draft, with no framework signal
+  either time. `paper-draft`/`paper-revise` and
+  `report-draft`/`report-revise` now record a `BRIEF.md`/`refs/**` mtime
+  baseline into `metadata.evidence_snapshot` in the version dir's
+  `_progress.json` at completion; `paper-review`/`report-review` compare
+  the CURRENT thread-root mtimes against that baseline and, on drift,
+  add a non-blocking "Evidence drift" note to `verdict.md`. Purely
+  advisory, mirroring the `NEVER-VISION-CHECKED` posture: it never
+  changes `advance`, dimension scores, or the terminal-state gate, and —
+  unlike the pending-marker gate — is never routed through
+  `anvil/lib/convergence.py`'s `CriticalFlag` machinery, since there is
+  nothing to *resolve*, only something to re-weigh. A thread with no
+  recorded baseline (pre-#857, or no draft/revise pass since adoption)
+  reports clean, never a false positive. Scoped to `paper` and `report`
+  for this initial landing; adoption in the other ~11 skill orchestrators
+  is deferred to follow-up issues, mirroring the #847 → #851 core-then-
+  adoption rollout shape.
+
 - **`anvil:paper` — pending-measurement placeholder gate** (#842; Phase
   1 of parent tracking issue #841). New framework primitive
   `anvil/lib/pending_marker.py` (fifth member of the deterministic-checks

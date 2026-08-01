@@ -81,6 +81,7 @@ This command is the canonical "N parallel critics, one reviser" pattern from anv
 
     For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next reviewer pass can override or accept the reviser's judgment. Declining a `venue:<slug>` entry is reasonable when the venue advice conflicts with the generic-rubric guidance — note the trade-off in the resolution column.
 11. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
+11b. **Record the evidence-drift baseline (issue #857)**: invoke `uv run --project .anvil python -m anvil.lib.evidence_drift record <thread>/ <thread>.{N+1}/` — the same call `paper-draft` step 9b makes, re-baselined against the new version dir. Every revision re-records the current BRIEF/refs mtimes so `paper-review` always compares against the freshest version's baseline, not a stale one from N versions ago. Purely additive; never fails the revise. **Tooling-absent fallback**: when `uv` is not on `PATH`, skip this step with a one-line notice; the next successful draft/revise pass records the baseline instead (bootstrap-safety: a missing snapshot reports as clean, never a false positive).
 12. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised q3-method.1 → q3-method.2/ (addressed 9 notes including 2 critical-flags, declined 1)`).
 
 ## Citation-command choice under natbib author-year
@@ -151,7 +152,7 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
 }
 ```
 
-When the corpus tier is active (issue #612), the reviser also carries `metadata.corpus_dirs_resolved` forward into this new `_progress.json`; the field is omitted entirely when the tier is inactive (byte-identical to pre-#612).
+When the corpus tier is active (issue #612), the reviser also carries `metadata.corpus_dirs_resolved` forward into this new `_progress.json`; the field is omitted entirely when the tier is inactive (byte-identical to pre-#612). Step 11b (issue #857) additionally writes `metadata.evidence_snapshot: { "brief_mtime": <float|null>, "refs_mtime": <float|null> }` — re-baselined for the new version dir every revision.
 
 `metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 

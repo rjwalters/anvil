@@ -124,6 +124,19 @@ def test_evidence_check_imports_cleanly() -> None:
     assert callable(ec.classify_justification)
 
 
+def test_evidence_drift_imports_cleanly() -> None:
+    """``anvil.lib.evidence_drift`` must import with base deps only.
+
+    The BRIEF/refs evidence-drift advisory (issue #857) is pure stdlib —
+    no third-party imports. If one ever sneaks in, this fails immediately.
+    """
+    import anvil.lib.evidence_drift as ed
+
+    assert callable(ed.check_evidence_drift)
+    assert callable(ed.compute_evidence_snapshot)
+    assert callable(ed.record_evidence_snapshot)
+
+
 def test_tex_includes_imports_cleanly() -> None:
     r"""``anvil.lib.tex_includes`` must import with base deps only.
 

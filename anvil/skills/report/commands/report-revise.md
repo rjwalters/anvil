@@ -70,6 +70,7 @@ This command is the canonical "N parallel critics, one reviser" pattern. For the
 
    **Review-supplied citation correction note (issue #749).** When step 7's "Findings are leads, not evidence" verification turns up a source, `refs/<file>` location, or figure that a `comments.md` entry or audit `findings.md` row supplied but that does NOT match what the source actually says, add a row here naming the finding's claimed value, the verified value, and the source that settled it — e.g. `| acme-q2/findings.1.audit (critical) | claimed refs/perf.csv row 12 → "47% reduction" | verified refs/perf.csv row 12 actually reads "42% reduction" | Body written against the verified 42% figure |`. This is the audit trail entry that makes a review-sidecar sourcing error visible on the pass that FIXES it, rather than only becoming visible after a later reviser's own remediation guess also lands on the wrong figure. Absence of the row (every supplied value verified clean) is the default and unremarkable.
 10. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
+10b. **Record the evidence-drift baseline (issue #857)**: invoke `uv run --project .anvil python -m anvil.lib.evidence_drift record <project>/<thread>/ <project>/<thread>.{N+1}/` — the same call `report-draft` step 10b makes, re-baselined against the new version dir. Every revision re-records the current BRIEF/refs mtimes so `report-review` always compares against the freshest version's baseline. Purely additive; never fails the revise. **Tooling-absent fallback**: when `uv` is not on `PATH`, skip with a one-line notice; the next successful draft/revise pass records the baseline instead.
 11. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised acme-q2/findings.1 → acme-q2/findings.2/ (addressed 11 review notes, 6 audit findings, declined 1)`).
 
 ## Idempotence and resumability
@@ -105,10 +106,13 @@ After this command produces `<thread>.{N+1}/`, the orchestrator should run BOTH 
   "metadata": {
     "iteration": <N+1>,
     "max_iterations": 4,
-    "revised_from": <N>
+    "revised_from": <N>,
+    "evidence_snapshot": { "brief_mtime": 1732000000.0, "refs_mtime": null }
   }
 }
 ```
+
+`metadata.evidence_snapshot` is written by step 10b (issue #857), re-baselined for the new version dir every revision.
 
 Merge rule (shallow): preserve fields not touched by this command. See `anvil/lib/snippets/progress.md` for the full read-merge-write recipe and `anvil/lib/snippets/timestamp.md` for the ISO-8601 UTC format.
 
