@@ -391,20 +391,36 @@ _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 _MD_LINK_TARGET_RE = re.compile(r"(!?\[[^\]]*\])\(([^)]*)\)")
 _AUTOLINK_RE = re.compile(r"<([a-zA-Z][a-zA-Z0-9+.-]*:[^>\s]*)>")
 
+# LaTeX-only: an unescaped ``%`` starts a comment that runs to end-of-line.
+# MUST NOT be applied to markdown sources — a bare ``%`` there is a percent
+# sign, not a comment opener. Mirrors ``numeric_consistency._LATEX_COMMENT_RE``
+# (issue #856): box-drawing / accented characters used purely for a comment
+# section rule (e.g. ``%% ── 4. The Item Pool ──``) never reach the rendered
+# PDF, so counting them source-side produces a false glyph-drop identical in
+# shape to a real missing-glyph defect.
+_LATEX_COMMENT_RE = re.compile(r"(?<!\\)%[^\n]*")
 
-def _strip_nonrendered_regions(text: str) -> str:
-    """Blank out markdown source regions that never reach the rendered body.
+
+def _strip_nonrendered_regions(text: str, *, latex: bool = False) -> str:
+    """Blank out source regions that never reach the rendered body.
 
     Removes HTML comments, inline link/image URL *targets* (keeping the
     visible link text), and angle-bracket autolink URLs. Used by the
     glyph-verification source sweep so non-ASCII inside a URL path
     (``[x](https://ex.com/café-page)``) or a comment (``<!-- café -->``) is
     not miscounted as a dropped body glyph (issue #692).
+
+    When ``latex=True`` (a ``.tex`` source body), also strips unescaped
+    ``%`` LaTeX comments — non-ASCII characters used only for a comment-only
+    section rule (e.g. box-drawing dashes) never reach the rendered PDF, so
+    counting them would false-flag a glyph drop (issue #856).
     """
     text = _HTML_COMMENT_RE.sub(" ", text)
     # Keep the link text (group 1), drop the URL target (group 2).
     text = _MD_LINK_TARGET_RE.sub(lambda m: m.group(1) + "( )", text)
     text = _AUTOLINK_RE.sub(" ", text)
+    if latex:
+        text = _LATEX_COMMENT_RE.sub(" ", text)
     return text
 
 
@@ -917,12 +933,14 @@ def _verify_source_glyphs(
     A strict ``==`` would false-positive on that legitimate noise; a short
     count is the only real failure mode.
 
-    Two classes of source non-ASCII are excluded before counting so the gate
-    does not false-block a valid document (issue #692): Unicode separator
-    spaces (``Zs`` — pdftotext normalizes them to ASCII space) and
+    Three classes of source non-ASCII are excluded before counting so the
+    gate does not false-block a valid document: Unicode separator spaces
+    (``Zs`` — pdftotext normalizes them to ASCII space, issue #692),
     non-rendered source regions (link/image URL targets, HTML comments,
-    autolinks — their glyphs never reach the rendered body). See
-    ``_sweep_nonascii_codepoints`` and ``_strip_nonrendered_regions``.
+    autolinks — their glyphs never reach the rendered body, issue #692), and,
+    for ``.tex`` sources, unescaped ``%`` LaTeX comments (issue #856 — e.g. a
+    comment-only box-drawing section rule). See ``_sweep_nonascii_codepoints``
+    and ``_strip_nonrendered_regions``.
 
     Each finding: ``{codepoint, name, source_count, pdf_count}`` where
     ``codepoint`` is the ``U+XXXX`` hex form and ``name`` the character
@@ -938,9 +956,10 @@ def _verify_source_glyphs(
         except (UnicodeDecodeError, OSError):
             continue
         # Exclude non-rendered source regions (link/image URL targets, HTML
-        # comments, autolinks) before the sweep — their non-ASCII never reaches
-        # the rendered body, so counting it would false-flag a glyph drop.
-        text = _strip_nonrendered_regions(text)
+        # comments, autolinks, and — for .tex sources — % LaTeX comments)
+        # before the sweep: their non-ASCII never reaches the rendered body,
+        # so counting it would false-flag a glyph drop.
+        text = _strip_nonrendered_regions(text, latex=path.suffix == ".tex")
         for ch, n in _sweep_nonascii_codepoints(text).items():
             source_counts[ch] = source_counts.get(ch, 0) + n
 
