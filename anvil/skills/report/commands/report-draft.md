@@ -60,6 +60,7 @@ For a new thread, `N+1 == 1` so the output is `<project>/<thread>.1/`.
    - **Declared-but-missing corpora**: proceed with whatever resolved (`resolve_subject_voice_docs` returns `missing: true` entries, never raises); the reviewer surfaces the broken declaration as a `major` finding.
 9. **Create exhibits** (inline only — full figure generation belongs to `report-figures`): any tables or simple inline data structures referenced from the body should land in `exhibits/` as `.md` or `.csv` files. Image generation is deferred to `report-figures`.
 10. **Update `_progress.json`**: `phases.draft.state = done`, `phases.draft.completed = <ISO timestamp>`.
+10b. **Record the evidence-drift baseline (issue #857)**: invoke `uv run --project .anvil python -m anvil.lib.evidence_drift record <project>/<thread>/ <project>/<thread>.{N+1}/`. This computes the current `<project>/<thread>/BRIEF.md` mtime and the max mtime under `<project>/<thread>/refs/**` and merges them into `<project>/<thread>.{N+1}/_progress.json.metadata.evidence_snapshot` — the baseline `report-review` compares against later to detect thread-root evidence that changed after this version was drafted. Purely additive bookkeeping; never fails the draft. **Tooling-absent fallback**: when `uv` is not on `PATH`, skip this step with a one-line notice; the next successful draft/revise pass records the baseline instead (a missing snapshot reports as clean, never a false positive — see `anvil/lib/evidence_drift.py`).
 11. **Report**: print the path to the new version dir and a one-line status (e.g., `Drafted acme-q2/findings.1/ (report.md: 2840 words, 4 exhibits, recipient: Acme Corp)`).
 
 ## Voice and style overrides
@@ -90,10 +91,13 @@ Minimum schema this command writes (matches `SKILL.md`):
   },
   "metadata": {
     "iteration": <N>,
-    "max_iterations": 4
+    "max_iterations": 4,
+    "evidence_snapshot": { "brief_mtime": 1732000000.0, "refs_mtime": null }
   }
 }
 ```
+
+`metadata.evidence_snapshot` is written by step 10b (`anvil/lib/evidence_drift.py::record_evidence_snapshot`, issue #857) — the BRIEF/refs mtime baseline `report-review` compares against to detect thread-root evidence changed after this draft. Advisory bookkeeping only; absent on pre-#857 threads.
 
 Merge rule (shallow): read existing `_progress.json` if present, update only `phases.draft` and `metadata`, preserve all other fields. Use the read-merge-write recipe in `anvil/lib/snippets/progress.md`; use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 
