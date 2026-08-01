@@ -219,9 +219,22 @@ from anvil.lib.rhetoric_lint import lint_rhetoric
 
 # Default placeholder patterns. Skills can extend via the placeholder_patterns
 # arg of ``gate``/``compile_and_gate``.
+#
+# NOTE (issue #855): ``[PENDING ...]`` / ``[PENDING: ...]`` markers are
+# INTENTIONALLY NOT matched here. They are a permitted honest-disclosure
+# convention (a value that does not exist yet — see
+# ``anvil/lib/snippets/pending_marker.md``) handled by the dedicated
+# ``anvil/lib/pending_marker.py`` gate, not by this generic placeholder scan.
+# ``_scan_placeholders`` below carves out well-formed pending-marker spans
+# (issue #842, ``_RENDER_GATE_PENDING_MARKER_RE``) so the two gates never
+# conflict. Do not add a ``[PENDING ...]`` pattern to this tuple — it would be
+# a no-op (the carve-out excludes it regardless) and risks confusing the two
+# gates' semantics (pending markers never block/penalize; generic
+# placeholders do).
 DEFAULT_PLACEHOLDER_PATTERNS: tuple[str, ...] = (
     r"\bTODO\b",
-    r"\[TBD\]",
+    r"\[TBD(?:[:\s][^\]]*)?\]",
+    r"\[FIXME(?:[:\s][^\]]*)?\]",
     r"\(figure\)",
     r"\\includegraphics\{[^}]*\.MISSING[^}]*\}",
     r"\.MISSING\b",
@@ -320,12 +333,21 @@ _MEMO_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 # memo-author idioms (``_TKTKTK_`` is the canary's "to come" marker —
 # pronounced "tee-kay"). The ``<!--`` / ``-->`` delimiters are not
 # matched literally so a TODO outside an HTML comment also fires.
+#
+# NOTE (issue #855): as with ``DEFAULT_PLACEHOLDER_PATTERNS`` above, this
+# tuple intentionally carries no ``[PENDING ...]`` pattern. Well-formed
+# pending markers (see ``anvil/lib/snippets/pending_marker.md``) are the
+# dedicated ``anvil/lib/pending_marker.py`` gate's territory — for the memo
+# skill that gate runs as its own unconditional review step (see
+# ``anvil/skills/memo/commands/memo-review.md`` step 4n), independent of this
+# scan. Do not add a ``[PENDING ...]`` pattern here.
 DEFAULT_MEMO_PLACEHOLDER_PATTERNS: tuple[str, ...] = (
     r"<!--\s*TODO[^>]*-->",
     r"<!--\s*TBD[^>]*-->",
     r"<!--\s*FIXME[^>]*-->",
     r"\bTODO\b",
-    r"\[TBD\]",
+    r"\[TBD(?:[:\s][^\]]*)?\]",
+    r"\[FIXME(?:[:\s][^\]]*)?\]",
     r"\[TKTKTK\]",
     r"_TKTKTK_",
     r"\bTKTKTK\b",
