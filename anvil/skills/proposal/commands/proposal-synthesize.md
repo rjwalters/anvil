@@ -71,11 +71,12 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
   ],
   "singletons": [
     { "sibling": "review", "ref": "dim7.comment.1", "note": "stylistic finding, no overlap" }
-  ]
+  ],
+  "outstanding_dependencies": []
 }
 ```
 
-The reviser reads each `gap` and produces ONE coordinated response per gap (instead of one response per contributing finding). Each `singleton` is addressed with the existing "one finding, one response" framing.
+The reviser reads each `gap` and produces ONE coordinated response per gap (instead of one response per contributing finding). Each `singleton` is addressed with the existing "one finding, one response" framing. `outstanding_dependencies` (issue #842/#843) is a separate, additive top-level list of still-pending `[PENDING <source>]` labels sourced from the `<thread>.{N}.pending/` sidecar — NOT a gap or singleton the reviser addresses in prose; see step 6's carve-out below for why pending-marker findings are excluded from the gap/singleton enumeration entirely. Empty (as shown above) is the common case for a thread with no active pending marker.
 
 ## Procedure
 
@@ -100,6 +101,7 @@ The reviser reads each `gap` and produces ONE coordinated response per gap (inst
    - `<thread>.{N}.review/verdict.md` + `scoring.md` + `comments.md`.
    - `<thread>.{N}.audit/verdict.md` + `findings.md` + (when present) `evidence.md`.
    - `<thread>.{N}.perspective/candidates.md` + (when present) other perspective output files.
+   - `<thread>.{N}.pending/_review.json` if present (pending-marker gate — issue #842/#843): load via `anvil.lib.critics.load_review` (or parse the JSON directly). This sibling is written unconditionally by both `proposal-review` step 4l and `proposal-audit` step 11b, so its presence is the common case for any thread that has completed review + audit. Its `outstanding_sources` (or, absent a direct field, the `pending_dependency`-typed `critical_flags`' source labels) feed the `outstanding_dependencies` list on `gaps.json` at step 10 — see step 6's carve-out below for why these are NOT enumerated as ordinary findings.
    - Every other discovered `<thread>.{N}.<critic>/` sibling.
 6. **Enumerate findings** across all siblings into a single flat list. Each entry SHOULD include:
    - `sibling`: tag (`review`, `audit`, `perspective`, ...).
@@ -107,6 +109,7 @@ The reviser reads each `gap` and produces ONE coordinated response per gap (inst
    - The finding's prose (rationale, suggested fix, severity).
    - Optional: the rubric dimension(s) the finding touches.
    - Optional: the section / line span in `proposal.tex`.
+   - **Pending-marker findings are EXCLUDED from this list (issue #842/#843)**: the `<thread>.{N}.pending/` sibling's `pending_dependency`-typed critical flags and `nit` findings are NOT enumerated here, NOT clustered into a `Gap`, and NOT surfaced as a `Singleton`. A pending marker is not a defect for the reviser to write a "response" to — the only correct resolution is waiting for the real value, which is not a synthesis-shaped action. Instead they are carried forward as the distinct `outstanding_dependencies` list on `gaps.json` (step 10) so the reviser sees them without mistaking them for gaps or singletons requiring prose changes.
 7. **Cluster findings by underlying gap**:
    - **Deterministic pre-filter (cheap)**: group candidates by shared rubric dimension, shared section reference, or shared evidence span. This narrows the LLM's search space without replacing its judgment.
    - **LLM clustering (the substantive step)**: for each candidate cluster, decide whether the findings collectively name a single root concern. Findings that share a rubric dim but address distinct concerns (e.g., two separate dim-6 issues — one BOM line, one labor estimate) MUST NOT cluster. Findings across different rubric dims that share an underlying gap (e.g., review's "deliverability is hand-wavy" + perspective's "no cleared-engineer market data") MAY cluster.
@@ -121,15 +124,16 @@ The reviser reads each `gap` and produces ONE coordinated response per gap (inst
 9. **Compose each `Singleton`** for findings that did NOT cluster:
    - `sibling` + `ref` matching the original finding.
    - `note`: optional one-line explanation (e.g., `"stylistic finding, no overlap"`, `"unique to perspective; no review/audit counterpart"`). Helps the reviser decide whether the singleton is load-bearing.
-10. **Validate and write `gaps.json`**: assemble a `GapList(schema_version="1", for_version=N, thread=<slug>, gaps=[...], singletons=[...])`, validate via the pydantic model (it MUST round-trip cleanly), then `json.dumps(indent=2)` to `<thread>.{N}.synthesis/gaps.json`. Atomic write per `anvil/lib/snippets/progress.md`.
-11. **Write `synthesis.md`** — narrative companion to `gaps.json`. For each gap: 1 paragraph summarizing the contributing findings, the root concern, and the recommended response. Group gaps by severity (critical → blocker → should-fix → nice-to-have). End with a `## Singletons` section listing the findings that did not cluster (one line each).
+10. **Validate and write `gaps.json`**: assemble a `GapList(schema_version="1", for_version=N, thread=<slug>, gaps=[...], singletons=[...], outstanding_dependencies=[...])`, validate via the pydantic model (it MUST round-trip cleanly), then `json.dumps(indent=2)` to `<thread>.{N}.synthesis/gaps.json`. Atomic write per `anvil/lib/snippets/progress.md`. **`outstanding_dependencies` (issue #842/#843)**: the list of still-pending source labels from step 5's `<thread>.{N}.pending/_review.json` (i.e. `outstanding_sources` from the pending-marker gate). Empty (the field's default) when no `.pending/` sibling exists or it carries no active markers — byte-identical to pre-#842/#843 `gaps.json` in that case.
+11. **Write `synthesis.md`** — narrative companion to `gaps.json`. For each gap: 1 paragraph summarizing the contributing findings, the root concern, and the recommended response. Group gaps by severity (critical → blocker → should-fix → nice-to-have). End with a `## Singletons` section listing the findings that did not cluster (one line each). **When `outstanding_dependencies` is non-empty (issue #842/#843)**, append a final `## Outstanding dependencies (not gaps)` section listing each pending source label with a one-line note that it is an honest disclosure holding the READY/AUDITED terminal transition (SKILL.md §"State machine"), NOT a finding for the reviser to address in prose. Omitted entirely when the list is empty.
 12. **Write `verdict.md`** — top-level summary for an operator scanning the directory:
     - Total gaps clustered: `N`. Singletons: `M`.
     - Severity breakdown: `critical: 0 | blocker: 1 | should-fix: 3 | nice-to-have: 0`.
     - Recommended triage: one paragraph naming the top 2-3 gaps the reviser should address first, with rationale.
     - The line `gaps.json schema_version: "1"` so an operator can see which contract the file commits to.
+    - **Outstanding dependencies (conditional — issue #842/#843)**: when `outstanding_dependencies` is non-empty, a short note naming the still-pending source label(s) and stating explicitly that they hold the READY/AUDITED terminal transition independently of the gap/singleton triage above — an operator scanning `verdict.md` alone should not mistake a pending marker for an unaddressed gap. Omitted entirely when the list is empty (byte-identical to pre-#842/#843 `verdict.md`).
 13. **Update `_progress.json`** inside the staging dir: `phases.synthesize.state = done`, `phases.synthesize.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.synthesis.tmp/` → `<thread>.{N}.synthesis/`. The final-named dir only ever exists in **complete** form — a half-written `gaps.json` can never be read by the reviser.
-14. **Report**: print the path to the (now-renamed) synthesis dir and a one-line status (e.g., `Synthesized raytheon-pitch-strategy.1 → raytheon-pitch-strategy.1.synthesis/ (5 gaps, 2 singletons; 1 blocker, 4 should-fix)`).
+14. **Report**: print the path to the (now-renamed) synthesis dir and a one-line status (e.g., `Synthesized raytheon-pitch-strategy.1 → raytheon-pitch-strategy.1.synthesis/ (5 gaps, 2 singletons; 1 blocker, 4 should-fix)`). When `outstanding_dependencies` is non-empty, append it to the status line (e.g., `... ; 1 outstanding pending dependency: vendor-quote-acme`).
 
 ## Idempotence and resumability
 

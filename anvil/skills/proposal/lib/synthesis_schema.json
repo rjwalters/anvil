@@ -98,6 +98,14 @@
           "title": "Gaps",
           "type": "array"
         },
+        "outstanding_dependencies": {
+          "description": "Still-pending [PENDING <source>] source labels sourced from the <thread>.{N}.pending/ sidecar's outstanding_sources (issue #842/#843; the pending-measurement placeholder gate in anvil/lib/pending_marker.py). Deliberately separate from gaps and singletons: a pending marker is an honest disclosure that a value does not exist yet, not a defect the reviser addresses in prose. The list gates only the READY/AUDITED terminal transition; it never contributes a Gap or Singleton entry. Empty (the default) when no .pending/ sibling exists or it carries no active markers.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Outstanding Dependencies",
+          "type": "array"
+        },
         "schema_version": {
           "const": "1",
           "default": "1",
