@@ -1386,6 +1386,57 @@ def test_scan_memo_placeholders_empty_source():
 
 
 # ---------------------------------------------------------------------------
+# Broadened [TBD ...] / [FIXME ...] bracket coverage (issue #855)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_memo_placeholders_tbd_and_fixme_with_qualifier():
+    """[TBD: ...] and [FIXME: ...] with a trailing qualifier are flagged —
+    the pre-#855 exact-match-only `[TBD]` pattern missed these."""
+    source = (
+        "# Memo\n"
+        "The vendor quote is [TBD: vendor quote] as of today.\n"
+        "This number [FIXME: recheck against the spec sheet] needs review.\n"
+    )
+    active, suppressed = _scan_memo_placeholders(
+        source, DEFAULT_MEMO_PLACEHOLDER_PATTERNS
+    )
+    matches = {h["match"] for h in active}
+    assert "[TBD: vendor quote]" in matches
+    assert "[FIXME: recheck against the spec sheet]" in matches
+    assert len(suppressed) == 0
+
+
+def test_scan_memo_placeholders_bare_tbd_and_fixme_still_match():
+    """Bare [TBD] / [FIXME] (no qualifier) still match after broadening."""
+    source = "# Memo\nCost is [TBD]. Approach is [FIXME].\n"
+    active, suppressed = _scan_memo_placeholders(
+        source, DEFAULT_MEMO_PLACEHOLDER_PATTERNS
+    )
+    matches = {h["match"] for h in active}
+    assert "[TBD]" in matches
+    assert "[FIXME]" in matches
+
+
+def test_scan_memo_placeholders_pending_marker_unaffected_by_broadening():
+    """A well-formed [PENDING ...] marker is not matched by the broadened
+    TBD/FIXME patterns — the two gates stay independent (issue #842/#855)."""
+    source = (
+        "# Memo\n"
+        "Vendor quote: [TBD: vendor quote]\n"
+        "Recheck: [FIXME: recheck]\n"
+        "Benchmark accuracy: [PENDING benchmark-run]\n"
+    )
+    active, suppressed = _scan_memo_placeholders(
+        source, DEFAULT_MEMO_PLACEHOLDER_PATTERNS
+    )
+    matches = {h["match"] for h in active}
+    assert "[TBD: vendor quote]" in matches
+    assert "[FIXME: recheck]" in matches
+    assert all("PENDING" not in m for m in matches)
+
+
+# ---------------------------------------------------------------------------
 # _gate_memo: end-to-end with mocked render
 # ---------------------------------------------------------------------------
 
