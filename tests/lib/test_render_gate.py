@@ -950,6 +950,88 @@ def test_glyph_verification_url_only_nonascii_passes(
     assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
 
 
+@pytest.fixture
+def latex_comment_only_nonascii_source() -> Path:
+    """.tex source whose non-ASCII lives only in `%` comment lines (issue #856)."""
+    p = FIXTURES / "latex_comment_only_nonascii_source.tex"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdftotext_latex_comment_only() -> str:
+    """Stub pdftotext whose extraction carries no non-ASCII at all."""
+    p = FIXTURES / "fake_pdftotext_latex_comment_only.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+@pytest.fixture
+def latex_comment_and_body_nonascii_source() -> Path:
+    """.tex source with comment-only accents PLUS a real in-body ≠ (issue #856)."""
+    p = FIXTURES / "latex_comment_and_body_nonascii_source.tex"
+    assert p.exists(), f"missing fixture: {p}"
+    return p
+
+
+@pytest.fixture
+def fake_pdftotext_latex_comment_body_drop() -> str:
+    """Stub pdftotext that dropped the real in-body ≠ (U+2260)."""
+    p = FIXTURES / "fake_pdftotext_latex_comment_body_drop.sh"
+    assert p.exists(), f"missing fixture: {p}"
+    return str(p)
+
+
+def test_glyph_verification_latex_comment_only_nonascii_passes(
+    empty_pdf,
+    fake_pdfinfo_3pages_path,
+    latex_comment_only_nonascii_source,
+    fake_pdftotext_latex_comment_only,
+):
+    """Non-ASCII living only inside a `%`-prefixed LaTeX comment (e.g. a
+    box-drawing section-rule banner) must NOT trip the glyph gate (issue #856).
+
+    Those glyphs are counted in the raw .tex source but a `%` comment never
+    reaches the rendered PDF body, so the source sweep must strip LaTeX
+    comments before counting — mirroring the masking
+    ``numeric_consistency._mask_text(..., latex=True)`` already applies.
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[latex_comment_only_nonascii_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_latex_comment_only,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION not in r.failed_gates
+    assert not [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+
+
+def test_glyph_verification_latex_body_drop_still_fails(
+    empty_pdf,
+    fake_pdfinfo_3pages_path,
+    latex_comment_and_body_nonascii_source,
+    fake_pdftotext_latex_comment_body_drop,
+):
+    """A genuine in-body non-ASCII glyph drop must still fail the gate even
+    when the same source also has comment-only accented/box-drawing chars
+    (issue #856 — comment-stripping must not swallow a real drop).
+    """
+    r = gate(
+        empty_pdf,
+        source_paths=[latex_comment_and_body_nonascii_source],
+        page_cap=None,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+        pdftotext_path=fake_pdftotext_latex_comment_body_drop,
+        compile_status=COMPILE_SKIPPED,
+    )
+    assert DIM_GLYPH_VERIFICATION in r.failed_gates
+    glyph_findings = [f for f in r.findings if f.gate == DIM_GLYPH_VERIFICATION]
+    assert len(glyph_findings) == 1
+    assert "U+2260" in glyph_findings[0].message
+
+
 def test_glyph_verification_skips_gracefully_when_pdftotext_absent(
     empty_pdf, fake_pdfinfo_3pages_path, stix_glyph_drop_source, monkeypatch
 ):
