@@ -141,14 +141,14 @@ def test_directed_revision_snippet_default_byte_identical():
 
 def test_directed_revision_snippet_names_current_and_pending_adopters():
     body = _read(SNIPPETS / "directed_revision.md")
-    # memo + primer are the adopted consumers; the remaining 10 skills are
-    # enumerated as pending so the blast radius is not lost.
+    # memo + primer + proposal are the adopted consumers; the remaining 9
+    # skills are enumerated as pending so the blast radius is not lost.
     assert "memo" in body
     assert "primer" in body
+    assert "proposal" in body
     for skill in (
         "report",
         "datasheet",
-        "proposal",
         "deck",
         "paper",
         "slides",
@@ -163,11 +163,12 @@ def test_directed_revision_snippet_names_current_and_pending_adopters():
 
 
 def test_memo_and_primer_revise_reference_the_snippet():
-    """Both adopted revise commands point at the shared snippet."""
+    """All adopted revise commands point at the shared snippet."""
     skills = SNIPPETS.parents[1] / "skills"
     for rel in (
         "memo/commands/memo-revise.md",
         "primer/commands/primer-revise.md",
+        "proposal/commands/proposal-revise.md",
     ):
         body = (skills / rel).read_text(encoding="utf-8")
         assert "directed_revision.md" in body, (
