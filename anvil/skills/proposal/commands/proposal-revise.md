@@ -51,12 +51,38 @@ The flag honors the existing `comments.md` severity groupings already emitted by
 
 **Reason argument**: a CLI-supplied reason is NOT required (this differs from the `--polish` precedent in `memo-revise.md`'s CLI flags). The default-changing-from-`all`-to-`important` is a behavioral migration, not an operator-bypass affordance; an audit-trail field in `_progress.json.metadata.scope` is sufficient. Operators who want the deferred-tier behavior get it by default; operators who want every-finding behavior must opt in.
 
+**Composition with `--polish`.** `--scope` and `--polish` are independent flags that compose, exactly as documented for `memo-revise.md` §"CLI flags" §"Composition with `--polish`":
+
+- `--scope` controls which comment-severity tiers (or, on the synthesis path, gap/singleton severities) the reviser addresses (default `important`).
+- `--polish` bypasses the combined-advance pre-check at step 4 so the reviser can run against an already-passing proposal for line-level polish.
+
+When both are passed, the polish bypass runs first (step 4 is skipped), then the scope filter is applied to which findings the polish pass addresses (step 7). Practical compositions:
+
+- `proposal-revise <thread> --polish "<reason>"` — implicit `--scope important`; the polish pass addresses sub-threshold dim lifts + `blocker`/`major` (or `critical`/`blocker`-severity gaps) findings; `minor`/`nit` (or `should-fix`/`nice-to-have` gaps) are deferred. Most common polish-pass shape.
+- `proposal-revise <thread> --polish "<reason>" --scope all` — the polish pass addresses everything (sub-threshold dim lifts + every finding regardless of severity). Use when the operator explicitly wants the polish pass to sweep every line-level signal.
+- `proposal-revise <thread> --polish "<reason>" --scope critical-only` — degenerate, for the same reason `memo-revise.md` documents: `--polish` requires `advance:true`/`pass:true` + 0-critical (no critical flags exist to begin with), and `--scope critical-only` filters out everything except critical flags. The combination produces an empty revision plan. The reviser SHOULD print a warning naming the degeneracy and proceed: still write the new `<thread>.{N+1}/` version dir with `proposal.tex` carried over unchanged, `phases.revise.state = done`, both `metadata.revision_mode = "polish"` and `metadata.scope = "critical-only"` recorded, and a `changelog.md` containing both the polish-pass header note and a `Deferred to next iteration (scope: critical-only)` section listing every original finding as deferred. The new version dir is a no-op revision; the audit trail records why.
+
+### `--polish "<reason>"` (optional)
+
+The generic operator-directed revision contract (required non-empty reason, bypasses the combined-advance pre-check step ONLY, `metadata.revision_mode`/`metadata.revise_force_reason` audit trail, no inherited credit) is codified in `anvil/lib/snippets/directed_revision.md` (`.anvil/anvil/lib/snippets/directed_revision.md` in an installed consumer repo) — the shared source of truth adopted across skills (issue #691). Summary, scoped to this command's step numbers:
+
+- **Bypasses step 4 ONLY.** When passed, the combined-advance pre-check is skipped, so the reviser runs against a `READY`/`AUDITED` version (which the default path correctly refuses) and polishes sub-threshold per-dimension justifications in `.review/scoring.md`, `nit`-tagged or untagged `comments.md` notes, and audit-side line-level findings.
+- **The critic-completeness check (step 1) still applies.** `--polish` bypasses the pre-check *verdict*, never the *existence* of the critics — BOTH `<thread>.{N}.review/verdict.md` AND `<thread>.{N}.audit/verdict.md` are still required.
+- **The iteration-cap check (step 3) still applies.** `--polish` against a thread at `max_iterations` still hits the `BLOCKED` notice.
+- **The reason argument is required.** `--polish` with no value, `--polish ""`, and `--polish "   "` (whitespace-only) are all rejected with a clear error; the thread is left untouched (no version dir written, no `_progress.json` mutation).
+- **No inherited credit.** The polish-pass output is a normal `<thread>.{N+1}/` version dir. The next `proposal-review` + `proposal-audit` pair scores it on its own rubric merits — a fresh critic pair MUST land for the thread to re-reach `READY`/`AUDITED`. The critics do NOT read the audit-trail fields and do NOT special-case the polish pass.
+- **Audit-trail fields** (step 10): `metadata.revision_mode = "polish"` + `metadata.revise_force_reason = "<verbatim reason>"`, both audit-trail-only (NOT scored, NOT gating, NO state-machine impact). On the default (no-`--polish`) path, `revision_mode` defaults to `"normal"` (or is omitted) and `revise_force_reason` is `null` (or omitted) — a non-polish version dir is byte-identical to the pre-this-change shape.
+
+See SKILL.md §"Operator-initiated polish passes" for the user-facing shape.
+
 ## Procedure
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex` AND BOTH `<thread>.{N}.review/verdict.md` and `<thread>.{N}.audit/verdict.md` under the thread root `<thread>/`. If either critic sibling is missing, exit with an error ("both review and audit are required before revising; run the missing critic first").
 2. **Resume check**: if `<thread>.{N+1}/_progress.json.revise.state == done` and `proposal.tex` + `changelog.md` exist, the revision is complete — exit early with a notice.
 3. **Iteration cap check**: read `metadata.max_iterations` from `<thread>.{N}/_progress.json` (or `<thread>/.anvil.json` override; default 4). If `N + 1 > max_iterations`, exit with a `BLOCKED` notice — human review required.
-4. **Combined-advance pre-check**: parse both verdicts. If `review.advance == true` (≥35) AND `audit.pass == true` AND there are no critical flags in either sibling, exit with a notice: the thread is `READY`/`AUDITED`, no revision needed. (Operator can force-run by deleting a verdict or bumping the iteration manually, but the default is to refuse to revise an already-passing version.)
+4. **Combined-advance pre-check**: parse both verdicts. If `review.advance == true` (≥35) AND `audit.pass == true` AND there are no critical flags in either sibling, exit with a notice: the thread is `READY`/`AUDITED`, no revision needed. The default is to refuse to revise an already-passing version; the sanctioned override is `proposal-revise <thread> --polish "<reason>"` (see §"CLI flags"), not deleting a critic sibling or hand-editing `_progress.json`.
+
+   **`--polish` bypass** (`anvil/lib/snippets/directed_revision.md`): when `proposal-revise <thread> --polish "<reason>"` is invoked, this step is skipped entirely — proceed to step 5 regardless of `review.advance == true` + `audit.pass == true`, so the reviser can spend one directed pass on the sub-threshold dimension notes and `nit`/untagged comments the terminal-exit path would skip. Pre-check the reason argument before bypassing: an absent / empty / whitespace-only reason is rejected with a clear error and the thread is left untouched. `--polish` bypasses ONLY this step — step 1's dual-critic-required check and step 3's iteration cap still apply. See §"CLI flags" for the full required-reason + no-inherited-credit contract.
 5. **Initialize `_progress.json`**: write `phases.revise.state = in_progress`, `phases.revise.started = <ISO>`, `metadata.iteration = N+1`, `metadata.max_iterations`. Also record the resolved `--scope` level: write `metadata.scope` as one of `"critical-only"`, `"important"`, or `"all"`. The value stored is the *resolved* value at invocation time (the default `"important"` when the flag was absent, or the explicit operator-supplied value); the field participates in the shallow-merge rule per `anvil/lib/snippets/progress.md` and is preserved on subsequent writes by other commands. Absence of the field is tolerated by readers and treated as `"all"` for backwards-compat with pre-this-change version dirs.
 6. **Read inputs** — discover the synthesis sibling first; prefer `gaps.json` as the revision-plan source when present, fall back to per-sibling finding reading when absent.
 
@@ -109,6 +135,8 @@ The flag honors the existing `comments.md` severity groupings already emitted by
    - Carry over `figures/` and the `anvil-proposal.cls` from the prior version; update or add figures as the revision plan requires.
    - **Critical flags MUST be addressed**: a *missed hard constraint* flag (1) requires the design to actually satisfy the constraint (no surface raceway if invisibility was required); a *cost not sourceable* flag (2) requires a basis for every price; a *not deliverable* flag (3) requires a concrete delivery-capability story the BOM/labor actually fund; an *internal inconsistency* flag (4) requires the arithmetic, counts, and link budgets to be made to agree.
 9. **Write `changelog.md`**: a markdown table mapping each gap or critic note to the change made. The `Source` column shape depends on whether the revision plan was built from synthesis (step 7a) or from per-sibling findings (step 7b).
+
+   **Polish-pass header note.** On a `--polish` pass, prepend a blockquote header note quoting the operator's `--polish` reason verbatim (e.g., `> Polish pass. Operator reason: "Sharpen the demurrage order-of-magnitude figure and the fee formula's missing term flagged in the audit sidecar."`), and map each polish edit to its source — a sub-threshold dimension deduction, a `nit`/untagged comment, or an audit finding — or to the operator directive itself. An untraceable polish edit is a defect (`anvil/lib/snippets/directed_revision.md` §"Changelog discipline"). The prior review's "What's working" observations still bind: rubric-point chasing that sands off a section the reviewer flagged as strong is the named meta-failure mode, and `--polish` does not license it.
 
    **9a. Synthesis source format (step 7a path)** — when a gap drove the change, the `Source` column names the gap ID and the contributing-finding refs in a single multi-contributor row. This is the canonical row format for the post-synthesis path:
 
@@ -173,6 +201,8 @@ The flag honors the existing `comments.md` severity groupings already emitted by
 
    This note makes a review-sidecar sourcing error visible on the pass that FIXES it, rather than only becoming visible after a later reviser's own remediation guess also lands on the wrong value. Absence of the note (every supplied value verified clean) is the default and unremarkable.
 10. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
+
+    **Polish-pass audit trail** (`anvil/lib/snippets/directed_revision.md` §"Audit-trail fields"): on a `--polish` pass, additionally write `metadata.revision_mode = "polish"` and `metadata.revise_force_reason = "<verbatim operator-supplied reason>"` (stored verbatim — no trimming / normalization / truncation beyond JSON encoding). Both fields participate in the shallow-merge rule per `anvil/lib/snippets/progress.md` and are audit-trail-only: NOT scored, NOT gating, NO state-machine impact — the next `proposal-review` + `proposal-audit` pass scores `<thread>.{N+1}/` on its own merits and does NOT read them. On the default (no-`--polish`) path, `revision_mode` defaults to `"normal"` (or is omitted) and `revise_force_reason` is `null` (or omitted); a non-polish version dir is byte-identical to the pre-this-change shape.
 11. **Report**: print the path to the new version dir and a one-line status. The status line MUST include the scope level and the deferred count alongside the existing addressed / declined counts — e.g., `Revised gossamer-lan.1 → gossamer-lan.2/ (scope: important; addressed 4 notes incl. 1 audit-critical, deferred 6 to next iteration, declined 1)`. The scope tag is the cheap operator signal that the run took a tiered filter; the deferred count is the cheap signal of how many findings were punted. Under `--scope all` the deferred count is zero and the line MAY omit the `deferred N to next iteration` clause (or print `deferred 0 to next iteration` — readers tolerate both shapes).
 
 ## Idempotence and resumability
@@ -211,12 +241,14 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
     "iteration": <N+1>,
     "max_iterations": 4,
     "revised_from": <N>,
-    "scope": "important"
+    "scope": "important",
+    "revision_mode": "normal",
+    "revise_force_reason": null
   }
 }
 ```
 
-`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. `metadata.scope` is the resolved `--scope` level for this revision (`"critical-only"`, `"important"` (default), or `"all"`) — see §"CLI flags" for the level semantics and step 7 for the filter logic. The field is a skill-specific extension to the `_progress.json` schema and is preserved by the shallow-merge rule per `anvil/lib/snippets/progress.md`. Absence of the field is tolerated by readers and treated as `"all"` for backwards-compat with pre-this-change version dirs. **This field is audit-trail only — not scored, not gating, not state-machine input.** Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
+`metadata.revised_from` helps the orchestrator's anomaly detection catch gaps in the version chain. `metadata.scope` is the resolved `--scope` level for this revision (`"critical-only"`, `"important"` (default), or `"all"`) — see §"CLI flags" for the level semantics and step 7 for the filter logic. The field is a skill-specific extension to the `_progress.json` schema and is preserved by the shallow-merge rule per `anvil/lib/snippets/progress.md`. Absence of the field is tolerated by readers and treated as `"all"` for backwards-compat with pre-this-change version dirs. **This field is audit-trail only — not scored, not gating, not state-machine input.** `metadata.revision_mode` / `metadata.revise_force_reason` are the `--polish` audit trail (`anvil/lib/snippets/directed_revision.md`): `"normal"` / `null` on the default path shown above, `"polish"` / `"<verbatim operator reason>"` when produced via `--polish "<reason>"` — see §"CLI flags" §"`--polish "<reason>"`" and step 10 above. Both are likewise audit-trail only. Use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 
 ## Git sync (opt-in, off by default)
 
