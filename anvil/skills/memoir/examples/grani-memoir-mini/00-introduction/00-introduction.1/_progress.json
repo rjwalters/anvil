@@ -12,6 +12,7 @@
     "artifact_type": "memoir",
     "iteration": 1,
     "max_iterations": 4,
+    "iteration_cap_rationale": null,
     "corpus_dirs_resolved": [
       "transcripts",
       "letters"

@@ -52,6 +52,16 @@ def _read(rel: str) -> str:
     return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
 
 
+def _flat(rel: str) -> str:
+    """``_read`` with all whitespace runs collapsed to single spaces.
+
+    Phrase assertions against hard-wrapped prose break whenever a
+    paragraph reflows, which is churn rather than signal. Reading the
+    flattened text lets a phrase assertion span a line break.
+    """
+    return re.sub(r"\s+", " ", _read(rel))
+
+
 def _parse_frontmatter(text: str) -> dict:
     """Parse a leading ``---``-delimited YAML frontmatter block.
 
@@ -419,6 +429,131 @@ class TestPhotoPlacementContract(unittest.TestCase):
     def test_figures_never_mutates_manifest(self):
         text = _read("commands/memoir-figures.md")
         self.assertIn("strictly read-only", text.lower())
+
+
+class TestIterationCapContract(unittest.TestCase):
+    """The iteration-cap / override contract is documented (issue #869).
+
+    The canary friction was a chapter landing at ``iteration ==
+    max_iterations`` with no documented answer to "what happens next" and
+    no pointer to the (already-shipped, shared) paired override. These
+    assertions pin the three surfaces that answer it: the reviser's cap
+    predicate + BLOCKED notice, SKILL.md's override contract, and the
+    orchestrator's at-the-ceiling reporting rule.
+    """
+
+    def test_revise_states_the_cap_predicate(self):
+        text = _read("commands/memoir-revise.md")
+        self.assertIn("N + 1 > effective_max_iterations", text)
+        # The off-by-one the issue complains about: under the predicate
+        # the terminal dir is <thread>.{max_iterations}/, not .5/.
+        self.assertIn("<thread>.{max_iterations}/", text)
+        self.assertNotIn("worst-case terminal version `<thread>.5/`", text)
+
+    def test_revise_documents_behavior_at_the_ceiling(self):
+        flat = _flat("commands/memoir-revise.md")
+        self.assertIn("iteration == max_iterations", flat)
+        # Refuse / warn / proceed must be answered unambiguously.
+        self.assertIn("refuses; it never warns-and-proceeds", flat)
+        # A clean terminus at the ceiling is NOT blocked.
+        self.assertIn("was never the *terminating condition*", flat)
+
+    def test_revise_documents_the_blocked_notice_contract(self):
+        flat = _flat("commands/memoir-revise.md")
+        self.assertIn("BLOCKED notice", flat)
+        self.assertIn("Override available", flat)
+        self.assertIn("iteration_cap_rationale", flat)
+        self.assertIn("max_iterations (int ≥ 4)", flat)
+        # The already-elevated branch echoes the prior rationale in full.
+        self.assertIn("in full, never truncated", flat)
+        self.assertIn("already at its elevated cap", flat)
+        # Budget composition (the #869-specific surfacing).
+        self.assertIn("Budget composition", flat)
+
+    def test_revise_budget_composition_example_is_self_consistent(self):
+        """The worked composition line must not double-count a version.
+
+        A phrase-level pin on ``Budget composition`` alone let a
+        contradictory instance ship (a version classified as *both*
+        substantive and map-only, tallying four classified passes on a
+        thread that can hold at most three). This re-derives the worked
+        example's arithmetic instead of trusting the prose: ``v1`` is the
+        draft and carries no ``revision_class``, so the classified groups
+        must be disjoint and ``1 (draft) + substantive + map-only`` must
+        equal the consumed numerator.
+        """
+        flat = _flat("commands/memoir-revise.md")
+
+        # The tally model is stated, not left to be inferred.
+        self.assertIn("no `metadata.revision_class`", flat)
+        self.assertIn("1 (draft) + substantive + map-only == X", flat)
+
+        match = re.search(
+            r"Budget composition: (\d+)/(\d+) consumed — v1 draft, "
+            r"(\d+) substantive \(([^)]*)\), (\d+) map-only \(([^;)]*)[;)]",
+            flat,
+        )
+        self.assertIsNotNone(
+            match, "worked budget-composition example not found or reshaped"
+        )
+        consumed, cap, n_sub, sub_body, n_map, map_body = match.groups()
+        consumed, cap, n_sub, n_map = (
+            int(consumed),
+            int(cap),
+            int(n_sub),
+            int(n_map),
+        )
+
+        self.assertLessEqual(consumed, cap)
+        # The declared counts match the versions actually named.
+        sub_versions = set(re.findall(r"v\d+", sub_body))
+        map_versions = set(re.findall(r"v\d+", map_body))
+        self.assertEqual(len(sub_versions), n_sub)
+        self.assertEqual(len(map_versions), n_map)
+        # A pass is substantive XOR map-only — never both.
+        self.assertEqual(sub_versions & map_versions, set())
+        # v1 is the draft; it is never classified.
+        self.assertNotIn("v1", sub_versions | map_versions)
+        # 1 draft + classified revisions == the consumed numerator.
+        self.assertEqual(1 + n_sub + n_map, consumed)
+
+    def test_revise_records_the_cap_audit_trail(self):
+        text = _read("commands/memoir-revise.md")
+        self.assertIn("metadata.max_iterations", text)
+        self.assertIn("metadata.iteration_cap_rationale", text)
+        self.assertIn("metadata.revision_class", text)
+
+    def test_revise_never_raises_the_cap_itself(self):
+        text = _read("commands/memoir-revise.md")
+        self.assertIn("Never raises the iteration cap itself", text)
+
+    def test_map_only_non_goal_documented_with_rationale(self):
+        flat = _flat("commands/memoir-revise.md")
+        self.assertIn("Map-only repairs still consume an iteration", flat)
+        self.assertIn("map_only", flat)
+        self.assertIn("byte-identical", flat)
+        self.assertIn("deliberate design decision", flat)
+
+    def test_draft_mirrors_the_cap_into_progress(self):
+        text = _read("commands/memoir-draft.md")
+        self.assertIn("max_iterations", text)
+        self.assertIn("iteration_cap_rationale", text)
+        self.assertIn("DEFAULT_MAX_ITERATIONS", text)
+
+    def test_skill_documents_the_override_contract(self):
+        flat = _flat("SKILL.md")
+        self.assertIn("Iteration cap and override contract", flat)
+        self.assertIn("iteration_cap_rationale", flat)
+        self.assertIn("sticky raise", flat)
+        # memo's contract is the schema-of-record; memoir reuses it.
+        self.assertIn("Per-document override contract", flat)
+        self.assertIn("explicit, recorded operator decision", flat)
+
+    def test_orchestrator_distinguishes_clean_terminus_from_blocked(self):
+        flat = _flat("commands/memoir.md")
+        self.assertIn("N + 1 > max_iterations", flat)
+        self.assertIn("is `AUDITED` is terminal and healthy", flat)
+        self.assertIn("revision_class", flat)
 
 
 class TestRubric(unittest.TestCase):

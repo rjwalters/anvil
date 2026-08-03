@@ -174,7 +174,90 @@ Threshold: **≥39/44 advances** (the audit-grade band — see §Advance
 threshold rationale below). Any critical flag from ANY of the three
 critics (review, audit, corpus-audit) short-circuits regardless of total.
 Iteration cap: default `max_iterations: 4`; project-BRIEF paired override
-(`max_iterations` + `iteration_cap_rationale`, the #349 memo contract).
+(`max_iterations` + `iteration_cap_rationale`, the #349 memo contract) —
+see §"Iteration cap and override contract" below for the full semantics.
+
+## Iteration cap and override contract
+
+The cap bounds **how many version dirs a chapter thread may accumulate**,
+and `metadata.iteration` always equals the version-dir number. The
+governing predicate lives in `commands/memoir-revise.md` step 3:
+`memoir-revise` refuses to write `<thread>.{N+1}/` when
+`N + 1 > effective_max_iterations`. At the default cap of 4 the
+worst-case terminal version dir is `<thread>.4/` — there is no
+`<thread>.5/` under a default cap.
+
+**At `iteration == max_iterations` (issue #869)** the thread is not
+"capped," "blocked," or "at risk." The combined-verdict pre-check runs
+*before* the cap check, so a chapter that satisfies §Combined verdict at
+exactly the cap reports `AUDITED` and terminates normally — the cap was
+reached but was never the terminating condition. The refusal fires only
+on the **next** invocation, and only if a critic still blocks. Reports
+(`memoir-revise`'s status line, `memoir`'s `Iter` column and `Operator
+notes`) MUST distinguish these two cases; describing a clean `4/4`
+terminus as capped is a reporting bug.
+
+**Raising the ceiling is an explicit, recorded operator decision.** It is
+never a silent edit and never something a command does on its own
+authority:
+
+1. **Authoring surface** — the paired override on the matching
+   `documents:` entry of `<project>/BRIEF.md`: `max_iterations` (int ≥ 4)
+   **and** `iteration_cap_rationale` (non-empty prose saying *why this
+   chapter deserves more passes*). Both keys are required; one without
+   the other is a schema violation and `load_project_brief` raises
+   `ValueError` at parse time rather than degrading silently. The
+   override may raise the cap, never lower it below the principled
+   default of 4. Semantics are **sticky raise**, not single-use — the
+   required rationale, not single-use semantics, is what prevents abuse.
+   Git history of `BRIEF.md` is the durable record.
+   `anvil/skills/memo/SKILL.md` §"Per-document override contract" is the
+   schema-of-record (the fields are shared, in
+   `anvil/lib/project_brief.py`); memoir reuses it verbatim rather than
+   defining a memoir-local variant.
+
+   ```yaml
+   documents:
+     - slug: 00-introduction
+       artifact_type: memoir
+       max_iterations: 6
+       iteration_cap_rationale: |
+         Raised to 6 on 2026-08-02. v3 and v4 were both map-only
+         provenance repairs (corpus drift, then a repoint) — the chapter
+         consumed half its budget on framework-detected bookkeeping while
+         scoring 43-44/44 throughout. The prose budget was effectively 2
+         passes, not 4.
+   ```
+
+2. **Per-version mirror** — `memoir-draft` and `memoir-revise` write the
+   resolved `metadata.max_iterations` + `metadata.iteration_cap_rationale`
+   into every `<thread>.{N}/_progress.json`, so each immutable version dir
+   carries the cap that was in force when it was produced.
+
+3. **BLOCKED-notice surfacing** — when the cap is hit, `memoir-revise`
+   prints the override pointer (no override set) or echoes the existing
+   rationale verbatim (elevated cap already active), plus a
+   budget-composition line naming how many consumed iterations were
+   map-only provenance repairs versus substantive prose revisions. `v1`
+   is always reported as a separate `v1 draft` term — it is produced by
+   `memoir-draft` and carries no `revision_class` (a draft is not a
+   revision), so only `v2..v{iteration}` are classified and the line
+   balances as `1 (draft) + substantive + map-only == consumed`. See
+   `commands/memoir-revise.md` §"BLOCKED notice".
+
+**Map-only repairs still consume an iteration** — deliberately. A
+revision whose body files are byte-identical to the parent's and which
+only rewrites `provenance.md` is tagged
+`metadata.revision_class = "map_only"` and counted in the
+budget-composition line, but it is not exempt from the cap: `iteration`
+is derived from the immutable version-dir number, a second counter that
+could disagree with the directory listing would reintroduce exactly the
+bookkeeping ambiguity this contract removes, and a map-only pass still
+triggers the expensive exhaustive corpus-audit sweep. The operator
+affordance for "this chapter spent its budget on bookkeeping" is the
+paired override, now fed by first-class evidence. Full rationale:
+`commands/memoir-revise.md` §"Map-only repairs still consume an
+iteration".
 
 ## Advance threshold rationale (≥39, not ≥35)
 

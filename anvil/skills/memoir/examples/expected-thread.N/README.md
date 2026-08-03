@@ -36,7 +36,13 @@ grani-memoir-mini/                          project root
                             2 PARAPHRASE_OK-shaped, 1 explicit NOT_FOUND)
       _progress.json        { version: 1, phases.draft.state: "done",
                               metadata.corpus_dirs_resolved,
-                              metadata.subject_voice_exemplars }
+                              metadata.subject_voice_exemplars,
+                              metadata.max_iterations: 4,
+                              metadata.iteration_cap_rationale: null }
+                            (the cap audit trail — SKILL.md §"Iteration
+                            cap and override contract"; a revised version
+                            dir additionally carries
+                            metadata.revision_class)
     00-introduction.1.review/               reviewer sibling (rubric /44)
       verdict.md             Total 41/44; advance: true; critical flags: none
       scoring.md              9-row table (# | Dimension | Weight | Score | Justification)
