@@ -428,6 +428,53 @@ class TestIterationCapContract(unittest.TestCase):
         # Budget composition (the #869-specific surfacing).
         self.assertIn("Budget composition", flat)
 
+    def test_revise_budget_composition_example_is_self_consistent(self):
+        """The worked composition line must not double-count a version.
+
+        A phrase-level pin on ``Budget composition`` alone let a
+        contradictory instance ship (a version classified as *both*
+        substantive and map-only, tallying four classified passes on a
+        thread that can hold at most three). This re-derives the worked
+        example's arithmetic instead of trusting the prose: ``v1`` is the
+        draft and carries no ``revision_class``, so the classified groups
+        must be disjoint and ``1 (draft) + substantive + map-only`` must
+        equal the consumed numerator.
+        """
+        flat = _flat("commands/memoir-revise.md")
+
+        # The tally model is stated, not left to be inferred.
+        self.assertIn("no `metadata.revision_class`", flat)
+        self.assertIn("1 (draft) + substantive + map-only == X", flat)
+
+        match = re.search(
+            r"Budget composition: (\d+)/(\d+) consumed — v1 draft, "
+            r"(\d+) substantive \(([^)]*)\), (\d+) map-only \(([^;)]*)[;)]",
+            flat,
+        )
+        self.assertIsNotNone(
+            match, "worked budget-composition example not found or reshaped"
+        )
+        consumed, cap, n_sub, sub_body, n_map, map_body = match.groups()
+        consumed, cap, n_sub, n_map = (
+            int(consumed),
+            int(cap),
+            int(n_sub),
+            int(n_map),
+        )
+
+        self.assertLessEqual(consumed, cap)
+        # The declared counts match the versions actually named.
+        sub_versions = set(re.findall(r"v\d+", sub_body))
+        map_versions = set(re.findall(r"v\d+", map_body))
+        self.assertEqual(len(sub_versions), n_sub)
+        self.assertEqual(len(map_versions), n_map)
+        # A pass is substantive XOR map-only — never both.
+        self.assertEqual(sub_versions & map_versions, set())
+        # v1 is the draft; it is never classified.
+        self.assertNotIn("v1", sub_versions | map_versions)
+        # 1 draft + classified revisions == the consumed numerator.
+        self.assertEqual(1 + n_sub + n_map, consumed)
+
     def test_revise_records_the_cap_audit_trail(self):
         text = _read("commands/memoir-revise.md")
         self.assertIn("metadata.max_iterations", text)

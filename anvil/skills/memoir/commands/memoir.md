@@ -50,8 +50,13 @@ portfolio command here.
      (default 4, rationale `null`; project-BRIEF paired override per
      SKILL.md §"Iteration cap and override contract"). Also collect each
      version's `metadata.revision_class` (`"map_only"` /
-     `"substantive"`; absent on pre-#869 version dirs) — the
-     budget-composition input for the `## Operator notes` entry below.
+     `"substantive"`) — the budget-composition input for the
+     `## Operator notes` entry below. The key is **always absent on
+     `<slug>.1/`**: v1 is the `memoir-draft` output and a draft is not a
+     revision, so only `v2..v{N}` are ever classified. It is also absent
+     on every pre-#869 version dir. Treat both cases as *unclassified*,
+     not as a missing-data anomaly — v1 is reported as the composition
+     line's standalone `v1 draft` term.
    - Whether the project BRIEF declares a top-level `corpus:` and a
      `voice:` block (with `subjects:`) — informational, surfaced so the
      operator sees at a glance which tiers are active for this project
@@ -130,7 +135,9 @@ than the per-thread command:
 
 1. the **budget composition** — how many of the consumed iterations were
    `revision_class: "map_only"` provenance repairs versus substantive
-   prose revisions;
+   prose revisions, with `v1` named separately as the (unclassified)
+   draft so the entry balances the same way `memoir-revise`'s notice
+   does: `1 (draft) + substantive + map-only == consumed`;
 2. the **override pointer** when `iteration_cap_rationale` is `null`
    (required BRIEF fields: `max_iterations` int ≥ 4 **and**
    `iteration_cap_rationale`, both or neither — see SKILL.md §"Iteration

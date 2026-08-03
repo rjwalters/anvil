@@ -187,7 +187,12 @@ combined verdict pre-check passes.
      `<thread>.{N}/` counterpart and the only substantive change is to
      `provenance.md`; `"substantive"` otherwise. This field is
      **audit-trail only** — it does not change the cap arithmetic, is
-     not scored, and has no state-machine effect.
+     not scored, and has no state-machine effect. Only *revision*
+     versions carry it: `<thread>.1/` comes from `memoir-draft` and has
+     no `revision_class` at all (a draft is not a revision), so the
+     classified set is always `v2..v{N+1}` and the budget-composition
+     line reports `v1` as a separate `v1 draft` term. Readers likewise
+     tolerate an absent key on pre-#869 version dirs.
 10. **Report**: e.g., `Revised 00-introduction.1 → 00-introduction.2
     (addressed 1 corpus-audit critical flag [NOT_FOUND -> claim cut] + 2
     major comments; 1 declined with reason). Next: memoir-review +
@@ -281,8 +286,23 @@ shape. Required lines:
 3. **Budget-composition line** (issue #869; REQUIRED when any consumed
    iteration carries `metadata.revision_class == "map_only"`): name how
    much of the budget went to bookkeeping rather than prose, e.g.
-   `Budget composition: 4/4 consumed — 2 substantive (v2, v4), 2 map-only
-   (v3 corpus-drift repair, v4 provenance repoint; .tex byte-identical).`
+   `Budget composition: 4/4 consumed — v1 draft, 1 substantive (v2),
+   2 map-only (v3 corpus-drift repair, v4 provenance repoint; .tex
+   byte-identical).`
+
+   **How `v1` participates in the tally.** The `X/Y consumed` numerator is
+   the version-dir count (`metadata.iteration` of the latest version), so
+   `v1` — the `memoir-draft` output — is always one of the consumed
+   iterations. But `v1` carries **no `metadata.revision_class`**: a draft
+   is not a revision, and `memoir-draft` deliberately mirrors only
+   `metadata.max_iterations` / `metadata.iteration_cap_rationale`. So `v1`
+   is reported as the standalone `v1 draft` term and is **never** counted
+   as substantive or map-only. The classified terms cover `v2..v{N}` only,
+   every classified version appears in exactly one group, and the line
+   must balance: `1 (draft) + substantive + map-only == X`. At the default
+   cap of 4 a fully-consumed budget therefore has exactly **three**
+   classified revision passes, never four.
+
    A thread that spent half its budget on framework-detected provenance
    repairs is a materially different override case from one that spent it
    all on unconverged prose, and the operator should not have to
@@ -321,7 +341,10 @@ parent's counterpart and the only substantive change is to
 fixes bookkeeping without touching a word of prose. `memoir-revise`
 records these as `metadata.revision_class = "map_only"` and surfaces the
 count in the BLOCKED notice's budget-composition line, but they **do
-consume an iteration** exactly like a substantive pass. That is a
+consume an iteration** exactly like a substantive pass. (Classification
+applies to revision passes only — `<thread>.1/` is a draft and carries no
+`revision_class`; it is still one consumed iteration, reported as the
+composition line's `v1 draft` term.) That is a
 deliberate design decision (issue #869), not an oversight:
 
 - **`iteration` is derived from the version-dir number, and version dirs

@@ -238,7 +238,11 @@ authority:
    prints the override pointer (no override set) or echoes the existing
    rationale verbatim (elevated cap already active), plus a
    budget-composition line naming how many consumed iterations were
-   map-only provenance repairs versus substantive prose revisions. See
+   map-only provenance repairs versus substantive prose revisions. `v1`
+   is always reported as a separate `v1 draft` term — it is produced by
+   `memoir-draft` and carries no `revision_class` (a draft is not a
+   revision), so only `v2..v{iteration}` are classified and the line
+   balances as `1 (draft) + substantive + map-only == consumed`. See
    `commands/memoir-revise.md` §"BLOCKED notice".
 
 **Map-only repairs still consume an iteration** — deliberately. A

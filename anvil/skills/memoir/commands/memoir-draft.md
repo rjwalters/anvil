@@ -50,6 +50,13 @@ abandoned thread.)
      anvil/lib/project_brief.py::DEFAULT_MAX_ITERATIONS` (4) and
      `metadata.iteration_cap_rationale = null`. No warning — both keys
      absent is the default-cap case.
+   - **Never write `metadata.revision_class`.** That key classifies a
+     *revision* pass (`"map_only"` / `"substantive"`, written by
+     `memoir-revise` step 9); `<thread>.1/` is a draft, so it is
+     unclassified by construction. It still consumes one iteration of the
+     budget, and the BLOCKED notice reports it as the standalone
+     `v1 draft` term of its budget-composition line (see
+     `memoir-revise.md` §"BLOCKED notice" item 3).
 3. **Load corpus grounding (conditional — #597)**: invoke
    `anvil/lib/project_brief.py::resolve_corpus_dirs(<project_dir>)` per
    `anvil/lib/snippets/provenance.md` §Section 1. The `<project_dir>` is
