@@ -82,6 +82,59 @@ def test_audit_snippet_cross_references_validator():
 
 
 # ---------------------------------------------------------------------------
+# audit.md — claim perishability (issue #863)
+# ---------------------------------------------------------------------------
+
+
+def test_audit_snippet_distinguishes_perishable_from_durable():
+    body = _read(SNIPPETS / "audit.md")
+    assert "Perishable vs durable verifications" in body, (
+        "audit.md MUST carry the perishable-vs-durable section per issue "
+        "#863 AC1 — the distinction is framework-level, not proposal-local"
+    )
+    for term in ("Durable", "Perishable"):
+        assert f"**{term}**" in body
+
+
+def test_audit_snippet_names_the_probe_record_fields():
+    """AC2: a later pass must be able to re-run the probe without
+    re-deriving it — target/method/observed/checked_at are the minimum."""
+    body = _read(SNIPPETS / "audit.md")
+    for field in ("`target`", "`method`", "`observed`", "`checked_at`"):
+        assert field in body, f"audit.md MUST document the {field} probe field"
+    assert "probes.json" in body
+    assert "`Review.probes[]`" in body
+
+
+def test_audit_snippet_documents_staleness_surfacing():
+    body = _read(SNIPPETS / "audit.md")
+    assert "probe_freshness" in body
+    for status in ("`FRESH`", "`STALE`", "`NOT-REPROBED`"):
+        assert status in body, (
+            f"audit.md MUST document the {status} freshness status per "
+            "issue #863 AC3"
+        )
+
+
+def test_audit_snippet_documents_markerless_backward_compatibility():
+    """AC5: existing critic siblings without the marker are tolerated and
+    treated as unknown-freshness."""
+    body = _read(SNIPPETS / "audit.md")
+    assert "unknown_freshness" in body
+    assert "Backward compatibility" in body
+    # Prose is hard-wrapped; collapse whitespace before matching.
+    assert "never a defect" in " ".join(body.split())
+
+
+def test_audit_snippet_marks_probe_freshness_advisory():
+    body = _read(SNIPPETS / "audit.md")
+    assert "Advisory only" in body, (
+        "probe freshness MUST be documented as advisory — it never gates, "
+        "scores, or raises a critical flag"
+    )
+
+
+# ---------------------------------------------------------------------------
 # directed_revision.md (issue #691)
 # ---------------------------------------------------------------------------
 
