@@ -7,7 +7,7 @@ description: Auditor command for the proposal skill. Verifies BOM arithmetic, sp
 
 **Role**: auditor (`kind: tool_evidence`).
 **Reads**: latest `<thread>/<thread>.{N}/` (the version dir is nested under the thread root per the artifact contract; specifically `proposal.tex`, the priced BOM/labor/total tables, and the spec tables), and `<thread>/refs/**` (datasheets, vendor quotes, planning-range sources) for the sourceability check.
-**Writes**: `<thread>/<thread>.{N}.audit/` with `verdict.md`, `findings.md`, `evidence.md`, `_meta.json`, and `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.audit/` references below are shorthand for these nested paths.
+**Writes**: `<thread>/<thread>.{N}.audit/` with `verdict.md`, `findings.md`, `evidence.md`, `probes.json`, `_meta.json`, and `_progress.json`. Bare `<thread>.{N}/` / `<thread>.{N}.audit/` references below are shorthand for these nested paths.
 
 The audit sibling directory is **read-only once written**. Revisions consume it; they never modify it.
 
@@ -32,11 +32,12 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
   verdict.md       Pass/fail + critical flags + coverage summary + top revision priorities
   findings.md      Per-claim audit log (every priced line + quantitative/spec claim + audit result)
   evidence.md      Source → dependent-claims traceability map (every source → which claims depend on it)
+  probes.json      Re-probe list: every PERISHABLE verification (what/how/observed/when) — issue #863
   _meta.json       { critic: "audit", scorecard_kind: "human-verdict", started, finished, model, schema_version }
   _progress.json   Phase state for the auditor (phase: audit)
 ```
 
-**Atomicity** (issue #350, #376): the audit sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The five files (`verdict.md`, `findings.md` (or its accepted alias — see "Alias contract" below), `evidence.md`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.audit.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.audit/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.audit.tmp/` dir on disk that the next invocation's `cleanup_one_staging(<thread>.{N}.audit)` per-critic sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
+**Atomicity** (issue #350, #376): the audit sibling dir is written **atomically** via the staged-sidecar primitive at `anvil/lib/sidecar.py`. The six files (`verdict.md`, `findings.md` (or its accepted alias — see "Alias contract" below), `evidence.md`, `probes.json`, `_meta.json`, `_progress.json`) are staged under a leading-dot sibling `.<thread>.{N}.audit.tmp/` during writing; on clean completion the staging dir is renamed (one atomic `Path.rename`) to the final `<thread>.{N}.audit/` name. A mid-cycle interrupt leaves a `.<thread>.{N}.audit.tmp/` dir on disk that the next invocation's `cleanup_one_staging(<thread>.{N}.audit)` per-critic sweep removes; the final-named dir never exists in partial form. Discovery (`anvil/lib/critics.py::discover_critics`) is unchanged — the leading-dot staging shape is invisible to the discovery glob.
 
 ### Alias contract — per-claim findings filename
 
@@ -52,14 +53,14 @@ The per-claim findings file ships canonically as **`findings.md`**. Writers SHOU
 
 1. **Discover state**: find the highest `N` with `<thread>.{N}/proposal.tex` under the thread root `<thread>/`. Then **sweep a stale staging dir from a prior interrupt of THIS critic on THIS version** by invoking `anvil/lib/sidecar.py::cleanup_one_staging(<thread>.{N}.audit)` (the per-critic, parallel-safe sweep — issue #376). This removes ONLY a leftover `.<thread>.{N}.audit.tmp/` from a previously-killed run of this same critic on THIS version. Sibling critics' in-flight staging dirs under the same thread root are NOT touched (issue #350, #376). If `<thread>.{N}.audit/` exists (the atomic-rename contract guarantees the dir only exists when complete), the audit is complete — exit early with a notice (idempotent).
 2. **Resume check**: per the staged-sidecar shape introduced in issue #350, a partial audit left behind by a mid-cycle interrupt manifests as a leading-dot `.<thread>.{N}.audit.tmp/` directory; the step 1 sweep has already removed it. Backwards-compat: if a legacy pre-#350 `<thread>.{N}.audit/` exists WITHOUT `verdict.md`, delete the dir and re-audit.
-3. **Open the staged sidecar** for the audit dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.audit, required_files=["verdict.md", "findings.md", "evidence.md", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.audit.tmp/`), NOT inside the final `<thread>.{N}.audit/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Note: when the writer uses an accepted alias for `findings.md` per the "Alias contract" above (e.g., `claim-log.md`), the required-files manifest passes the alias name in place of `findings.md`. Then, **inside the staging dir**, initialize `_progress.json` for the audit dir: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`); proposal-audit ships task-specific `findings.md` and `evidence.md` alongside the scorecard-kind declaration. (Per the migration note in `audit.md`, this command emits the legacy prose triple today; the legacy adapter bridges it to the `kind: tool_evidence` contract.)
+3. **Open the staged sidecar** for the audit dir by invoking the context manager `anvil/lib/sidecar.py::staged_sidecar(final_dir=<thread>.{N}.audit, required_files=["verdict.md", "findings.md", "evidence.md", "probes.json", "_meta.json", "_progress.json"])`. Every file write below MUST land **inside the yielded staging directory** (the path of the shape `.<thread>.{N}.audit.tmp/`), NOT inside the final `<thread>.{N}.audit/` path. On clean context exit, the primitive verifies the manifest, then atomically renames the staging dir to its final name (issue #350). Note: when the writer uses an accepted alias for `findings.md` per the "Alias contract" above (e.g., `claim-log.md`), the required-files manifest passes the alias name in place of `findings.md`. Then, **inside the staging dir**, initialize `_progress.json` for the audit dir: `phases.audit.state = in_progress`, `phases.audit.started = <ISO>`, `for_version = N` (per `anvil/lib/snippets/progress.md`). Also initialize `_meta.json` with `scorecard_kind: human-verdict` (see `anvil/lib/snippets/scorecard_kind.md`); proposal-audit ships task-specific `findings.md` and `evidence.md` alongside the scorecard-kind declaration. (Per the migration note in `audit.md`, this command emits the legacy prose triple today; the legacy adapter bridges it to the `kind: tool_evidence` contract.)
 
    **Non-Python-driver ordering (fail-open, manual fallback)** — issue #645: `staged_sidecar` is a Python context manager. A manual/agent session with **no orchestrating Python driver** cannot hold its `with` block open across the file writes below (it writes files with its own editing tool between discrete steps), so it MUST use the equivalent CLI shim rather than writing straight into the final `<thread>.{N}.audit/` dir (which silently reopens the #350 partial-write defect this primitive exists to close). Two tiers, in preference order:
 
    1. **Primary — `python -m anvil.lib.sidecar` CLI shim** (the common case). In an installed consumer repo (anvil vendored under `.anvil/`, not on `sys.path`), prefix every invocation below with `uv run --project .anvil` (the `.anvil/pyproject.toml` + `uv sync --project .anvil` shipped by the installer since #230 make the module resolvable from the consumer root — the same shape the other `anvil.lib.*` critics already use); in the anvil source repo the bare `python -m anvil.lib.sidecar` form works as-is. This wraps the *exact same* `staged_sidecar` code, so the manifest check + single atomic `Path.rename` are enforced by code, not agent discipline:
       - `uv run --project .anvil python -m anvil.lib.sidecar stage <thread>.{N}.audit` → prints the staging path (`.<thread>.{N}.audit.tmp/`). (Refuses with a nonzero exit if `<thread>.{N}.audit/` already exists — matching `staged_sidecar`'s `FileExistsError` refuse-to-overwrite guard.)
-      - Write **all** required files (`verdict.md`, `findings.md`, `evidence.md`, `_meta.json`, `_progress.json`) into that printed staging path — never into the final `<thread>.{N}.audit/` name.
-      - `uv run --project .anvil python -m anvil.lib.sidecar commit <thread>.{N}.audit --required verdict.md,findings.md,evidence.md,_meta.json,_progress.json` → verifies the manifest, then atomically renames staging → final. **Nonzero exit (1) leaves the staging dir in place with no partial final dir** if any required file is missing — the `SidecarIncompleteError` analog; fix the gap and re-`commit`.
+      - Write **all** required files (`verdict.md`, `findings.md`, `evidence.md`, `probes.json`, `_meta.json`, `_progress.json`) into that printed staging path — never into the final `<thread>.{N}.audit/` name.
+      - `uv run --project .anvil python -m anvil.lib.sidecar commit <thread>.{N}.audit --required verdict.md,findings.md,evidence.md,probes.json,_meta.json,_progress.json` → verifies the manifest, then atomically renames staging → final. **Nonzero exit (1) leaves the staging dir in place with no partial final dir** if any required file is missing — the `SidecarIncompleteError` analog; fix the gap and re-`commit`.
       - The stale-staging sweep of step 1 has an exact CLI analog: `uv run --project .anvil python -m anvil.lib.sidecar cleanup <thread>.{N}.audit` (the parallel-safe per-critic sweep, issue #376).
    2. **Last resort — manual `mv`-based staging** when even `python`/`uv` is unavailable. Reproduce the staging contract by hand: (a) at entry, sweep any leftover `rm -rf .<thread>.{N}.audit.tmp/` (the `cleanup_one_staging` analog); (b) `mkdir .<thread>.{N}.audit.tmp/` and write **every** required file into it — writing `_progress.json` **last**, so a mid-write interrupt is caught by the missing-manifest check rather than producing a final-named partial; (c) confirm the staging dir holds the full required set — use a count check (`[ "$(ls -1 .<staging-dir> | wc -l)" -eq <N> ]`) or an `ls`-based presence check rather than per-file `[ -f ]`, which can false-negative under a restricted-`stat` sandbox — **then** `mv .<thread>.{N}.audit.tmp <thread>.{N}.audit` as the **last** step (POSIX `mv` on a same-filesystem dir-to-dir rename is atomic, matching `Path.rename`). Do NOT create `<thread>.{N}.audit/` before all files are staged. **Record the fallback durably** so a reader can tell atomicity was reproduced by hand rather than tool-verified: stamp `_meta.json` with `"atomicity_fallback": "manual-mv"` (e.g. `sidecar: staged_sidecar CLI unavailable (uv/python not on PATH); atomicity reproduced via manual mv this pass`). Absent this note the manual staging is indistinguishable from an unsafe direct write.
 
@@ -115,6 +116,41 @@ The per-claim findings file ships canonically as **`findings.md`**. Writers SHOU
    ```
 
    Every row gets a `Verified?` value of `yes`, `no`, `partial`, or `n/a`.
+
+9b. **Record the perishable claims** in `probes.json` — the re-probe list (issue #863). Walk the claim inventory just built and split each **verified** row by durability, per `anvil/lib/snippets/audit.md` §"Perishable vs durable verifications":
+
+   - **Durable** — `Qty × Unit = Total`, a subtotal that sums, a transceiver count derived from the topology, a spec headroom margin. True forever unless the *document* changes. Record nothing.
+   - **Perishable** — anything whose truth depends on the outside world not moving: a live URL or HTTP status, a vendor list price fetched from a web page, a version pin or SHA of a served artifact, a lead-time quote, a "verified live on `<date>`" claim, a `refs/` quote with a stated expiry. Record one `Probe` row each.
+
+   Write every perishable row into the staging dir as `probes.json`:
+
+   ```json
+   {
+     "schema_version": "1",
+     "version_dir": "<thread>.{N}",
+     "critic_id": "proposal-audit",
+     "probes": [
+       {
+         "target": "https://vendor.example/sfp-plus-lr",
+         "method": "http_status",
+         "observed": "200; list price $18.00",
+         "checked_at": "<ISO>",
+         "claim": "§7 BOM prices SFP+ LR at $15--20 on this vendor's list price",
+         "recheck_command": "curl -sI https://vendor.example/sfp-plus-lr | head -1",
+         "max_age_days": 30
+       }
+     ]
+   }
+   ```
+
+   `target`, `method`, `observed`, `checked_at` are required; keep `target` byte-stable across passes (it is the identity key a later pass matches on). Set `max_age_days` when the claim has a known expiry (a 30-day vendor quote); omit it to inherit the framework default. Use `claim` to name what would become *false*, not just which URL to re-hit.
+
+   **An audit that made no perishable verification still writes the file**, with `"probes": []`. That empty list is the auditor stating "I looked; nothing here is perishable" — materially different from an absent file, which reads as unknown freshness. Do NOT skip the file to mean "nothing perishable".
+
+   This is not a scored dimension and never a critical flag: a perishable claim is not a defect, it is a verification with an expiry the next pass has to honor.
+
+   **Carry-forward check (auditing N > 1)**: before writing, run `uv run --project .anvil python -m anvil.lib.probe_freshness <thread>/<thread>.{N}` (bare `python -m ...` in the anvil source repo). Its `needs_reprobe` list is every target an earlier version verified that no pass since has re-run. **Re-probe those targets in THIS pass** rather than inheriting the earlier verdict — the same "leads, not evidence" discipline as step 7's finding hygiene, extended across time. Each re-probed target gets a fresh `probes.json` row with this pass's `checked_at` and `observed`; a target you deliberately do not re-probe is left out of `probes.json` and stays on the next pass's checklist (which is the correct, honest outcome — never copy an old `checked_at` forward). Note any *changed* `observed` value in `findings.md` as an ordinary claim row: an observation that moved since the prior audit is a real defect in the current draft, not a freshness note. The tool is advisory and always exits `0` — it never gates `pass` or `AUDITED`.
+
 10. **Build the evidence map**: in `evidence.md`, invert the above — list every source (a `refs/` datasheet, a stated planning range, a vendor list price) and, for each, the priced lines / spec claims that depend on it. This surfaces unsourced prices (a price depending on nothing) and the single-source risk (everything depending on one quote).
 11. **Identify audit-side critical flags** (see `rubric.md`):
     - **Cost estimate not credible / not sourceable** (flag 2) — any price with no basis, or off by an order of magnitude.
@@ -149,6 +185,7 @@ This command makes NO attempt to coordinate with `proposal-review`. Both command
 - **A price with no basis is worse than an expensive one.** Flag 2 is about sourceability, not magnitude: a defensible $5,593 line beats an arbitrary $3,000 line. State the basis (planning range / list price / quote) for every price in `evidence.md`; flag any that has none. **Exception (issue #840)**: this rule reads through `cost_basis_resolved` — under `estimated`, an *unsourced-but-captioned* estimate is the correct, expected shape (see step 7), not a defect; under `none`, there are no priced lines at all to audit this way.
 - **The link budget is load-bearing.** A transceiver rated for less than the stated run length, or a power budget exceeded by the summed device draw, is a design that does not work as drawn — flag 4. Conversely, generous headroom (10 km optics over 500 m runs) is consistent, not a finding.
 - **Derive counts from the topology.** Do not take the BOM's quantities on faith — re-derive them (spokes → transceivers, rooms → APs) and flag any mismatch. This is the most common internal inconsistency.
+- **A verified perishable claim is a promise with an expiry.** The claims most dangerous to a partner-facing proposal are not the ones you get wrong — they are the ones you got right and that went false before the recipient opened the PDF (the censusapi incident behind issue #863: a cited paper advanced a version at the same URL, and a host reported dead came back, both within 24 hours of a clean audit). Record every one of them in `probes.json` per step 9b, and re-probe rather than inherit when a prior version already "verified" it.
 - **Quantify your coverage** in `verdict.md`. State exactly how many lines and claims you audited and the verified/partial/unverified split. If a claim cannot be verified because no datasheet is in `refs/`, flag it explicitly with `Verified? = n/a` and recommend the reviser add the source or soften the claim.
 
 ## `_progress.json` snippet (audit sibling)

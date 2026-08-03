@@ -4,6 +4,42 @@
 
 ### Added
 
+- **Audit contract — claim perishability** (#863). The `kind:
+  tool_evidence` contract conflated two materially different
+  verifications: **durable** ones (BOM arithmetic, internal consistency
+  — true forever unless the document changes) and **perishable** ones (a
+  live URL, an HTTP status, a version pin, the SHA of a served artifact
+  — true until the world moves). Both landed on disk as an
+  indistinguishable `VERIFIED`, so a perishable claim's implicit expiry
+  went unrecorded. The censusapi canary hit this one day apart on a
+  partner-facing proposal: a clean 44-row audit on 2026-08-01 had two of
+  its 41 verified claims false by 2026-08-02, and nothing on disk told
+  the next pass to look. Three additions, all additive: a `Probe` model
+  in `anvil/lib/review_schema.py` (`target` / `method` / `observed` /
+  `checked_at`, plus optional `claim`, `recheck_command`, and a
+  per-probe `max_age_days`) whose *existence* is the perishability
+  marker — durable verifications record nothing, so there is no
+  `durable: true` counterpart to retrofit; two carriers for it —
+  `Review.probes[]` for schema-era critics and a standalone `probes.json`
+  (`ProbeLog`) for the prose-era auditors that have not migrated off
+  `findings.md`, unioned by the reader so the contract does not wait on
+  the per-skill `_review.json` migration; and
+  `anvil/lib/probe_freshness.py`, which walks every critic sibling across
+  every version of a thread and returns a bounded re-probe checklist —
+  `STALE` (older than its freshness budget) and `NOT-REPROBED` (verified
+  against an earlier version and carried forward since). Documented
+  framework-wide in `anvil/lib/snippets/audit.md` §"Perishable vs durable
+  verifications"; `proposal-audit` (step 9b) now writes `probes.json` and
+  re-probes carried-forward targets, and `proposal-revise` (step 6e)
+  consumes the checklist under the issue-#749 "findings are leads, not
+  evidence" discipline extended across *time*. Purely advisory, mirroring
+  `evidence_drift` (#857): never gates, never scores, never a critical
+  flag, CLI always exits `0`. Backward compatible — a sibling with no
+  probe record is reported as `unknown_freshness` (never a defect, never
+  conflated with an explicit empty `probes: []`, which is the auditor
+  declaring the artifact durable-only). Scoped to `proposal` for this
+  initial landing, matching the #857 core-then-adoption rollout shape.
+
 - **`anvil:paper` / `anvil:report` — BRIEF/refs evidence-drift advisory**
   (#857). New framework primitive `anvil/lib/evidence_drift.py` detects
   when a thread's `BRIEF.md` or `refs/**` change AFTER the latest

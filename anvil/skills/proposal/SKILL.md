@@ -60,6 +60,7 @@ A **proposal thread** is a single proposal for one buildable system, authored ac
       verdict.md             Audit decision (pass / fail) + critical-flag list
       findings.md            Per-claim audit log (BOM arithmetic, spec/link-budget, sourceability)
       evidence.md            Source → dependent-claims traceability map
+      probes.json            Re-probe list: every PERISHABLE verification (#863)
       _meta.json             { critic: "audit", scorecard_kind: "human-verdict", ... }
       _progress.json         Phase state for the auditor
     <thread>.2/              Revised version (after revise consumes v1 + ALL critic siblings)
