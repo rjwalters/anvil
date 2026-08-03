@@ -347,7 +347,7 @@ The `parse_memo_verdict_no_go` and `parse_memo_verdict_kill_rationale` helpers i
 
 The operator override is intentionally **friction-ful** (required verbatim rationale, no `--polish` analog that silently bypasses) because NO-GO exists precisely to make killing easy and resurrecting hard — the inverse of the default lifecycle's bias. The reviser's verdict pre-check at `memo-revise` step 4 refuses to proceed against a NO-GO `verdict.md` unless `--override-no-go "<reason>"` is passed; the rationale surface is the same shape as the `--polish "<reason>"` shape (non-empty, whitespace-rejected).
 
-Iteration cap: default `max_iterations: 4` (so worst-case terminal version is `<thread>.5/`). Consumer overrides land via the **per-document iteration-cap paired override** on the project BRIEF (issue #349 — `BriefDocument.max_iterations` + `BriefDocument.iteration_cap_rationale`); see "Per-document override contract" below for the full spec. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
+Iteration cap: default `max_iterations: 4` (`<thread>.{max_iterations}/` — `<thread>.4/` at the default — is the worst-case terminal version dir; there is no `<thread>.5/` under a default cap). Consumer overrides land via the **per-document iteration-cap paired override** on the project BRIEF (issue #349 — `BriefDocument.max_iterations` + `BriefDocument.iteration_cap_rationale`); see "Per-document override contract" below for the full spec. Exceeding the cap marks the thread `BLOCKED` (in the portfolio orchestrator's report) and requires human review.
 
 ### Per-document override contract
 
