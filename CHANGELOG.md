@@ -4,6 +4,53 @@
 
 ### Added
 
+- **Claim provenance — stable anchor identity for drifting corpus
+  citations** (#868). `provenance.md` rows (issue #597) cited their
+  supporting corpus passage by a bare `Source file` + `Line range`,
+  which is not a stable address: a mid-file edit of the corpus (an
+  insertion, a reflow, an appended correction) silently shifts every row
+  citing text below the edit point, and the citation still *resolves* —
+  just to the wrong text. Only an exhaustive corpus audit that re-opens
+  every range catches the drift, and only if it re-runs after the corpus
+  changed; a spot-sampling reviewer reading plausible text at the stale
+  range passes it. Canary-hit three times on `walters-family-tree` (a
+  `memoir` project): a six-line insertion silently invalidated three rows
+  of a terminal-`AUDITED` chapter, and the only fix that existed was
+  line-count-neutral hand-editing discipline the framework neither
+  enforced nor knew about. Adds `anvil/lib/provenance_anchor.py`: each
+  `provenance.md` row may now carry an **`Anchor`** column — a short
+  verbatim quoted snippet from the cited passage — which is the row's
+  real, content-addressed identity; `Line range` is demoted to a hint.
+  `provenance_anchor.py check` searches the WHOLE cited file (not just
+  the hinted range) and classifies each row `NO_ANCHOR` / `FILE_NOT_FOUND`
+  / `NOT_FOUND` / `RESOLVED` / `DRIFTED` — `DRIFTED` means the anchor
+  text is verbatim-present elsewhere in the file, a distinct signal from
+  a content `MISMATCH`/`NOT_FOUND`. `provenance_anchor.py repoint`
+  mechanically rewrites only the `Line range` cell of `DRIFTED` rows,
+  leaving `Claim`/`Source file`/`Anchor`/`Notes` and every non-drifted
+  row untouched — explicitly not the "fabricating a source-line mapping"
+  failure the drafter/reviser contract prohibits, since the anchor text
+  itself already proves the citation is genuine. Both subcommands are
+  purely advisory/mechanical (never gate, never score, exit `0` always),
+  the same posture as `evidence_drift.py` (#857) and
+  `probe_freshness.py` (#863) — see `anvil/lib/snippets/provenance.md`
+  §"Relationship to #863" for the boundary between this (internal:
+  the evidence never changed, its address did) and #863 (external: the
+  evidence itself rotted). Documented framework-wide in
+  `anvil/lib/snippets/provenance.md` (new §Section 4a "anchor-drift
+  detection" + §Section 4b "mechanical repoint" + §Section 9
+  "corpus-editing expectations for consumers") since the contract is
+  shared verbatim by `memoir`, `essay`, and `paper`; wired into
+  `memoir-audit`'s exhaustive corpus-audit sweep and `memoir-revise`'s
+  provenance carry-forward, `paper-audit`'s corpus-audit sidecar and
+  `paper-revise`'s carry-forward, and `essay-review`'s back-check (essay
+  ships no audit command, so this is the only exhaustive drift check its
+  provenance tier gets) and `essay-revise`'s carry-forward. Backward
+  compatible: a `provenance.md` row with no `Anchor` value (every
+  pre-#868 row) reports `NO_ANCHOR` — never an error, never a false
+  drift signal, never coerced or bulk-migrated; drift protection simply
+  activates the next time a revise pass touches that row.
+
 - **Audit contract — claim perishability** (#863). The `kind:
   tool_evidence` contract conflated two materially different
   verifications: **durable** ones (BOM arithmetic, internal consistency

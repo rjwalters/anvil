@@ -9,6 +9,7 @@
   "paraphrase_ok": 2,
   "mismatch": 0,
   "not_found": 1,
-  "fabricated": 0
+  "fabricated": 0,
+  "anchor_drift_count": 0
 }
 ```

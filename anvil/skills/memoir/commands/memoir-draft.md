@@ -42,11 +42,15 @@ abandoned thread.)
      attributed quote (verbatim, in quotes) and per checkable factual
      claim (named dates, names, events, places), each mapping to its
      supporting corpus passage (`Source file` relative to a declared
-     corpus dir + `Line range`). **Fabricating a source-line mapping is prohibited**
-     — if no corpus passage supports a claim, cut the claim
-     or record it with a `NOT_FOUND` source note; do NOT invent a
-     citation. **Record the resolved corpus dir paths in
-     `_progress.json.metadata.corpus_dirs_resolved`.**
+     corpus dir + `Line range` + an `Anchor` — a short verbatim quoted
+     snippet copied exactly from the cited passage, per §Section 2
+     "Anchor: the stable identity"). The `Line range` is a hint; the
+     `Anchor` is the row's real identity and is what an audit's
+     anchor-drift pre-pass (§Section 4a) searches for. **Fabricating a source-line mapping is prohibited** — if no corpus passage supports
+     a claim, cut the claim or record it with a `NOT_FOUND` source note
+     (leave `Anchor` blank on a `NOT_FOUND` row — there is nothing to
+     anchor); do NOT invent a citation. **Record the resolved corpus dir
+     paths in `_progress.json.metadata.corpus_dirs_resolved`.**
    - **When inactive** (no `corpus:` key, `corpus: null`, or
      `corpus: []`): omit `metadata.corpus_dirs_resolved` entirely and
      draft without a provenance map. Do NOT invent a provenance
