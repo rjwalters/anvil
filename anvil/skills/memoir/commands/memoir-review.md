@@ -79,11 +79,16 @@ interrupt of THIS critic removed by
      (`provenance.md:L<N>`), **quoting both the claim and the cited
      passage**. A row whose cited file is not resolvable → `major`
      finding. A row whose cited passage does not support the claim as
-     written → `blocker` finding. A **missing `provenance.md`** when the
+     written → `blocker` finding — UNLESS the row carries an `Anchor`
+     (§Section 2) and that anchor text reads intact a few lines away:
+     that is anchor drift (§Section 4a), not a content defect; flag it
+     as "Line range hint looks stale, recommend a full corpus-audit
+     pass" rather than `blocker`. A **missing `provenance.md`** when the
      tier is active → `major` finding directing the operator to
      re-draft with provenance tracking. This is a **sampling** check by
-     design — the exhaustive five-way sweep is `memoir-audit`'s
-     `corpus-audit` sibling, not this command's job.
+     design — the exhaustive five-way sweep AND anchor-drift pre-pass
+     are `memoir-audit`'s `corpus-audit` sibling's job, not this
+     command's.
    - **When inactive** (no `corpus:` key, `corpus: null`, or
      `corpus: []`): byte-identical to the corpus-tier-absent posture — no
      block, no findings, no `provenance_back_check` section in

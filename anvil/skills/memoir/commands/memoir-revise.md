@@ -61,8 +61,11 @@ combined verdict pre-check passes.
    `findings.md` (factual/narrative-consistency findings),
    `comments.md`. From the corpus-audit (when present) —
    `verdict.md` (fabrication-class critical flags first), `findings.md`
-   (per-provenance-row classification), `comments.md`. **A critical
-   flag from ANY of the three critics blocks** — all must be addressed.
+   (per-provenance-row classification, including any anchor-drift rows
+   per `anvil/lib/snippets/provenance.md` §Section 4a — these are
+   **mechanical**, never critical flags, and are resolved at step 7, not
+   here), `comments.md`. **A critical flag from ANY of the three critics
+   blocks** — all must be addressed.
 5. **Re-resolve the corpus + voice tiers**: re-invoke
    `resolve_corpus_dirs`, `resolve_voice_docs`, and
    `resolve_subject_voice_docs` against the project `BRIEF.md` and read
@@ -99,6 +102,19 @@ combined verdict pre-check passes.
      `NOT_FOUND` note); every cut claim's row is removed. **Fabricating a
      source-line mapping remains prohibited on revision exactly as on
      first draft.**
+     - **Mechanically repoint drifted anchors (§Section 4b, #868)**:
+       after copying the map forward, run `python -m
+       anvil.lib.provenance_anchor repoint <thread>.{N+1}/provenance.md
+       <corpus_root> [...]` (prefix `uv run --project .anvil` in an
+       installed consumer repo). It rewrites ONLY the `Line range` cell
+       of rows the corpus-audit sibling flagged `DRIFTED` — `Claim` /
+       `Source file` / `Anchor` / `Notes`, and every non-drifted row,
+       are left untouched. This is explicitly **not** the fabrication
+       case above: the anchor text itself already proves the citation is
+       genuine, so mechanically correcting a stale `Line range` hint to
+       match where that same evidence now lives is not "inventing a new
+       source-line mapping" — it never happens for `MISMATCH`/
+       `NOT_FOUND`/`FABRICATED` rows, only `DRIFTED` ones.
    - **Preserve photo-placement macro references**: carry forward
      `\famphoto{...}`/`\fullphoto{...}`/`\marginphoto{...}` calls unless
      a critic specifically flagged a caption/placement problem;
@@ -134,7 +150,12 @@ combined verdict pre-check passes.
   critical flag.
 - **Never fabricates a `provenance.md` source-line mapping to resolve a
   fabrication-class finding** — the fix is always to the CLAIM, never a
-  reverse-engineered CITATION.
+  reverse-engineered CITATION. The mechanical anchor repoint (§Section
+  4b, #868) is the one exception in spirit but not in substance: it only
+  ever moves a `Line range` hint to match where an unchanged, already-
+  verbatim-matched anchor now lives — it never touches `MISMATCH`/
+  `NOT_FOUND`/`FABRICATED` rows and never changes `Claim`/`Source file`/
+  `Anchor`.
 - **Never proceeds to `AUDITED` when the corpus tier is active but
   `<thread>.{N}.corpus-audit/` has not yet been written** — treated
   identically to `AUDITED-PARTIAL`.

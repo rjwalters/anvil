@@ -301,6 +301,48 @@ class TestDualCorpusWiring(unittest.TestCase):
                 self.assertIn("never raises", text.lower())
 
 
+class TestAnchorDriftWiring(unittest.TestCase):
+    """provenance.md line-range citations get a stable Anchor identity
+    and a distinct drift-detection/repoint path (issue #868)."""
+
+    def test_draft_writes_anchor_column(self):
+        text = _read("commands/memoir-draft.md")
+        self.assertIn("Anchor", text)
+        self.assertIn("stable identity", text.lower())
+
+    def test_audit_runs_anchor_resolution_pre_pass(self):
+        text = _read("commands/memoir-audit.md")
+        self.assertIn("provenance_anchor", text)
+        self.assertIn("DRIFTED", text)
+        self.assertIn("anchor drift", text.lower())
+        # Must read distinctly from the five-way vocabulary, not fold
+        # into it.
+        self.assertTrue(
+            "never phrased as `mismatch`" in text.lower()
+            or "never phrased as mismatch" in text.lower()
+        )
+
+    def test_revise_repoints_drifted_anchors_mechanically(self):
+        text = _read("commands/memoir-revise.md")
+        self.assertIn("provenance_anchor", text)
+        self.assertIn("repoint", text.lower())
+        self.assertIn("mechanical", text.lower())
+
+    def test_review_back_check_is_drift_aware(self):
+        text = _read("commands/memoir-review.md")
+        self.assertIn("anchor drift", text.lower())
+
+    def test_shared_snippet_documents_anchor_contract(self):
+        text = (
+            _REPO_ROOT / "anvil" / "lib" / "snippets" / "provenance.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Anchor", text)
+        self.assertIn("NO_ANCHOR", text)
+        self.assertIn("DRIFTED", text)
+        self.assertIn("provenance_anchor", text)
+        self.assertIn("Backward compatibility", text)
+
+
 class TestDualVoiceWiring(unittest.TestCase):
     """voice: / voice.subjects: (#461/#598) are wired into draft/review."""
 
