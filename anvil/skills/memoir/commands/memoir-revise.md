@@ -49,11 +49,64 @@ combined verdict pre-check passes.
    summary (resolved body path, review total /44, clean audit(s), a
    pointer to `/anvil:project-book` for assembly) and exit WITHOUT
    writing a new version. Otherwise proceed to step 3.
-3. **Iteration-cap check**: default `max_iterations: 4` (worst-case
-   terminal version `<thread>.5/`); project-BRIEF paired override
-   (`max_iterations` + `iteration_cap_rationale`) per the #349 memo
-   contract. At cap → report `BLOCKED — human review required` and
-   exit.
+3. **Iteration-cap check**: resolve the effective cap, then apply the
+   predicate.
+
+   **Resolution order — first match wins:**
+
+   1. The matching `documents:` entry in `<project>/BRIEF.md` (via
+      `anvil/lib/project_brief.py::load_project_brief` +
+      `ProjectBrief.document_for_slug(slug)`). When `doc.max_iterations`
+      AND `doc.iteration_cap_rationale` are BOTH set, use
+      `doc.max_iterations` as the effective cap, carry the rationale
+      verbatim into the BLOCKED notice (when the cap is hit) and into
+      `_progress.json.metadata.iteration_cap_rationale` (when a new
+      version is written at step 9). The BRIEF parser already enforces
+      the paired-override validation contract at parse time (both keys
+      present, `max_iterations >= 4`, rationale non-empty) — the reviser
+      does NOT re-validate.
+   2. Else `metadata.max_iterations` from `<thread>.{N}/_progress.json`
+      (typically the default 4 carried forward by the prior drafter /
+      reviser pass).
+   3. Else `anvil/lib/project_brief.py::DEFAULT_MAX_ITERATIONS` (4).
+
+   If the BRIEF cannot be loaded at all (absent, malformed YAML), fall
+   through to (2)/(3) — `load_project_brief` returns `None` on every
+   absence path. If the BRIEF parses but the paired override is
+   **malformed** (`max_iterations` without a rationale, a rationale
+   without `max_iterations`, `max_iterations < 4`, non-integer cap), the
+   parser raised `ValueError` at load time and the reviser **propagates
+   that error** rather than degrading silently — the BRIEF is the
+   schema-of-record (memoir follows memo's STRICT contract, not deck's
+   lenient `.anvil.json` fallback). The schema violation is itself the
+   actionable error: the operator fixes the BRIEF or removes the
+   override.
+
+   **Predicate**: if `N + 1 > effective_max_iterations`, exit with the
+   **BLOCKED notice** per §"BLOCKED notice" below, writing nothing.
+   Otherwise proceed to step 4.
+
+   **What happens at `iteration == max_iterations` (issue #869).** The
+   cap bounds *how many version dirs may exist*, not what a thread
+   sitting at the ceiling is worth. `metadata.iteration` equals the
+   version-dir number, so at the default `max_iterations: 4`:
+
+   | Latest version on disk | `memoir-revise` behavior |
+   |---|---|
+   | `<thread>.1/` … `<thread>.3/` | **proceeds** — `N+1 <= 4`; writes `<thread>.{N+1}/` |
+   | `<thread>.4/`, combined verdict clean | **terminates `AUDITED` at step 2** — the cap check at step 3 is never reached |
+   | `<thread>.4/`, a critic still blocks | **refuses** — `5 > 4`; prints the BLOCKED notice and writes nothing |
+
+   So: `memoir-revise` **refuses; it never warns-and-proceeds** — but the
+   refusal lands on the invocation *after* the one that produced the
+   at-the-cap version, and only when step 2's combined verdict has not
+   already terminated the thread. A chapter that lands `AUDITED`
+   at exactly `iteration == max_iterations` is a normal, healthy terminus
+   — the cap was *reached* but was never the *terminating condition*, and
+   the report MUST NOT describe it as blocked, capped, or a near-miss.
+   `<thread>.{max_iterations}/` (`<thread>.4/` at the default) is the
+   worst-case terminal version dir; there is no `<thread>.5/` under a
+   default cap.
 4. **Read all critic input**: from the review — `verdict.md` (top
    revision priorities first), `scoring.md` (per-dim deductions; dim 1
    sourcing gaps lead), `comments.md`, and the "What's working" list.
@@ -117,10 +170,48 @@ combined verdict pre-check passes.
    "anvil-memoir-v1" }`. Stable-score termination (`STALLED`) follows
    `anvil/lib/snippets/rubric.md` §"Termination resolution order" over
    this history.
+
+   Also write the iteration-budget audit trail (issue #869):
+
+   - `metadata.iteration = N+1`, `metadata.revised_from = N`.
+   - `metadata.max_iterations` — the **effective** cap resolved at step 3.
+   - `metadata.iteration_cap_rationale` — the verbatim operator-supplied
+     rationale when the BRIEF paired override is in effect, `null`
+     otherwise. Every version dir therefore carries a self-contained
+     record of the cap that was in force when it was produced (readers
+     tolerate an absent key on pre-#869 version dirs).
+   - `metadata.revision_class` — the deterministic budget-composition
+     tag defined in §"Map-only repairs still consume an iteration"
+     below: `"map_only"` when every body file in `<thread>.{N+1}/`
+     (`<thread>.tex` plus any `sections/*.tex`) is byte-identical to its
+     `<thread>.{N}/` counterpart and the only substantive change is to
+     `provenance.md`; `"substantive"` otherwise. This field is
+     **audit-trail only** — it does not change the cap arithmetic, is
+     not scored, and has no state-machine effect.
 10. **Report**: e.g., `Revised 00-introduction.1 → 00-introduction.2
     (addressed 1 corpus-audit critical flag [NOT_FOUND -> claim cut] + 2
     major comments; 1 declined with reason). Next: memoir-review +
     memoir-audit 00-introduction`.
+
+    The status line MUST name the iteration budget consumed and, when
+    `metadata.revision_class == "map_only"`, carry the `map-only` tag —
+    the cheap operator signal that this pass spent an iteration on
+    provenance bookkeeping rather than prose. Examples:
+
+    - `Revised 00-introduction.2 → 00-introduction.3 (iteration 3/4;
+      map-only — provenance repoint, .tex byte-identical; addressed 1
+      corpus-audit critical flag [MISMATCH -> row repointed]). Next:
+      memoir-review + memoir-audit 00-introduction`
+    - `Revised 00-introduction.3 → 00-introduction.4 (iteration 4/4 —
+      final pass under the current cap; addressed 2 major comments).
+      Next: memoir-review + memoir-audit 00-introduction`
+
+    When the written version lands at `iteration == max_iterations`, the
+    report MUST append the `final pass under the current cap` clause so
+    the operator learns the ceiling is one pass away **before** the
+    BLOCKED notice, not at it. This is advisory only — it does not refuse
+    and does not pre-empt step 2's normal `AUDITED` terminus on the next
+    critic pass.
 
 ## What memoir-revise does NOT do
 
@@ -138,6 +229,124 @@ combined verdict pre-check passes.
 - **Never proceeds to `AUDITED` when the corpus tier is active but
   `<thread>.{N}.corpus-audit/` has not yet been written** — treated
   identically to `AUDITED-PARTIAL`.
+- **Never raises the iteration cap itself** — not by editing the BRIEF,
+  not by writing an elevated `metadata.max_iterations` into the new
+  version dir, not by treating a map-only pass as free. Raising the
+  ceiling is an operator decision recorded in `<project>/BRIEF.md`; the
+  reviser only *resolves*, *mirrors*, and *surfaces* it.
+
+## Convergence
+
+After this command produces `<thread>.{N+1}/`, the orchestrator runs
+`memoir-review <thread>` **and** `memoir-audit <thread>` on the new
+version (in parallel). The cycle continues until:
+
+- the combined verdict of step 2 holds (thread reaches `AUDITED` —
+  terminal), OR
+- `N + 1 > effective_max_iterations` (thread is `BLOCKED` for human
+  review — see §"BLOCKED notice" below), OR
+- stable-score termination fires (`STALLED`) per
+  `anvil/lib/snippets/rubric.md` §"Termination resolution order" over
+  `score_history`.
+
+Reaching `iteration == max_iterations` is **not** one of these
+terminating conditions. A thread whose latest version number equals the
+cap is in exactly one of two states: terminal on the combined verdict
+(`AUDITED` — the good outcome), or one blocked pass away from the
+BLOCKED notice. Both are reported honestly; neither is "capped."
+
+### BLOCKED notice
+
+When step 3's predicate fires (`N + 1 > effective_max_iterations`), the
+reviser exits **without** writing `<thread>.{N+1}/` and prints a BLOCKED
+notice to stdout. The notice surfaces the override pointer (or, when an
+elevated cap is already active, the prior rationale) at **the moment the
+operator needs it** — the discoverability failure recorded in issue #349
+was "I didn't know the override existed," and issue #869 is its memoir
+recurrence. This contract mirrors `anvil/skills/memo/commands/memo-revise.md`
+§"BLOCKED notice" line-by-line, substituting memoir's three-critic verdict
+shape. Required lines:
+
+1. **State line**: `BLOCKED — <thread>.{N} hit the iteration cap
+   (max_iterations=<cap>). Human review required.`
+2. **Trajectory line** (when `score_history` / verdict data is
+   available): per-iteration totals plus the latest critical-flag state
+   across all active critics, e.g. `Trajectory: v1=34/44, v2=37/44,
+   v3=38/44, v4=38/44 (advance=false, 1 unresolved corpus-audit critical
+   flag); gap to advance threshold ≥39.` This frames the decision:
+   well-conditioned (monotonic improvement, a named small gap) → consider
+   the override; ill-conditioned (oscillating totals, a persistent
+   fabrication-class flag) → the cap is doing its job, escalate to a
+   human rather than buying more passes.
+3. **Budget-composition line** (issue #869; REQUIRED when any consumed
+   iteration carries `metadata.revision_class == "map_only"`): name how
+   much of the budget went to bookkeeping rather than prose, e.g.
+   `Budget composition: 4/4 consumed — 2 substantive (v2, v4), 2 map-only
+   (v3 corpus-drift repair, v4 provenance repoint; .tex byte-identical).`
+   A thread that spent half its budget on framework-detected provenance
+   repairs is a materially different override case from one that spent it
+   all on unconverged prose, and the operator should not have to
+   reconstruct that from changelogs.
+4. **Override pointer** (REQUIRED when no override is currently set —
+   i.e. `metadata.iteration_cap_rationale` is `null` or absent):
+   `Override available — see anvil/skills/memoir/SKILL.md §"Iteration cap
+   and override contract" (schema-of-record: anvil/skills/memo/SKILL.md
+   §"Per-document override contract"). Required fields on the matching
+   <project>/BRIEF.md documents: entry: max_iterations (int ≥ 4) AND
+   iteration_cap_rationale (non-empty string explaining why this chapter
+   deserves more passes). Both fields are required; setting one without
+   the other is a schema violation and the BRIEF parser will refuse to
+   load. The override may raise the cap but not lower it below the
+   principled default of 4.`
+5. **Override-already-set surfacing** (when
+   `metadata.iteration_cap_rationale != null` — an elevated cap is
+   already active and the thread hit *that*): print the rationale in
+   full, never truncated, so the operator sees the prior authorization,
+   then: `This chapter is already at its elevated cap
+   (max_iterations=<cap>). Raising further requires re-evaluating the
+   rationale in <project>/BRIEF.md; see anvil/skills/memoir/SKILL.md
+   §"Iteration cap and override contract".`
+
+The notice is **advisory in one direction only**: it tells the operator
+the override exists and what it costs to use. The reviser never raises
+the cap on its own authority, and a BLOCKED thread stays BLOCKED until
+the BRIEF is edited by a human and the reviser is re-invoked.
+
+### Map-only repairs still consume an iteration
+
+A **map-only** revision is one where every body file in the new version
+(`<thread>.tex` plus any `sections/*.tex`) is byte-identical to its
+parent's counterpart and the only substantive change is to
+`provenance.md` — a corpus-drift repair or a provenance repoint that
+fixes bookkeeping without touching a word of prose. `memoir-revise`
+records these as `metadata.revision_class = "map_only"` and surfaces the
+count in the BLOCKED notice's budget-composition line, but they **do
+consume an iteration** exactly like a substantive pass. That is a
+deliberate design decision (issue #869), not an oversight:
+
+- **`iteration` is derived from the version-dir number, and version dirs
+  are immutable.** Exempting a class of revision from the budget would
+  decouple `metadata.iteration` from `<thread>.{N}/`, requiring a second
+  counter that can disagree with the directory listing. Two counters that
+  can disagree is precisely the bookkeeping ambiguity this issue is
+  complaining about — discovery (`enumerate_versions`), the orchestrator's
+  `Iter` column, and `score_history` rows all key off the directory
+  number today.
+- **A map-only repair is not cheap.** It still triggers a full
+  `memoir-review` + `memoir-audit` pass on the new version, including the
+  exhaustive `kind: tool_evidence` corpus-audit sweep — the most
+  expensive critic in the skill. Bounding that cost is exactly what the
+  cap is for.
+- **The operator decision the exemption would enable is already
+  expressible, with a better audit trail.** "This chapter spent two
+  iterations on provenance repairs and deserves more passes" is a
+  textbook `iteration_cap_rationale` — and the budget-composition line
+  now hands the operator the evidence for it verbatim.
+
+If the canary later shows chapters routinely exhausting their budget on
+map-only repairs *despite* the override, the follow-up is a
+provenance-repair path that amends the map without producing a new
+version dir at all — not a second, divergent iteration counter.
 
 ## Git sync (opt-in, off by default)
 

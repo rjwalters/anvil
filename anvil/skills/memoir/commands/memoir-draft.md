@@ -32,6 +32,24 @@ abandoned thread.)
    `target_length` when declared; a memoir chapter is long-form by
    nature — there is no short envelope. Record the resolved target in
    `_progress.json.metadata.target_length_resolved` when declared.
+
+   **Resolve and mirror the iteration cap** (issue #869) into
+   `_progress.json.metadata`, so v1 carries the same audit trail every
+   later version does — see SKILL.md §"Iteration cap and override
+   contract":
+   - When the entry declares BOTH `max_iterations` AND
+     `iteration_cap_rationale`, write both values into
+     `metadata.max_iterations` / `metadata.iteration_cap_rationale`, and
+     confirm the elevated cap in the step-10 status line, e.g.
+     `... max_iterations=6 (BRIEF override active)`. The BRIEF parser
+     enforces the paired-override validation at parse time (both keys,
+     `max_iterations >= 4`, non-empty rationale) — the drafter does NOT
+     re-validate, and propagates a `ValueError` rather than degrading
+     silently.
+   - Otherwise write `metadata.max_iterations =
+     anvil/lib/project_brief.py::DEFAULT_MAX_ITERATIONS` (4) and
+     `metadata.iteration_cap_rationale = null`. No warning — both keys
+     absent is the default-cap case.
 3. **Load corpus grounding (conditional — #597)**: invoke
    `anvil/lib/project_brief.py::resolve_corpus_dirs(<project_dir>)` per
    `anvil/lib/snippets/provenance.md` §Section 1. The `<project_dir>` is

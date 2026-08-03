@@ -45,9 +45,13 @@ portfolio command here.
      `<slug>.{N}.review/verdict.md`, the general audit verdict from
      `<slug>.{N}.audit/verdict.md`, and — when present — the corpus-audit
      verdict from `<slug>.{N}.corpus-audit/verdict.md`.
-   - The iteration count and `max_iterations` from
-     `<slug>.{N}/_progress.json` (default 4; project-BRIEF paired
-     override per SKILL.md).
+   - The iteration count, `max_iterations`, and
+     `iteration_cap_rationale` from `<slug>.{N}/_progress.json`
+     (default 4, rationale `null`; project-BRIEF paired override per
+     SKILL.md §"Iteration cap and override contract"). Also collect each
+     version's `metadata.revision_class` (`"map_only"` /
+     `"substantive"`; absent on pre-#869 version dirs) — the
+     budget-composition input for the `## Operator notes` entry below.
    - Whether the project BRIEF declares a top-level `corpus:` and a
      `voice:` block (with `subjects:`) — informational, surfaced so the
      operator sees at a glance which tiers are active for this project
@@ -64,9 +68,17 @@ portfolio command here.
    | `DRAFTED` (no figure references / exhibits current) | `memoir-review <thread>` + `memoir-audit <thread>` (parallel) |
    | `REVIEWED-PARTIAL` | `memoir-audit <thread>` (run the missing critic) |
    | `AUDITED-PARTIAL` | `memoir-review <thread>` (run the missing critic) |
-   | `REVIEWED+AUDITED` (any critic blocks, under iteration cap) | `memoir-revise <thread>` |
-   | `REVIEWED+AUDITED` (any critic blocks, AT iteration cap) | `BLOCKED — human review required` |
+   | `REVIEWED+AUDITED` (any critic blocks, `N + 1 <= max_iterations`) | `memoir-revise <thread>` |
+   | `REVIEWED+AUDITED` (any critic blocks, `N + 1 > max_iterations`) | `BLOCKED — human review required` (+ the override pointer, see `## Operator notes`) |
    | `AUDITED` (all clear) | `memoir-figures <thread>` (refresh/produce PDF+exhibits if not current), then `/anvil:project-book <project-dir>` to assemble the book |
+
+   The cap predicate is the one in `memoir-revise.md` step 3, applied to
+   the latest version number `N` — **not** "is `iteration` equal to
+   `max_iterations`." A thread at `Iter 4/4` that is `AUDITED` is
+   terminal and healthy; the `Next` cell recommends `memoir-figures`, not
+   BLOCKED. Only a thread at `N + 1 > max_iterations` **with a critic
+   still blocking** is BLOCKED (issue #869 — reporting a clean
+   at-the-ceiling terminus as capped is a bug).
 
 5. Detect anomalies and surface them:
    - A `<slug>.{N}/_progress.json` with any phase `in_progress` AND the
@@ -90,16 +102,44 @@ Print a markdown table to stdout:
 ```
 | Thread          | Latest | State            | Review | Audit | Corpus-audit | Iter | Next                              |
 |-----------------|--------|------------------|--------|-------|--------------|------|------------------------------------|
-| 00-introduction | .2     | AUDITED          | 41/44  | clean | clean        | 2/4  | memoir-figures 00-introduction     |
+| 00-introduction | .4     | AUDITED          | 44/44  | clean | clean        | 4/4  | memoir-figures 00-introduction     |
 | 01-childhood    | .1     | REVIEWED+AUDITED | 35/44  | flag  | clean        | 1/4  | memoir-revise 01-childhood         |
+| 02-the-farm     | .4     | REVIEWED+AUDITED | 38/44  | clean | flag         | 4/4  | BLOCKED — human review required    |
 | appendix        | -      | EMPTY            | -      | -     | -            | 0/4  | memoir-draft appendix              |
 ```
 
+The first and third rows are the two distinct at-the-ceiling cases
+(issue #869): `00-introduction` reached `Iter 4/4` and terminated
+`AUDITED` on score + clean flags — the cap was reached but was never the
+terminating condition, so it gets the normal terminal recommendation.
+`02-the-farm` is at the same `4/4` with a corpus-audit flag still open,
+so the next revise pass would exceed the cap and it is genuinely BLOCKED.
+The `Iter` column alone never distinguishes them — the `State` +
+`Next` cells must.
+
 Follow the table with an `## Anomalies` section if any were detected, and
 an `## Operator notes` section for threads requiring human review
-(iteration cap reached, an unresolved fabrication-class critical flag
+(iteration cap exceeded, an unresolved fabrication-class critical flag
 across multiple revisions, an undeclared `corpus:`/`voice:` tier
 surfaced repeatedly, etc.).
+
+For a BLOCKED-on-cap thread, the `## Operator notes` entry MUST carry the
+same three surfacings `memoir-revise`'s BLOCKED notice does, so the
+portfolio view is not a strictly worse place to learn about the override
+than the per-thread command:
+
+1. the **budget composition** — how many of the consumed iterations were
+   `revision_class: "map_only"` provenance repairs versus substantive
+   prose revisions;
+2. the **override pointer** when `iteration_cap_rationale` is `null`
+   (required BRIEF fields: `max_iterations` int ≥ 4 **and**
+   `iteration_cap_rationale`, both or neither — see SKILL.md §"Iteration
+   cap and override contract");
+3. the **existing rationale verbatim** when an elevated cap is already
+   active, plus the "re-evaluate the rationale before raising again"
+   prompt.
+
+This command never edits the BRIEF and never raises a cap — it reports.
 
 ## Notes
 
