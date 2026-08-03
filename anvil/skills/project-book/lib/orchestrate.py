@@ -211,10 +211,15 @@ def run(
             # the ``ArtifactType.X`` class-qualified name on Python < 3.12);
             # consumer-declared types stay plain strings. Prefer ``.value``.
             artifact_type = getattr(at, "value", None) or str(at)
+        # The effective chapter-filename template is per-document (#864):
+        # an explicit BRIEF `build.chapter_filename` wins project-wide;
+        # otherwise a slug-echo artifact type (memoir) defaults to
+        # `{slug}.tex` and everything else to `chapter.tex`. `{slug}` is
+        # substituted per-thread inside `collect_thread`.
         info = collect_thread(
             project_dir,
             slug,
-            chapter_filename=config.chapter_filename,
+            chapter_filename=config.chapter_filename_for(artifact_type),
             artifact_type=artifact_type,
         )
         result.threads.append(info)

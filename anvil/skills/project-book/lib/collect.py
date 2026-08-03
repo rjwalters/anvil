@@ -8,6 +8,13 @@ siblings, read the review score, and compute the recommended next
 command. The result feeds both the staging step (which files to copy /
 placeholder) and the build report.
 
+The configured ``chapter_filename`` is a **per-thread template** (#864):
+the literal token ``{slug}`` is replaced with the thread's own slug via
+:func:`resolve_chapter_filename` before the chapter file is located, so
+one project-wide setting can express a slug-echo filename convention
+(``{slug}.tex`` — memoir's contract per #295). A template with no token
+(the ``chapter.tex`` default) resolves to itself for every thread.
+
 State-aware **but warn-never-block**: a thread that has no version dirs
 (EMPTY), or whose resolved version dir lacks the configured chapter
 file, is not an error — it is recorded on the returned
@@ -68,6 +75,22 @@ _RANK_STATE = {
     5: STATE_AUDITED,
 }
 
+# The one substitutable token in a ``chapter_filename`` template (#864).
+CHAPTER_SLUG_TOKEN = "{slug}"
+
+
+def resolve_chapter_filename(template: str, slug: str) -> str:
+    """Substitute the ``{slug}`` token in a chapter-filename template.
+
+    Deliberately a literal token replacement rather than
+    ``str.format(slug=...)``: a filename that happens to carry some other
+    brace-wrapped text (or an unbalanced brace) must not raise mid-build.
+    A template with no ``{slug}`` token — the ``chapter.tex`` default —
+    is returned unchanged, so this is a safe no-op on every pre-#864
+    config.
+    """
+    return template.replace(CHAPTER_SLUG_TOKEN, slug)
+
 
 @dataclass
 class ThreadInfo:
@@ -86,8 +109,8 @@ class ThreadInfo:
         The concrete version-dir name (``00-introduction.5``) or
         ``None`` when EMPTY.
     chapter_source
-        Absolute path to the ``chapter_filename`` inside the resolved
-        version dir when it exists; ``None`` otherwise.
+        Absolute path to the slug-resolved ``chapter_filename`` inside
+        the resolved version dir when it exists; ``None`` otherwise.
     state
         Lifecycle state label (one of the ``STATE_*`` constants).
     score
@@ -284,7 +307,12 @@ def collect_thread(
     chapter_filename: str,
     artifact_type: Optional[str] = None,
 ) -> ThreadInfo:
-    """Collect one chapter thread's state. Never raises on per-thread issues."""
+    """Collect one chapter thread's state. Never raises on per-thread issues.
+
+    ``chapter_filename`` is a template: any ``{slug}`` token is replaced
+    with ``slug`` before the chapter file is located (see
+    :func:`resolve_chapter_filename`).
+    """
     project_dir = Path(project_dir)
     thread_dir = project_dir / slug
     info = ThreadInfo(slug=slug, thread_dir=thread_dir)
@@ -313,8 +341,12 @@ def collect_thread(
     info.resolved_name = resolved.name
     info.state = _read_progress_state(resolved)
 
-    # Chapter source file inside the resolved version dir.
-    chapter_source = resolved / chapter_filename
+    # Chapter source file inside the resolved version dir. The configured
+    # filename is a template — `{slug}` resolves to this thread's slug
+    # (#864), so a slug-echo skill like `anvil:memoir` needs no per-thread
+    # config.
+    resolved_filename = resolve_chapter_filename(chapter_filename, slug)
+    chapter_source = resolved / resolved_filename
     if chapter_source.is_file():
         info.chapter_source = chapter_source
         info.needs_placeholder = False
@@ -322,7 +354,7 @@ def collect_thread(
         info.needs_placeholder = True
         info.warnings.append(
             f"`{slug}`: resolved version `{resolved.name}` has no "
-            f"`{chapter_filename}` — a placeholder chapter was staged."
+            f"`{resolved_filename}` — a placeholder chapter was staged."
         )
 
     # Score from the highest-N review sibling.
@@ -371,6 +403,7 @@ def collect_thread(
 
 
 __all__ = [
+    "CHAPTER_SLUG_TOKEN",
     "STATE_AUDITED",
     "STATE_DRAFTED",
     "STATE_EMPTY",
@@ -380,4 +413,5 @@ __all__ = [
     "STATE_UNKNOWN",
     "ThreadInfo",
     "collect_thread",
+    "resolve_chapter_filename",
 ]

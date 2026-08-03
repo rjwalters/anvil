@@ -27,6 +27,23 @@ Config surface (all fields optional; ``master_doc`` required for compile)::
       chapter_filename: chapter.tex # per-thread filename to stage
       out_pdf: book/book.pdf        # output PDF path
 
+``chapter_filename`` is a **template**: the literal token ``{slug}`` is
+substituted with each thread's own slug when the chapter file is located
+(``collect.py::resolve_chapter_filename``). A value with no token — the
+``chapter.tex`` default — resolves to itself for every thread. This is
+what lets one project-wide setting express a per-thread filename
+convention such as memoir's slug-echo contract (``{slug}.tex``, #295).
+
+Zero-config default, per artifact type: when the BRIEF ``build:`` block
+does **not** set ``chapter_filename`` at all, a document whose
+``artifact_type`` is in :data:`SLUG_ECHO_ARTIFACT_TYPES` (today:
+``memoir``) defaults to :data:`SLUG_ECHO_CHAPTER_FILENAME`
+(``{slug}.tex``); every other document keeps
+:data:`DEFAULT_CHAPTER_FILENAME` (``chapter.tex``). An explicit
+``chapter_filename`` in BRIEF always wins — for memoir threads too — so
+a consumer who already set it is never surprised. See
+:meth:`BookConfig.chapter_filename_for`.
+
 ``order`` semantics (locked at curation): when present it is the
 authoritative include-list and ordering — slugs omitted from ``order``
 are excluded (with an informational note); slugs in ``order`` that do
@@ -61,6 +78,13 @@ BUILD_FRONTMATTER_KEY = "build"
 # Framework defaults for the staging + compile contract.
 DEFAULT_CHAPTERS_DIR = "book/chapters"
 DEFAULT_CHAPTER_FILENAME = "chapter.tex"
+
+# Zero-config chapter-filename template for artifact types whose own
+# skill contract mandates a slug-echo body filename. ``anvil:memoir``
+# (#740) requires ``<slug>.tex`` — "never chapter.tex" (#295) — so a
+# memoir project must resolve slug-echo names without any BRIEF config.
+SLUG_ECHO_CHAPTER_FILENAME = "{slug}.tex"
+SLUG_ECHO_ARTIFACT_TYPES = frozenset({"memoir"})
 
 # Marker file written at the start of each apply run into the chapters
 # dir; its presence authorizes the blow-away rebuild. Mirrors
@@ -130,9 +154,14 @@ class BookConfig(BaseModel):
         are staged into. Blow-away-rebuilt on each apply run. Defaults
         to :data:`DEFAULT_CHAPTERS_DIR`.
     chapter_filename
-        Per-thread filename to look for in each resolved version dir.
-        Defaults to :data:`DEFAULT_CHAPTER_FILENAME`. A bare filename —
-        no path separators.
+        Per-thread filename **template** to look for in each resolved
+        version dir. A bare filename — no path separators — in which the
+        literal token ``{slug}`` (if present) is replaced with the
+        thread's own slug. Defaults to :data:`DEFAULT_CHAPTER_FILENAME`
+        for most artifact types and :data:`SLUG_ECHO_CHAPTER_FILENAME`
+        for the slug-echo types (see :meth:`chapter_filename_for`); read
+        the effective per-thread value through that method rather than
+        this raw field.
     out_pdf
         Output PDF path (project-root-relative). When ``None`` it
         defaults to ``<chapters_dir>/../book.pdf`` (see
@@ -194,7 +223,8 @@ class BookConfig(BaseModel):
             raise ValueError(
                 f"build.chapter_filename must be a bare filename (no path "
                 f"separators); got {value!r}. Suggested fix: use a single "
-                f"name like `chapter.tex`."
+                f"name like `chapter.tex` (or the per-thread template "
+                f"`{{slug}}.tex`)."
             )
         if raw in (".", ".."):
             raise ValueError(
@@ -209,6 +239,34 @@ class BookConfig(BaseModel):
         if value is None:
             return None
         return _validate_rel_path(value, "out_pdf")
+
+    def chapter_filename_for(self, artifact_type: Optional[str] = None) -> str:
+        """Effective chapter-filename **template** for one document.
+
+        Precedence (issue #864):
+
+        1. An explicit ``build.chapter_filename`` in BRIEF wins for every
+           thread in the project — including memoir threads. "Explicit"
+           is detected via pydantic's ``model_fields_set``, so a BRIEF
+           that spells out ``chapter_filename: chapter.tex`` is honored
+           verbatim and is NOT re-interpreted as "unset."
+        2. Otherwise a document whose ``artifact_type`` is in
+           :data:`SLUG_ECHO_ARTIFACT_TYPES` gets
+           :data:`SLUG_ECHO_CHAPTER_FILENAME` (``{slug}.tex``).
+        3. Otherwise the framework default
+           :data:`DEFAULT_CHAPTER_FILENAME` (``chapter.tex``).
+
+        The returned value is still a template — the caller substitutes
+        the ``{slug}`` token via
+        ``collect.py::resolve_chapter_filename``.
+        """
+        if "chapter_filename" in self.model_fields_set:
+            return self.chapter_filename
+        if artifact_type is not None:
+            normalized = str(getattr(artifact_type, "value", artifact_type)).strip()
+            if normalized.lower() in SLUG_ECHO_ARTIFACT_TYPES:
+                return SLUG_ECHO_CHAPTER_FILENAME
+        return self.chapter_filename
 
     def resolved_out_pdf(self) -> str:
         """Return the effective output PDF path (project-root-relative).
@@ -324,6 +382,8 @@ __all__ = [
     "DEFAULT_CHAPTER_FILENAME",
     "MARKER_FILENAME",
     "REPORT_FILENAME",
+    "SLUG_ECHO_ARTIFACT_TYPES",
+    "SLUG_ECHO_CHAPTER_FILENAME",
     "BookConfig",
     "load_book_config",
 ]
