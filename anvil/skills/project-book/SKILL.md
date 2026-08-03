@@ -67,8 +67,9 @@ collision, an `order` slug missing from `documents:`, or xelatex absent.
   `anvil/lib/critics.py`, denominator + threshold from the sibling's
   `_meta.json` version stamp), and notes the audit state.
 - **Stages** one `<slug>.tex` per chapter into `chapters_dir` (in declared
-  `order`), copying the resolved `chapter_filename` or generating a
-  placeholder. The chapters dir is a **marker-guarded blow-away rebuild** —
+  `order`), copying the slug-resolved `chapter_filename` (the `{slug}` token
+  is substituted per thread) or generating a placeholder. The chapters dir
+  is a **marker-guarded blow-away rebuild** —
   stale chapters from threads removed from `order` disappear by construction.
 - **Compiles** the consumer `master_doc` with **two-pass XeLaTeX** via
   `anvil/lib/render_gate.py::compile_and_gate` (the skill does not roll its
@@ -87,7 +88,7 @@ build:
     - appendix
   master_doc: book/book.tex     # consumer-owned master document (required for compile)
   chapters_dir: book/chapters   # where to stage per-thread chapter files
-  chapter_filename: chapter.tex # per-thread filename to stage
+  chapter_filename: chapter.tex # per-thread filename template to look for
   out_pdf: book/book.pdf        # output PDF path (default: <chapters_dir>/../book.pdf)
 ```
 
@@ -97,6 +98,35 @@ chapter in BRIEF order with the framework defaults (`book/chapters`,
 shared `ProjectBrief` model is not extended; the BRIEF parser already ignores
 unknown top-level frontmatter keys, so the `build:` block is safe in any BRIEF
 today (the same precedent `project-share`'s `export:` block relies on).
+
+### `chapter_filename` is a per-thread template (#864)
+
+`chapter_filename` names the file to look for **inside each thread's resolved
+version dir**. It is a bare filename (no path separators) in which the literal
+token `{slug}` is substituted with that thread's own slug:
+
+```yaml
+build:
+  chapter_filename: '{slug}.tex'   # 00-introduction/00-introduction.3/00-introduction.tex
+```
+
+A value with no `{slug}` token — the `chapter.tex` default — resolves to
+itself for every thread, so every pre-existing config behaves exactly as
+before.
+
+**Zero-config default by artifact type.** When the `build:` block does *not*
+set `chapter_filename` at all, the effective template is chosen per document:
+
+| `documents:` entry `artifact_type` | Default template |
+|---|---|
+| `memoir` | `{slug}.tex` (memoir's slug-echo body contract — "never `chapter.tex`", #295) |
+| anything else / absent | `chapter.tex` |
+
+An explicit `build.chapter_filename` always wins — for memoir threads too —
+so a project that already pinned a filename is never silently overridden. (The
+"was it set?" test is pydantic's `model_fields_set`, so spelling out
+`chapter_filename: chapter.tex` is honored verbatim rather than being
+re-read as "unset.")
 
 `order` semantics: when present it is the authoritative include-list and
 ordering — slugs omitted from `order` are excluded (noted in the report);

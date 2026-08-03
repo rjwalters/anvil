@@ -27,6 +27,15 @@ compile step). Zero-config falls back to the `documents:` order and framework
 defaults (`book/chapters`, `chapter.tex`). See `SKILL.md` for the full config
 surface and the marker-guard / placeholder contract.
 
+`chapter_filename` is a **per-thread template**: the literal token `{slug}` is
+replaced with each thread's own slug, so `chapter_filename: '{slug}.tex'`
+resolves `00-introduction/00-introduction.3/00-introduction.tex`. A value with
+no token (the `chapter.tex` default) resolves to itself for every thread. With
+**no** `chapter_filename` set at all, a `documents:` entry whose
+`artifact_type` is `memoir` defaults to `{slug}.tex` (memoir's slug-echo body
+contract, #295); every other artifact type keeps `chapter.tex`. An explicit
+`chapter_filename` always wins, memoir included.
+
 ## Procedure
 
 ### 1. Run the build
