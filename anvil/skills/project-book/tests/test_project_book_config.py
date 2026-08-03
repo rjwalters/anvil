@@ -84,6 +84,53 @@ def test_chapter_filename_rejects_separators():
         C.BookConfig(chapter_filename="sub/chapter.tex")
 
 
+def test_chapter_filename_accepts_slug_token():
+    """`{slug}.tex` is a valid bare filename template (#864)."""
+    cfg = C.BookConfig(chapter_filename="{slug}.tex")
+    assert cfg.chapter_filename == "{slug}.tex"
+
+
+def test_slug_token_filename_parses_from_brief(tmp_path):
+    write_brief(
+        tmp_path,
+        project="p",
+        documents=default_documents(["a"], artifact_type="memoir"),
+        build={"chapter_filename": "{slug}.tex"},
+    )
+    cfg = C.load_book_config(tmp_path)
+    assert cfg.chapter_filename == "{slug}.tex"
+    assert cfg.chapter_filename_for("memoir") == "{slug}.tex"
+
+
+def test_chapter_filename_for_memoir_defaults_to_slug_echo():
+    """Zero-config: a memoir document gets the slug-echo template (#864)."""
+    cfg = C.BookConfig()
+    assert cfg.chapter_filename_for("memoir") == C.SLUG_ECHO_CHAPTER_FILENAME
+    assert cfg.chapter_filename_for("investment-memo") == C.DEFAULT_CHAPTER_FILENAME
+    assert cfg.chapter_filename_for(None) == C.DEFAULT_CHAPTER_FILENAME
+
+
+def test_explicit_chapter_filename_wins_over_memoir_default():
+    """An explicit BRIEF value is honored verbatim, memoir included (#864)."""
+    cfg = C.BookConfig(chapter_filename="ch.tex")
+    assert cfg.chapter_filename_for("memoir") == "ch.tex"
+    # Explicitly spelling out the framework default must NOT be re-read as
+    # "unset" — `model_fields_set`, not value equality, decides.
+    pinned = C.BookConfig(chapter_filename=C.DEFAULT_CHAPTER_FILENAME)
+    assert pinned.chapter_filename_for("memoir") == C.DEFAULT_CHAPTER_FILENAME
+
+
+def test_explicit_chapter_filename_from_brief_wins_for_memoir(tmp_path):
+    write_brief(
+        tmp_path,
+        project="p",
+        documents=default_documents(["a"], artifact_type="memoir"),
+        build={"chapter_filename": "chapter.tex"},
+    )
+    cfg = C.load_book_config(tmp_path)
+    assert cfg.chapter_filename_for("memoir") == "chapter.tex"
+
+
 def test_chapters_dir_rejects_traversal_and_absolute():
     with pytest.raises(Exception):
         C.BookConfig(chapters_dir="../escape")
