@@ -178,6 +178,20 @@ A third optional frontmatter key, `cost_basis: quoted | estimated | none` (defau
 
 See `rubric.md` §"Dim 6 — `cost_basis` calibration" and `commands/proposal-audit.md` step 7 for the full reviewer/auditor-side wiring, and `templates/BRIEF.md.example` for the documented default.
 
+## Operator-initiated polish passes
+
+A `READY`/`AUDITED` thread is the normal terminus, but operators MAY invoke `proposal-revise <thread> --polish "<reason>"` to produce one additional revision pass that targets the line-level signal the default terminal-exit path skips — sub-threshold per-dimension justifications in `.review/scoring.md`, `nit`-tagged or untagged `comments.md` notes, and audit-side line-level findings. The entry point exists because passing the threshold and having nothing worth fixing are different states, and the combined-advance pre-check conflates them: for a customer-facing proposal, shipping the enumerated minors the critics already listed is worse than one directed iteration (the canary friction — censusapi PR #88, issue #85 — a v2 → v3 polish pass, 40/44 → 43/44, closing two reviewer-flagged deferrals the critics had explicitly marked non-blocking).
+
+The full contract lives in `anvil/lib/snippets/directed_revision.md`. The load-bearing invariants:
+
+- **The reason argument is required** — empty / whitespace-only / missing is rejected and the thread is left untouched. No version dir is written and no `_progress.json` is mutated.
+- **`--polish` bypasses the step-4 combined-advance pre-check ONLY.** The dual-critic-completeness check (BOTH `.review/` AND `.audit/` still required) and the iteration cap still apply. This is the sanctioned override — deleting a critic sibling or hand-editing `_progress.json` to force a revision are NOT supported paths and destroy the thread's audit trail.
+- **No inherited credit** — the polish-pass output is a normal `<thread>.{N+1}/` version dir; the next `proposal-review` + `proposal-audit` pair scores it on its own rubric merits and does NOT read the audit-trail fields.
+- **Audit trail**: `metadata.revision_mode = "polish"` + `metadata.revise_force_reason = "<verbatim reason>"` (audit-trail-only — not scored, not gating, no state-machine impact). The default (no-flag) `proposal-revise` behavior is byte-identical to the pre-this-change shape.
+- **Composes with `--scope`** exactly as `memo-revise.md` documents — the polish bypass and the severity filter are independent, orthogonal flags.
+
+See `commands/proposal-revise.md` §"CLI flags" for the reviser-side procedure.
+
 ## Progress tracking
 
 Each `<thread>.{N}/` directory contains `_progress.json` recording phase state. The canonical schema, read-merge-write recipe, and crash recovery contract live in `anvil/lib/snippets/progress.md` (in an installed consumer repo: `.anvil/anvil/lib/snippets/progress.md`); every command in this skill follows that convention.
