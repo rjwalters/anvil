@@ -68,7 +68,8 @@ collision, an `order` slug missing from `documents:`, or xelatex absent.
   `_meta.json` version stamp), and notes the audit state.
 - **Stages** one `<slug>.tex` per chapter into `chapters_dir` (in declared
   `order`), copying the slug-resolved `chapter_filename` (the `{slug}` token
-  is substituted per thread) or generating a placeholder. The chapters dir is a **marker-guarded blow-away rebuild** —
+  is substituted per thread) or generating a placeholder. The chapters dir
+  is a **marker-guarded blow-away rebuild** —
   stale chapters from threads removed from `order` disappear by construction.
 - **Compiles** the consumer `master_doc` with **two-pass XeLaTeX** via
   `anvil/lib/render_gate.py::compile_and_gate` (the skill does not roll its
