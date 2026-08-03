@@ -1,6 +1,6 @@
 ---
 name: memoir-audit
-description: Auditor for the memoir skill. Always writes a general factual/narrative-consistency sibling. When the corpus tier (#597) is active, ALSO writes the exhaustive kind:tool_evidence corpus-audit critic per anvil/lib/snippets/provenance.md §Section 4 as a <thread>.{N}.corpus-audit/ sibling — inventorying every claim, classifying every provenance.md row VERIFIED/PARAPHRASE_OK/MISMATCH/NOT_FOUND/FABRICATED, and raising the five fabrication-class critical flags. Runs parallel with memoir-review. DRAFTED/REVISED → AUDITED transition.
+description: Auditor for the memoir skill. Always writes a general factual/narrative-consistency sibling. When the corpus tier (#597) is active, ALSO writes the exhaustive kind:tool_evidence corpus-audit critic per anvil/lib/snippets/provenance.md §Section 4 as a <thread>.{N}.corpus-audit/ sibling — running the anchor-drift pre-pass (§Section 4a, #868) before inventorying every claim, classifying every provenance.md row VERIFIED/PARAPHRASE_OK/MISMATCH/NOT_FOUND/FABRICATED, and raising the five fabrication-class critical flags. Runs parallel with memoir-review. DRAFTED/REVISED → AUDITED transition.
 ---
 
 # memoir-audit — Auditor
@@ -39,9 +39,11 @@ them; they never modify them.
 <thread>.{N}.corpus-audit/                  (exhaustive — ONLY when corpus tier active)
   verdict.md       Corpus-audit verdict + fabrication-class critical-flag paragraphs
   findings.md      Per-provenance.md-row table: Claim | Source file | Line range | Classification | tool_calls evidence
+                    (+ distinct anchor-drift rows per §Section 4a, #868 — never phrased as
+                    MISMATCH/NOT_FOUND)
   comments.md      Line-level corpus-audit comments
   _summary.md      provenance_summary block (#597 §Section 7): total_claims / verified /
-                    paraphrase_ok / mismatch / not_found / fabricated
+                    paraphrase_ok / mismatch / not_found / fabricated / anchor_drift_count (#868)
   _meta.json       { critic: "corpus-audit", ..., scorecard_kind: "human-verdict",
                      rubric_id: "anvil-memoir-v1", rubric_total: 44, advance_threshold: 39 }
   _progress.json   Phase state for the corpus-audit critic
@@ -110,26 +112,49 @@ interrupt of EACH critic removed by `cleanup_one_staging(...)` at entry
         chapter, and every row in `<thread>.{N}/provenance.md`. A claim
         in the chapter with **no `provenance.md` row is a finding in
         itself** (unmapped claim).
-     2. For **each** map row, open the cited file + line range in the
-        resolved corpus and **classify** it with the five-way vocabulary
-        (§Section 5): `VERIFIED`, `PARAPHRASE_OK`, `MISMATCH`,
-        `NOT_FOUND`, `FABRICATED`.
-     3. Every `MISMATCH` / `NOT_FOUND` / `FABRICATED` row emits a
+     2. **Anchor-resolution pre-pass (§Section 4a, issue #868)**: for
+        every row carrying an `Anchor` value, run `python -m
+        anvil.lib.provenance_anchor check <thread>.{N}/provenance.md
+        <corpus_root> [...]` (one invocation covers the whole table;
+        prefix `uv run --project .anvil` in an installed consumer repo)
+        BEFORE classification — it searches the WHOLE cited file for the
+        anchor text, not just the hinted `Line range`, and reports
+        `NO_ANCHOR` / `FILE_NOT_FOUND` / `NOT_FOUND` / `RESOLVED` /
+        `DRIFTED` per row. A `DRIFTED` row emits a distinct
+        `findings.md` row worded as **anchor drift** ("quoted text still
+        present in `<file>` but now at line `<X>` — Line range hint is
+        stale") — never phrased as `MISMATCH`/`NOT_FOUND`, and NOT a
+        `critical_flags` entry (drift alone is not fabrication). A
+        `NO_ANCHOR` row (legacy, pre-#868) is not a finding — proceed to
+        classify it against the cited `Line range` exactly as before.
+     3. For **each** map row, open the resolved passage — the anchor's
+        ACTUAL location from step 2 when it drifted, otherwise the cited
+        `Line range` — in the resolved corpus and **classify** it with
+        the five-way vocabulary (§Section 5): `VERIFIED`, `PARAPHRASE_OK`,
+        `MISMATCH`, `NOT_FOUND`, `FABRICATED`. A `DRIFTED` row's content
+        classification is independent of its drift finding — a relocated
+        passage that still supports the claim is `VERIFIED`/
+        `PARAPHRASE_OK` same as any other row.
+     4. Every `MISMATCH` / `NOT_FOUND` / `FABRICATED` row emits a
         `findings.md` row with a non-empty **`tool_calls`** array
         recording the file-read operation that produced the evidence
         (the passage read, the lines inspected) — this is a `kind:
         tool_evidence` critic; `anvil/lib/review_schema.py` already
         enforces `tool_calls` on every `tool_evidence` finding.
-     4. Fabrication-class entries additionally emit the corresponding
+     5. Fabrication-class entries additionally emit the corresponding
         **critical flag** (§Section 6 — see step 6 below), which routes
         through the existing verdict machinery
         (`anvil/lib/critics.py::_compute_verdict_impl` already
         short-circuits any `critical_flags` → `Verdict.BLOCK`).
      `kind: tool_evidence` with `findings == []` is valid — a chapter
-     whose every claim VERIFIED/PARAPHRASE_OK is a clean corpus audit.
+     whose every claim VERIFIED/PARAPHRASE_OK is a clean corpus audit
+     (zero drift findings included).
      Write `_progress.json.metadata.provenance_summary` (§Section 7): the
      six counts (`total_claims`, `verified`, `paraphrase_ok`,
-     `mismatch`, `not_found`, `fabricated`) summing to `total_claims`.
+     `mismatch`, `not_found`, `fabricated`) summing to `total_claims`,
+     plus an `anchor_drift_count` counting `DRIFTED` rows separately (a
+     bookkeeping count, not one of the six that sum to `total_claims` —
+     drift is orthogonal to content classification).
      **Finalize the corpus-audit `_meta.json` + `_progress.json`**
      (`_progress.json` LAST) and exit that `staged_sidecar` block —
      manifest verified, staging dir atomically renamed to
