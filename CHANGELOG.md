@@ -294,6 +294,35 @@
 
 ### Fixed
 
+- **`essay-review` no longer calibrates voice fidelity against the
+  artifact under review** (#890). A `voice.corpus` glob naturally
+  points at the consumer's published archive — correct when drafting a
+  *new* thread, circular when reviewing a *revision of an
+  already-published* one, because the thread's own prior published
+  form sits inside its own calibration base for dim 2 (*Voice
+  fidelity*, weight 7 — the rubric's heaviest dimension). Flagged
+  independently by four consecutive reviews in one session, each
+  working around it by hand with the same unrecorded caveat — and on a
+  two-note corpus, hand-excluding the self-match left a single
+  exemplar with no framework signal that the base had thinned.
+  `anvil/lib/project_brief.py::resolve_voice_docs` gains an optional
+  `exclude_self_slug` kwarg: when the reviewing command passes the
+  thread's own slug, its published form is dropped from the resolved
+  `corpus` via two unioned sources — automatic inference (a matched
+  filename stem, after stripping one optional leading `YYYY-MM-DD-`
+  date prefix, exactly equals the slug) and an optional declared
+  `voice_corpus_exclude` on the thread's `documents:` entry (the
+  escape hatch for a publish-path shape the automatic rule cannot
+  infer, e.g. a title-cased or nested filename — same scalar-or-list
+  shape as `spec_ref` / `code_ref`). `essay-review` step 4 now passes
+  `exclude_self_slug=<thread>` unconditionally and records the
+  exclusion in `_summary.md.voice_grounding.corpus_excluded` (path +
+  reason per dropped path), plus a `corpus_thin: true` note when fewer
+  than 2 exemplars remain after exclusion — auditable instead of
+  silent, per the four reviewers' hand-written caveat. `None` (the
+  default) is a complete no-op for every other `resolve_voice_docs`
+  caller (memo, report, memoir, essay-draft).
+
 - **Shared loader for hyphenated skill `lib/` packages, replacing seven
   copy-pasted `importlib` incantations** (#879). Four utility skills'
   `commands/*.md` (`project-scout`, `project-book`, `project-photos`,
