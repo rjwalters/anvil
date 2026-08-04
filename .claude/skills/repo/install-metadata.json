@@ -1,6 +1,6 @@
 {
-  "version": "0.6.1",
-  "commit": "3f46e49",
+  "version": "0.7.0",
+  "commit": "081b265",
   "dev": false,
-  "commands": ["all","audit","branches","docs","followups","gitignore","handoff","help","links","orphans","readme","release","remote","reset","tidy","update-tools"]
+  "commands": ["all","audit","branches","deps","docs","followups","gitignore","handoff","help","host-optimize","links","orphans","readme","release","remote","reset","sudo","tidy","update-tools"]
 }
