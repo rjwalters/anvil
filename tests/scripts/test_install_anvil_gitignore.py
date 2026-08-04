@@ -3,10 +3,13 @@
 Every consumer command that runs ``uv run --project .anvil ...`` (each critic
 that imports ``anvil.lib.*``) leaves ``__pycache__/*.pyc`` bytecode caches under
 the ``.anvil/anvil/`` mirror, and the Stage 10.5 ``uv sync`` creates a venv at
-``.anvil/.venv/``. Without ignore coverage those artifacts dirty ``git status``
-in every worktree, every time. Stage 8.6 writes a self-contained
-``.anvil/.gitignore`` (patterns ``__pycache__/``, ``*.py[cod]``, ``.venv/``) so
-they never show up as untracked.
+``.anvil/.venv/`` *and* — because the consumer ``.anvil/pyproject.toml``
+declares ``build-backend = "setuptools.build_meta"``, so the sync is an editable
+install — a ``.anvil/anvil.egg-info/`` metadata directory (#877). Without ignore
+coverage those artifacts dirty ``git status`` in every worktree, every time.
+Stage 8.6 writes a self-contained ``.anvil/.gitignore`` (patterns
+``__pycache__/``, ``*.py[cod]``, ``.venv/``, ``*.egg-info/``) so they never show
+up as untracked.
 
 The write contract (deliberately distinct from the Stage 7.9 voice-grounding
 append):
@@ -19,6 +22,10 @@ append):
     creates the ``.anvil/anvil/`` mirror and the ``.anvil/.venv`` target.
   * **Skip-if-exists** — matching the Stage 7.8 starter-theme convention: the
     file is written once and a consumer hand-edit is never clobbered.
+  * **Append-only reconciliation** (#877) — a pattern added to the template
+    after a given install shipped is appended to the existing file if missing,
+    never duplicated and never at the cost of rewriting the file. Covered in
+    detail by ``test_install_anvil_gitignore_tracked_hint.py``.
   * **``--dry-run`` aware** — reports the would-write and writes nothing.
 
 These tests exercise the installer via ``subprocess`` so the contract is
@@ -29,13 +36,16 @@ convention (sibling to ``test_install_voice_gitignore.py`` /
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
 
-EXPECTED_PATTERNS = ("__pycache__/", "*.py[cod]", ".venv/")
+EXPECTED_PATTERNS = ("__pycache__/", "*.py[cod]", ".venv/", "*.egg-info/")
 
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -52,6 +62,11 @@ def _assert_ok(result: subprocess.CompletedProcess[str]) -> None:
         f"installer exited non-zero:\n"
         f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
     )
+
+
+def _tools_present() -> bool:
+    """Both ``uv`` and ``git`` are required for the end-to-end sync assertion."""
+    return shutil.which("uv") is not None and shutil.which("git") is not None
 
 
 def _gitignore_lines(gi: Path) -> list[str]:
@@ -201,4 +216,102 @@ def test_dry_run_reports_and_writes_nothing(tmp_path: Path) -> None:
     )
     assert not (target / ".anvil" / ".gitignore").exists(), (
         "--dry-run wrote a .anvil/.gitignore to the target"
+    )
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: install + `uv sync` leaves `git status` clean (#877)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not _tools_present(), reason="uv and/or git not on PATH")
+def test_install_with_sync_then_commit_leaves_git_status_clean(tmp_path: Path) -> None:
+    """The property the ignore file and the README both promise.
+
+    Reproduces the reported sequence exactly: install (Stage 10.5 runs
+    ``uv sync --project .anvil`` itself), then ``git add -A`` + commit, then
+    re-sync. ``uv sync`` performs an *editable* install of the consumer project
+    (``.anvil/pyproject.toml`` declares
+    ``build-backend = "setuptools.build_meta"``), which materializes
+    ``.anvil/anvil.egg-info/`` alongside the venv and the bytecode caches.
+    Before #877 the ignore file covered only two of those three artifact
+    classes, so the ``git add -A`` swept five egg-info build artifacts into the
+    consumer's install commit.
+
+    Scope note: ``uv sync`` also writes ``.anvil/uv.lock``. That is a resolved
+    *lockfile*, not a regenerated build artifact — it is written once and stays
+    stable, so committing it with the install (as this test does) is the normal
+    outcome and it is deliberately NOT part of the ignore set.
+    """
+    target = tmp_path / "sync-clean"
+    target.mkdir()
+
+    subprocess.run(["git", "-C", str(target), "init", "-q"], check=True)
+    subprocess.run(
+        ["git", "-C", str(target), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(target), "config", "user.name", "Test"], check=True
+    )
+
+    # NOTE: no --no-sync here — Stage 10.5's `uv sync` is what generates the
+    # artifacts under test.
+    install = subprocess.run(
+        ["bash", str(INSTALLER), "-y", "--skills=memo", str(target)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    _assert_ok(install)
+
+    # The egg-info directory is genuinely produced — otherwise this test would
+    # pass vacuously if a future uv/setuptools change stopped emitting it.
+    egg_infos = list((target / ".anvil").glob("*.egg-info"))
+    assert egg_infos, (
+        "the install's uv sync produced no *.egg-info/ under .anvil/ — the "
+        "regression this test guards is no longer reproducible; revisit the "
+        f"fixture. Installer output:\n{install.stdout}"
+    )
+
+    subprocess.run(["git", "-C", str(target), "add", "-A"], check=True)
+
+    # The reported symptom: build artifacts staged into the install commit.
+    staged = subprocess.run(
+        ["git", "-C", str(target), "diff", "--cached", "--name-only"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    swept = [p for p in staged if ".egg-info/" in p]
+    assert not swept, (
+        "`git add -A` after an install staged egg-info build artifacts; "
+        f".anvil/.gitignore must suppress them:\n{swept}"
+    )
+
+    subprocess.run(
+        ["git", "-C", str(target), "commit", "-q", "-m", "install anvil"], check=True
+    )
+
+    # A subsequent sync must leave the tree clean, too.
+    sync = subprocess.run(
+        ["uv", "sync", "--project", ".anvil"],
+        capture_output=True,
+        text=True,
+        cwd=target,
+    )
+    assert sync.returncode == 0, (
+        f"uv sync failed:\n--- stdout ---\n{sync.stdout}\n"
+        f"--- stderr ---\n{sync.stderr}"
+    )
+
+    status = subprocess.run(
+        ["git", "-C", str(target), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert status.stdout.strip() == "", (
+        "uv sync dirtied git status in the consumer repo; the .anvil/.gitignore "
+        f"patterns do not cover everything the sync generates:\n{status.stdout}"
     )
