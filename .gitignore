@@ -34,6 +34,12 @@ uv.lock
 .loom/health-metrics.json
 .loom/progress/
 
+# Host-local Loom config tier (worktree.root and other host-specific
+# overrides). Deliberately NOT committed: it holds absolute paths that are
+# only valid on this machine. See Loom's docs/design/config-resolution-tiers.md
+# — `.loom-local/local.json` is the "Local" tier and outranks .loom/config.json.
+.loom-local/
+
 # Worktree-local marker written by .loom/scripts/worktree.sh; per-worktree
 # bookkeeping, never repo content — must never be committed.
 .loom-managed
