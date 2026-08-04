@@ -49,6 +49,7 @@ from .detect import (
     ProjectInventory,
     Shape,
     ThreadInventory,
+    _RETAINED_BODY_FILENAMES,
     _SKILL_FIXED_BODY_FILENAMES,
     has_counsel_memo_companion,
     has_native_provisional_body,
@@ -66,6 +67,35 @@ class PlanError(ValueError):
     carries ``counsel_memo.tex`` but no ``provisional.tex`` is a refusal
     (a counsel memo is a finalize-output companion, not a fileable body).
     """
+
+
+def _validate_migrate_artifact_type(value: str, project_dir: Path) -> str:
+    """Validate the main mode's ``--artifact-type`` (issue #878).
+
+    Same two-tier contract as ``enroll._validate_artifact_type_choice``
+    (Tier 1: :data:`anvil.lib.project_brief.REGISTERED_ARTIFACT_TYPES`;
+    Tier 2: consumer-declared types via ``discover_consumer_artifact_types``).
+    Duplicated locally rather than imported — ``enroll.py`` already imports
+    from this module, so importing back would be circular. Guarded import:
+    when ``anvil.lib`` is unavailable the value passes through unchanged
+    (the post-write strict BRIEF parse is the backstop).
+    """
+    try:
+        from anvil.lib.project_brief import (
+            REGISTERED_ARTIFACT_TYPES,
+            discover_consumer_artifact_types,
+        )
+    except ImportError:
+        return value
+    consumer_types = discover_consumer_artifact_types(project_dir)
+    if value in REGISTERED_ARTIFACT_TYPES or value in consumer_types:
+        return value
+    raise PlanError(
+        f"--artifact-type {value!r} is not a registered or "
+        f"consumer-declared artifact type. Registered: "
+        f"{list(REGISTERED_ARTIFACT_TYPES)}. Consumer-declared: "
+        f"{sorted(consumer_types)}."
+    )
 
 
 # Artifact-type inference from retained body filenames (issue #386).
@@ -590,6 +620,7 @@ def _plan_pre_283_doc(
     inv: ProjectInventory,
     thread: ThreadInventory,
     stems_to_rewrite: Dict[str, str],
+    artifact_type: Optional[str] = None,
 ) -> DocumentPlan:
     """Build a plan for a thread whose version dirs sit at the project root.
 
@@ -620,6 +651,12 @@ def _plan_pre_283_doc(
 
     target_body = f"{thread.slug}.md"
 
+    # Original version_dir → its post-move target_version_dir (issue
+    # #878's foreign-body rename needs this: the directory move is
+    # planned first, so any body rename inside it must reference the
+    # POST-MOVE path, matching the skill-fixed body-rename pattern below).
+    version_dir_targets: Dict[Path, Path] = {}
+
     # Plan renames for each version dir. The stem may differ from the
     # slug (the canary case is stem="memo", slug=<project-name>); we use
     # the version dir's actual N from its name.
@@ -631,6 +668,7 @@ def _plan_pre_283_doc(
         n = m.group("num")
         # Target: <project>/<slug>/<slug>.N/
         target_version_dir = plan.target_dir / f"{thread.slug}.{n}"
+        version_dir_targets[version_dir] = target_version_dir
         plan.renames.append(
             Rename(source=version_dir, target=target_version_dir)
         )
@@ -747,7 +785,13 @@ def _plan_pre_283_doc(
     # default above becomes an inferred-with-note value paired with an
     # operator-confirmation TODO marker.
     if inv.is_bare:
-        _apply_bare_inference(plan, thread)
+        _apply_bare_inference(
+            plan,
+            thread,
+            stems_to_rewrite,
+            artifact_type=artifact_type,
+            version_dir_targets=version_dir_targets,
+        )
 
     return plan
 
@@ -912,7 +956,126 @@ def _apply_native_provisional_inference(
         )
 
 
-def _apply_bare_inference(plan: DocumentPlan, thread: ThreadInventory) -> None:
+def _foreign_md_body_candidates(thread: ThreadInventory) -> List[str]:
+    """Return the sorted non-anvil ``.md`` body filenames on ``thread`` (#878).
+
+    A bare thread (no anvil config anywhere) may carry a body filename
+    fixed by a FOREIGN pipeline (e.g. a hand-rolled blog tool's
+    ``post.md``) rather than any historical anvil skill name.
+    ``_SKILL_FIXED_BODY_FILENAMES`` only recognizes anvil's OWN historical
+    fixed names (``memo.md``, ``proposal.md``, ...) — a foreign name
+    matches none of them, so the skill-fixed rename loop in
+    :func:`_plan_pre_283_doc` has nothing to match (issue #878's root
+    cause: the correct declaration, ``artifact_type: essay``, would come
+    from the very BRIEF this run synthesizes).
+
+    Scans the thread's aggregated ``body_filenames`` (every ``*.md``
+    observed across its version dirs) for candidates that are neither the
+    canonical ``<slug>.md`` target nor a name anvil itself recognizes
+    (skill-fixed or retained). The caller decides what to do with the
+    result: exactly one candidate is an unambiguous foreign body (renamed
+    by :func:`_apply_foreign_md_body_rename`); more than one is ambiguous
+    and left for the operator to resolve by hand rather than guessed
+    (issue #878's suggested acceptance criteria, option 2 — "detection of
+    a single consistent non-anvil body filename across a bare project").
+    """
+    target_body = f"{thread.slug}.md"
+    excluded = set(_SKILL_FIXED_BODY_FILENAMES) | set(_RETAINED_BODY_FILENAMES)
+    excluded.add(target_body)
+    excluded.add("changelog.md")
+    return sorted({b for b in thread.body_filenames if b not in excluded})
+
+
+def _detect_foreign_md_body_filename(thread: ThreadInventory) -> Optional[str]:
+    """Return the sole foreign ``.md`` body filename on ``thread``, or ``None``.
+
+    Thin single-candidate wrapper over :func:`_foreign_md_body_candidates`
+    — ``None`` when there is no candidate (already canonical) OR when
+    there are multiple distinct candidates (ambiguous; see
+    :func:`_apply_bare_inference` for the ambiguity-note path).
+    """
+    candidates = _foreign_md_body_candidates(thread)
+    if len(candidates) != 1:
+        return None
+    return candidates[0]
+
+
+def _apply_foreign_md_body_rename(
+    plan: DocumentPlan,
+    thread: ThreadInventory,
+    foreign_name: str,
+    stems_to_rewrite: Dict[str, str],
+    version_dir_targets: Optional[Dict[Path, Path]] = None,
+) -> None:
+    """Plan the rename of a bare thread's foreign ``.md`` body (issue #878).
+
+    Renames every version dir's ``foreign_name`` to the canonical
+    ``<slug>.md`` — the same slug-echo target every other markdown-bodied
+    artifact-class skill converges on. Unlike the historical
+    ``_SKILL_FIXED_BODY_FILENAMES`` loop (which only recognizes anvil's
+    OWN prior fixed names), this fires for a name anvil has never seen
+    before, because on a bare thread it is — by construction (the
+    single-candidate constraint in
+    :func:`_detect_foreign_md_body_filename`) — the only body candidate
+    present. Cross-thread references inside the renamed body are rewritten
+    the same way the skill-fixed rename loop does. Paired with a
+    ``# TODO(operator)`` confirmation note (never a silent rename),
+    mirroring the #408 bare-inference discipline.
+
+    ``version_dir_targets`` maps each ORIGINAL ``version_dir`` to its
+    POST-MOVE path (the pre-#283 classic thread's directory-nesting move,
+    planned earlier in ``plan.renames``). The apply step trusts rename
+    order (:class:`Rename`'s dependency-order contract), so this
+    ``Rename`` entry must reference the post-move path — mirroring the
+    skill-fixed body-rename pattern in :func:`_plan_pre_283_doc`. The
+    on-disk existence checks and cross-thread-ref scan still read from
+    the ORIGINAL (current, pre-move) path.
+    """
+    target_body = f"{thread.slug}.md"
+    version_dir_targets = version_dir_targets or {}
+    renamed_any = False
+    for version_dir in thread.version_dirs:
+        src_on_disk = version_dir / foreign_name
+        existing_target_on_disk = version_dir / target_body
+        if not src_on_disk.is_file() or existing_target_on_disk.is_file():
+            continue
+        post_move_dir = version_dir_targets.get(version_dir, version_dir)
+        src = post_move_dir / foreign_name
+        target = post_move_dir / target_body
+        plan.renames.append(Rename(source=src, target=target))
+        renamed_any = True
+        refs = _find_cross_thread_refs(src_on_disk, stems_to_rewrite)
+        for old, new, count in refs:
+            plan.content_rewrites.append(
+                ContentRewrite(
+                    file_path=target,
+                    old_string=old,
+                    new_string=new,
+                    occurrences=count,
+                )
+            )
+    if not renamed_any:
+        return
+    plan.notes.append(
+        f"{plan.slug}: body filename {foreign_name} recognized as the "
+        f"sole foreign (non-anvil) body candidate on this bare thread — "
+        f"renamed to {target_body}. TODO(operator): confirm the rename is "
+        f"correct (e.g. matches the foreign pipeline's fixed output name) "
+        f"before applying."
+    )
+    plan.operator_todos.append(
+        f"`{plan.slug}`: confirm the rename `{foreign_name}` -> "
+        f"`{target_body}` (recognized as the sole foreign body candidate)."
+    )
+
+
+def _apply_bare_inference(
+    plan: DocumentPlan,
+    thread: ThreadInventory,
+    stems_to_rewrite: Optional[Dict[str, str]] = None,
+    artifact_type: Optional[str] = None,
+    version_dir_targets: Optional[Dict[Path, Path]] = None,
+) -> None:
     """Infer the BRIEF artifact_type for a BARE thread (issue #408).
 
     Bare threads carry no anvil config, so every BRIEF value is a
@@ -924,13 +1087,27 @@ def _apply_bare_inference(plan: DocumentPlan, thread: ThreadInventory) -> None:
 
     Inference inputs, in precedence order:
 
-    1. ``thread.observed_body_files`` (non-``.md`` candidate bodies,
+    1. Native ``provisional.tex`` / ``counsel_memo.tex`` recognition
+       (issue #503) — unconditional; a native provisional filename is a
+       stronger, legal-stakes signal than any operator flag.
+    2. A foreign (non-anvil) ``.md`` body filename (issue #878) — renamed
+       to ``<slug>.md`` via :func:`_detect_foreign_md_body_filename` /
+       :func:`_apply_foreign_md_body_rename` regardless of whether
+       ``artifact_type`` resolves the type declaration below (the rename
+       is about WHICH FILE is the body, not what skill it belongs to).
+    3. An explicit ``artifact_type`` (``--artifact-type``, issue #878):
+       when given, it is the operator's declaration — set directly with
+       no TODO marker, short-circuiting the content-inference heuristics
+       below (this is what closes the circularity: the BRIEF this run
+       synthesizes can now carry the correct declared type instead of the
+       silent ``investment-memo`` default).
+    4. ``thread.observed_body_files`` (non-``.md`` candidate bodies,
        ``*.tex``): read the newest version's observed body and apply
        :func:`_infer_tex_artifact_type`. The observed body filename is
        recorded-but-never-renamed (the #382 slug-echo carve-out:
        root-level build artifacts are direct evidence that external
        tooling consumes the fixed name) with a deferral note.
-    2. Markdown bodies (non-skill-fixed — skill-fixed bodies preclude
+    5. Markdown bodies (non-skill-fixed — skill-fixed bodies preclude
        bareness): keep the memo-class ``investment-memo`` default,
        TODO-marked.
     """
@@ -965,6 +1142,43 @@ def _apply_bare_inference(plan: DocumentPlan, thread: ThreadInventory) -> None:
             f"this counsel memo accompanies, then re-run. Nothing was "
             f"modified."
         )
+
+    # Foreign (non-anvil) markdown body detection (issue #878) — applies
+    # regardless of whether --artifact-type is given below.
+    foreign_candidates = _foreign_md_body_candidates(thread)
+    if len(foreign_candidates) == 1:
+        _apply_foreign_md_body_rename(
+            plan,
+            thread,
+            foreign_candidates[0],
+            stems_to_rewrite or {},
+            version_dir_targets=version_dir_targets,
+        )
+    elif len(foreign_candidates) > 1:
+        plan.notes.append(
+            f"{thread.slug}: multiple distinct non-canonical .md body "
+            f"filenames observed ({', '.join(foreign_candidates)}) — "
+            f"ambiguous, so NO body rename was planned. Resolve manually "
+            f"(rename the correct one to {thread.slug}.md) before or "
+            f"after applying."
+        )
+        plan.operator_todos.append(
+            f"`{thread.slug}`: multiple non-canonical body filenames "
+            f"observed ({', '.join(foreign_candidates)}) — rename the "
+            f"correct one to `{thread.slug}.md` manually."
+        )
+
+    # Explicit --artifact-type (issue #878): the operator's declaration
+    # takes precedence over content inference and needs no TODO marker.
+    if artifact_type is not None:
+        plan.brief_merge.artifact_type = artifact_type
+        plan.brief_merge.inferred = False
+        plan.brief_merge.todo_comment = None
+        plan.notes.append(
+            f"{thread.slug}: artifact_type set to '{artifact_type}' "
+            f"(--artifact-type flag — declared, not inferred)."
+        )
+        return
 
     if observed:
         # Read the newest version dir's observed body for content
@@ -1081,6 +1295,7 @@ def build_plan(
     project_dir: Path,
     shape: Optional[Shape] = None,
     inventory: Optional[ProjectInventory] = None,
+    artifact_type: Optional[str] = None,
 ) -> Plan:
     """Build a :class:`Plan` for ``project_dir``.
 
@@ -1093,12 +1308,31 @@ def build_plan(
     inventory
         Pre-computed inventory; computed via :func:`inventory_project`
         when omitted.
+    artifact_type
+        Optional ``--artifact-type`` (issue #878), validated against the
+        two-tier #394 registry (:func:`_validate_migrate_artifact_type`).
+        Applied to every synthesized ``documents:`` entry on a BARE
+        thread (:data:`ProjectInventory.is_bare`) — the operator's
+        explicit declaration, replacing the inferred/defaulted value with
+        no TODO marker. Closes the bare-synthesis circularity: without
+        it, a thread's correct declaration (e.g. ``artifact_type:
+        essay``) would come from the very BRIEF this run synthesizes.
+        Ignored (has no effect) on non-bare threads, which already carry
+        or merge a declared/legacy type. ``None`` (the default) preserves
+        prior behavior byte-for-byte.
 
     Returns
     -------
     A :class:`Plan` carrying per-document plans. When the project is
     :data:`Shape.FULLY_MIGRATED`, the plan's ``documents`` list contains
     a no-op entry per thread (the apply step then becomes zero-diff).
+
+    Raises
+    ------
+    PlanError
+        When ``artifact_type`` is given but is neither a registered nor a
+        consumer-declared artifact type. Raised BEFORE any planning or
+        mutation.
     """
     project_dir = Path(project_dir).resolve()
     if inventory is None:
@@ -1106,6 +1340,11 @@ def build_plan(
     if shape is None:
         from .detect import _classify
         shape = _classify(inventory)
+
+    if artifact_type is not None:
+        artifact_type = _validate_migrate_artifact_type(
+            artifact_type, project_dir
+        )
 
     plan = Plan(project_dir=project_dir, shape=shape)
     # Bare sub-state (issue #408): synthesize the BRIEF automatically —
@@ -1146,7 +1385,10 @@ def build_plan(
             # in-place post-#283 cleanup — dispatch per thread.
             if thread.parent_dir == inventory.project_dir:
                 plan.documents.append(
-                    _plan_pre_283_doc(inventory, thread, stems_to_rewrite)
+                    _plan_pre_283_doc(
+                        inventory, thread, stems_to_rewrite,
+                        artifact_type=artifact_type,
+                    )
                 )
             else:
                 plan.documents.append(
@@ -1166,7 +1408,10 @@ def build_plan(
     if shape == Shape.PRE_283_CLASSIC:
         for thread in inventory.threads:
             plan.documents.append(
-                _plan_pre_283_doc(inventory, thread, stems_to_rewrite)
+                _plan_pre_283_doc(
+                    inventory, thread, stems_to_rewrite,
+                    artifact_type=artifact_type,
+                )
             )
         # Pre-#283 had a project-root .anvil.json which gets claimed by
         # the per-doc plan above (the first thread's plan); any remaining
