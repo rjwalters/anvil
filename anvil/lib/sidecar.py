@@ -123,6 +123,50 @@ the ``FileExistsError`` refuse-to-overwrite guard,
 unavailable, consuming command docs document a last-resort manual
 ``mv``-based fallback (see e.g. ``anvil/skills/paper/commands/paper-review.md``).
 
+Migrated-corpus replace surface (issue #881)
+---------------------------------------------
+
+``stage_enter``/``staged_sidecar`` refuse (by design) when ``final_dir``
+already exists — the immutability guarantee for a *recognizable* anvil
+review (issue #350). But a corpus that has just gone through
+``anvil:project-migrate --apply`` can leave the canonical
+``<thread>.{N}.<tag>/`` path **occupied by foreign, pre-anvil content**
+(e.g. a bare ``review.md`` from a hand-rolled pipeline) — a shape that is
+NOT a real anvil review (it fails
+``anvil.lib.critics._has_recognizable_review``), so the refusal is a false
+positive: there is nothing anvil-recognized there yet to protect.
+
+:func:`stage_replace` / :func:`commit_replace` / :func:`abort_replace`
+generalize the move-aside/stage/swap recipe that
+``anvil/skills/project-migrate/lib/adopt_review.py::_convert_one`` already
+uses for the adjacent ``--adopt-review`` problem, so a critic-writing
+command can land a *genuinely new* review into an occupied-but-unrecognized
+final dir while preserving every pre-existing file (e.g. ``review.md``)
+byte-identical alongside the new sidecar payload:
+
+.. code-block:: python
+
+    from anvil.lib.sidecar import stage_replace, commit_replace, abort_replace
+
+    staging = stage_replace(final_dir)  # moves final_dir aside, copies its
+                                         # contents into a fresh staging dir
+    try:
+        (staging / "verdict.md").write_text(...)
+        # ... write every required file; foreign files (review.md) are
+        # already present in `staging`, copied verbatim.
+        commit_replace(final_dir, required_files=[...])
+    except BaseException:
+        abort_replace(final_dir)
+        raise
+
+:func:`stage_replace` refuses (``FileExistsError``) in the two cases where
+replacement is NOT the right call: ``final_dir`` does not exist yet (use
+:func:`stage_enter` instead), or ``final_dir`` already carries a
+*recognizable* anvil review (the #350 guard stays intact — a real review is
+never replaced). The CLI shim ships parallel subcommands
+(``replace`` / ``commit-replace`` / ``abort-replace``) for non-Python-driver
+sessions, mirroring ``stage``/``commit``/``cleanup``.
+
 Contract
 --------
 
@@ -177,7 +221,11 @@ __all__ = [
     "staged_sidecar",
     "stage_enter",
     "commit_staged",
+    "stage_replace",
+    "commit_replace",
+    "abort_replace",
     "staging_path_for",
+    "backup_path_for",
     "cleanup_one_staging",
     "cleanup_stale_staging",
     "main",
@@ -246,6 +294,30 @@ def staging_path_for(final_dir: Path) -> Path:
     parent = final_dir.parent
     staging_name = f"{_STAGING_PREFIX}{final_dir.name}{STAGING_SUFFIX}"
     return parent / staging_name
+
+
+#: The suffix appended to a final-dir name to derive its move-aside backup
+#: name, used by :func:`stage_replace` / :func:`commit_replace` /
+#: :func:`abort_replace` (issue #881).
+BACKUP_SUFFIX = ".bak"
+
+
+def backup_path_for(final_dir: Path) -> Path:
+    """Return the move-aside backup path :func:`stage_replace` uses.
+
+    Naming shape mirrors :func:`staging_path_for`: a leading-dot sibling of
+    ``final_dir`` with :data:`BACKUP_SUFFIX` appended, e.g.::
+
+        final_dir         = Path("output/acme-seed.3.review")
+        backup_path_for() = Path("output/.acme-seed.3.review.bak")
+
+    Lives in the same parent as ``final_dir`` so the move-aside rename is a
+    same-filesystem, atomic ``Path.rename``. Does not touch the filesystem.
+    """
+    final_dir = Path(final_dir)
+    parent = final_dir.parent
+    backup_name = f"{_STAGING_PREFIX}{final_dir.name}{BACKUP_SUFFIX}"
+    return parent / backup_name
 
 
 # ---------------------------------------------------------------------------
@@ -692,6 +764,207 @@ def commit_staged(final_dir: Path, required_files: Sequence[str]) -> Path:
 
 
 # ---------------------------------------------------------------------------
+# Migrated-corpus replace surface (issue #881)
+# ---------------------------------------------------------------------------
+#
+# stage_enter / staged_sidecar refuse whenever final_dir exists — correct
+# when final_dir already carries a RECOGNIZABLE anvil review (the #350
+# immutability guard), wrong when final_dir is merely occupied by foreign,
+# pre-anvil content a migration left behind (issue #881: a bare `review.md`
+# sitting at the canonical `<thread>.{N}.review/` path). The three
+# functions below generalize the move-aside/stage/swap recipe
+# `anvil/skills/project-migrate/lib/adopt_review.py::_convert_one` already
+# uses for the adjacent `--adopt-review` problem: move the occupied dir
+# aside, stage a fresh dir seeded with everything that was already there
+# (verbatim), let the caller add the new required files, then atomically
+# swap the staging dir into place and drop the backup.
+
+
+def stage_replace(final_dir: Path, *, parents: bool = True) -> Path:
+    """Move ``final_dir`` aside and open a staging dir seeded with its
+    existing contents — the entry-side of the #881 replace recipe.
+
+    Unlike :func:`stage_enter` (which refuses when ``final_dir`` exists),
+    this function is specifically FOR the case where ``final_dir`` exists
+    but does not carry a recognizable anvil review — replacement, not
+    fresh staging, is what's needed.
+
+    Refuses in the two cases where replacement is the wrong call:
+
+    - ``final_dir`` does not exist at all — use :func:`stage_enter`
+      instead (nothing to move aside).
+    - ``final_dir`` already carries a *recognizable* anvil review per
+      :func:`anvil.lib.critics._has_recognizable_review` (canonical
+      ``_review.json``, or a complete legacy file triple) — the #350
+      immutability guard stays intact; a real review is never replaced.
+
+    On success: ``final_dir`` is renamed to :func:`backup_path_for`, every
+    file/dir it contained is copied byte-identical into a fresh staging
+    dir at :func:`staging_path_for`, and the staging path is returned for
+    the caller to add the new required files into (alongside the copied
+    foreign content). The backup is NOT removed here — :func:`commit_replace`
+    removes it on success; :func:`abort_replace` restores it on failure.
+
+    Parameters
+    ----------
+    final_dir:
+        The occupied-but-unrecognized sidecar path to replace.
+    parents:
+        Forwarded to the staging dir's :meth:`pathlib.Path.mkdir`.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``final_dir`` does not exist.
+    FileExistsError
+        If ``final_dir`` already carries a recognizable anvil review.
+    """
+    final_dir = Path(final_dir)
+
+    if not final_dir.exists():
+        raise FileNotFoundError(
+            f"stage_replace: {final_dir!s} does not exist; nothing to "
+            f"replace. Use stage_enter() for a genuinely absent final_dir."
+        )
+
+    # Lazy import: avoids a module-load-time dependency cycle (critics.py
+    # does not import sidecar.py today, but importing at call time keeps
+    # this module importable even if that ever changes).
+    from anvil.lib.critics import _has_recognizable_review
+
+    if _has_recognizable_review(final_dir):
+        raise FileExistsError(
+            f"stage_replace: refusing to replace {final_dir!s}; it already "
+            f"carries a recognizable anvil review (the #350 immutability "
+            f"guard). If you intended the idempotent-skip path, use that "
+            f"instead of stage_replace()."
+        )
+
+    backup = backup_path_for(final_dir)
+    if backup.exists():
+        shutil.rmtree(backup)
+    final_dir.rename(backup)
+
+    staging = staging_path_for(final_dir)
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=parents, exist_ok=False)
+
+    for entry in sorted(backup.iterdir()):
+        if entry.is_dir():
+            shutil.copytree(entry, staging / entry.name)
+        else:
+            shutil.copy2(entry, staging / entry.name)
+
+    return staging
+
+
+def commit_replace(final_dir: Path, required_files: Sequence[str]) -> Path:
+    """Verify the manifest, atomically swap staging → ``final_dir``, then
+    drop the move-aside backup — the exit-side of :func:`stage_replace`.
+
+    Assumes a prior :func:`stage_replace` moved ``final_dir`` aside and
+    created the staging dir (seeded with the original contents), and the
+    caller has since written the new required files into it. Verifies
+    every name in ``required_files`` exists in the staging dir, renames it
+    to ``final_dir``, then removes the backup.
+
+    Returns the ``final_dir`` path on success.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the staging dir does not exist (nothing to commit).
+    FileExistsError
+        If ``final_dir`` already exists (should not happen after a clean
+        :func:`stage_replace` — defensive, mirrors :func:`commit_staged`).
+    SidecarIncompleteError
+        If any name in ``required_files`` is missing from the staging
+        dir. The staging dir AND the backup are both left in place for
+        forensic inspection; call :func:`abort_replace` to restore the
+        original content, or fix the gap and re-``commit_replace``.
+    """
+    final_dir = Path(final_dir)
+    staging = staging_path_for(final_dir)
+
+    if not staging.exists():
+        raise FileNotFoundError(
+            f"commit_replace: staging dir {staging!s} does not exist. "
+            f"Run stage_replace() first."
+        )
+    if final_dir.exists():
+        raise FileExistsError(
+            f"commit_replace: refusing to commit {staging.name!r}; final "
+            f"target {final_dir!s} already exists. Atomic rename only "
+            f"works onto a non-existent target."
+        )
+
+    missing = _missing_required_files(staging, required_files)
+    if missing:
+        _log.warning(
+            "commit_replace: missing required files in %s: %s "
+            "(staging dir and backup left in place for forensics)",
+            staging,
+            ", ".join(missing),
+        )
+        raise SidecarIncompleteError(
+            f"commit_replace: sidecar at {staging!s} is missing required "
+            f"files: {', '.join(missing)}. The staging directory (and its "
+            f"backup at {backup_path_for(final_dir)!s}) are left in place; "
+            f"rename to {final_dir.name!r} has been skipped."
+        )
+
+    staging.rename(final_dir)
+
+    backup = backup_path_for(final_dir)
+    if backup.exists():
+        shutil.rmtree(backup)
+
+    return final_dir
+
+
+def abort_replace(final_dir: Path) -> bool:
+    """Undo an in-progress :func:`stage_replace`: restore the backup,
+    discard any staging dir.
+
+    Call this from the caller's exception handler when writing the new
+    required files (between :func:`stage_replace` and
+    :func:`commit_replace`) fails partway through. Removes any staging dir
+    at :func:`staging_path_for`, then — only if ``final_dir`` is still
+    absent (i.e. :func:`commit_replace` never ran) — renames the backup at
+    :func:`backup_path_for` back to ``final_dir``, restoring the original
+    content byte-identical.
+
+    Idempotent and safe to call even when there is nothing to abort (no
+    backup, no staging dir): returns ``False`` in that case.
+
+    Returns
+    -------
+    ``True`` if the backup was restored, ``False`` otherwise (nothing to
+    restore, or ``final_dir`` already exists so restoring would clobber
+    it — the latter should not happen after a clean :func:`stage_replace`
+    but is left untouched defensively).
+    """
+    final_dir = Path(final_dir)
+    staging = staging_path_for(final_dir)
+    backup = backup_path_for(final_dir)
+
+    if staging.exists():
+        shutil.rmtree(staging)
+
+    if backup.exists() and not final_dir.exists():
+        backup.rename(final_dir)
+        _log.info(
+            "abort_replace: restored %s from backup %s",
+            final_dir,
+            backup,
+        )
+        return True
+
+    return False
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point (non-Python-driver sessions — issue #645)
 # ---------------------------------------------------------------------------
 #
@@ -771,6 +1044,57 @@ def _build_cli_parser():
         help="The intended final sidecar path, e.g. output/thread.3.review",
     )
 
+    p_replace = sub.add_parser(
+        "replace",
+        help=(
+            "Move FINAL_DIR aside and open a staging dir seeded with its "
+            "existing contents (issue #881: a migrated-corpus final dir "
+            "occupied by foreign, non-anvil-recognizable content). Refuses "
+            "if FINAL_DIR is absent (use `stage` instead) or already "
+            "carries a recognizable anvil review (the #350 guard)."
+        ),
+    )
+    p_replace.add_argument(
+        "final_dir",
+        help="The occupied-but-unrecognized sidecar path to replace.",
+    )
+
+    p_commit_replace = sub.add_parser(
+        "commit-replace",
+        help=(
+            "Verify the required-files manifest in the staging dir opened "
+            "by `replace`, atomically swap it into FINAL_DIR, then drop "
+            "the move-aside backup."
+        ),
+    )
+    p_commit_replace.add_argument(
+        "final_dir",
+        help="The intended final sidecar path, e.g. output/thread.3.review",
+    )
+    p_commit_replace.add_argument(
+        "--required",
+        required=True,
+        metavar="NAMES",
+        help=(
+            "Comma-separated list of required file basenames that MUST "
+            "exist in the staging dir (typically includes the preserved "
+            "foreign file, e.g. review.md,verdict.md,scoring.md,...)."
+        ),
+    )
+
+    p_abort_replace = sub.add_parser(
+        "abort-replace",
+        help=(
+            "Undo an in-progress `replace`: discard the staging dir and "
+            "restore FINAL_DIR from its move-aside backup. Idempotent "
+            "no-op when there is nothing to abort."
+        ),
+    )
+    p_abort_replace.add_argument(
+        "final_dir",
+        help="The intended final sidecar path, e.g. output/thread.3.review",
+    )
+
     return p
 
 
@@ -788,6 +1112,18 @@ def main(argv: "Sequence[str] | None" = None) -> int:
     - ``cleanup FINAL_DIR`` — sweep the single leftover staging dir. Exit
       ``0`` always (idempotent no-op when absent); prints whether a dir
       was removed.
+    - ``replace FINAL_DIR`` — move FINAL_DIR aside and open a staging dir
+      seeded with its existing contents (issue #881). Exit ``0`` on
+      success (prints the staging path); ``3`` if FINAL_DIR is absent or
+      already carries a recognizable anvil review.
+    - ``commit-replace FINAL_DIR --required a,b,c`` — verify the manifest
+      and atomically swap staging → FINAL_DIR, then drop the backup. Exit
+      ``0`` on success; ``1`` if a required file is missing (staging dir
+      AND backup left in place); ``3`` if the staging dir is absent or
+      FINAL_DIR already exists.
+    - ``abort-replace FINAL_DIR`` — undo an in-progress `replace`: discard
+      the staging dir, restore FINAL_DIR from its backup. Exit ``0``
+      always (idempotent no-op when nothing to abort).
 
     Exit-code contract mirrors the sibling ``anvil/lib/*.py`` CLIs: ``0``
     clean, ``1`` a contract failure the caller must act on
@@ -831,6 +1167,38 @@ def main(argv: "Sequence[str] | None" = None) -> int:
             print(f"removed staging dir {staging}")
         else:
             print(f"no staging dir to remove at {staging}")
+        return 0
+
+    if args.subcommand == "replace":
+        try:
+            staging = stage_replace(final_dir)
+        except (FileNotFoundError, FileExistsError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 3
+        print(str(staging))
+        return 0
+
+    if args.subcommand == "commit-replace":
+        required = [
+            name.strip() for name in args.required.split(",") if name.strip()
+        ]
+        try:
+            committed = commit_replace(final_dir, required)
+        except (FileNotFoundError, FileExistsError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 3
+        except SidecarIncompleteError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(str(committed))
+        return 0
+
+    if args.subcommand == "abort-replace":
+        restored = abort_replace(final_dir)
+        if restored:
+            print(f"restored {final_dir} from backup")
+        else:
+            print(f"nothing to restore for {final_dir}")
         return 0
 
     # argparse's required=True on the subparser guarantees we never fall
