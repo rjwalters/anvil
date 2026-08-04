@@ -893,6 +893,76 @@ def test_stage_replace_moves_dir_aside_and_copies_contents(tmp_path):
     assert (staging / "review.md").read_text() == "legacy foreign review prose"
 
 
+def test_stage_replace_refuses_when_existing_backup_holds_unpreserved_content(
+    tmp_path,
+):
+    """Finding #1 (issue #885): `stage_replace` must not unconditionally
+    `rmtree` an existing backup that `recover_interrupted_replace`
+    deliberately preserved because it could not prove the content was
+    redundant. The essay-review flow's documented next step after an
+    ambiguous `recover_interrupted_replace` WARNING is exactly `stage_replace`
+    — this pins that it refuses instead of silently destroying the backup.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "notes.md").write_text("side notes\n")
+
+    # Recreate the exact ambiguous state test_recover_keeps_a_backup_holding_
+    # unpreserved_content produces: a backup exists holding `notes.md` that
+    # is absent from the (externally recreated) final_dir. final_dir is left
+    # holding only `review.md` — foreign, non-anvil-recognizable content
+    # (NOT the memo legacy triple), matching essay-review's "dir exists, not
+    # recognizable" branch that dispatches to stage_replace next.
+    staging = stage_replace(final)
+    (staging / "notes.md").unlink()
+    (staging / "review.md").write_text("externally recreated content")
+    staging.rename(final)
+    assert recover_interrupted_replace(final) is False  # left ambiguous, by design
+    backup = backup_path_for(final)
+    assert backup.exists()
+
+    with pytest.raises(FileExistsError) as exc:
+        stage_replace(final)
+    assert "notes.md" in str(exc.value)
+    assert "recover_interrupted_replace" in str(exc.value)
+
+    # The backup (and its unrecoverable-elsewhere content) survives.
+    assert backup.exists()
+    assert (backup / "notes.md").read_text() == "side notes\n"
+    # final_dir itself is untouched (no move-aside happened).
+    assert final.exists()
+    assert (final / "review.md").read_text() == "externally recreated content"
+
+
+def test_stage_replace_drops_a_provably_redundant_existing_backup(tmp_path, caplog):
+    """The happy-path counterpart: when an existing backup's content IS
+    provably redundant, `stage_replace` still drops it (logging that it did
+    so) before the move-aside — no refusal, no behavior change for the
+    common case. (`final_dir.rename(backup)` a few lines later would recreate
+    a non-empty `backup` regardless, so the observable signal that the OLD
+    backup was actually dropped — rather than the rename simply failing on a
+    non-empty directory — is the redundant-drop log line.)
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy foreign review prose")
+
+    # A backup already on disk, byte-identical to final_dir's current
+    # content (e.g. left over from a fully-landed prior commit_replace whose
+    # backup-drop step alone was interrupted).
+    backup = backup_path_for(final)
+    shutil.copytree(final, backup)
+
+    with caplog.at_level(logging.INFO, logger="anvil.lib.sidecar"):
+        staging = stage_replace(final)
+
+    assert (staging / "review.md").read_text() == "legacy foreign review prose"
+    assert any(
+        "dropping provably-redundant existing backup" in r.message
+        for r in caplog.records
+    )
+
+
 def test_stage_replace_refuses_when_final_dir_absent(tmp_path):
     final = tmp_path / "thread.1.review"
     with pytest.raises(FileNotFoundError):
@@ -1235,6 +1305,72 @@ def test_recover_keeps_a_backup_holding_unpreserved_content(tmp_path):
     assert (backup / "notes.md").read_text() == "side notes\n"
 
 
+def test_recover_keeps_a_backup_whose_same_named_file_differs_in_content(
+    tmp_path,
+):
+    """The predicate is content-aware, not name-only (issue #885): a
+    same-named entry existing in final_dir is NOT sufficient — the bytes
+    must match too, or the backup's copy is not provably redundant.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY BYTES\n")
+
+    staging = stage_replace(final)
+    # Simulate final_dir being externally recreated with a DIFFERENT
+    # review.md before the (never-run) commit_replace landed.
+    (staging / "review.md").write_text("DIFFERENT BYTES\n")
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+    staging.rename(final)
+
+    assert recover_interrupted_replace(final) is False
+    backup = backup_path_for(final)
+    assert backup.exists()
+    assert (backup / "review.md").read_text() == "LEGACY BYTES\n"
+
+
+def test_recover_drops_backup_with_identical_nested_subdirectory_content(
+    tmp_path,
+):
+    """The predicate recurses into subdirectories (issue #885) — a nested
+    file with byte-identical content at the same relative path counts as
+    preserved, not just a top-level name match.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "assets").mkdir()
+    (final / "assets" / "diagram.png").write_bytes(b"\x89PNG fake bytes")
+
+    staging = stage_replace(final)
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+    staging.rename(final)  # commit_replace's rename, then the kill.
+
+    assert recover_interrupted_replace(final) is True
+    assert not backup_path_for(final).exists()
+    assert (final / "assets" / "diagram.png").read_bytes() == b"\x89PNG fake bytes"
+
+
+def test_recover_keeps_backup_with_differing_nested_subdirectory_content(
+    tmp_path,
+):
+    """The recursive comparison also catches a nested mismatch — not just a
+    top-level one."""
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "assets").mkdir()
+    (final / "assets" / "diagram.png").write_bytes(b"original bytes")
+
+    staging = stage_replace(final)
+    (staging / "assets" / "diagram.png").write_bytes(b"different bytes!!")
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+    staging.rename(final)
+
+    assert recover_interrupted_replace(final) is False
+    backup = backup_path_for(final)
+    assert backup.exists()
+    assert (backup / "assets" / "diagram.png").read_bytes() == b"original bytes"
+
+
 def test_recover_ignores_a_backup_path_that_is_a_file(tmp_path):
     final = tmp_path / "thread.1.review"
     final.mkdir()
@@ -1263,11 +1399,11 @@ def test_stage_enter_refuses_while_an_orphaned_backup_exists(tmp_path):
 
 
 def test_staged_sidecar_is_exempt_from_the_orphaned_backup_guard(tmp_path):
-    """The context manager is deliberately NOT guarded: it is reachable only
-    from a live Python driver holding the `with` block open (whose `except`
-    path is guaranteed to run), and `project-migrate`'s adopt_review driver
-    legitimately manages its own same-named `.bak` move-aside around it.
-    Guarding here would break that caller for no crash-window benefit.
+    """`allow_orphaned_backup=True` is the explicit, narrow opt-out (issue
+    #885) for a live Python driver that manages its own same-named `.bak`
+    move-aside around the call and is guaranteed to run its `except`
+    handler — exactly `project-migrate`'s adopt_review driver's shape.
+    Without the flag (see the next test), the guard fires.
     """
     final = tmp_path / "thread.1.review"
     final.mkdir()
@@ -1277,12 +1413,37 @@ def test_staged_sidecar_is_exempt_from_the_orphaned_backup_guard(tmp_path):
     # to the same .bak path, then staged_sidecar into the vacated name.
     backup = backup_path_for(final)
     final.rename(backup)
-    with staged_sidecar(final, MEMO_REVIEW_REQUIRED) as staging:
+    with staged_sidecar(
+        final, MEMO_REVIEW_REQUIRED, allow_orphaned_backup=True
+    ) as staging:
         _write_all(staging, MEMO_REVIEW_REQUIRED)
         (staging / "review.md").write_text((backup / "review.md").read_text())
     shutil.rmtree(backup)
 
     assert (final / "review.md").read_text() == "LEGACY\n"
+
+
+def test_staged_sidecar_refuses_orphaned_backup_by_default(tmp_path):
+    """The default (`allow_orphaned_backup=False`) closes the exemption for
+    every caller except the ones that explicitly opt in (issue #885): a
+    driverless session that dies mid-`stage_replace` and a later
+    `staged_sidecar` caller skipping the entry sweep must not be able to
+    commit a fresh sidecar over the orphaned backup.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY AUDIT TRAIL\n")
+    _simulate_dead_session_mid_replace(final)
+    cleanup_one_staging(final)
+
+    with pytest.raises(FileExistsError) as exc:
+        with staged_sidecar(final, MEMO_REVIEW_REQUIRED) as staging:
+            raise AssertionError("entered context manager despite orphaned backup")
+    assert "recover-replace" in str(exc.value)
+
+    # Nothing was lost — the backup is still recoverable.
+    assert recover_interrupted_replace(final) is True
+    assert (final / "review.md").read_text() == "LEGACY AUDIT TRAIL\n"
 
 
 def test_commit_staged_refuses_while_a_backup_exists(tmp_path):
