@@ -123,6 +123,16 @@ Fenced code blocks (``` / ~~~), HTML comments (including multi-line),
 and inline code spans are excluded from the scan: code samples must not
 fire the lint, and the suppression directive must not self-match.
 
+Markdown link targets are also collapsed before word/sentence
+measurement (issue #889): ``[text](url)`` becomes ``text``. A reader
+never reads the URL, so a link-dense body must not move the
+word-count denominator or the ``long_sentence`` sentence-length
+measurement just because links were added or removed with no
+reader-visible prose change. The collapse runs across the whole
+document (not per line), so a link whose bracket text spans a hard
+line wrap — the normal shape of hard-wrapped prose these skills
+target — is collapsed too. See :func:`_collapse_markdown_links`.
+
 Suppression
 -----------
 
@@ -604,6 +614,25 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 # ``#`` count; ``_HEADING_RE`` above only needs a yes/no match).
 _HEADING_DEPTH_RE = re.compile(r"^(#{1,6})\s")
 
+# Markdown link: ``[text](url)`` (optional leading ``!`` for image
+# links). Issue #889: a reader never reads the URL, so link targets
+# must not inflate the word-count denominator or the ``long_sentence``
+# word counts. The ``text`` group is allowed to contain newlines — a
+# link whose bracket text spans a hard line wrap (the normal shape of
+# the hard-wrapped prose these skills target) is still collapsed, not
+# just the subset that happens to fit on one line. Deliberately a
+# module-local pattern (not imported from ``hyperlink_resolver``) —
+# this lint has no other coupling to that critic and the shape is
+# small enough not to be worth a cross-module dependency.
+_MD_LINK_COLLAPSE_RE = re.compile(
+    r"""
+    !?                                  # optional ! prefix for images
+    \[(?P<text>[^\]]*)\]                # [text] -- text may span lines
+    \((?:[^\s)]+)\)                     # (url) -- discarded
+    """,
+    re.VERBOSE,
+)
+
 # A "Sources" heading (``#``..``####`` depth — matches the memo
 # apparatus convention in ``anvil.skills.memo.lib.migrate``'s
 # ``## Sources`` parser). Case-insensitive; the heading text must be
@@ -664,6 +693,28 @@ def _scannable_lines(text: str) -> list[str]:
         line = _INLINE_CODE_RE.sub(" ", line)
         out.append(line)
     return out
+
+
+def _collapse_markdown_links(scan_lines: list[str]) -> list[str]:
+    """Collapse ``[text](url)`` -> ``text`` across the joined scan text.
+
+    Issue #889: a reader never reads the URL, so a link's target must
+    not count toward the word-count denominator or the
+    ``long_sentence`` sentence-length measurement. Operates on the
+    full joined blob (``"\\n".join(scan_lines)``), not per individual
+    line, so a link whose bracket text spans a hard line wrap is still
+    collapsed — the per-line scan in :func:`_scannable_lines` would
+    otherwise never see the still-open ``[`` on the first line and the
+    dangling ``](url)`` on the next. Only the surrounding markup
+    (``[``, ``]``, ``(url)``) is removed; any newline embedded in the
+    bracket text is part of the replacement, so the total newline
+    count — and therefore the line count and 1-based line numbering
+    used by ``lint_rhetoric``'s per-line phrase/regex rules — is
+    unchanged.
+    """
+    joined = "\n".join(scan_lines)
+    collapsed = _MD_LINK_COLLAPSE_RE.sub(lambda m: m.group("text"), joined)
+    return collapsed.split("\n")
 
 
 def _sentence_word_counts(scan_lines: list[str]) -> list[int]:
@@ -1145,6 +1196,7 @@ def lint_rhetoric(
     """
     rules, findings = _resolve_rules(extra_rules, extra_rules_path)
     scan_lines = _scannable_lines(text)
+    scan_lines = _collapse_markdown_links(scan_lines)
     disabled_lines = _collect_disabled_lines(text, suppress_rules)
     words = sum(len(_WORD_RE.findall(line)) for line in scan_lines)
     # Computed once for all positional (``scope: "first-line"``) rules.
