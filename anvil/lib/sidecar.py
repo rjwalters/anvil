@@ -201,11 +201,21 @@ symmetric one:
   that skips the entry sweep cannot commit a fresh sidecar over the gap and
   strand the only copy of the pre-existing content. This is the
   defense-in-depth half: recovery does not depend on a doc being followed.
-  :func:`staged_sidecar` is deliberately exempt — it is only reachable from
-  a live Python driver holding the ``with`` block open (so its ``except``
-  path is guaranteed to run), and one such driver
-  (``anvil/skills/project-migrate/lib/adopt_review.py``) legitimately manages
-  its own same-named ``.bak`` move-aside around the call.
+  :func:`staged_sidecar` carries the same guard by default, with an explicit
+  ``allow_orphaned_backup=True`` opt-out (issue #885) for the one live
+  Python driver whose ``except`` path is guaranteed to run and that
+  legitimately manages its own same-named ``.bak`` move-aside *around* the
+  call — ``anvil/skills/project-migrate/lib/adopt_review.py``'s
+  ``_convert_one`` and ``_rescore_one``. Every other caller is guarded.
+
+Redundancy is content-aware, not name-only (issue #885): the shared
+:func:`_unpreserved_backup_entries` helper — used by both
+:func:`recover_interrupted_replace` and :func:`stage_replace`'s own
+pre-move-aside check — recurses into subdirectories and compares each file's
+size and content hash against its counterpart in ``final_dir``. A same-named
+file with different bytes, or a file missing entirely, counts as
+unpreserved; only a backup where every file is byte-identical to its
+``final_dir`` counterpart is dropped without a trace left behind.
 
 Contract
 --------
@@ -248,6 +258,7 @@ This module uses only :mod:`os`, :mod:`pathlib`, :mod:`shutil`,
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import shutil
@@ -365,15 +376,14 @@ def _refuse_on_orphaned_backup(caller: str, final_dir: Path) -> None:
     """Raise :class:`FileExistsError` if an interrupted :func:`stage_replace`
     left its move-aside backup on disk for ``final_dir`` (issue #881).
 
-    Guards the *split* fresh-staging surface (:func:`stage_enter`,
-    :func:`commit_staged` — the one a driverless session drives across
-    process boundaries) against the cross-session
-    crash path: when a replace dies between :func:`stage_replace` and
-    :func:`commit_replace`, ``final_dir`` is absent (it was renamed to the
-    backup), so every fresh-staging entry check passes and the next run
-    happily commits a brand-new sidecar into the gap — permanently stranding
-    the ONLY copy of the pre-existing content inside a hidden ``.bak``
-    sibling that no sweep recognizes.
+    Guards every fresh-staging entry point (:func:`stage_enter`,
+    :func:`commit_staged`, and — by default — :func:`staged_sidecar`, issue
+    #885) against the cross-session crash path: when a replace dies between
+    :func:`stage_replace` and :func:`commit_replace`, ``final_dir`` is absent
+    (it was renamed to the backup), so every fresh-staging entry check passes
+    and the next run happily commits a brand-new sidecar into the gap —
+    permanently stranding the ONLY copy of the pre-existing content inside a
+    hidden ``.bak`` sibling that no sweep recognizes.
 
     Refusing here makes that silent loss impossible even when the caller
     skips the documented :func:`recover_interrupted_replace` entry step.
@@ -392,6 +402,48 @@ def _refuse_on_orphaned_backup(caller: str, final_dir: Path) -> None:
     )
 
 
+def _file_content_key(path: Path) -> tuple:
+    """Return a ``(size, sha256-hexdigest)`` content fingerprint for ``path``.
+
+    Two files are provably identical iff their fingerprints match. Size is
+    included (cheap, and gives a readable early-exit signal in a future
+    diff) even though the hash alone already implies it.
+    """
+    data = path.read_bytes()
+    return (len(data), hashlib.sha256(data).hexdigest())
+
+
+def _unpreserved_backup_entries(backup: Path, final_dir: Path) -> List[str]:
+    """Return the ``backup``-relative file paths NOT provably preserved in
+    ``final_dir`` — the content-aware redundancy predicate (issue #885)
+    shared by :func:`recover_interrupted_replace` and :func:`stage_replace`.
+
+    Recurses into subdirectories (unlike the earlier top-level-name-only
+    check) and requires byte-identical content — same size AND same content
+    hash — at the same relative path, not merely that a same-named entry
+    exists. An empty list means every file ``backup`` holds is proven to
+    have a byte-identical twin in ``final_dir``, i.e. ``backup`` is safe to
+    discard without losing anything undocumented elsewhere.
+
+    A backup with no files at all (or that does not exist) trivially returns
+    an empty list — there is nothing in it to lose.
+    """
+    if not backup.exists():
+        return []
+    unpreserved: List[str] = []
+    for path in sorted(backup.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(backup)
+        counterpart = final_dir / rel
+        if not counterpart.is_file():
+            unpreserved.append(str(rel))
+            continue
+        if _file_content_key(path) != _file_content_key(counterpart):
+            unpreserved.append(str(rel))
+    return unpreserved
+
+
 # ---------------------------------------------------------------------------
 # Staged sidecar context manager
 # ---------------------------------------------------------------------------
@@ -403,6 +455,7 @@ def staged_sidecar(
     required_files: Sequence[str],
     *,
     parents: bool = True,
+    allow_orphaned_backup: bool = False,
 ) -> Iterator[Path]:
     """Stage a critic sidecar directory; rename atomically on completion.
 
@@ -424,6 +477,18 @@ def staged_sidecar(
     parents:
         Forwarded to :meth:`pathlib.Path.mkdir`. When ``True`` (default)
         any missing intermediate directories are created.
+    allow_orphaned_backup:
+        When ``False`` (default), refuses (:class:`FileExistsError`) if an
+        orphaned :func:`stage_replace` backup is on disk for ``final_dir`` —
+        the same :func:`_refuse_on_orphaned_backup` guard :func:`stage_enter`
+        and :func:`commit_staged` carry (issue #881/#885). Set ``True`` only
+        when the caller manages its OWN same-named ``.bak`` move-aside
+        immediately around this call and is a live Python driver whose
+        ``except`` handler is guaranteed to run (e.g.
+        ``anvil/skills/project-migrate/lib/adopt_review.py``'s
+        ``_convert_one`` / ``_rescore_one``) — passing ``True`` from any
+        other caller reopens the cross-session stranding window this guard
+        exists to close.
 
     Yields
     ------
@@ -434,7 +499,9 @@ def staged_sidecar(
     Raises
     ------
     FileExistsError
-        If ``final_dir`` already exists on entry. (We do not overwrite.)
+        If ``final_dir`` already exists on entry (we do not overwrite), or
+        if ``allow_orphaned_backup`` is ``False`` and an orphaned
+        :func:`stage_replace` backup is on disk for ``final_dir``.
     SidecarIncompleteError
         If clean context exit finds any name in ``required_files``
         missing from the staging dir. The staging dir is left in place
@@ -482,15 +549,17 @@ def staged_sidecar(
             f"before invoking staged_sidecar."
         )
 
-    # NOTE (issue #881): the orphaned-backup guard that stage_enter and
-    # commit_staged carry deliberately does NOT apply here. This context
-    # manager is only reachable from a live Python driver that holds the
-    # `with` block open across its writes — the very shape whose `except`
-    # path is guaranteed to run — and one such driver
-    # (`anvil/skills/project-migrate/lib/adopt_review.py`) legitimately
-    # manages its own same-named `.bak` move-aside *around* this call. The
-    # crash-exposed surface is the split stage/commit one below, which a
-    # driverless (markdown/CLI) session drives across process boundaries.
+    # (issue #885) The orphaned-backup guard that stage_enter and
+    # commit_staged carry applies here too by default. A driverless
+    # (markdown/CLI) session skipping the entry sweep is the load-bearing
+    # crash-exposed case, but a live Python driver can hit the same gap if a
+    # PRIOR run's stage_replace()/commit_replace() cycle died before this
+    # process started — nothing about being Python-driven rules that out.
+    # allow_orphaned_backup=True is the narrow, explicit opt-out for callers
+    # that manage their own same-named `.bak` move-aside immediately around
+    # this call (adopt_review.py's _convert_one / _rescore_one).
+    if not allow_orphaned_backup:
+        _refuse_on_orphaned_backup("staged_sidecar", final_dir)
 
     # If a previous interrupt left a staging dir with the same name in
     # place, wipe it before we re-enter — otherwise our mkdir would fail
@@ -924,7 +993,22 @@ def stage_replace(final_dir: Path, *, parents: bool = True) -> Path:
     FileNotFoundError
         If ``final_dir`` does not exist.
     FileExistsError
-        If ``final_dir`` already carries a recognizable anvil review.
+        If ``final_dir`` already carries a recognizable anvil review, or if
+        an existing backup at :func:`backup_path_for` holds content not
+        provably preserved in ``final_dir`` (issue #885 — see below).
+
+    Notes
+    -----
+    If a backup is already on disk at :func:`backup_path_for` (e.g. left
+    over from a prior ``stage_replace``/``commit_replace`` cycle that this
+    caller believes finished, or that :func:`recover_interrupted_replace`
+    already vetted), it is dropped before the move-aside rename ONLY when
+    every file it holds is provably preserved — byte-identical, recursively
+    — in the CURRENT ``final_dir`` (the shared
+    :func:`_unpreserved_backup_entries` predicate, issue #885). An
+    unconditional ``rmtree`` here would silently destroy a backup that
+    :func:`recover_interrupted_replace` deliberately left on disk with a
+    WARNING because it could not prove the content was preserved elsewhere.
     """
     final_dir = Path(final_dir)
 
@@ -965,6 +1049,30 @@ def stage_replace(final_dir: Path, *, parents: bool = True) -> Path:
 
     backup = backup_path_for(final_dir)
     if backup.exists():
+        # An existing backup here is either genuinely stale (a completed
+        # prior cycle whose caller forgot to clean it up) or the ONLY copy
+        # of content a prior cycle failed to land (issue #885). Only drop it
+        # when every file it holds is provably preserved in the CURRENT
+        # final_dir — the same content-aware predicate
+        # recover_interrupted_replace uses for its symmetric check.
+        unpreserved = _unpreserved_backup_entries(backup, final_dir)
+        if unpreserved:
+            raise FileExistsError(
+                f"stage_replace: refusing to replace {final_dir!s}; an "
+                f"existing backup at {backup!s} holds {len(unpreserved)} "
+                f"file(s) not provably preserved in {final_dir!s}: "
+                f"{', '.join(unpreserved)}. Deleting this backup here would "
+                f"strand that content. Run "
+                f"recover_interrupted_replace({final_dir!s}) (CLI: `python "
+                f"-m anvil.lib.sidecar recover-replace {final_dir!s}`) "
+                f"first, then re-run."
+            )
+        _log.info(
+            "stage_replace: dropping provably-redundant existing backup %s "
+            "before move-aside (every file already present in %s)",
+            backup,
+            final_dir,
+        )
         shutil.rmtree(backup)
     final_dir.rename(backup)
 
@@ -1116,10 +1224,14 @@ def recover_interrupted_replace(final_dir: Path) -> bool:
     - **Backup present, ``final_dir`` present** → :func:`commit_replace`'s
       rename landed but its backup-drop did not (a kill inside that
       sub-millisecond window), or something recreated ``final_dir``. The
-      backup is dropped **only** when every name it holds is provably present
-      in ``final_dir`` (i.e. it is redundant); otherwise it is left untouched
-      with a warning, because deleting content that is not demonstrably
-      preserved is never this function's call to make.
+      backup is dropped **only** when every FILE it holds is provably
+      preserved in ``final_dir`` — same relative path, same size, same
+      content hash, recursing into subdirectories (the content-aware
+      :func:`_unpreserved_backup_entries` predicate, issue #885; a same-named
+      file with different bytes is NOT redundant just because a name
+      matches). Otherwise the backup is left untouched with a warning naming
+      every unpreserved file, because deleting content that is not
+      demonstrably preserved is never this function's call to make.
 
     Idempotent and safe to call repeatedly, on any path, whether or not the
     replace surface was ever used. Never touches ``final_dir``'s contents.
@@ -1151,17 +1263,15 @@ def recover_interrupted_replace(final_dir: Path) -> bool:
         return restored
 
     # final_dir exists AND a backup exists. Drop the backup only if it is
-    # provably redundant — every entry it holds is present in final_dir.
-    unpreserved = sorted(
-        entry.name
-        for entry in backup.iterdir()
-        if not (final_dir / entry.name).exists()
-    )
+    # provably redundant — every file it holds is byte-identical to its
+    # counterpart in final_dir (content-aware + recursive, issue #885).
+    unpreserved = _unpreserved_backup_entries(backup, final_dir)
     if unpreserved:
         _log.warning(
             "recover_interrupted_replace: leaving backup %s in place — it "
-            "holds %d entr(y/ies) absent from %s: %s. Resolve by hand; this "
-            "function never deletes content it cannot prove is preserved.",
+            "holds %d file(s) not provably preserved (byte-identical) in "
+            "%s: %s. Resolve by hand; this function never deletes content "
+            "it cannot prove is preserved.",
             backup,
             len(unpreserved),
             final_dir,
@@ -1172,7 +1282,7 @@ def recover_interrupted_replace(final_dir: Path) -> bool:
     shutil.rmtree(backup)
     _log.info(
         "recover_interrupted_replace: dropped redundant backup %s (every "
-        "entry is already present in %s)",
+        "file is byte-identical to its counterpart in %s)",
         backup,
         final_dir,
     )

@@ -465,6 +465,13 @@ def _convert_one(conv: StubConversion, backup: Path) -> None:
                 CANONICAL_REVIEW_FILENAME,
                 PROVENANCE_FILENAME,
             ],
+            # `sidecar` was just renamed to `backup` two lines above, so
+            # staged_sidecar's default orphaned-backup guard (issue #885)
+            # would always fire here. Safe to opt out: this driver's own
+            # `except BaseException` handler above is guaranteed to run and
+            # restores/discards `backup` on any failure — the guard exists
+            # for callers with no such handler.
+            allow_orphaned_backup=True,
         ) as staging:
             # Re-materialize every original file byte-for-byte (verbatim
             # preservation), then layer the two additive files on top.
@@ -856,6 +863,12 @@ def _rescore_one(
             CANONICAL_REVIEW_FILENAME,
             PROVENANCE_FILENAME,
         ],
+        # See the matching comment in _convert_one: `sidecar` was just
+        # renamed to `backup` above, so the default orphaned-backup guard
+        # (issue #885) would always fire here. This driver's caller-level
+        # `except BaseException` handler restores/discards `backup` on any
+        # failure, so opting out is safe.
+        allow_orphaned_backup=True,
     ) as staging:
         for entry in sorted(backup.iterdir()):
             if entry.name in (CANONICAL_REVIEW_FILENAME, PROVENANCE_FILENAME):
