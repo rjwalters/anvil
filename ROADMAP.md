@@ -2,7 +2,7 @@
 
 **Mission**: Make iterative AI-assisted authoring of long-form artifacts as principled as software engineering is — versioned, reviewable, resumable, and audit-trailed.
 
-Anvil orchestrates drafting, review, audit, and revision of memos, research papers, patent applications (non-provisional and provisional), pitch decks, talk slides, technical reports, IC/component datasheets, art-installation concepts, customer proposals, voice-grounded essays, pedagogical primers, and normative specifications. Each artifact lives in an immutable versioned directory; each review pass writes to a read-only sibling; each revision consumes both and produces the next version. The version history *is* the audit trail.
+Anvil orchestrates drafting, review, audit, and revision of memos, research papers, patent applications (non-provisional and provisional), pitch decks, talk slides, technical reports, IC/component datasheets, art-installation concepts, customer proposals, voice-grounded essays, pedagogical primers, normative specifications, and chaptered narrative nonfiction. Each artifact lives in an immutable versioned directory; each review pass writes to a read-only sibling; each revision consumes both and produces the next version. The version history *is* the audit trail.
 
 We use the **filesystem as substrate** so the pattern works on a single laptop with no GitHub account, no SaaS dependency, and no proprietary lock-in. We use a **scored rubric** (9 weighted dimensions / 44 — the two `ip-uspto` skills on /45, `deck` on /49 — ≥35 to advance, ≥39 for customer-facing and legal work, critical-flag short-circuit) so the convergence criterion is mechanical, not vibes. We use **N parallel critics → one reviser** as a first-class primitive so subject-matter critics can be added by composition, not orchestration.
 
@@ -24,9 +24,9 @@ We use the **filesystem as substrate** so the pattern works on a single laptop w
 
 ---
 
-## Current State (v0.9.0)
+## Current State (v0.10.1)
 
-The complete authoring lifecycle is supported for **thirteen artifact classes**:
+The complete authoring lifecycle is supported for **fourteen artifact classes**:
 
 | Skill | Artifact type | Output |
 |---|---|---|
@@ -43,10 +43,11 @@ The complete authoring lifecycle is supported for **thirteen artifact classes**:
 | `anvil:essay` | Short-form voice-grounded essays / blog posts (voice fidelity as dominant dim 2; READY-terminal) | Markdown |
 | `anvil:primer` | Long-form pedagogical explainers (pedagogy-dominant dim 1; optional `spec_ref` consistency audit) | Markdown (+ optional PDF) |
 | `anvil:spec` | Normative technical specifications maintained against an implementation (normative-correctness dim 1, ≥39; optional `code_ref` consistency audit) | LaTeX (+ optional PDF) |
+| `anvil:memoir` | Chaptered narrative nonfiction reconstructed from a private evidentiary corpus (sourcing-fidelity dim 1, ≥39; dual-corpus claim provenance + dual voice tiers; chapter-thread-native, audit-mandatory) | LaTeX → PDF |
 
 Each skill ships a complete `draft → review → revise → (audit) → figures` lifecycle (with skill-specific variations — e.g. `essay` ships draft/review/revise/status only), a 9-dimension /44 rubric (the two `ip-uspto` skills on /45, `deck` on 10-dim /49), opinionated templates, a worked example thread, and tests.
 
-**Bridge + utility skills** round out the set: `anvil:project-migrate` and `anvil:rubric-rebackport` (contract-shift bridges), `anvil:project-share` (shareable provenance-stamped export), `anvil:project-scout` (read-only repo survey), `anvil:project-photos` (scanned-archive provenance manifest), and `anvil:project-book` (multi-thread book assembly). Nineteen skills ship in total.
+**Bridge + utility skills** round out the set: `anvil:project-migrate` and `anvil:rubric-rebackport` (contract-shift bridges), `anvil:project-share` (shareable provenance-stamped export), `anvil:project-scout` (read-only repo survey), `anvil:project-photos` (scanned-archive provenance manifest), `anvil:project-book` (multi-thread book assembly), and `anvil:help` (read-only orientation over the installed skill set). Twenty-one skills ship in total.
 
 ### Shared framework primitives (`anvil/lib/`)
 
@@ -61,7 +62,7 @@ Each skill ships a complete `draft → review → revise → (audit) → figures
 | `render.py` | Marp → PDF, PDF → PNGs, pandoc → PDF, matplotlib walker, `check_*_available()` preflight helpers | #30 |
 | `vision.py` | `VisionCritic` + `VisionRubric` — vision-model review of rendered artifacts | #30 |
 | `render_gate.py` | Deterministic gate over compiled PDFs (page-fit, overfull boxes, compile success, placeholder scan, source-driven glyph verification, embedded-image assertion); LaTeX-skill analog of `marp_lint` | #64, #692 |
-| `sidecar.py` | `staged_sidecar` context manager + atomic rename for crash-safe critic-sibling writes; consumed by 60 critic-writing commands across all 13 artifact-class skills | #346 |
+| `sidecar.py` | `staged_sidecar` context manager + atomic rename for crash-safe critic-sibling writes; consumed by critic-writing commands across all 14 artifact-class skills | #346 |
 | `numeric_consistency.py` | Deterministic claim-vs-claim numeric-consistency gate (within a body); consumed by `essay` / `memo` / `paper` review | #462 |
 | `figures/palette.py` + `anvil.mplstyle` + `mermaid-theme.json` | Shared figure-theming substrate (navy palette + 4 semantic mermaid classDefs + per-glyph font fallback for Unicode arrows) | #74, #92 |
 | `marp/config.yml` | Pinned Marp config (MathJax + html, `mmdc → PNG` as the working diagram path) | #32 |
@@ -149,7 +150,7 @@ To keep scope honest:
 - **Anvil is not a renderer.** It shells out to `marp`, `pandoc`, `xelatex`, `mmdc`, `pdftoppm`. The renderer choices are pinned (e.g. Marp for slides, MathJax not KaTeX) but the rendering itself happens in subprocess.
 - **Anvil is not a forge.** No GitHub-style PR workflow for the artifacts. The version history is the audit trail; collaboration happens via shared filesystem + (optionally) git.
 - **Anvil is not opinionated about voice.** Each skill ships defaults; consumers override via `.anvil/skills/<name>/voice.md` and other extension points.
-- **Anvil is not yet** broadly distributed. The framework hardens through real use, not speculative design — v0.9.0 is driven by several live canary consumers (2AM Logic Studio; botho, which drove `primer` and `spec`; geode-fem and the Tractatus Lean-4 project on `paper`) rather than one.
+- **Anvil is not yet** broadly distributed. The framework hardens through real use, not speculative design — v0.10.1 is driven by several live canary consumers (2AM Logic Studio; botho, which drove `primer` and `spec`; `walters-family-tree`, which drove `memoir`; geode-fem and the Tractatus Lean-4 project on `paper`) rather than one.
 
 ---
 
