@@ -56,6 +56,7 @@ from .plan import (
     ContentRewrite,
     DocumentPlan,
     Plan,
+    PlanError,
     Rename,
     build_plan,
 )
@@ -271,6 +272,7 @@ def run(
     *,
     apply: bool = False,
     report_only: bool = False,
+    artifact_type: Optional[str] = None,
 ) -> RunResult:
     """Execute the project-migrate flow.
 
@@ -285,6 +287,15 @@ def run(
         Emit a markdown report and exit. Equivalent to dry-run for
         side-effect purposes but reflects the operator's explicit choice.
         Mutually exclusive with ``apply``.
+    artifact_type
+        Optional ``--artifact-type`` (issue #878; two-tier #394
+        validation). Applied to every synthesized ``documents:`` entry on
+        a BARE project (:data:`ProjectInventory.is_bare`) instead of the
+        inferred/defaulted value — closing the bare-synthesis
+        circularity where the correct declaration would otherwise come
+        from the very BRIEF this run synthesizes. Has no effect on
+        non-bare projects. ``None`` (the default) preserves prior
+        behavior byte-for-byte.
 
     Returns
     -------
@@ -296,6 +307,9 @@ def run(
         When ``apply`` and ``report_only`` are both True.
     FileNotFoundError
         When ``project_dir`` does not exist or is not a directory.
+    PlanError
+        When ``artifact_type`` is given but is not a registered or
+        consumer-declared artifact type. Raised BEFORE any mutation.
     """
     if apply and report_only:
         raise ValueError(
@@ -311,7 +325,9 @@ def run(
 
     inv = inventory_project(project_dir)
     shape = _classify(inv)
-    plan = build_plan(project_dir, shape=shape, inventory=inv)
+    plan = build_plan(
+        project_dir, shape=shape, inventory=inv, artifact_type=artifact_type
+    )
 
     result = RunResult(
         project_dir=project_dir,
@@ -1341,6 +1357,7 @@ __all__ = [
     "AdoptReviewRunResult",
     "AdoptVnError",
     "EnrollError",
+    "PlanError",
     "RunResult",
     "run",
     "run_adopt_family",

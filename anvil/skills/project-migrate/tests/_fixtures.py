@@ -648,6 +648,74 @@ def build_bare_version_dir_threads(
     return project_dir
 
 
+def build_bare_foreign_md_body_threads(
+    root: Path,
+    project_name: str = "wave-two-five-blocks",
+    *,
+    slug: str = "wave-two-five-blocks",
+    body_filename: str = "post.md",
+) -> Path:
+    """Build a BARE project with a FOREIGN ``.md`` body filename (#878).
+
+    Anonymized reproduction of the `anvil:essay` adoption-target shape: a
+    hand-rolled blog pipeline that independently converged on the anvil
+    ``{thread}.{N}/`` + ``.review``/``.audit`` sibling grammar, but names
+    its body file ``post.md`` — a foreign pipeline's fixed name, not any
+    anvil skill's historical fixed name (``_SKILL_FIXED_BODY_FILENAMES``
+    doesn't recognize it, so the historical rename loop has nothing to
+    match). Zero anvil config anywhere (no `BRIEF.md`, no `.anvil.json`).
+
+    Shape:
+
+      <project>/
+        <slug>.1/post.md
+        <slug>.2/post.md
+        <slug>.2.review/review.md      ← hand-rolled, unstamped
+        <slug>.3/post.md
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    for n in (1, 2, 3):
+        _write(
+            project_dir / f"{slug}.{n}" / body_filename,
+            f"# Wave two, five blocks (v{n})\n\nPost body draft v{n}.\n",
+        )
+    _write(
+        project_dir / f"{slug}.2.review" / "review.md",
+        "# Review of draft v2\n\nHand-rolled reviewer notes.\n",
+    )
+    return project_dir
+
+
+def build_bare_ambiguous_md_body_threads(
+    root: Path,
+    project_name: str = "ambiguous-post",
+    *,
+    slug: str = "ambiguous-post",
+) -> Path:
+    """Build a BARE project with TWO distinct foreign ``.md`` bodies (#878).
+
+    A single thread whose version dirs disagree on the foreign body
+    filename (``post.md`` on one version, ``draft.md`` on another) — the
+    ambiguous case the single-candidate constraint in
+    ``_foreign_md_body_candidates`` refuses to guess at. No rename should
+    be planned; the plan should surface an operator-facing note instead.
+    """
+    project_dir = root / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    _write(
+        project_dir / f"{slug}.1" / "post.md",
+        "# Ambiguous post v1\n",
+    )
+    _write(
+        project_dir / f"{slug}.2" / "draft.md",
+        "# Ambiguous post v2 (renamed pipeline mid-flight)\n",
+    )
+    return project_dir
+
+
 # Operator-authored project BRIEF used by the enrollment fixtures
 # (issue #406). Deliberately carries every byte-preservation tripwire
 # the curator verified the re-render path drops: a top-level `theme:`,
