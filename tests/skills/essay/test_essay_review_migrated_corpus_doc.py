@@ -93,7 +93,39 @@ def test_essay_review_doc_documents_cli_replace_shim():
     assert "sidecar abort-replace" in text
 
 
+def test_essay_review_doc_mandates_the_cross_session_recovery_sweep():
+    """Step 1's entry sweep must cover BOTH crash shapes: the `.tmp` sweep
+    (`cleanup_one_staging`, #376) and the `.bak` sweep
+    (`recover_interrupted_replace`, #881). Without the second, a session
+    that dies between `stage_replace` and `commit_replace` leaves the legacy
+    content stranded in a hidden backup that nothing sweeps."""
+    text = _read()
+    assert "cleanup_one_staging" in text
+    assert "recover_interrupted_replace" in text
+
+    # The two sweeps are documented together, in step 1's entry sentence.
+    idx = text.index("cleanup_one_staging(<thread>.{N}.review)")
+    assert "recover_interrupted_replace" in text[idx : idx + 300]
+
+
+def test_essay_review_doc_explains_why_abort_replace_is_insufficient():
+    """The doc must not present `abort_replace` as the whole recovery
+    story: it only runs when this session survives to call it."""
+    text = _read()
+    lowered = text.lower()
+    assert "no python driver" in lowered or "markdown-driven" in lowered
+    assert "cross-session" in lowered
+
+
+def test_essay_review_doc_documents_cli_recover_replace_shim():
+    """Non-Python-driver sessions — the ones most exposed to the
+    cross-session crash — need the `recover-replace` CLI analog."""
+    text = _read()
+    assert "sidecar recover-replace" in text
+
+
 def test_essay_skill_doc_records_migrated_corpus_failure_mode():
     text = SKILL_DOC.read_text(encoding="utf-8")
     assert "#881" in text
     assert "stage_replace" in text
+    assert "recover_interrupted_replace" in text

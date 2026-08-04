@@ -115,6 +115,10 @@ the same atomicity guarantee — the manifest check + single
     # Sweep a single leftover staging dir (parallel-safe, issue #376):
     python -m anvil.lib.sidecar cleanup output/acme-seed.3.review
 
+    # Entry-step recovery for the replace surface (the .bak analog of
+    # `cleanup`, issue #881) — run it next to `cleanup`:
+    python -m anvil.lib.sidecar recover-replace output/acme-seed.3.review
+
 The ``stage``/``commit`` pair maps to :func:`stage_enter` /
 :func:`commit_staged`, which share every helper with
 :func:`staged_sidecar` (``staging_path_for``, ``_missing_required_files``,
@@ -166,6 +170,42 @@ replacement is NOT the right call: ``final_dir`` does not exist yet (use
 never replaced). The CLI shim ships parallel subcommands
 (``replace`` / ``commit-replace`` / ``abort-replace``) for non-Python-driver
 sessions, mirroring ``stage``/``commit``/``cleanup``.
+
+Cross-session crash recovery for the replace surface
+----------------------------------------------------
+
+The ``try``/``except`` recipe above only holds when the **same execution
+context** survives to run the handler. The load-bearing consumer of this
+surface — ``anvil/skills/essay/commands/essay-review.md`` — is a
+*markdown-driven* command with no Python driver: the window between
+``stage_replace`` and ``commit_replace`` spans many discrete agent tool
+calls, and the session can die inside it (context exhaustion, process kill,
+orchestrator timeout — first-class expected failure modes in this
+framework). Nothing is left to call :func:`abort_replace`, and the original
+content is sitting in a hidden ``.<name>.bak/`` while ``final_dir`` is
+*absent*.
+
+The ``.tmp`` crash path has always had an entry-side sweep
+(:func:`cleanup_one_staging`, issue #376). The ``.bak`` crash path gets the
+symmetric one:
+
+- :func:`recover_interrupted_replace` is the **entry-step recovery sweep**
+  for the replace surface. Call it at the top of any command that may use
+  ``stage_replace``, right next to ``cleanup_one_staging``. It restores an
+  orphaned backup when ``final_dir`` is absent, drops a provably-redundant
+  backup when the commit-side rename already landed, and never guesses
+  otherwise. CLI analog: ``recover-replace``.
+- :func:`stage_enter` / :func:`commit_staged` — the split surface a
+  driverless session drives across process boundaries — **refuse**
+  (``FileExistsError``) while an orphaned backup is on disk, so a session
+  that skips the entry sweep cannot commit a fresh sidecar over the gap and
+  strand the only copy of the pre-existing content. This is the
+  defense-in-depth half: recovery does not depend on a doc being followed.
+  :func:`staged_sidecar` is deliberately exempt — it is only reachable from
+  a live Python driver holding the ``with`` block open (so its ``except``
+  path is guaranteed to run), and one such driver
+  (``anvil/skills/project-migrate/lib/adopt_review.py``) legitimately manages
+  its own same-named ``.bak`` move-aside around the call.
 
 Contract
 --------
@@ -224,6 +264,7 @@ __all__ = [
     "stage_replace",
     "commit_replace",
     "abort_replace",
+    "recover_interrupted_replace",
     "staging_path_for",
     "backup_path_for",
     "cleanup_one_staging",
@@ -320,6 +361,37 @@ def backup_path_for(final_dir: Path) -> Path:
     return parent / backup_name
 
 
+def _refuse_on_orphaned_backup(caller: str, final_dir: Path) -> None:
+    """Raise :class:`FileExistsError` if an interrupted :func:`stage_replace`
+    left its move-aside backup on disk for ``final_dir`` (issue #881).
+
+    Guards the *split* fresh-staging surface (:func:`stage_enter`,
+    :func:`commit_staged` — the one a driverless session drives across
+    process boundaries) against the cross-session
+    crash path: when a replace dies between :func:`stage_replace` and
+    :func:`commit_replace`, ``final_dir`` is absent (it was renamed to the
+    backup), so every fresh-staging entry check passes and the next run
+    happily commits a brand-new sidecar into the gap — permanently stranding
+    the ONLY copy of the pre-existing content inside a hidden ``.bak``
+    sibling that no sweep recognizes.
+
+    Refusing here makes that silent loss impossible even when the caller
+    skips the documented :func:`recover_interrupted_replace` entry step.
+    """
+    backup = backup_path_for(final_dir)
+    if not backup.exists() or not backup.is_dir():
+        return
+    raise FileExistsError(
+        f"{caller}: refusing to stage a fresh sidecar for {final_dir!s}; an "
+        f"interrupted stage_replace() left its move-aside backup at "
+        f"{backup!s}, which currently holds the only copy of that "
+        f"directory's pre-existing content. Committing a fresh sidecar here "
+        f"would strand it. Run recover_interrupted_replace({final_dir!s}) "
+        f"(CLI: `python -m anvil.lib.sidecar recover-replace {final_dir!s}`) "
+        f"first, then re-run."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Staged sidecar context manager
 # ---------------------------------------------------------------------------
@@ -409,6 +481,16 @@ def staged_sidecar(
             f"Caller is responsible for the resume/idempotency check "
             f"before invoking staged_sidecar."
         )
+
+    # NOTE (issue #881): the orphaned-backup guard that stage_enter and
+    # commit_staged carry deliberately does NOT apply here. This context
+    # manager is only reachable from a live Python driver that holds the
+    # `with` block open across its writes — the very shape whose `except`
+    # path is guaranteed to run — and one such driver
+    # (`anvil/skills/project-migrate/lib/adopt_review.py`) legitimately
+    # manages its own same-named `.bak` move-aside *around* this call. The
+    # crash-exposed surface is the split stage/commit one below, which a
+    # driverless (markdown/CLI) session drives across process boundaries.
 
     # If a previous interrupt left a staging dir with the same name in
     # place, wipe it before we re-enter — otherwise our mkdir would fail
@@ -645,6 +727,21 @@ def _is_staging_dirname(name: str) -> bool:
     return bool(inner)
 
 
+def _is_backup_dirname(name: str) -> bool:
+    """Return True iff ``name`` matches the leading-dot + :data:`BACKUP_SUFFIX`
+    shape :func:`stage_replace` owns (issue #881). Same conservative rule as
+    :func:`_is_staging_dirname`: both the leading dot AND the trailing
+    ``.bak``, with a non-empty body between them, so an unrelated dotfile is
+    never mistaken for a move-aside backup.
+    """
+    if not name.startswith(_STAGING_PREFIX):
+        return False
+    if not name.endswith(BACKUP_SUFFIX):
+        return False
+    inner = name[len(_STAGING_PREFIX) : -len(BACKUP_SUFFIX)]
+    return bool(inner)
+
+
 # ---------------------------------------------------------------------------
 # Split stage/commit surface for CLI-driven (non-Python-driver) sessions
 # ---------------------------------------------------------------------------
@@ -693,6 +790,10 @@ def stage_enter(final_dir: Path, *, parents: bool = True) -> Path:
             f"Caller is responsible for the resume/idempotency check "
             f"before invoking stage_enter."
         )
+
+    # An interrupted stage_replace() leaves final_dir absent and its content
+    # in a .bak sibling — the check above cannot see it (issue #881).
+    _refuse_on_orphaned_backup("stage_enter", final_dir)
 
     if staging.exists():
         _log.info(
@@ -744,6 +845,12 @@ def commit_staged(final_dir: Path, required_files: Sequence[str]) -> Path:
             f"target {final_dir!s} already exists. Atomic rename only "
             f"works onto a non-existent target."
         )
+
+    # A backup on disk means this staging dir belongs to an in-flight (or
+    # interrupted) stage_replace(); committing it via the fresh-staging path
+    # would drop the preserved content on the floor. Use commit_replace()
+    # (which swaps AND drops the backup) or recover first (issue #881).
+    _refuse_on_orphaned_backup("commit_staged", final_dir)
 
     missing = _missing_required_files(staging, required_files)
     if missing:
@@ -822,6 +929,22 @@ def stage_replace(final_dir: Path, *, parents: bool = True) -> Path:
     final_dir = Path(final_dir)
 
     if not final_dir.exists():
+        backup = backup_path_for(final_dir)
+        if backup.exists():
+            # NOT a genuinely absent final_dir: a previous stage_replace was
+            # interrupted before commit_replace, so the directory's only copy
+            # is sitting in the backup. Steering the operator at stage_enter()
+            # here is exactly how the content gets stranded (issue #881).
+            raise FileNotFoundError(
+                f"stage_replace: {final_dir!s} does not exist, but an "
+                f"interrupted stage_replace() left its contents at "
+                f"{backup!s}. This is NOT a genuinely absent final_dir — do "
+                f"NOT fall through to stage_enter(), which would commit a "
+                f"fresh sidecar over the gap and strand that backup. Run "
+                f"recover_interrupted_replace({final_dir!s}) (CLI: `python -m "
+                f"anvil.lib.sidecar recover-replace {final_dir!s}`) to restore "
+                f"it first, then re-run."
+            )
         raise FileNotFoundError(
             f"stage_replace: {final_dir!s} does not exist; nothing to "
             f"replace. Use stage_enter() for a genuinely absent final_dir."
@@ -964,6 +1087,98 @@ def abort_replace(final_dir: Path) -> bool:
     return False
 
 
+def recover_interrupted_replace(final_dir: Path) -> bool:
+    """Entry-step recovery sweep for the replace surface — the ``.bak``
+    analog of :func:`cleanup_one_staging` (issue #881).
+
+    :func:`abort_replace` closes the *same-session* failure: the caller's
+    ``except`` handler runs and undoes the move-aside. It cannot close the
+    **cross-session** failure, where the process that called
+    :func:`stage_replace` dies before reaching any handler — the load-bearing
+    shape for ``essay-review``, a markdown-driven command whose
+    stage→commit window spans many discrete agent tool calls. In that state
+    ``final_dir`` is absent and the only copy of its former content sits in
+    a hidden ``.<name>.bak/`` that no sweep recognizes
+    (:func:`cleanup_one_staging` and :func:`cleanup_stale_staging` both match
+    the ``.tmp`` shape only).
+
+    Call this at command entry, alongside ``cleanup_one_staging(final_dir)``,
+    before the idempotency check. Three outcomes:
+
+    - **No backup on disk** → no-op, returns ``False``. (The overwhelmingly
+      common case; this is a cheap ``stat``.)
+    - **Backup present, ``final_dir`` absent** → an interrupted replace.
+      Delegates to :func:`abort_replace`: the partial staging dir is
+      discarded and the backup is renamed back into place, restoring the
+      pre-existing content byte-identical. Returns ``True``. The command then
+      proceeds normally — its idempotency check sees the restored dir and
+      re-enters the replace path from a clean state.
+    - **Backup present, ``final_dir`` present** → :func:`commit_replace`'s
+      rename landed but its backup-drop did not (a kill inside that
+      sub-millisecond window), or something recreated ``final_dir``. The
+      backup is dropped **only** when every name it holds is provably present
+      in ``final_dir`` (i.e. it is redundant); otherwise it is left untouched
+      with a warning, because deleting content that is not demonstrably
+      preserved is never this function's call to make.
+
+    Idempotent and safe to call repeatedly, on any path, whether or not the
+    replace surface was ever used. Never touches ``final_dir``'s contents.
+
+    Returns
+    -------
+    ``True`` if the on-disk state was changed (backup restored, or a
+    redundant backup dropped), ``False`` otherwise.
+    """
+    final_dir = Path(final_dir)
+    backup = backup_path_for(final_dir)
+
+    if not backup.exists():
+        return False
+    if not backup.is_dir():
+        return False
+    if not _is_backup_dirname(backup.name):
+        return False
+
+    if not final_dir.exists():
+        restored = abort_replace(final_dir)
+        if restored:
+            _log.info(
+                "recover_interrupted_replace: recovered %s from an "
+                "interrupted stage_replace (backup %s restored)",
+                final_dir,
+                backup,
+            )
+        return restored
+
+    # final_dir exists AND a backup exists. Drop the backup only if it is
+    # provably redundant — every entry it holds is present in final_dir.
+    unpreserved = sorted(
+        entry.name
+        for entry in backup.iterdir()
+        if not (final_dir / entry.name).exists()
+    )
+    if unpreserved:
+        _log.warning(
+            "recover_interrupted_replace: leaving backup %s in place — it "
+            "holds %d entr(y/ies) absent from %s: %s. Resolve by hand; this "
+            "function never deletes content it cannot prove is preserved.",
+            backup,
+            len(unpreserved),
+            final_dir,
+            ", ".join(unpreserved),
+        )
+        return False
+
+    shutil.rmtree(backup)
+    _log.info(
+        "recover_interrupted_replace: dropped redundant backup %s (every "
+        "entry is already present in %s)",
+        backup,
+        final_dir,
+    )
+    return True
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point (non-Python-driver sessions — issue #645)
 # ---------------------------------------------------------------------------
@@ -1095,6 +1310,22 @@ def _build_cli_parser():
         help="The intended final sidecar path, e.g. output/thread.3.review",
     )
 
+    p_recover_replace = sub.add_parser(
+        "recover-replace",
+        help=(
+            "Entry-step recovery sweep for the replace surface (issue #881) "
+            "— the `.bak` analog of `cleanup`. Restores FINAL_DIR from an "
+            "orphaned move-aside backup left by a `replace` whose session "
+            "died before `commit-replace`; drops a provably-redundant backup "
+            "when the swap already landed. Idempotent no-op otherwise. Run "
+            "it at command entry, next to `cleanup`."
+        ),
+    )
+    p_recover_replace.add_argument(
+        "final_dir",
+        help="The intended final sidecar path, e.g. output/thread.3.review",
+    )
+
     return p
 
 
@@ -1124,6 +1355,11 @@ def main(argv: "Sequence[str] | None" = None) -> int:
     - ``abort-replace FINAL_DIR`` — undo an in-progress `replace`: discard
       the staging dir, restore FINAL_DIR from its backup. Exit ``0``
       always (idempotent no-op when nothing to abort).
+    - ``recover-replace FINAL_DIR`` — the entry-step recovery sweep for the
+      replace surface (issue #881; the ``.bak`` analog of ``cleanup``).
+      Restores FINAL_DIR when a prior ``replace``'s session died before
+      ``commit-replace``; drops a provably-redundant backup when the swap
+      already landed; leaves an ambiguous backup alone. Exit ``0`` always.
 
     Exit-code contract mirrors the sibling ``anvil/lib/*.py`` CLIs: ``0``
     clean, ``1`` a contract failure the caller must act on
@@ -1199,6 +1435,24 @@ def main(argv: "Sequence[str] | None" = None) -> int:
             print(f"restored {final_dir} from backup")
         else:
             print(f"nothing to restore for {final_dir}")
+        return 0
+
+    if args.subcommand == "recover-replace":
+        backup = backup_path_for(final_dir)
+        had_backup = backup.exists()
+        final_existed = final_dir.exists()
+        changed = recover_interrupted_replace(final_dir)
+        if changed and not final_existed:
+            print(f"recovered {final_dir} from an interrupted replace")
+        elif changed:
+            print(f"dropped redundant backup {backup} for {final_dir}")
+        elif had_backup:
+            print(
+                f"backup {backup} left in place: it holds content not "
+                f"present in {final_dir} — resolve by hand"
+            )
+        else:
+            print(f"nothing to recover for {final_dir}")
         return 0
 
     # argparse's required=True on the subparser guarantees we never fall
