@@ -142,6 +142,14 @@ class TestSkillFrontmatter(unittest.TestCase):
         self.assertIn("OWNS voice fidelity as rubric dim 2", text)
         self.assertIn("resolve_voice_docs", text)
 
+    def test_self_published_exclusion_documented(self):
+        # Issue #890: SKILL.md documents the circular-calibration fix.
+        text = _read("SKILL.md")
+        self.assertIn("exclude_self_slug", text)
+        self.assertIn("corpus_excluded", text)
+        self.assertIn("corpus_thin", text)
+        self.assertIn("voice_corpus_exclude", text)
+
     def test_markdown_only_body_and_slug_echo(self):
         text = _read("SKILL.md")
         self.assertIn("no PDF render path", text)
@@ -231,6 +239,24 @@ class TestReviewCommandWiring(unittest.TestCase):
 
     def test_link_coverage_judgment_is_major_never_critical(self):
         self.assertIn("never critical", self.text)
+
+    def test_self_published_exclusion_wired(self):
+        # Issue #890: essay-review step 4 excludes the thread's own
+        # published form from the voice.corpus calibration base.
+        self.assertIn("exclude_self_slug=<thread>", self.text)
+        self.assertIn("Self-published exclusion", self.text)
+        self.assertIn("excluded", self.text)
+        self.assertIn("exclusion_reasons", self.text)
+
+    def test_corpus_excluded_summary_block_documented(self):
+        self.assertIn("corpus_excluded", self.text)
+        self.assertIn("voice_corpus_exclude", self.text)
+
+    def test_thin_corpus_guard_documented(self):
+        # Issue #890 AC 3: fewer than 2 remaining exemplars must be
+        # surfaced, not silently calibrated against.
+        self.assertIn("corpus_thin", self.text)
+        self.assertIn("Thin-corpus guard", self.text)
 
 
 class TestDraftAndReviseCommands(unittest.TestCase):

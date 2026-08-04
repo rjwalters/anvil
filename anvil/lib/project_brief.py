@@ -775,6 +775,7 @@ _RECOGNIZED_DOCUMENT_KEYS = {
     "spec_ref",
     "code_ref",
     "recommendation_target",
+    "voice_corpus_exclude",
 }
 
 # Default iteration cap. The override floor mirrors the deck skill's
@@ -1347,6 +1348,31 @@ class ResolvedVoiceDoc(BaseModel):
             "when ``missing``."
         ),
     )
+    excluded: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Issue #890: absolute path strings dropped from ``paths`` "
+            "by :func:`resolve_voice_docs`'s ``exclude_self_slug`` "
+            "self-published-form exclusion and/or a document's declared "
+            "``voice_corpus_exclude``. Sorted; always empty for the "
+            "three non-``corpus`` doc kinds and for every caller that "
+            "does not pass ``exclude_self_slug``, so this field is "
+            "fully inert (empty list, byte-identical output) for every "
+            "pre-#890 consumer."
+        ),
+    )
+    exclusion_reasons: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Issue #890: maps each ``excluded`` path to a short "
+            "human-readable reason — ``'published self (inferred from "
+            "slug)'`` for the automatic exclusion, or ``\"declared "
+            "corpus_exclude: '<pattern>'\"`` for a path matched by the "
+            "document's ``voice_corpus_exclude``. Feeds "
+            "``_summary.md``'s ``voice_grounding.corpus_excluded`` "
+            "block so the calibration base stays auditable."
+        ),
+    )
 
 
 class ResolvedSubjectVoice(BaseModel):
@@ -1761,6 +1787,39 @@ class BriefDocument(BaseModel):
               - slug: investment-memo
                 artifact_type: investment-memo
                 recommendation_target: undecided
+    voice_corpus_exclude
+        Optional per-document declaration of extra path/glob strings to
+        drop from this document's resolved ``voice.corpus`` when
+        **this** document is under review (issue #890). Companion to the
+        *automatic* published-self exclusion that
+        :func:`resolve_voice_docs` applies when called with
+        ``exclude_self_slug=<this slug>`` — that automatic rule infers a
+        thread's own published form from its slug (a filename stem
+        equal to the slug, optionally after stripping a leading
+        ``YYYY-MM-DD-`` date prefix) and cannot cover every consumer's
+        publish-path convention (a title-cased filename, a transliterated
+        slug, a nested `index.md`-per-post layout, …). This field is the
+        documented escape hatch for exactly those cases: declare the
+        published artifact's actual path/glob here and it is unioned
+        with the automatic exclusion (deduped) rather than replacing it.
+
+        Same on-disk shape as :attr:`spec_ref` / :attr:`code_ref`: a
+        scalar string (normalized to a single-element list) or a YAML
+        list of path/glob strings. Resolved the same way as the
+        ``voice.corpus`` glob itself — project-root first, then
+        consumer-root; absolute paths bypass the walk. A pattern that
+        resolves to nothing is a silent no-op (there is nothing to
+        exclude), never an error — this field only ever narrows an
+        already-resolved corpus, it cannot widen or break it.
+
+        Example (the consumer's blog archive keeps published posts under
+        a nested per-slug directory the automatic date-prefix rule
+        cannot infer)::
+
+            documents:
+              - slug: the-loop-is-the-unit
+                artifact_type: essay
+                voice_corpus_exclude: website/src/notes/posts/the-loop-is-the-unit/index.tsx
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1801,6 +1860,9 @@ class BriefDocument(BaseModel):
     recommendation_target: Optional[
         Literal["invest", "pass", "conditional", "undecided"]
     ] = Field(default=None)
+    # Same scalar-or-list normalization as spec_ref / code_ref (issue #890),
+    # via _validate_voice_corpus_exclude / _validate_companion_ref.
+    voice_corpus_exclude: Optional[List[str]] = Field(default=None)
 
 
 class ProjectBrief(BaseModel):
@@ -3029,6 +3091,31 @@ def _validate_code_ref(raw: Any, field_path: str) -> Optional[List[str]]:
     )
 
 
+def _validate_voice_corpus_exclude(raw: Any, field_path: str) -> Optional[List[str]]:
+    """Validate a raw ``voice_corpus_exclude`` value (issue #890).
+
+    Same scalar-or-list normalization as :func:`_validate_spec_ref` /
+    :func:`_validate_code_ref` — see :func:`_validate_companion_ref` for
+    the full contract. Unlike those two **companion-input** fields (which
+    each define their own activation tier, so a malformed declaration
+    must still ACTIVATE the tier and surface a ``major`` finding rather
+    than silently vanishing), a malformed ``voice_corpus_exclude`` is a
+    plain BRIEF parse-time error: this field only ever *narrows* an
+    already-resolved ``voice.corpus`` glob, it never defines a tier of
+    its own, so there is no "declared-but-broken, stay active" resolve
+    -time case to preserve — the ``CompanionRefTypeError`` it raises on a
+    malformed value (itself a ``ValueError``) propagates as an ordinary
+    BRIEF-parse failure.
+    """
+    return _validate_companion_ref(
+        raw,
+        field_path,
+        field="voice_corpus_exclude",
+        scalar_example="writing-corpus/my-post.md",
+        list_example="writing-corpus/a.md, writing-corpus/b.md",
+    )
+
+
 def _validate_render_lua_filters(
     raw: Any, field_path: str
 ) -> Optional[List[str]]:
@@ -3460,6 +3547,11 @@ def _normalize_documents(
             field_path=f"documents[{i}].recommendation_target",
         )
 
+        voice_corpus_exclude = _validate_voice_corpus_exclude(
+            entry.get("voice_corpus_exclude"),
+            field_path=f"documents[{i}].voice_corpus_exclude",
+        )
+
         # Paired-override validation runs after the per-field validators
         # so the cross-field error names both keys with already-normalized
         # values (e.g., whitespace-only rationale → None → "missing").
@@ -3487,6 +3579,7 @@ def _normalize_documents(
                 spec_ref=spec_ref,
                 code_ref=code_ref,
                 recommendation_target=recommendation_target,
+                voice_corpus_exclude=voice_corpus_exclude,
             )
         except ValidationError as exc:
             raise ValueError(
@@ -3939,9 +4032,99 @@ def _resolve_voice_corpus(
     return ResolvedVoiceDoc(kind=kind, declared=declared, missing=True)
 
 
+# A published filename that carries a leading calendar-date prefix
+# (``2026-05-27-the-loop-is-the-unit.tsx``) — the shape the rjwalters.info
+# blog pipeline that seeded issue #461/#890 actually publishes under.
+# Stripped before comparing a resolved corpus filename's stem to a
+# thread's slug (see :func:`_infer_self_published_paths`).
+_DATE_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+
+
+def _infer_self_published_paths(paths: List[str], slug: str) -> List[str]:
+    """Infer which resolved ``voice.corpus`` paths are ``slug``'s own
+    published form (issue #890).
+
+    A deliberately **narrow, high-precision** heuristic — false
+    negatives (an un-inferred publish path a consumer must cover via
+    :attr:`BriefDocument.voice_corpus_exclude`) are the acceptable
+    failure mode here, false positives (excluding a *different*
+    thread's legitimate exemplar) are not: dropping the wrong file
+    would silently thin the calibration base for a reason no reviewer
+    could audit.
+
+    Matches a resolved path's filename **stem**, case-folded and with
+    one optional leading ``YYYY-MM-DD-`` date prefix stripped, against
+    ``slug`` (also case-folded) for an **exact** match — covering both
+    the plain-slug filename convention (``the-loop-is-the-unit.tsx``,
+    matching essay's own ``<slug>.md`` body-filename convention) and the
+    dated-post convention (``2026-05-27-the-loop-is-the-unit.tsx``).
+    Deliberately does NOT do substring/prefix/suffix matching (e.g.
+    ``the-loop-is-the-unit-revisited`` must NOT match slug
+    ``the-loop-is-the-unit``) — that would risk excluding an unrelated
+    published post that merely shares a slug fragment.
+    """
+    slug_norm = slug.strip().lower()
+    if not slug_norm:
+        return []
+    matches: List[str] = []
+    for p in paths:
+        stem = Path(p).stem.lower()
+        if _DATE_PREFIX_RE.sub("", stem) == slug_norm:
+            matches.append(p)
+    return matches
+
+
+def _apply_corpus_self_exclusion(
+    entry: ResolvedVoiceDoc,
+    slug: str,
+    declared_exclude: List[str],
+    roots: List[Tuple[str, Path]],
+) -> ResolvedVoiceDoc:
+    """Drop thread ``slug``'s own published form from a resolved
+    ``voice.corpus`` entry (issue #890).
+
+    Two exclusion sources, unioned and deduped (first reason wins when
+    both would match the same path):
+
+    1. **Automatic inference** — :func:`_infer_self_published_paths`.
+    2. **Declared** ``BriefDocument.voice_corpus_exclude`` — each
+       pattern resolved the same way as a ``spec_ref`` / ``code_ref``
+       element (:func:`_resolve_companion_element`, same ``roots``),
+       for publish-path shapes the automatic rule cannot infer.
+
+    A fully inert no-op when neither source matches anything: returns
+    ``entry`` unchanged (same object, no ``excluded``/``paths`` churn) —
+    a project that never triggers either exclusion path sees
+    byte-identical output.
+    """
+    reasons: Dict[str, str] = {}
+    for p in _infer_self_published_paths(entry.paths, slug):
+        reasons[p] = "published self (inferred from slug)"
+
+    for pattern in declared_exclude:
+        matches, _source = _resolve_companion_element(pattern, roots)
+        for m in matches:
+            if m in entry.paths and m not in reasons:
+                reasons[m] = f"declared corpus_exclude: {pattern!r}"
+
+    if not reasons:
+        return entry
+
+    remaining = [p for p in entry.paths if p not in reasons]
+    return entry.model_copy(
+        update={
+            "paths": remaining,
+            "excluded": sorted(reasons),
+            "exclusion_reasons": reasons,
+        }
+    )
+
+
 def resolve_voice_docs(
     project_dir: Path,
     consumer_root: Optional[Path] = None,
+    *,
+    exclude_self_slug: Optional[str] = None,
 ) -> List[ResolvedVoiceDoc]:
     """Resolve the project BRIEF's ``voice:`` block to on-disk paths (issue #461).
 
@@ -3986,6 +4169,39 @@ def resolve_voice_docs(
     defect for the reviewer to surface (``major`` finding), not an
     opt-out and not a crash (the ``customer_context.py`` posture).
 
+    Parameters
+    ----------
+    exclude_self_slug
+        Optional (issue #890): the slug of the thread currently under
+        review/draft. When supplied, the resolved ``corpus`` entry has
+        that thread's own published form dropped from ``paths`` — the
+        circular-calibration fix for reviewing a **revision of an
+        already-published** note (the note's own prior published form
+        would otherwise sit inside its own voice-fidelity calibration
+        base). Two exclusion sources are unioned (deduped):
+
+        1. **Automatic inference** (:func:`_infer_self_published_paths`)
+           — a resolved corpus path whose filename stem, after
+           optionally stripping one leading ``YYYY-MM-DD-`` date
+           prefix, case-insensitively equals ``exclude_self_slug``.
+        2. **Declared** ``BriefDocument.voice_corpus_exclude`` for the
+           document matching ``exclude_self_slug`` (when the BRIEF
+           declares one) — resolved the same way as a ``spec_ref`` /
+           ``code_ref`` element, for publish-path shapes the automatic
+           rule cannot infer.
+
+        Dropped paths are recorded on the returned entry's ``excluded``
+        / ``exclusion_reasons`` fields so a caller can surface the
+        exclusion in its own audit trail (e.g. essay-review's
+        ``_summary.md.voice_grounding.corpus_excluded``). ``None``
+        (the default) is a **complete no-op** — every pre-#890 caller
+        that never passes this kwarg gets byte-identical output, and
+        even a caller that does pass it sees no change unless the
+        corpus glob actually matches something excludable.
+    consumer_root
+        (unchanged) explicit consumer-root override for callers /
+        tests that already know the root.
+
     Returns
     -------
     List[ResolvedVoiceDoc]
@@ -4016,13 +4232,24 @@ def resolve_voice_docs(
     if resolved_consumer is not None:
         roots.append(("consumer", resolved_consumer))
 
+    declared_exclude: List[str] = []
+    if exclude_self_slug:
+        self_doc = brief.document_for_slug(exclude_self_slug)
+        if self_doc is not None and self_doc.voice_corpus_exclude:
+            declared_exclude = list(self_doc.voice_corpus_exclude)
+
     out: List[ResolvedVoiceDoc] = []
     for kind in VOICE_DOC_KINDS:
         declared = getattr(brief.voice, kind)
         if declared is None:
             continue
         if kind == "corpus":
-            out.append(_resolve_voice_corpus(declared, roots))
+            entry = _resolve_voice_corpus(declared, roots)
+            if exclude_self_slug and not entry.missing:
+                entry = _apply_corpus_self_exclusion(
+                    entry, exclude_self_slug, declared_exclude, roots
+                )
+            out.append(entry)
         else:
             out.append(_resolve_voice_path(declared, kind, roots))
     return out
