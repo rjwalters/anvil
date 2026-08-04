@@ -40,10 +40,24 @@ contract, #295); every other artifact type keeps `chapter.tex`. An explicit
 
 ### 1. Run the build
 
-Load the skill lib (`anvil/skills/project-book/lib/`) and call the single
-entry point:
+Load the skill lib and call the single entry point. The skill's `lib/`
+directory (`anvil/skills/project-book/lib/` in the anvil source tree,
+`.anvil/skills/project-book/lib/` in a consumer install) is a package
+whose modules import each other by relative import (`from .collect import
+...`), and the directory name is hyphenated, so it cannot be loaded with a
+bare `sys.path.insert` + `import orchestrate`. Use the shared loader
+(`anvil.lib.skill_lib_loader`, importable via `uv run --project .anvil`
+per the "Running anvil Python from a consumer" pattern):
 
 ```python
+from pathlib import Path
+from anvil.lib.skill_lib_loader import import_skill_lib_module
+
+orchestrate = import_skill_lib_module(
+    "project-book", Path("anvil/skills/project-book/lib"), "orchestrate"
+)
+# .anvil/skills/project-book/lib in a consumer install.
+
 result = orchestrate.run(
     project_dir,
     dry_run=dry_run,   # False unless --dry-run
