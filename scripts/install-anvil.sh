@@ -43,10 +43,16 @@
 #   .anvil/.gitignore                  Self-contained ignore file (issue #674)
 #                                      suppressing the Python runtime artifacts
 #                                      the .anvil/ footprint generates:
-#                                      `__pycache__/`, `*.py[cod]`, and the
-#                                      `.venv/` created at Stage 10.5. Written
-#                                      once (skip-if-exists); the consumer's
-#                                      root .gitignore is left untouched.
+#                                      `__pycache__/`, `*.py[cod]`, the
+#                                      `.venv/` created at Stage 10.5, and the
+#                                      `*.egg-info/` that same `uv sync`
+#                                      materializes via the setuptools editable
+#                                      install (issue #877). Written once
+#                                      (skip-if-exists), with an append-only
+#                                      reconciliation for patterns added to the
+#                                      template after a consumer's install; the
+#                                      consumer's root .gitignore is left
+#                                      untouched.
 #   .anvil/roles/                      Generic role definitions (always installed).
 #   .anvil/skills/<name>/              Canonical skill bodies (consumer override
 #                                      target: SKILL.md, commands/, templates/,
@@ -2085,10 +2091,17 @@ do_action "write $CONSUMER_PYPROJECT (declares pydantic + pyyaml; anvil/ package
 #     creates the .anvil/anvil/ mirror and (absent --no-sync) the .anvil/.venv/.
 #   * Skip-if-exists — matching the Stage 7.8 starter-theme convention: an
 #     installer-owned generated file is written once and left alone if the
-#     consumer has since hand-edited it. This deliberately does NOT reuse
-#     append_to_gitignore_idempotent() (that helper is for appending into a
-#     consumer-owned root file, not for an installer-owned generated file).
-#   * --dry-run reports the would-write action and writes nothing (issue #81).
+#     consumer has since hand-edited it. The file is never rewritten.
+#   * Append-only reconciliation on the skip path (issue #877) — never-clobber
+#     also means a *corrected* template never reaches an existing install, so a
+#     pattern added to the template after that install shipped would be missing
+#     forever. ANVIL_GITIGNORE_UPGRADE_PATTERNS lists exactly those
+#     later-added patterns; each is appended iff no existing line already covers
+#     it, via append_to_gitignore_idempotent(). Nothing is rewritten or
+#     reordered, so hand-edits survive verbatim and a consumer who already added
+#     the pattern themselves gets no duplicate line.
+#   * --dry-run reports the would-write / would-append action and writes
+#     nothing (issue #81).
 #
 # Stage 8.6b (issue #684) then detects the upgrade-path gap this write cannot
 # close on its own: .gitignore has no effect on paths git ALREADY tracks. A
@@ -2099,7 +2112,7 @@ do_action "write $CONSUMER_PYPROJECT (declares pydantic + pyyaml; anvil/ package
 # consumer-owned; anvil has never made a git commit on the consumer's behalf
 # and this fix does not start). --fix-tracked performs the `git rm --cached`
 # (index-only; never commits, never touches the working-tree files).
-info "Stage 8.6: write .anvil/.gitignore (suppress __pycache__ + .venv runtime artifacts)"
+info "Stage 8.6: write .anvil/.gitignore (suppress __pycache__ + .venv + egg-info runtime artifacts)"
 ANVIL_GITIGNORE="$TARGET/.anvil/.gitignore"
 
 write_anvil_gitignore() {
@@ -2108,21 +2121,65 @@ write_anvil_gitignore() {
   cat > "$dst" <<'EOF'
 # Anvil-owned .gitignore — suppresses the Python runtime artifacts the anvil
 # installer's own .anvil/ footprint generates (bytecode caches under the
-# .anvil/anvil/ mirror + the uv venv at .anvil/.venv/). Patterns are relative
-# to this directory. The installer writes this file once (skip-if-exists), so
-# any local additions you make here survive re-install.
+# .anvil/anvil/ mirror, the uv venv at .anvil/.venv/, and the setuptools
+# egg-info metadata `uv sync`'s editable install materializes). Patterns are
+# relative to this directory. The installer writes this file once
+# (skip-if-exists), so any local additions you make here survive re-install.
 __pycache__/
 *.py[cod]
 .venv/
+*.egg-info/
 EOF
+}
+
+# Patterns added to the template ABOVE after the initial #674/#683 release.
+# Because the write is skip-if-exists, an install predating a given addition
+# would otherwise never receive it — so each entry here is reconciled onto an
+# existing file by append-if-missing (see the Contract note above). Only
+# later-added patterns belong here; the original three shipped with the file.
+ANVIL_GITIGNORE_UPGRADE_PATTERNS=(
+  '*.egg-info/'   # issue #877 — `uv sync --project .anvil` editable install
+)
+
+# Echo (one per line) the entries of ANVIL_GITIGNORE_UPGRADE_PATTERNS that the
+# given .gitignore does NOT already cover. Line-scanning mirrors
+# append_to_gitignore_idempotent()'s own coverage test (trimmed, comments and
+# blanks skipped, exact match via gitignore_covers) so the "would append" report
+# under --dry-run can never disagree with what a real run actually appends.
+anvil_gitignore_missing_patterns() {
+  local file="$1" pat raw line found
+  for pat in "${ANVIL_GITIGNORE_UPGRADE_PATTERNS[@]}"; do
+    found=false
+    while IFS= read -r raw || [[ -n "$raw" ]]; do
+      line="${raw#"${raw%%[![:space:]]*}"}"   # ltrim
+      line="${line%"${line##*[![:space:]]}"}"  # rtrim
+      [[ -z "$line" || "$line" == \#* ]] && continue
+      if gitignore_covers "$line" "$pat"; then
+        found=true
+        break
+      fi
+    done < "$file"
+    [[ "$found" == false ]] && printf '%s\n' "$pat"
+  done
+  return 0
 }
 
 if [[ -e "$ANVIL_GITIGNORE" ]]; then
   note "existing .anvil/.gitignore detected — preserving (the installer writes it once, never clobbers a hand-edit)"
+  MISSING_ANVIL_IGNORES=()
+  while IFS= read -r missing_pattern; do
+    [[ -n "$missing_pattern" ]] && MISSING_ANVIL_IGNORES+=("$missing_pattern")
+  done < <(anvil_gitignore_missing_patterns "$ANVIL_GITIGNORE")
+  for missing_pattern in ${MISSING_ANVIL_IGNORES[@]+"${MISSING_ANVIL_IGNORES[@]}"}; do
+    do_action "append $missing_pattern to existing .anvil/.gitignore (pattern added to the template after this install)" \
+      append_to_gitignore_idempotent "$ANVIL_GITIGNORE" "$missing_pattern"
+    [[ "$DRY_RUN" == true ]] || \
+      ok "appended $missing_pattern to .anvil/.gitignore (append-only — existing lines untouched)"
+  done
 else
-  do_action "write .anvil/.gitignore (ignore __pycache__/ and .venv/ runtime artifacts)" \
+  do_action "write .anvil/.gitignore (ignore __pycache__/, .venv/ and *.egg-info/ runtime artifacts)" \
     write_anvil_gitignore "$ANVIL_GITIGNORE"
-  [[ "$DRY_RUN" == true ]] || ok ".anvil/.gitignore written (runtime bytecode + venv stay out of git status)"
+  [[ "$DRY_RUN" == true ]] || ok ".anvil/.gitignore written (runtime bytecode, venv and egg-info stay out of git status)"
 fi
 
 # ----- Stage 8.6b: detect + hint on already-tracked ignored files (#684) -----

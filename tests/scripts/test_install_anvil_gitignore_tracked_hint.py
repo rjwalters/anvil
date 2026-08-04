@@ -35,6 +35,22 @@ Contract exercised here:
     own content (via ``git check-ignore``), not a second hard-coded pattern
     list, so a consumer-added pattern is honored too.
 
+The same never-clobber contract creates a second, *write*-side upgrade gap that
+#877 closes: a pattern added to the Stage 8.6 template after a consumer
+installed (``*.egg-info/``, from ``uv sync``'s setuptools editable install)
+would never reach that consumer's existing file, because skip-if-exists means
+the corrected template is only ever written on a fresh install. Stage 8.6 now
+reconciles the difference **append-only** via
+``append_to_gitignore_idempotent``:
+
+  * **Append-if-missing** — an existing file lacking ``*.egg-info/`` gets the
+    single line appended; every other line survives byte-for-byte in place.
+  * **No duplicate** — a file that already contains the pattern (the reporter's
+    own manual workaround) is left untouched.
+  * **``--dry-run``** reports the would-append and writes nothing.
+  * **Composes with 8.6b** — once appended, the detection pass above picks up
+    already-tracked egg-info files for free (it derives patterns from the file).
+
 These tests exercise the installer via ``subprocess`` at the real entry point.
 Distinct filename per the #58 packaging convention (sibling to
 ``test_install_anvil_gitignore.py``).
@@ -382,4 +398,157 @@ def test_detection_honors_consumer_added_pattern(tmp_path: Path) -> None:
     assert ".anvil/scratch/note.txt" in combined, (
         "detection must honor a consumer-added .gitignore pattern (proves it "
         f"reads the file, not a hard-coded list); got:\n{combined}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Upgrade path (#877): append-if-missing onto an existing .anvil/.gitignore
+# ---------------------------------------------------------------------------
+
+LEGACY_GITIGNORE = "__pycache__/\n*.py[cod]\n.venv/\n"
+
+
+def _write_existing_gitignore(target: Path, body: str) -> Path:
+    gi = target / ".anvil" / ".gitignore"
+    gi.parent.mkdir(parents=True, exist_ok=True)
+    gi.write_text(body, encoding="utf-8")
+    return gi
+
+
+def _lines(gi: Path) -> list[str]:
+    return [
+        line.strip()
+        for line in gi.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def test_existing_gitignore_gets_egg_info_appended(tmp_path: Path) -> None:
+    """A pre-#877 .anvil/.gitignore picks up ``*.egg-info/`` on re-install.
+
+    Skip-if-exists means the corrected template never reaches this file; the
+    append-only reconciliation is what closes the gap for existing installs.
+    """
+    target = tmp_path / "upgrade-append"
+    target.mkdir()
+    gi = _write_existing_gitignore(target, LEGACY_GITIGNORE)
+
+    result = _run("--skills=memo", str(target))
+    _assert_ok(result)
+
+    lines = _lines(gi)
+    assert "*.egg-info/" in lines, (
+        f"upgrade did not append *.egg-info/ to the existing file: {lines}\n"
+        f"stdout:\n{result.stdout}"
+    )
+    # The pre-existing patterns survive, in their original order.
+    assert lines[:3] == ["__pycache__/", "*.py[cod]", ".venv/"], (
+        f"existing patterns were rewritten or reordered: {lines}"
+    )
+    assert lines.count("*.egg-info/") == 1, f"pattern appended twice: {lines}"
+    # The skip-if-exists note still fires — the file was appended to, not
+    # rewritten.
+    assert "existing .anvil/.gitignore detected" in result.stdout, (
+        f"expected the preserve note alongside the append; got:\n{result.stdout}"
+    )
+
+
+def test_append_preserves_hand_edited_content(tmp_path: Path) -> None:
+    """A consumer hand-edit survives the append verbatim (prefix-preserving)."""
+    target = tmp_path / "upgrade-hand-edit"
+    target.mkdir()
+    original = (
+        "# my own header\n"
+        "__pycache__/\n"
+        "*.py[cod]\n"
+        ".venv/\n"
+        "\n"
+        "# local addition — do not remove\n"
+        "scratch/\n"
+        "notes.local.md\n"
+    )
+    gi = _write_existing_gitignore(target, original)
+
+    result = _run("--skills=memo", str(target))
+    _assert_ok(result)
+
+    after = gi.read_text(encoding="utf-8")
+    assert after.startswith(original), (
+        "the append must be strictly additive — existing content (comments, "
+        f"blank lines, local patterns) must survive verbatim. Got:\n{after!r}"
+    )
+    assert after == original + "*.egg-info/\n", (
+        f"expected exactly one appended line; got:\n{after!r}"
+    )
+    for pat in ("scratch/", "notes.local.md"):
+        assert pat in _lines(gi), f"consumer's local pattern {pat!r} was lost"
+
+
+def test_existing_pattern_is_not_duplicated(tmp_path: Path) -> None:
+    """A consumer who already applied the workaround gets no duplicate line."""
+    target = tmp_path / "already-patched"
+    target.mkdir()
+    original = LEGACY_GITIGNORE + "*.egg-info/\n"
+    gi = _write_existing_gitignore(target, original)
+
+    result = _run("--skills=memo", str(target))
+    _assert_ok(result)
+
+    assert gi.read_text(encoding="utf-8") == original, (
+        "a file already containing *.egg-info/ must be left byte-identical; "
+        f"got:\n{gi.read_text(encoding='utf-8')!r}"
+    )
+    assert "append *.egg-info/" not in result.stdout, (
+        f"installer reported an append it did not need to make:\n{result.stdout}"
+    )
+
+
+def test_append_dry_run_reports_and_writes_nothing(tmp_path: Path) -> None:
+    """``--dry-run`` reports the would-append without touching the file."""
+    target = tmp_path / "upgrade-dry-run"
+    target.mkdir()
+    gi = _write_existing_gitignore(target, LEGACY_GITIGNORE)
+
+    result = subprocess.run(
+        ["bash", str(INSTALLER), "--dry-run", "--skills=memo", str(target)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+    )
+    _assert_ok(result)
+
+    assert "[dry-run] append *.egg-info/ to existing .anvil/.gitignore" in result.stdout, (
+        f"expected the dry-run append action line; got:\n{result.stdout}"
+    )
+    assert gi.read_text(encoding="utf-8") == LEGACY_GITIGNORE, (
+        "--dry-run appended to .anvil/.gitignore"
+    )
+
+
+def test_appended_pattern_feeds_tracked_detection(tmp_path: Path) -> None:
+    """The appended pattern composes with the Stage 8.6b tracked-file pass.
+
+    A consumer who committed ``.anvil/anvil.egg-info/*`` before the pattern
+    existed gets the same warn + ``git rm -r --cached`` remediation the
+    ``__pycache__``/``.venv`` artifacts get — detection derives its patterns
+    from the file, so appending to the file is all it takes.
+    """
+    target = tmp_path / "tracked-egg-info"
+    _init_repo(target)
+    _write_existing_gitignore(target, LEGACY_GITIGNORE)
+    egg = target / ".anvil" / "anvil.egg-info" / "PKG-INFO"
+    egg.parent.mkdir(parents=True, exist_ok=True)
+    egg.write_text("Metadata-Version: 2.1\nName: anvil\n", encoding="utf-8")
+    _git(target, "add", "-A")
+    _git(target, "commit", "-q", "-m", "pre-#877 install (committed egg-info)")
+
+    result = _run("--skills=memo", str(target))
+    _assert_ok(result)
+
+    combined = result.stdout + result.stderr
+    assert "tracked file(s) under .anvil/ match the new .gitignore patterns" in combined, (
+        f"expected the tracked-files warn for the egg-info artifact; got:\n{combined}"
+    )
+    assert ".anvil/anvil.egg-info/PKG-INFO" in combined, (
+        f"remediation hint should list the tracked egg-info path; got:\n{combined}"
     )
