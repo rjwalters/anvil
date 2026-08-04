@@ -221,6 +221,40 @@
 
 ### Fixed
 
+- **Shared loader for hyphenated skill `lib/` packages, replacing seven
+  copy-pasted `importlib` incantations** (#879). Four utility skills'
+  `commands/*.md` (`project-scout`, `project-book`, `project-photos`,
+  `help`) told the operator to "Load the skill lib" and then showed a
+  bare `orchestrate.run(...)` call with no import shown — silently
+  assuming a working import already happened. That undersold two real
+  footguns: the lib modules use relative imports among themselves
+  (`orchestrate.py` does `from .cluster import ...`), so the directory
+  must be loaded as a package, not just added to `sys.path`; and skill
+  directory names like `project-scout` are not valid Python identifiers,
+  so `anvil.skills.project-scout.lib.orchestrate` is a syntax error even
+  though `anvil` itself is an importable package. Every vendored test
+  suite's `_<skill>_skill_lib.py` helper (`project-scout`,
+  `project-migrate`, `project-book`, `project-photos`, `project-share`,
+  `help`, and rubric-rebackport's `_skill_lib.py`) independently
+  re-derived the same `ModuleSpec(is_package=True)` + manual
+  `sys.modules` registration trick, each maintaining its own
+  hand-written "dependency-safe load order" list. Adds
+  `anvil/lib/skill_lib_loader.py` (`load_skill_lib_package` /
+  `import_skill_lib_module` / `load_skill_lib`): registers a skill's
+  `lib/` directory under a synthetic, collision-safe package name
+  (`project-scout` -> `project_scout_lib`) and then lets *ordinary*
+  import machinery resolve any requested submodule's relative imports —
+  no dependency-order list to keep in sync, and no risk of the
+  stub-then-exec-out-of-order failure mode that breaks graphs like
+  `project-migrate`'s `adopt_family.py` doing `from .adopt_vn import
+  _FOREIGN_TAG_SUFFIX_RE`. The four affected `commands/*.md` now show the
+  actual working load incantation; all seven vendored test helpers
+  delegate to the shared helper instead of duplicating it. Companion to
+  #877; the original repro (a consumer-install path that didn't exist)
+  was already fixed by PR #763 — this closes the remaining
+  invocation-ergonomics gap the curator's re-verification against `main`
+  surfaced.
+
 - **`numeric_consistency`'s percent check no longer pairs unrelated
   numbers sharing a paragraph** (#854). The `X% of` proportion check
   validated a percent claim against the NEAREST fraction shape in its
