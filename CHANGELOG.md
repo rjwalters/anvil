@@ -219,6 +219,79 @@
   consistency checking, a structured facts-register companion input, and
   a full `nitas-mama` dogfood worked example.
 
+- **`anvil:proposal` — `cost_basis` knob for non-hardware proposals**
+  (#840). The proposal template, rubric, and audit assumed a priced,
+  vendor-sourced hardware BOM unconditionally (the Gossamer LAN worked
+  example's shape), leaving a partnership/integration proposal two bad
+  options: fabricate hardware-shaped line items, or omit mandated
+  sections and take a structural hit — the first being outright
+  dangerous in an outward-facing document. Adds a `cost_basis: quoted |
+  estimated | none` BRIEF frontmatter knob (default `quoted`,
+  byte-identical to prior behavior), mirroring the `recommendation_target`
+  precedent: `load_cost_basis()` in the skill's `lib/project_brief.py`
+  (lenient, closed-set, never raises); `templates/proposal.tex.j2`
+  section 7 branches on the resolved value (`estimated` keeps the three
+  priced tables but estimate-labels every caption; `none` drops the BOM
+  requirement for a short "Cost Basis" section deferring commercial
+  terms to Open Decisions); `rubric.md` gains a "Dim 6 — `cost_basis`
+  calibration" section so an unsourced estimate in an `estimated` thread
+  isn't scored as a sourceability defect; and `proposal-audit` step 7
+  skips the vendor-quote back-check under `none`, substituting an
+  estimate-basis check under `estimated`.
+
+- **`anvil:proposal` — `--polish` operator-directed revision flag**
+  (#862). `proposal-revise`'s step-4 combined-advance pre-check correctly
+  refused to revise an already-passing version, but its parenthetical
+  recommended **manual state surgery** as the workaround — deleting a
+  critic verdict sibling (destroying immutable evidence) or hand-editing
+  `_progress.json` (forging state the framework derives). Adopts the
+  `--polish "<reason>"` contract from
+  `anvil/lib/snippets/directed_revision.md` (the memo/primer precedent):
+  it bypasses the step-4 pre-check *only*, requires a non-empty reason,
+  records `metadata.revision_mode` / `metadata.revise_force_reason` as an
+  audit trail, composes with the existing `--scope` severity filter, and
+  grants no inherited credit on the next critic pass. `proposal` moves
+  from "pending" to "adopted" in the shared snippet.
+
+- **`anvil:project-book` — `chapter_filename` resolves as a per-thread
+  `{slug}` template** (#864). `build.chapter_filename` was one fixed,
+  project-wide bare filename joined verbatim onto every thread's resolved
+  version dir, which cannot express `anvil:memoir`'s slug-echo body
+  contract (`<slug>.tex`, "never `chapter.tex`" per #295) — so every
+  memoir thread in a book build failed the chapter-source check, staged a
+  placeholder, and warned "resolved version has no `chapter.tex`"
+  (canary: the 15-thread `walters-family-tree` project, which had shipped
+  a consumer-side staging script as the workaround). Two composed
+  changes: `collect.py::resolve_chapter_filename` substitutes a literal
+  `{slug}` token with the thread's own slug before locating the source
+  (a token `.replace()`, deliberately not `str.format` — a filename
+  carrying unbalanced braces must never raise mid-build, and a template
+  with no token passes through unchanged, so every pre-existing config is
+  byte-identical); and `config.py::BookConfig.chapter_filename_for()`
+  picks the effective per-document template, an explicit BRIEF value
+  winning project-wide, else a slug-echo artifact type
+  (`SLUG_ECHO_ARTIFACT_TYPES`, today just `memoir`) defaulting to
+  `{slug}.tex`.
+
+- **`anvil:memoir` — at-cap iteration semantics and the BRIEF override in
+  the BLOCKED notice** (#869). `memoir-revise`'s iteration-cap check was a
+  two-line gesture ("at cap → report BLOCKED") that never defined "at
+  cap", never mentioned the paired BRIEF override exists, and carried the
+  sibling skills' off-by-one parenthetical. A canary chapter landed
+  `AUDITED` at iteration 4/4 — healthy, terminal, and indistinguishable
+  in the reports from a thread one blocked pass from refusal. Step 3 now
+  documents the full cap resolution order (BRIEF paired override →
+  `_progress.json` fallback → `DEFAULT_MAX_ITERATIONS`), the explicit
+  `N + 1 > effective_max_iterations` predicate, and a refuse/warn/proceed
+  table at the ceiling — the combined-verdict pre-check runs first, so a
+  clean terminus at `iteration == cap` is a normal `AUDITED` terminus,
+  never "capped". Adds the BLOCKED-notice contract ported from
+  `memo-revise` (state line, trajectory, override pointer, prior
+  rationale echoed verbatim when an elevated cap is already active) plus
+  an explicit "never raises the cap itself" non-goal, and mirrors the
+  resolved `max_iterations` + `iteration_cap_rationale` into every version
+  dir's `_progress.json`.
+
 ### Fixed
 
 - **Shared loader for hyphenated skill `lib/` packages, replacing seven
@@ -296,6 +369,109 @@
   `anvil/lib -> .anvil/anvil/lib`, rather than fixing the path-resolution
   logic itself (the constant was correct once the file it expects actually
   exists at that path).
+
+- **`sidecar`'s `.bak` replace surface hardened** (#885). Three narrow
+  residuals surfaced during Judge review of PR #884, all in
+  `anvil/lib/sidecar.py`'s `stage_replace` / `commit_replace` /
+  `abort_replace` / `recover_interrupted_replace` family. (1)
+  `stage_replace()` unconditionally `rmtree`d an existing backup before
+  its move-aside rename — including one that `recover_interrupted_replace`
+  had *deliberately preserved* under its "never deletes content it cannot
+  prove is preserved" invariant, which the consuming doc's very next
+  prescribed action would then destroy silently. It now refuses with
+  `FileExistsError` (naming the unpreserved files) when the backup holds
+  content not proven present in `final_dir`. (2) The redundancy predicate
+  `_unpreserved_backup_entries()` is **content-aware** rather than
+  name-only: it recurses into subdirectories and compares each file's
+  size + content hash against its `final_dir` counterpart, and both
+  `recover_interrupted_replace()` and `stage_replace()` share the one
+  predicate. (3) `staged_sidecar()` gains an
+  `allow_orphaned_backup=False` default, applying the orphaned-backup
+  guard `stage_enter`/`commit_staged` already carried;
+  `project-migrate/lib/adopt_review.py`'s `_convert_one`/`_rescore_one`,
+  which legitimately manage their own same-named `.bak` move-aside around
+  the call, opt in explicitly.
+
+- **`anvil:project-migrate` renames foreign `.md` bodies and accepts
+  `--artifact-type` on bare-shape migration** (#878). `anvil:essay` names
+  `project-migrate` as the supported path for migrating a consumer's
+  `post.md` corpus, but bare-shape synthesis defaulted every thread to
+  `artifact_type: investment-memo` and could never rename a body filename
+  outside anvil's own historical fixed-name set — so a foreign pipeline
+  that had independently converged on the anvil grammar
+  (`<slug>.<n>/post.md` + `<slug>.<n>.review/`) planned the directory
+  nesting correctly and **zero body-file renames**, the circular gap
+  being that the declaration needed for the rename would have to come
+  from the very BRIEF the run was synthesizing. `build_plan()` /
+  `orchestrate.run()` now accept `--artifact-type` (validated against the
+  two-tier #394 registry, `PlanError` pre-mutation on an unregistered
+  value), applied to every synthesized `documents:` entry on a bare
+  thread with no TODO marker. Independently, the planner detects a single
+  consistent non-canonical `.md` body filename per bare thread and plans
+  its rename to `<slug>.md` — reviewable in the dry-run plan,
+  TODO-marked — leaving multiple distinct candidates unrenamed with an
+  operator-facing ambiguity note.
+
+- **`render_gate` glyph verification no longer counts glyphs inside LaTeX
+  comments** (#856). `_verify_source_glyphs`'s source sweep counted every
+  non-ASCII codepoint in `.tex` files, including characters used purely in
+  comment-only section rules (`%% ── 4. The Item Pool ──`, box-drawing
+  U+2500). Those glyphs never reach the PDF, so the censusapi consumer saw
+  541 source occurrences vs 0 rendered reported as a glyph failure —
+  shape-identical to a real fontspec fallback silently dropping a
+  character, and costing a manual adjudication pass.
+  `_strip_nonrendered_regions` now takes a `latex` kwarg and strips
+  unescaped `%`-to-end-of-line before the codepoint sweep, mirroring
+  `numeric_consistency`'s existing flavor-gated LaTeX comment mask (a bare
+  `%` in markdown is a percent sign, not a comment opener);
+  `_verify_source_glyphs` gates it on `path.suffix == ".tex"`. Two
+  regression fixtures prove comment-stripping doesn't swallow a real glyph
+  drop.
+
+- **`render_gate` placeholder patterns cover qualified `[TBD …]` and add
+  `[FIXME …]`** (#855). `DEFAULT_PLACEHOLDER_PATTERNS` and
+  `DEFAULT_MEMO_PLACEHOLDER_PATTERNS` matched `[TBD]` only exactly, so
+  qualified forms like `[TBD: vendor quote]` slipped past the placeholder
+  gate silently, and there was no `[FIXME …]` bracket pattern at all (only
+  the memo-side `<!-- FIXME … -->` comment form). Both TBD patterns now
+  accept an optional trailing qualifier and both tuples gain the FIXME
+  analog, with a doc comment at each tuple recording that `[PENDING …]`
+  markers are **deliberately** excluded — handled by the dedicated
+  `anvil/lib/pending_marker.py` gate (#842) — so a future contributor
+  doesn't reintroduce the redundant pattern.
+
+- **`numeric_consistency` no longer parses season/fiscal-year labels as
+  fractions** (#836). Labels like `2018/19` and `2018/2019` were matched
+  by the bare slash-fraction pattern in `_FRACTION_RES` and fed to
+  `_extract_shapes` as fraction evidence (a=2018, b=19), producing a bogus
+  `percent_mismatch` whenever an unrelated "X% of" claim shared a
+  paragraph — canary: the studio `all-dogs-go-to-heaven` memo thread,
+  where a "2018/19 baseline" citation tripped the advisory on both
+  `memo.1` and `memo.2`, the standing workaround being a per-line
+  lint-disable comment in the body. Adds
+  `_is_season_fiscal_year_label()`, reusing the existing
+  `_YEAR_MIN`/`_YEAR_MAX` calendar-year heuristic, scoped by identity
+  check to `_SLASH_FRACTION_RE` only — the "of"/"out of" fraction pattern
+  and `_PAIR_RES` are untouched, so `47 of 94` / `47/94` and non-year
+  fractions like `12/45` keep working unchanged.
+
+- **`install-anvil.sh` no longer copies dev-machine `__pycache__` /
+  `*.pyc` / `.DS_Store` cruft into consumer installs** (#818). All four
+  `cp -R`-based tree-copy helpers (`copy_tree`, `replace_tree`,
+  `copy_lib_preserving_overrides`, `copy_skill_body_excluding_lib`)
+  physically shipped whatever bytecode caches a dev checkout had
+  accumulated from a normal `pytest` or `pip install -e .` run, making
+  installs non-deterministic and risking bytecode compiled under the wrong
+  Python version — the same bug class already fixed for `project-share`
+  exports in #756. Adds a shared `strip_pycache_artifacts` helper
+  (portable `find -exec` across BSD/GNU find) called at the end of all
+  four copy sites, and excludes the same patterns from the
+  override-detection hash/diff helpers (`dir_hash`, `dir_hash_body_only`,
+  `dirs_identical`, `dirs_identical_body_only`) — otherwise a source tree
+  carrying stray build artifacts would no longer hash identically to its
+  (always cruft-free, post-strip) installed copy, and every
+  untouched-since-install skill would spuriously read as
+  consumer-modified on the very next run.
 
 ## [0.10.1] — 2026-07-21
 
