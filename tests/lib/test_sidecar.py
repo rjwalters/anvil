@@ -31,6 +31,7 @@ from __future__ import annotations
 import itertools
 import json
 import logging
+import shutil
 from pathlib import Path
 
 import pytest
@@ -40,11 +41,16 @@ from anvil.lib.review_schema import Kind, Review, Score
 from anvil.lib.sidecar import (
     STAGING_SUFFIX,
     SidecarIncompleteError,
+    abort_replace,
+    backup_path_for,
     cleanup_one_staging,
     cleanup_stale_staging,
+    commit_replace,
     commit_staged,
     main,
+    recover_interrupted_replace,
     stage_enter,
+    stage_replace,
     staged_sidecar,
     staging_path_for,
 )
@@ -867,3 +873,495 @@ def test_cli_missing_subcommand_errors(tmp_path):
     """Invoking with no subcommand is an argparse error (SystemExit)."""
     with pytest.raises(SystemExit):
         main([])
+
+
+# ---------------------------------------------------------------------------
+# Migrated-corpus replace surface (issue #881)
+# ---------------------------------------------------------------------------
+
+
+def test_stage_replace_moves_dir_aside_and_copies_contents(tmp_path):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy foreign review prose")
+
+    staging = stage_replace(final)
+
+    assert staging == staging_path_for(final)
+    assert not final.exists()
+    assert backup_path_for(final).exists()
+    assert (staging / "review.md").read_text() == "legacy foreign review prose"
+
+
+def test_stage_replace_refuses_when_final_dir_absent(tmp_path):
+    final = tmp_path / "thread.1.review"
+    with pytest.raises(FileNotFoundError):
+        stage_replace(final)
+
+
+def test_stage_replace_refuses_when_final_dir_already_recognizable(tmp_path):
+    """The #350 immutability guard stays intact: a REAL anvil review is
+    never replaced, even via the new #881 surface.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    _write_all(final, MEMO_REVIEW_REQUIRED)  # a real recognizable review
+
+    with pytest.raises(FileExistsError):
+        stage_replace(final)
+
+    # Untouched — no move-aside happened.
+    assert final.exists()
+    for name in MEMO_REVIEW_REQUIRED:
+        assert (final / name).exists()
+    assert not backup_path_for(final).exists()
+
+
+def test_stage_replace_recognizable_via_canonical_review_json(tmp_path):
+    """A sidecar carrying only `_review.json` (no legacy triple) is also
+    recognized and refused — the same recognizability rule `essay-review`'s
+    step 1 must use, not a bare-existence check.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / CANONICAL_REVIEW_FILENAME).write_text("{}")
+
+    with pytest.raises(FileExistsError):
+        stage_replace(final)
+
+
+def test_stage_replace_then_commit_replace_round_trip(tmp_path):
+    """The full #881 recipe: replace an occupied-but-unrecognized dir with
+    a genuine new review while preserving the foreign content byte-
+    identical alongside it.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy foreign review prose")
+
+    staging = stage_replace(final)
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+
+    required = ("review.md",) + MEMO_REVIEW_REQUIRED
+    committed = commit_replace(final, required)
+
+    assert committed == final
+    assert final.exists()
+    assert not staging.exists()
+    assert not backup_path_for(final).exists()
+    # Foreign content preserved byte-identical under its original name.
+    assert (final / "review.md").read_text() == "legacy foreign review prose"
+    # New sidecar files landed alongside it.
+    for name in MEMO_REVIEW_REQUIRED:
+        assert (final / name).exists()
+    # The merged dir is now a recognizable anvil review (idempotent-skip
+    # on any future rerun; discoverable by discover_critics).
+    from anvil.lib.critics import _has_recognizable_review
+
+    assert _has_recognizable_review(final)
+
+
+def test_commit_replace_missing_required_preserves_staging_and_backup(tmp_path):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy")
+
+    staging = stage_replace(final)
+    _write_all(staging, ["verdict.md", "scoring.md"])  # incomplete
+
+    with pytest.raises(SidecarIncompleteError):
+        commit_replace(final, ("review.md",) + MEMO_REVIEW_REQUIRED)
+
+    assert not final.exists()
+    assert staging.exists()
+    assert backup_path_for(final).exists()
+
+
+def test_commit_replace_missing_staging_dir_raises(tmp_path):
+    final = tmp_path / "thread.1.review"
+    with pytest.raises(FileNotFoundError):
+        commit_replace(final, ("verdict.md",))
+
+
+def test_abort_replace_restores_backup_and_discards_staging(tmp_path):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("to be restored")
+
+    staging = stage_replace(final)
+    (staging / "verdict.md").write_text("partial write")
+
+    restored = abort_replace(final)
+
+    assert restored is True
+    assert final.exists()
+    assert (final / "review.md").read_text() == "to be restored"
+    assert not (final / "verdict.md").exists()
+    assert not staging.exists()
+    assert not backup_path_for(final).exists()
+
+
+def test_abort_replace_idempotent_noop_when_nothing_to_abort(tmp_path):
+    final = tmp_path / "thread.1.review"
+    assert abort_replace(final) is False
+    assert not final.exists()
+
+
+def test_abort_replace_does_not_clobber_a_final_dir_that_reappeared(tmp_path):
+    """Defensive: if final_dir exists (e.g. commit_replace already ran),
+    abort_replace must not overwrite it with a stale backup.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy")
+
+    staging = stage_replace(final)
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+    commit_replace(final, ("review.md",) + MEMO_REVIEW_REQUIRED)
+
+    # Backup already removed by commit_replace; final_dir now the real one.
+    assert abort_replace(final) is False
+    assert (final / "review.md").read_text() == "legacy"
+
+
+# ---------------------------------------------------------------------------
+# CLI surface — replace / commit-replace / abort-replace (issue #881)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_replace_prints_staging_path_and_exit_zero(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy")
+
+    rc = main(["replace", str(final)])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out == str(staging_path_for(final))
+    assert (staging_path_for(final) / "review.md").read_text() == "legacy"
+
+
+def test_cli_replace_refuses_absent_final_dir_exit_three(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    rc = main(["replace", str(final)])
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "does not exist" in err
+
+
+def test_cli_replace_refuses_recognizable_final_dir_exit_three(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    _write_all(final, MEMO_REVIEW_REQUIRED)
+
+    rc = main(["replace", str(final)])
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "recognizable" in err
+
+
+def test_cli_replace_write_commit_replace_happy_path(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy foreign review prose")
+
+    assert main(["replace", str(final)]) == 0
+    staging = Path(capsys.readouterr().out.strip())
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+
+    required = "review.md," + ",".join(MEMO_REVIEW_REQUIRED)
+    rc = main(["commit-replace", str(final), "--required", required])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out == str(final)
+    assert final.exists()
+    assert not staging.exists()
+    assert (final / "review.md").read_text() == "legacy foreign review prose"
+    for name in MEMO_REVIEW_REQUIRED:
+        assert (final / name).exists()
+
+
+def test_cli_commit_replace_missing_required_exit_one_preserves_staging_and_backup(
+    tmp_path, capsys
+):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("legacy")
+
+    main(["replace", str(final)])
+    staging = Path(capsys.readouterr().out.strip())
+    (staging / "verdict.md").write_text("v")
+
+    rc = main(
+        ["commit-replace", str(final), "--required", "review.md,verdict.md,scoring.md"]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "scoring.md" in err
+    assert not final.exists()
+    assert staging.exists()
+    assert backup_path_for(final).exists()
+
+
+def test_cli_abort_replace_restores_backup(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("to be restored")
+
+    main(["replace", str(final)])
+    capsys.readouterr()  # drain
+
+    rc = main(["abort-replace", str(final)])
+    assert rc == 0
+    assert "restored" in capsys.readouterr().out
+    assert final.exists()
+    assert (final / "review.md").read_text() == "to be restored"
+
+
+def test_cli_abort_replace_idempotent_noop(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    rc = main(["abort-replace", str(final)])
+    assert rc == 0
+    assert "nothing to restore" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Cross-session replace recovery (issue #881 review feedback)
+# ---------------------------------------------------------------------------
+#
+# abort_replace() closes the SAME-session failure (the caller's except handler
+# runs). It cannot close the CROSS-session one: when the process that called
+# stage_replace() dies before reaching any handler, final_dir is absent and the
+# only copy of its former content is in a `.bak` sibling that neither
+# cleanup_one_staging nor cleanup_stale_staging recognizes. These tests pin the
+# entry-step recovery sweep (recover_interrupted_replace) and the
+# defense-in-depth refusals that make the silent-loss path unreachable.
+
+
+def _simulate_dead_session_mid_replace(final: Path) -> Path:
+    """stage_replace + partial writes, then the session vanishes — no
+    abort_replace, no commit_replace. Returns the orphaned staging dir."""
+    staging = stage_replace(final)
+    (staging / "verdict.md").write_text("half-written verdict")
+    return staging
+
+
+def test_dot_bak_is_not_swept_by_either_tmp_sweep(tmp_path):
+    """Pins the asymmetry that made the loss silent: the `.bak` crash path is
+    invisible to both `.tmp` sweeps."""
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY AUDIT TRAIL\n")
+
+    _simulate_dead_session_mid_replace(final)
+
+    assert cleanup_one_staging(final) is True  # sweeps the .tmp only
+    assert cleanup_stale_staging(tmp_path) == []  # never matches .bak
+    assert backup_path_for(final).exists()
+    assert not final.exists()
+
+
+def test_recover_interrupted_replace_restores_after_a_dead_session(tmp_path):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY AUDIT TRAIL\n")
+
+    staging = _simulate_dead_session_mid_replace(final)
+
+    # A brand-new process (no handler, no context) recovers at entry.
+    assert recover_interrupted_replace(final) is True
+
+    assert final.exists()
+    assert (final / "review.md").read_text() == "LEGACY AUDIT TRAIL\n"
+    assert not (final / "verdict.md").exists()  # partial write discarded
+    assert not staging.exists()
+    assert not backup_path_for(final).exists()
+
+
+def test_recover_interrupted_replace_is_noop_without_a_backup(tmp_path):
+    final = tmp_path / "thread.1.review"
+    assert recover_interrupted_replace(final) is False
+
+    final.mkdir()
+    (final / "review.md").write_text("untouched")
+    assert recover_interrupted_replace(final) is False
+    assert (final / "review.md").read_text() == "untouched"
+
+
+def test_recover_interrupted_replace_is_idempotent(tmp_path):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY\n")
+    _simulate_dead_session_mid_replace(final)
+
+    assert recover_interrupted_replace(final) is True
+    assert recover_interrupted_replace(final) is False
+    assert (final / "review.md").read_text() == "LEGACY\n"
+
+
+def test_recover_drops_redundant_backup_after_a_landed_swap(tmp_path):
+    """Crash in commit_replace's sub-millisecond window between the rename
+    and the backup drop: final_dir is correct and the backup is redundant."""
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY\n")
+
+    staging = stage_replace(final)
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+    staging.rename(final)  # commit_replace's rename... and then the kill.
+    assert backup_path_for(final).exists()
+
+    assert recover_interrupted_replace(final) is True
+    assert not backup_path_for(final).exists()
+    assert (final / "review.md").read_text() == "LEGACY\n"
+
+
+def test_recover_keeps_a_backup_holding_unpreserved_content(tmp_path):
+    """Never deletes content it cannot prove is preserved: a backup entry
+    absent from final_dir keeps the whole backup on disk."""
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY\n")
+    (final / "notes.md").write_text("side notes\n")
+
+    staging = stage_replace(final)
+    (staging / "notes.md").unlink()  # the swap would have dropped this
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+    staging.rename(final)
+
+    assert recover_interrupted_replace(final) is False
+    backup = backup_path_for(final)
+    assert backup.exists()
+    assert (backup / "notes.md").read_text() == "side notes\n"
+
+
+def test_recover_ignores_a_backup_path_that_is_a_file(tmp_path):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    backup_path_for(final).write_text("not a directory")
+
+    assert recover_interrupted_replace(final) is False
+    assert backup_path_for(final).is_file()
+
+
+def test_stage_enter_refuses_while_an_orphaned_backup_exists(tmp_path):
+    """Defense in depth: the fresh-staging path cannot commit over the gap
+    an interrupted replace left behind, even if the entry sweep is skipped."""
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY AUDIT TRAIL\n")
+    _simulate_dead_session_mid_replace(final)
+    cleanup_one_staging(final)
+
+    with pytest.raises(FileExistsError) as exc:
+        stage_enter(final)
+    assert "recover-replace" in str(exc.value)
+
+    # The legacy content is still recoverable — nothing was lost.
+    assert recover_interrupted_replace(final) is True
+    assert (final / "review.md").read_text() == "LEGACY AUDIT TRAIL\n"
+
+
+def test_staged_sidecar_is_exempt_from_the_orphaned_backup_guard(tmp_path):
+    """The context manager is deliberately NOT guarded: it is reachable only
+    from a live Python driver holding the `with` block open (whose `except`
+    path is guaranteed to run), and `project-migrate`'s adopt_review driver
+    legitimately manages its own same-named `.bak` move-aside around it.
+    Guarding here would break that caller for no crash-window benefit.
+    """
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY\n")
+
+    # Exactly adopt_review.py::_convert_one's shape: driver-owned move-aside
+    # to the same .bak path, then staged_sidecar into the vacated name.
+    backup = backup_path_for(final)
+    final.rename(backup)
+    with staged_sidecar(final, MEMO_REVIEW_REQUIRED) as staging:
+        _write_all(staging, MEMO_REVIEW_REQUIRED)
+        (staging / "review.md").write_text((backup / "review.md").read_text())
+    shutil.rmtree(backup)
+
+    assert (final / "review.md").read_text() == "LEGACY\n"
+
+
+def test_commit_staged_refuses_while_a_backup_exists(tmp_path):
+    """Mis-sequencing guard: `commit` instead of `commit-replace` after a
+    `replace` would strand the backup — refuse instead."""
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY\n")
+
+    staging = stage_replace(final)
+    _write_all(staging, MEMO_REVIEW_REQUIRED)
+
+    with pytest.raises(FileExistsError) as exc:
+        commit_staged(final, MEMO_REVIEW_REQUIRED)
+    assert "recover-replace" in str(exc.value)
+    assert not final.exists()
+
+    # commit_replace (the right call) still works from that exact state.
+    commit_replace(final, ("review.md",) + tuple(MEMO_REVIEW_REQUIRED))
+    assert (final / "review.md").read_text() == "LEGACY\n"
+
+
+def test_stage_replace_error_points_at_recovery_when_a_backup_exists(tmp_path):
+    """The misleading-message half of the review feedback: with a `.bak`
+    holding the only copy, stage_replace must NOT steer at stage_enter."""
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY\n")
+    _simulate_dead_session_mid_replace(final)
+    cleanup_one_staging(final)
+
+    with pytest.raises(FileNotFoundError) as exc:
+        stage_replace(final)
+    message = str(exc.value)
+    assert "recover_interrupted_replace" in message
+    assert "recover-replace" in message
+    # stage_enter is named only to warn AGAINST it, never as the remedy.
+    assert "do NOT fall through to stage_enter" in message
+
+
+def test_stage_replace_absent_dir_message_unchanged_without_a_backup(tmp_path):
+    """Regression: the ordinary absent-final_dir message still steers at
+    stage_enter when there is genuinely nothing to recover."""
+    final = tmp_path / "thread.1.review"
+    with pytest.raises(FileNotFoundError) as exc:
+        stage_replace(final)
+    assert "stage_enter" in str(exc.value)
+    assert "recover_interrupted_replace" not in str(exc.value)
+
+
+def test_cli_recover_replace_restores_after_a_dead_session(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY AUDIT TRAIL\n")
+
+    main(["replace", str(final)])  # session dies right here
+    capsys.readouterr()  # drain
+
+    rc = main(["recover-replace", str(final)])
+    assert rc == 0
+    assert "recovered" in capsys.readouterr().out
+    assert (final / "review.md").read_text() == "LEGACY AUDIT TRAIL\n"
+
+
+def test_cli_recover_replace_idempotent_noop(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    rc = main(["recover-replace", str(final)])
+    assert rc == 0
+    assert "nothing to recover" in capsys.readouterr().out
+
+
+def test_cli_stage_refuses_orphaned_backup_exit_three(tmp_path, capsys):
+    final = tmp_path / "thread.1.review"
+    final.mkdir()
+    (final / "review.md").write_text("LEGACY\n")
+    main(["replace", str(final)])
+    main(["cleanup", str(final)])
+    capsys.readouterr()  # drain
+
+    rc = main(["stage", str(final)])
+    assert rc == 3
+    assert "recover-replace" in capsys.readouterr().err
