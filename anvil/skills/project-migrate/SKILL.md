@@ -175,13 +175,19 @@ nothing to match.
 | `/anvil:project-migrate <project-dir>`      | **Dry-run.** Detect current shape, emit a per-doc migration plan. **No mutations** to disk.   |
 | `/anvil:project-migrate <project-dir> --apply` | Execute the plan atomically per doc. Use `git mv` when the project is under git.           |
 | `/anvil:project-migrate <project-dir> --report` | Emit a markdown report only (no plan, no mutations). Useful for portfolio surveys.        |
-
-All three main-mode forms above accept an optional `--artifact-type <type>` (issue #878): applied to every synthesized `documents:` entry on a BARE project instead of the inferred/defaulted value — closing the circularity where the correct declaration (e.g. `artifact_type: essay`) would otherwise have to come from the very BRIEF the run is synthesizing. See "Bare sub-state" below.
 | `/anvil:project-migrate --enroll <file> [...]` | **Single-file enrollment** (issue #406): wrap loose `.md`/`.tex` files into project threads. Dry-run by default; `--apply` executes. Optional `--project <dir>`, `--slug <slug>`, `--artifact-type <type>`. |
 | `/anvil:project-migrate --adopt-vn <dir>` | **vN report-dir adoption** (issue #432 Phase 1): adopt a foreign `v{N}/` family (+ `v{N}.review/` siblings) into `<project>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Optional `--slug <slug>`, `--artifact-type <type>`. |
 | `/anvil:project-migrate --adopt-family <dir> --tag-map <file> --artifact-type <type>` | **Letter-family adoption** (issue #440 — Phase 2 of #432): adopt foreign `{Project}.{Letter}.{N}` families (+ foreign-tagged critic siblings, mapped declaratively) into `<dir>/<slug>/<slug>.{N}/`. Dry-run by default; `--apply` executes. Slugs are derived (no `--slug`); `--artifact-type` is REQUIRED. |
 | `/anvil:project-migrate --adopt-review <dir>` | **Foreign `review.md` stub conversion** (issue #454 — Phase 3a of #432): on an already-adopted tree, convert each `<slug>.{N}.<tag>/` critic sibling holding only a single-file prose `review.md` into a recognizable-but-explicitly-**unscored** `_review.json` stub (+ `_meta.json` foreign-provenance marker), preserving `review.md` byte-identical. **NO LLM, NO synthesized scores.** Dry-run by default; `--apply` executes. |
 | `/anvil:project-migrate --adopt-review <dir> --rescore` | **Operator-driven LLM rescore of stubs** (issue #507 — Phase 3b of #432): on a tree carrying Phase-3a stubs, resolve each stub's target anvil rubric and (with the operator/LLM step in the slash-command runtime supplying per-dimension scores) turn the unscored stub into a real scored `_review.json` (`unscored: false`), stamping `rubric_id` / `rubric_total` / `advance_threshold` + `rescored_from: foreign-adopted` lineage; `review.md` byte-identical. Unresolvable stubs are SKIPPED, never guessed. Dry-run by default; `--apply` (operator-gated) executes. |
+
+All three main-mode forms in the table above (dry-run, `--apply`,
+`--report`) accept an optional `--artifact-type <type>` (issue #878):
+applied to every synthesized `documents:` entry on a BARE project
+instead of the inferred/defaulted value — closing the circularity where
+the correct declaration (e.g. `artifact_type: essay`) would otherwise
+have to come from the very BRIEF the run is synthesizing. See "Bare
+sub-state" below.
 
 See `commands/project-migrate.md` for the operator-facing contract.
 

@@ -982,6 +982,10 @@ def _foreign_md_body_candidates(thread: ThreadInventory) -> List[str]:
     target_body = f"{thread.slug}.md"
     excluded = set(_SKILL_FIXED_BODY_FILENAMES) | set(_RETAINED_BODY_FILENAMES)
     excluded.add(target_body)
+    # Defensive only: ``changelog.md`` is already filtered out upstream by
+    # ``_observed_body_filenames`` (anvil/lib/project_detect.py), so it never
+    # reaches ``ThreadInventory.body_filenames``. Kept so this predicate stays
+    # correct on its own terms if that upstream filter ever moves.
     excluded.add("changelog.md")
     return sorted({b for b in thread.body_filenames if b not in excluded})
 
