@@ -43,6 +43,7 @@ from anvil.lib.rhetoric_lint import (
     RULE_KIND_PHRASE,
     RULE_KIND_REGEX,
     RhetoricLintResult,
+    _collapse_markdown_links,
     _scannable_lines,
     _sentence_word_counts,
     _validate_rule,
@@ -662,6 +663,106 @@ def test_line_numbers_preserved_across_exclusions():
     text = "```\ncode\ncode\n```\nWe delve into it.\n"
     hits = _active(lint_rhetoric(text))
     assert [(f.rule_id, f.line) for f in hits] == [("no-delve", 5)]
+
+
+# ---------------------------------------------------------------------------
+# Markdown link collapsing (issue #889): URL path segments must not
+# inflate the word-count denominator or the long_sentence word counts.
+# ---------------------------------------------------------------------------
+
+
+def test_collapse_markdown_links_strips_url_keeps_text():
+    """``[text](url)`` -> ``text``; the url segment vanishes entirely."""
+    scan_lines = _scannable_lines(
+        "See [the target spec](https://github.com/2AMLogic/gf180-bandgap/"
+        "blob/main/README.md) for details.\n"
+    )
+    collapsed = _collapse_markdown_links(scan_lines)
+    joined = "\n".join(collapsed)
+    assert "the target spec" in joined
+    assert "github" not in joined
+    assert "README" not in joined
+
+
+def test_collapse_markdown_links_preserves_line_count():
+    """Collapsing must not change the number of scan lines (line-anchored
+    findings from other rules stay pinned to the right source line)."""
+    text = "Line one.\n[a link](https://example.com/x)\nLine three.\n"
+    scan_lines = _scannable_lines(text)
+    collapsed = _collapse_markdown_links(scan_lines)
+    assert len(collapsed) == len(scan_lines)
+
+
+def test_collapse_markdown_links_handles_hard_wrapped_bracket_text():
+    """The exact shape reported in issue #889: bracket text that spans a
+    hard line wrap is still collapsed, not left dangling with the URL
+    exposed on the second line."""
+    text = (
+        "gf180-bandgap's [target spec is\n"
+        "ratified](https://github.com/2AMLogic/gf180-bandgap/blob/main/"
+        "README.md):\n"
+        "\n"
+        "the design is complete.\n"
+    )
+    scan_lines = _scannable_lines(text)
+    collapsed = _collapse_markdown_links(scan_lines)
+    joined = "\n".join(collapsed)
+    assert "target spec is" in joined
+    assert "ratified" in joined
+    assert "github" not in joined
+    assert "2AMLogic" not in joined
+    # Line count is unchanged — per-line findings (if any landed near
+    # the link) still anchor to the original source line.
+    assert len(collapsed) == len(scan_lines) == len(text.splitlines())
+
+
+def test_word_count_identical_raw_vs_url_collapsed():
+    """``lint_rhetoric``'s word count matches manually pre-collapsing the
+    same link targets — the acceptance criterion's "measured both ways"
+    equivalence, now true by construction rather than by double-reporting."""
+    raw = (
+        "See [the first source](https://example.com/one/two/three) and "
+        "[a second source](https://example.com/four/five/six) for "
+        "the analysis.\n"
+    )
+    collapsed_by_hand = (
+        "See the first source and a second source for the analysis.\n"
+    )
+    raw_words = lint_rhetoric(raw).words
+    hand_words = lint_rhetoric(collapsed_by_hand).words
+    assert raw_words == hand_words
+
+
+def test_link_dense_body_density_does_not_move_with_link_count():
+    """Adding required links to an otherwise-unchanged body must not move
+    the long-sentence density metric (issue #889: one revision added
+    links to a *shorter* body and the density went up under the old
+    raw-markdown tokenizer)."""
+    long_sentence = " ".join(f"w{i}" for i in range(45)) + "."
+    filler = " ".join(f"f{i}" for i in range(1000 - 45)) + "."
+    body_no_links = f"{long_sentence} {filler}\n"
+    body_with_links = (
+        f"{long_sentence} {filler} See "
+        "[source one](https://example.com/aaaa/bbbb/cccc) and "
+        "[source two](https://example.com/dddd/eeee/ffff).\n"
+    )
+    words_no_links = lint_rhetoric(body_no_links).words
+    words_with_links = lint_rhetoric(body_with_links).words
+    # The added reader-visible prose ("See source one and source two.")
+    # legitimately adds six words; the URL segments must not add any.
+    assert words_with_links - words_no_links == 6
+
+
+def test_long_sentence_rule_unaffected_by_link_wrapping_url():
+    """A short, well-under-threshold sentence stays under threshold even
+    when its only link's URL is long and would have pushed a naive
+    per-line word count over 40 words."""
+    text = (
+        "Short sentence with a link to "
+        "[a page](https://example.com/very/long/path/segment/that/would/"
+        "inflate/a/naive/word/count/if/counted/as/words/here/too).\n"
+    )
+    assert _active(lint_rhetoric(text)) == []
 
 
 # ---------------------------------------------------------------------------

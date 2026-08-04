@@ -211,6 +211,117 @@ class TestBrokenCrossThreadRef(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Issue #889: link brackets whose text spans a hard line wrap
+# ---------------------------------------------------------------------------
+
+
+class TestHardWrappedBracketText(unittest.TestCase):
+    """Issue #889: a link's ``[bracket text]`` may itself span a hard
+    line wrap — the normal shape of hard-wrapped prose these skills
+    target. The critic must still enumerate (and validate) the link,
+    not silently drop it from the scan."""
+
+    def test_hard_wrapped_markdown_internal_link_is_enumerated(self):
+        """A wrapped bracket around a broken internal link still fires."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\n"
+                "See [the missing\n"
+                "chart](exhibits/fig-1.png) for details.\n",
+            )
+            result = resolve_hyperlinks(version_dir)
+            self.assertFalse(result.passed())
+            broken = [f for f in result.findings if not f.resolved]
+            self.assertEqual(len(broken), 1)
+            self.assertEqual(broken[0].link_class, CLASS_MARKDOWN_INTERNAL)
+            self.assertEqual(broken[0].target, "exhibits/fig-1.png")
+            # Raw text is normalized to a single line for display, even
+            # though the source wraps across two.
+            self.assertNotIn("\n", broken[0].raw)
+            self.assertIn("the missing", broken[0].raw)
+            self.assertIn("chart", broken[0].raw)
+
+    def test_hard_wrapped_markdown_internal_link_resolves_when_present(self):
+        """A wrapped bracket around a resolvable internal link resolves
+        cleanly (mirrors the studio session's silent-pass concern: the
+        gate must be able to see the link at all, in both directions)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            exhibits = version_dir / "exhibits"
+            exhibits.mkdir()
+            (exhibits / "fig-1.png").write_bytes(b"\x89PNG\r\n")
+            _write_body(
+                version_dir,
+                "# Primary memo\n\n"
+                "See [the\nchart](exhibits/fig-1.png) for details.\n",
+            )
+            result = resolve_hyperlinks(version_dir)
+            self.assertTrue(result.passed())
+
+    def test_hard_wrapped_markdown_external_link_is_enumerated(self):
+        """The exact shape reported in issue #889: bracket text wraps,
+        target is an external URL, --check-external is off."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\n"
+                "gf180-bandgap's [target spec is\n"
+                "ratified](https://github.com/2AMLogic/gf180-bandgap/blob/"
+                "main/README.md):\n",
+            )
+            result = resolve_hyperlinks(version_dir, check_external=False)
+            ext = [
+                f for f in result.findings if f.link_class == CLASS_MARKDOWN_EXTERNAL
+            ]
+            self.assertEqual(len(ext), 1)
+            self.assertEqual(
+                ext[0].target,
+                "https://github.com/2AMLogic/gf180-bandgap/blob/main/README.md",
+            )
+
+    def test_multiple_wrapped_links_on_adjacent_lines_all_enumerated(self):
+        """Multiple links on adjacent wrapped lines are each found (not
+        just the first, or a merged/garbled union of the two)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\n"
+                "First [link\ntext](https://example.com/one) and second "
+                "[link\ntext two](https://example.com/two) both wrap.\n",
+            )
+            result = resolve_hyperlinks(version_dir, check_external=False)
+            ext = {
+                f.target
+                for f in result.findings
+                if f.link_class == CLASS_MARKDOWN_EXTERNAL
+            }
+            self.assertEqual(
+                ext, {"https://example.com/one", "https://example.com/two"}
+            )
+
+    def test_hard_wrapped_wiki_link_is_enumerated(self):
+        """A wiki-link whose target text wraps is still found."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            # Wiki-link targets are single-segment (no "/"), but the
+            # regex's target group is a character class that (like the
+            # markdown-link text group) matches newlines; exercise the
+            # same cross-line enumeration path.
+            _write_body(
+                version_dir,
+                "# Primary memo\n\nSee [[unknown\ndoc]] for context.\n",
+            )
+            result = resolve_hyperlinks(version_dir)
+            broken = [f for f in result.findings if not f.resolved]
+            self.assertEqual(len(broken), 1)
+            self.assertEqual(broken[0].link_class, CLASS_WIKI_LINK)
+
+
+# ---------------------------------------------------------------------------
 # AC3: Broken markdown internal link → major finding
 # ---------------------------------------------------------------------------
 
@@ -375,6 +486,105 @@ class TestExternalCheckOn(unittest.TestCase):
             self.assertFalse(result.passed())
             broken = [f for f in result.findings if not f.resolved]
             self.assertEqual(broken[0].reason, "HTTP 500")
+
+    def test_transient_timeout_retried_once_then_succeeds(self):
+        """Issue #889: a bare timeout on the first probe gets exactly one
+        retry before being reported broken. Two real-world sessions saw
+        a live URL fail with a transient timeout, then return 200 on an
+        immediate manual re-probe — this makes the critic self-heal the
+        same way instead of costing a reviewer a re-verification cycle."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\nSee [source](https://example.com/flaky).\n",
+            )
+            calls = {"n": 0}
+
+            def _fake_run(cmd, *args, **kwargs):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise subprocess.TimeoutExpired(cmd=cmd, timeout=5)
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout="200", stderr=""
+                )
+
+            with mock.patch(
+                "anvil.lib.hyperlink_resolver.subprocess.run",
+                side_effect=_fake_run,
+            ):
+                result = resolve_hyperlinks(version_dir, check_external=True)
+            self.assertTrue(result.passed())
+            self.assertEqual(calls["n"], 2)
+
+    def test_transient_timeout_retried_once_then_still_fails(self):
+        """A timeout on both the first probe AND the retry is reported
+        broken — the retry is exactly one attempt, not infinite."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\nSee [source](https://example.com/dead).\n",
+            )
+            calls = {"n": 0}
+
+            def _fake_run(cmd, *args, **kwargs):
+                calls["n"] += 1
+                raise subprocess.TimeoutExpired(cmd=cmd, timeout=5)
+
+            with mock.patch(
+                "anvil.lib.hyperlink_resolver.subprocess.run",
+                side_effect=_fake_run,
+            ):
+                result = resolve_hyperlinks(version_dir, check_external=True)
+            self.assertFalse(result.passed())
+            broken = [f for f in result.findings if not f.resolved]
+            self.assertEqual(broken[0].reason, "curl error: TimeoutExpired")
+            # Exactly one retry: two total probe attempts, not more.
+            self.assertEqual(calls["n"], 2)
+
+    def test_genuine_http_404_is_not_retried(self):
+        """A real 4xx is never retried — only the bare-timeout shape is."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\nSee [source](https://example.com/gone).\n",
+            )
+            with mock.patch(
+                "anvil.lib.hyperlink_resolver.subprocess.run",
+                side_effect=_fake_curl_factory(404),
+            ) as mocked:
+                result = resolve_hyperlinks(version_dir, check_external=True)
+            self.assertFalse(result.passed())
+            self.assertEqual(mocked.call_count, 1)
+
+    def test_curl_http_000_sentinel_retried_once_then_succeeds(self):
+        """curl's own on-the-wire failure sentinel (``%{http_code}`` ==
+        ``000``, surfaced as reason ``"HTTP 0"``) is also treated as a
+        transient-timeout shape and retried once."""
+        with tempfile.TemporaryDirectory() as tmp:
+            version_dir = _make_project(Path(tmp))
+            _write_body(
+                version_dir,
+                "# Primary memo\n\nSee [source](https://example.com/flaky2).\n",
+            )
+            calls = {"n": 0}
+
+            def _fake_run(cmd, *args, **kwargs):
+                calls["n"] += 1
+                code = "000" if calls["n"] == 1 else "200"
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout=code, stderr=""
+                )
+
+            with mock.patch(
+                "anvil.lib.hyperlink_resolver.subprocess.run",
+                side_effect=_fake_run,
+            ):
+                result = resolve_hyperlinks(version_dir, check_external=True)
+            self.assertTrue(result.passed())
+            self.assertEqual(calls["n"], 2)
 
     def test_curl_missing_graceful_degrade(self):
         """When curl is absent from PATH, external links are recorded as unverified."""
