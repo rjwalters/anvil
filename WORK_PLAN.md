@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-04 (hygiene-pass re-verification — #885 closed when PR #886 merged; the backlog remains fully empty: no open issues in any state, no open PRs)*
+*Last updated: 2026-08-05 (Guide triage cycle — issue #888 opened, curated, and labeled `loom:operator-only`; no other label-state changes)*
 
 ---
 
@@ -18,6 +18,10 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 ## Ready for Work (`loom:issue`)
 
 *Empty.* No open issues carry `loom:issue`.
+
+## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
+
+- **#888**: "review loop has no lookahead and no cross-version claim ledger — each round's fix creates the next round's defect" (`tier:goal-supporting`). Canary-surfaced structural critique of the review/revise loop across all artifact-class skills, not a single-skill bug: a `wave-one-bandgaps` essay thread took ~23 agent runs to converge, with three distinct failure modes documented (each round's fix creates the next round's defect; inherited text is never systematically re-checked; findings trickle instead of batching). Suggested acceptance criteria include a persistent cross-version claim ledger and findings that carry predicted downstream effects. Flagged `loom:operator-only` — this shapes the core review/revise primitive shared by all 14 artifact-class skills, so it needs human/Champion design judgment before promotion to `loom:issue`, not routine Guide triage.
 
 ## Blocked (`loom:blocked`)
 
@@ -37,7 +41,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Zero open issues, zero open PRs, as of 2026-08-04.** The backlog drained again on 2026-08-04, when five issues closed in one day: #877 (installer `.gitignore` omits `*.egg-info/`, PR #880), #878 (`project-migrate` cannot rename a foreign body filename, PR #882), #879 (consumer install points at a stale skill `lib/` path, PR #883), #881 (first `essay-review` after a migration cannot stage, PR #884), and #885 (`sidecar` `.bak` replace-surface hardening, PR #886). Nothing is ready, building, blocked, or in active triage, and `loom:urgent` stays empty since there is no open work to rank. Next action is whatever the Auditor, a human, or an Architect/Hermit proposal surfaces next — there is no pending Guide triage work.
+**One open issue (#888, curated + `loom:operator-only`), zero open PRs, as of 2026-08-05.** The backlog drained fully on 2026-08-04 (five issues closed that day: #877 via PR #880, #878 via PR #882, #879 via PR #883, #881 via PR #884, #885 via PR #886; see `WORK_LOG.md`), then #888 opened and was curated the same window. Nothing is ready, building, or blocked, and `loom:urgent` stays empty — #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action is a human or Champion review of #888's design tradeoffs.
 
 ### Recurring themes the next wave of issues will likely touch
 
