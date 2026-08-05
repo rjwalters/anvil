@@ -6,6 +6,9 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-07-31
 
+- **PR #839**: fix(memo): fall back to project-root BRIEF.md for recommendation_target (closes #837)
+- **PR #838**: fix(numeric-consistency): exclude season/fiscal-year labels from fraction parsing (closes #836)
+- **PR #835**: fix(guide): exempt pure docs-maintenance PRs from WORK_LOG entries (closes #834) — breaks the self-referential docs-PR treadmill (#827→#833 chain); a PR whose diff touches only WORK_LOG/WORK_PLAN/README no longer gets its own WORK_LOG line (PR #833 is the last of that chain to be recorded)
 - **PR #832**: docs: Guide document maintenance update (WORK_LOG entries for PR #830 and #831, which merged after generating themselves and so weren't recorded in their own runs)
 - **PR #831**: docs: Guide document maintenance update (WORK_LOG entry for PR #830, which merged after generating itself and so wasn't recorded in its own run)
 - **PR #830**: docs: Guide document maintenance update (WORK_LOG entry for PR #829, which merged after generating itself and so wasn't recorded in its own run)
@@ -15,6 +18,42 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - **PR #826**: docs: Guide document maintenance update (WORK_LOG/WORK_PLAN refresh for #824/PR #825 closure)
 - **PR #825**: fix: ignore .loom/.daemon.flags and .loom/runtimes/ in loom-managed gitignore block (closes #824)
 - **PR #821**: fix(install): strip __pycache__/*.pyc/.DS_Store cruft from every tree-copy site (closes #818)
+
+### 2026-08-04
+
+- **PR #892**: fix(lib): scan hyperlinks/rhetoric-lint across the whole body, not per line (closes #889) — `hyperlink_resolver` and `rhetoric_lint` now `finditer()` the joined body instead of `str.splitlines()`, so bracket text spanning a hard line wrap (the normal shape of hard-wrapped essay/memo prose) is enumerated instead of silently invisible
+- **PR #891**: fix(essay): exclude thread's own published form from voice.corpus calibration (closes #890)
+- **PR #887**: chore: repo hygiene pass — doc resync, CHANGELOG backfill, Repo Skills 0.7.0
+- **PR #886**: sidecar: harden the .bak replace surface (closes #885)
+- **PR #884**: fix(essay,sidecar): let essay-review land past a migrated-corpus review dir (closes #881)
+- **PR #883**: feat(lib): add shared skill_lib_loader for hyphenated skill lib/ packages (closes #879)
+- **PR #882**: fix(project-migrate): rename foreign .md bodies and accept --artifact-type on bare migration (closes #878)
+- **PR #880**: fix: append *.egg-info/ to .anvil/.gitignore for uv sync editable installs (closes #877)
+
+### 2026-08-03
+
+- **PR #871**: docs(memoir): define at-cap iteration semantics and surface the BRIEF override in the BLOCKED notice (closes #869)
+- **PR #874**: docs: fix the two iteration-cap off-by-one sites PR #873 missed (`state_machine.md`, `deck/SKILL.md`)
+- **PR #873**: docs: fix off-by-one iteration-cap parenthetical in nine skills (closes #872)
+- **Issue #876** (closed, not planned): duplicate of #872/#875, same off-by-one iteration-cap parenthetical — already fixed by PR #873/#874
+- **Issue #875** (closed, not planned): duplicate of #872, same off-by-one iteration-cap parenthetical — already fixed by PR #873/#874
+- **PR #870**: feat(provenance): add stable Anchor identity for drifting corpus citations (closes #868)
+- **PR #867**: feat(audit): distinguish perishable from durable tool_evidence verifications (closes #863)
+- **PR #866**: feat(project-book): resolve chapter_filename as a per-thread {slug} template (closes #864)
+- **PR #865**: feat(proposal): adopt --polish operator-directed revision flag (closes #862)
+
+### 2026-08-01
+
+- **PR #861**: feat(paper,report): add BRIEF/refs evidence-drift advisory across draft/revise/review (closes #857)
+- **PR #860**: fix(render_gate): broaden [TBD ...] and add [FIXME ...] bracket coverage (closes #855)
+- **PR #859**: fix(render_gate): strip LaTeX % comments before glyph source-counting (closes #856)
+- **PR #858**: fix(numeric_consistency): gate percent proportion claims on a shared lexical anchor (closes #854)
+- **PR #852**: feat(proposal): wire pending-marker gate into review/audit/revise/synthesize (closes #843)
+- **PR #851**: feat(pending-marker): adopt the placeholder gate in proposal/memo/report (closes #843, #845, #846)
+- **PR #850**: docs(paper): wire pending-marker gate into SKILL.md terminal rows + add lifecycle test (closes #844)
+- **PR #847**: feat(paper): add deterministic pending-measurement placeholder gate (closes #842)
+- **PR #848**: feat(proposal): add cost_basis knob for non-hardware proposals (closes #840)
+- **Issue #841** (closed): umbrella "pending measurement placeholder convention" — satisfied via decomposed sub-issues #842 (PR #847), #843/#845/#846 (PR #851), #844 (covered by #847)
 
 ### 2026-07-30
 
