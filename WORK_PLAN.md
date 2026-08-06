@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-06 (Guide triage cycle — issue #894 opened, curated, approved, and claimed by a Builder same-day; no other label-state changes)*
+*Last updated: 2026-08-06 (Judge pass — PR #896 merged, closing issue #894; no other label-state changes)*
 
 ---
 
@@ -13,11 +13,15 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-- **#894**: "Installer contract: version is scraped from CLAUDE.md prose, and machine-local fields are committed" (`tier:goal-supporting`). Two live correctness gaps in the installer contract shared across the Loom/Anvil/Repo Skills/squad tool family: (C8) `scripts/install-anvil.sh` regex-scrapes the version out of `CLAUDE.md` prose and fails hard on any rewording, while the root `VERSION` file exists but is empty; (C6) `.anvil/install-metadata.json` commits machine-local fields (`anvil_source` absolute path, `install_date`) instead of a gitignored sidecar, following the precedent set by Loom's `.loom/loom-source-path` and Repo Skills' `.claude/skills/repo/.install-local.json`. Opened, curated, approved, and claimed same-day (2026-08-06); worktree active at `.loom/worktrees/issue-894`, no PR yet.
+*Empty.* No open issues carry `loom:building`. Issue #894 (installer contract: version-source + machine-local sidecar gaps) closed 2026-08-06 via PR #896.
 
 ## Ready for Work (`loom:issue`)
 
 *Empty.* No open issues carry `loom:issue`.
+
+## PRs Awaiting Review (`loom:review-requested`)
+
+*Empty.* No open PRs.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -41,7 +45,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Two open issues as of 2026-08-06: #894 (`loom:building`, actively claimed) and #888 (curated + `loom:operator-only`, awaiting human/Champion design review), zero open PRs.** #894 was opened, curated, approved, and claimed by a Builder within the same session on 2026-08-06 — worktree `.loom/worktrees/issue-894` is live, no PR yet, and `loom-recover-orphans` confirms it is not orphaned. `loom:urgent` stays empty — the only unclaimed issue, #888, is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next actions: let #894's Builder finish and open a PR; separately, a human or Champion review of #888's design tradeoffs.
+**One open issue as of 2026-08-06: #888 (curated + `loom:operator-only`, awaiting human/Champion design review); zero open PRs.** Issue #894 closed via merged PR #896. `loom:urgent` stays empty — #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human or Champion review of #888's design tradeoffs.
 
 ### Recurring themes the next wave of issues will likely touch
 
