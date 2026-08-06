@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-06 (Guide triage cycle — issue #894's Builder opened PR #896, now `loom:review-requested`; no other label-state changes)*
+*Last updated: 2026-08-06 (Judge pass — PR #896 merged, closing issue #894; no other label-state changes)*
 
 ---
 
@@ -13,7 +13,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-- **#894**: "Installer contract: version is scraped from CLAUDE.md prose, and machine-local fields are committed" (`tier:goal-supporting`). Two live correctness gaps in the installer contract shared across the Loom/Anvil/Repo Skills/squad tool family: (C8) `scripts/install-anvil.sh` regex-scrapes the version out of `CLAUDE.md` prose and fails hard on any rewording, while the root `VERSION` file exists but is empty; (C6) `.anvil/install-metadata.json` commits machine-local fields (`anvil_source` absolute path, `install_date`) instead of a gitignored sidecar, following the precedent set by Loom's `.loom/loom-source-path` and Repo Skills' `.claude/skills/repo/.install-local.json`. Opened, curated, approved, and claimed same-day (2026-08-06); PR **#896** now open and `loom:review-requested` (`Closes #894`) — see "PRs Awaiting Review" below.
+*Empty.* No open issues carry `loom:building`. Issue #894 (installer contract: version-source + machine-local sidecar gaps) closed 2026-08-06 via PR #896.
 
 ## Ready for Work (`loom:issue`)
 
@@ -21,7 +21,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-- **#896**: "fix(installer): read version from a root VERSION file, split machine-local install fields into a gitignored sidecar" — closes #894 (C8 version-source fix, C6 machine-local sidecar, C1 root `install.sh` entry shim, C7 consumer-side `resync-installed.sh`). Awaiting Judge review.
+*Empty.* No open PRs.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -45,7 +45,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Two open issues as of 2026-08-06: #894 (`loom:building`, PR #896 open for review) and #888 (curated + `loom:operator-only`, awaiting human/Champion design review); one open PR, #896.** `loom-recover-orphans` confirms #894 is not orphaned (live via the sweep journal). `loom:urgent` stays empty — the only unclaimed issue, #888, is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next actions: Judge review of PR #896; separately, a human or Champion review of #888's design tradeoffs.
+**One open issue as of 2026-08-06: #888 (curated + `loom:operator-only`, awaiting human/Champion design review); zero open PRs.** Issue #894 closed via merged PR #896. `loom:urgent` stays empty — #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human or Champion review of #888's design tradeoffs.
 
 ### Recurring themes the next wave of issues will likely touch
 
