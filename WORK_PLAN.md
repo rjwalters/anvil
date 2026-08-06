@@ -2,14 +2,14 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-06 (Judge pass — PR #896 merged, closing issue #894; no other label-state changes)*
+*Last updated: 2026-08-06 (Guide triage pass — issue #898 curated+approved and issue #899's PR opened to close it; PR #896 merge from the prior pass unchanged)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* No open issues exist to prioritize.
+*Empty.* #898 is the only `loom:issue`-labeled work, but it already has an open PR (#899) closing it and awaiting Judge review — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward.
 
 ## In Progress (`loom:building`)
 
@@ -17,11 +17,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* No open issues carry `loom:issue`.
+- **#898**: "feat: deslop skill — iterate arbitrary prose clean of AI tells (anvil:deslop)" (`tier:goal-supporting`, `loom:curated`). Filed from the greentokens consumer repo for a new utility skill that cleans AI-drafted prose living outside any anvil project. Already has an open PR (#899) closing it — see "PRs Awaiting Review" below; no `loom:building` label was ever applied, but the issue is effectively covered.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-*Empty.* No open PRs.
+- **#899**: "feat(deslop): add anvil:deslop utility skill for cleaning AI-drafted prose outside any anvil project" — closes #898. Adds `anvil/skills/deslop/` (ingest → iterate → emit loop over `rhetoric_lint.py` + `project_brief.py` voice resolvers + `convergence.py`/`critics.py`), 36 new tests, README/CLAUDE.md skill-count updates.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -45,7 +45,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**One open issue as of 2026-08-06: #888 (curated + `loom:operator-only`, awaiting human/Champion design review); zero open PRs.** Issue #894 closed via merged PR #896. `loom:urgent` stays empty — #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human or Champion review of #888's design tradeoffs.
+**Two open issues as of 2026-08-06: #898 (`loom:issue`, already covered by open PR #899 awaiting Judge review) and #888 (curated + `loom:operator-only`, awaiting human/Champion design review); one open PR (#899).** Issue #894 closed via merged PR #896. `loom:urgent` stays empty — #898 has no unclaimed work to direct (a PR already exists), and #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue` (the Guide never adds `loom:issue`; that's human/Champion approval). Next actions: Judge review of PR #899, and a human/Champion review of #888's design tradeoffs.
 
 ### Recurring themes the next wave of issues will likely touch
 
