@@ -4,6 +4,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-08-06
+
+- **PR #896**: fix(installer): read version from a root VERSION file, split machine-local install fields into a gitignored sidecar (closes #894)
+
 ### 2026-07-31
 
 - **PR #839**: fix(memo): fall back to project-root BRIEF.md for recommendation_target (closes #837)
