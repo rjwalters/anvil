@@ -7,7 +7,8 @@ Operational scripts for anvil maintenance and installation.
 | Script | Status | Purpose |
 |---|---|---|
 | `version.sh` | working | Show / check / set the anvil version across all version-bearing files |
-| `install-anvil.sh` | working | Install anvil into a consumer repo (`./install-anvil.sh /path/to/repo`) |
+| `install-anvil.sh` | working | Install anvil into a consumer repo (`./install-anvil.sh /path/to/repo`, or the root `install.sh` shim) |
+| `resync-installed.sh` | working | Ships into a consumer at `.anvil/scripts/resync-installed.sh`; refreshes an existing install from its recorded source, non-destructively (issue #894) |
 | `new-skill.sh` | planned | Scaffold a new skill from `anvil/templates/` |
 
 ## Install design
@@ -27,7 +28,9 @@ that coexists with Loom in the same consumer repo.
 
 ### Stages
 
-1. Resolve `ANVIL_ROOT` from the script's parent directory and extract `ANVIL_VERSION` from `CLAUDE.md`.
+1. Resolve `ANVIL_ROOT` from the script's parent directory and read `ANVIL_VERSION` from the root
+   `VERSION` file (issue #894 — single source of truth, kept in sync with `CLAUDE.md` /
+   `pyproject.toml` / `README.md` by `version.sh`; the installer no longer scrapes `CLAUDE.md` prose).
 2. Resolve and validate `TARGET` (expand `~`, `cd && pwd`); git is **not** required (anvil is forge-optional).
 3. Active-install guard: existing `.anvil/` triggers upgrade mode; otherwise fresh install.
 4. Read source skill manifest from `anvil/skills/*/SKILL.md`; filter by `--skills=`; validate fast.
@@ -38,10 +41,33 @@ that coexists with Loom in the same consumer repo.
    registration shim at `.claude/skills/anvil-<name>/SKILL.md` (depth 1 — required by Claude
    Code's skill-discovery contract).
 8. CLAUDE.md additive merge using `<!-- BEGIN ANVIL --> / <!-- END ANVIL -->` markers (mirrors
-   Loom's `<!-- BEGIN LOOM ORCHESTRATION -->` pattern so the two installers coexist).
-9. Write `.anvil/install-metadata.json` (version, install date, installed skills, skipped overrides,
-   per-skill `skill_hashes` baseline for next re-install).
+   Loom's `<!-- BEGIN LOOM ORCHESTRATION -->` pattern so the two installers coexist); also ships
+   `.anvil/scripts/resync-installed.sh` (issue #894 — the consumer-side resync entry point).
+9. Write `.anvil/install-metadata.json` (TRACKED: `anvil_version`, `commit`, `layout_version`,
+   installed skills, skipped overrides, per-skill `skill_hashes` baseline for next re-install) and
+   `.anvil/.install-local.json` (gitignored sidecar: `anvil_source` absolute path, `install_date` —
+   machine-local fields moved out of the tracked manifest in issue #894).
 10. Print summary.
+
+### Resyncing an existing install (issue #894)
+
+A fix merged to this repo's `main` does not automatically reach an already-installed consumer —
+`install-anvil.sh` only runs at install time. `.anvil/scripts/resync-installed.sh` (shipped into
+every install by Stage 8) closes that gap from the consumer side:
+
+```bash
+./.anvil/scripts/resync-installed.sh              # refresh from the recorded source
+./.anvil/scripts/resync-installed.sh --dry-run     # preview only, writes nothing
+./.anvil/scripts/resync-installed.sh --quiet       # summary + errors only
+```
+
+It resolves the recorded source checkout (the gitignored `.anvil/.install-local.json` sidecar
+first, falling back to a legacy pre-#894 install's inline `anvil_source` field in
+`install-metadata.json`), reads the manifest's `installed_skills`, and re-invokes that source's
+own `install-anvil.sh` with exactly that skill set and no `--force` — the existing hash-tracked
+"preserve consumer edits, auto-upgrade unmodified files" contract *is* the non-destructive
+refresh, and passing back the unchanged skill selection means the installer's removed-skill
+prune can never fire (resync never uninstalls).
 
 ### Install layout convention (resolved per issue #1)
 

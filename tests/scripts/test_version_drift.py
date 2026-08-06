@@ -1,4 +1,4 @@
-"""Drift-guard test: ``CLAUDE.md``, ``pyproject.toml``, and ``README.md`` must agree on Anvil's version.
+"""Drift-guard test: ``VERSION``, ``CLAUDE.md``, ``pyproject.toml``, and ``README.md`` must agree on Anvil's version.
 
 Issue #109: anvil has version-bearing files — ``CLAUDE.md``'s
 ``**Anvil Version**: X.Y.Z`` line, and ``pyproject.toml``'s top-level
@@ -12,17 +12,17 @@ Issue #661 added ``README.md``'s ``**Status:** vX.Y.Z`` status line to
 ``get_version_from_file`` / ``set_version`` case-arms), so this test parses
 that line too and asserts it agrees with ``CLAUDE.md``.
 
-This test parses both files INDEPENDENTLY (pure Python regex, no shell-out
+Issue #894 added a root ``VERSION`` file — the single source of truth
+``scripts/install-anvil.sh`` now reads at install time (previously it
+independently re-parsed ``CLAUDE.md`` prose with its own grep, which broke
+outright on any rewording of that line). ``VERSION`` was also added to
+``scripts/version.sh``'s ``VERSION_FILES`` set, so this test parses it too.
+
+This test parses all files INDEPENDENTLY (pure Python regex, no shell-out
 to ``scripts/version.sh``) — otherwise the test would be tautological, since
 ``version.sh`` is precisely the thing that could be broken. Mirrors the
 precedent set by ``tests/lib/test_figures.py::test_palette_constants_match_css_root``
 (#74): "no generator, just a test" sync contract.
-
-Note: ``scripts/install-anvil.sh`` independently re-parses the version
-from ``CLAUDE.md`` with its own grep (it does not source ``version.sh``).
-That is acceptable today specifically because this drift test guarantees
-the two files agree — the installer's CLAUDE.md value is always the right
-one. If that contract ever changes, this docstring should be revisited.
 """
 
 from __future__ import annotations
@@ -31,9 +31,20 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+VERSION_FILE = REPO_ROOT / "VERSION"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README_MD = REPO_ROOT / "README.md"
+
+
+def _version_file_version() -> str:
+    """Parse the plain ``X.Y.Z`` version string from the root ``VERSION`` file."""
+    text = VERSION_FILE.read_text().strip()
+    match = re.fullmatch(r"\d+\.\d+\.\d+", text)
+    assert match is not None, (
+        f"expected a bare 'X.Y.Z' version string in {VERSION_FILE}, got {text!r}"
+    )
+    return match.group(0)
 
 
 def _claude_version() -> str:
@@ -81,16 +92,18 @@ def _readme_version() -> str:
 
 
 def test_anvil_version_files_in_sync() -> None:
-    """``CLAUDE.md``, ``pyproject.toml``, and ``README.md`` must hold the same version string.
+    """``VERSION``, ``CLAUDE.md``, ``pyproject.toml``, and ``README.md`` must hold the same version string.
 
     Failure message names ALL file paths AND ALL parsed values, so the
     operator immediately sees which file drifted from which.
     """
+    version_file = _version_file_version()
     claude = _claude_version()
     pyproj = _pyproject_version()
     readme = _readme_version()
-    assert claude == pyproj == readme, (
+    assert version_file == claude == pyproj == readme, (
         f"version drift between Anvil's version-bearing files:\n"
+        f"  {VERSION_FILE} -> '{version_file}'\n"
         f"  {CLAUDE_MD} -> '{claude}'\n"
         f"  {PYPROJECT} -> '{pyproj}'\n"
         f"  {README_MD} -> '{readme}'\n"
