@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-08-06
 
+- **PR #899**: feat(deslop): add anvil:deslop utility skill for cleaning AI-drafted prose outside any anvil project (closes #898) — new utility skill (ingest → iterate → emit loop over `rhetoric_lint.py` + `project_brief.py` voice resolvers + `convergence.py`/`critics.py`, unmodified), bringing the shipped-skill count to 22; JSX/TSX/JS/TS/Vue/Svelte source-literal extraction explicitly out of scope for v1
 - **PR #896**: fix(installer): read version from a root VERSION file, split machine-local install fields into a gitignored sidecar (closes #894)
 
 ### 2026-07-31
