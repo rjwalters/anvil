@@ -45,7 +45,13 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
 
-EXPECTED_PATTERNS = ("__pycache__/", "*.py[cod]", ".venv/", "*.egg-info/")
+EXPECTED_PATTERNS = (
+    "__pycache__/",
+    "*.py[cod]",
+    ".venv/",
+    "*.egg-info/",
+    ".install-local.json",
+)
 
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:

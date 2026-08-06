@@ -98,3 +98,8 @@ uv.lock
 
 # Repo Skills machine-local install metadata (absolute source path + timestamp)
 .claude/skills/repo/.install-local.json
+
+# Anvil machine-local install metadata sidecar (absolute source path +
+# timestamp; issue #894). Not present unless Anvil is itself installed into
+# this repo, but listed here so a future self-install starts out ignored.
+.anvil/.install-local.json

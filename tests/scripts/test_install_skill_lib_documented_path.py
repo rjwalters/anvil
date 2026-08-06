@@ -81,6 +81,7 @@ def _copy_anvil_checkout(dst: Path) -> Path:
 
     dst.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO_ROOT / "CLAUDE.md", dst / "CLAUDE.md")
+    shutil.copy(REPO_ROOT / "VERSION", dst / "VERSION")
     shutil.copytree(REPO_ROOT / "anvil", dst / "anvil")
     (dst / "scripts").mkdir(exist_ok=True)
     shutil.copy(

@@ -62,8 +62,23 @@
 #                                      import path and the override path are
 #                                      explicitly distinct.
 #   .anvil/CLAUDE.md                   Full Anvil guide.
-#   .anvil/install-metadata.json       Manifest (version, skills, overrides,
-#                                      skill_hashes, layout_version).
+#   .anvil/install-metadata.json       TRACKED manifest (anvil_version, commit,
+#                                      layout_version, installed_skills,
+#                                      skipped_overrides, skill_hashes,
+#                                      skill_versions, lib_hash). Byte-identical
+#                                      across every machine that installed the
+#                                      same revision (issue #894).
+#   .anvil/.install-local.json         Gitignored, MACHINE-LOCAL sidecar
+#                                      (anvil_source absolute path, install_date;
+#                                      issue #894 — mirrors Loom's
+#                                      .loom/loom-source-path and Repo Skills'
+#                                      .claude/skills/repo/.install-local.json).
+#   .anvil/scripts/resync-installed.sh  Consumer-side resync (issue #894): a
+#                                      thin delegator that re-invokes the
+#                                      recorded source's own install-anvil.sh
+#                                      with the currently-installed skill set
+#                                      and no --force — the non-destructive
+#                                      refresh IS a bare re-install.
 #   .claude/skills/anvil-<name>/SKILL.md  Thin Claude registration shim
 #                                         (depth 1: Claude Code only discovers
 #                                         SKILL.md at .claude/skills/<name>/.)
@@ -247,11 +262,23 @@ ANVIL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ -f "$ANVIL_ROOT/CLAUDE.md" ]] || error "ANVIL_ROOT missing CLAUDE.md: $ANVIL_ROOT"
 ok "ANVIL_ROOT=$ANVIL_ROOT"
 
-# Extract version (single source of truth: CLAUDE.md, per scripts/version.sh)
-ANVIL_VERSION=$(grep -o 'Anvil Version\*\*: [0-9]*\.[0-9]*\.[0-9]*' "$ANVIL_ROOT/CLAUDE.md" \
-  | grep -o '[0-9]*\.[0-9]*\.[0-9]*' || true)
-[[ -n "$ANVIL_VERSION" ]] || error "could not extract Anvil version from $ANVIL_ROOT/CLAUDE.md"
+# Read the version from the root VERSION file (issue #894 — single source of
+# truth). Previously this grep-scraped the `**Anvil Version**: X.Y.Z` line out
+# of CLAUDE.md prose, so a purely cosmetic doc edit (rewording, re-bolding,
+# moving the line) broke the installer outright. VERSION is a plain X.Y.Z
+# string kept in sync with CLAUDE.md/pyproject.toml/README.md by
+# `scripts/version.sh` (see its VERSION_FILES array) — a version-bearing file
+# with exactly one job, immune to prose churn.
+[[ -f "$ANVIL_ROOT/VERSION" ]] || error "ANVIL_ROOT missing VERSION: $ANVIL_ROOT"
+ANVIL_VERSION="$(tr -d '[:space:]' < "$ANVIL_ROOT/VERSION")"
+[[ "$ANVIL_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || error "VERSION at $ANVIL_ROOT/VERSION does not contain a valid X.Y.Z version string (got: '$ANVIL_VERSION')"
 ok "ANVIL_VERSION=$ANVIL_VERSION"
+
+# Commit of the source checkout, recorded in the tracked manifest as install
+# provenance (issue #894 — replaces the machine-local `anvil_source` field,
+# which moves to a gitignored sidecar below). "unknown" when ANVIL_ROOT isn't
+# a git checkout (e.g. a tarball/vendored copy) rather than failing the install.
+ANVIL_COMMIT="$(git -C "$ANVIL_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
 
 INSTALL_DATE="$(date +%Y-%m-%d)"
 
@@ -790,7 +817,7 @@ write_guide() {
 }
 
 # Write the install manifest JSON. Substitutions happen in the bash heredoc,
-# so paths containing shell metacharacters in $anvil_source are safe.
+# so paths containing shell metacharacters are safe.
 #
 # The `skill_hashes` block records the per-skill directory hash at install
 # time (the "as-installed" snapshot). Subsequent re-installs compare the
@@ -813,13 +840,22 @@ write_guide() {
 # it knows), so any consumer-side branch should treat the absence of
 # `layout_version` as "1" (legacy).
 #
-# `anvil_source` is preserved as install-provenance metadata (it records
-# which source checkout produced the install — useful for debugging an
-# upgrade). Post-#230, it is NOT load-bearing for runtime invocation: the
-# importable `anvil/` package lives under .anvil/anvil/ regardless of
-# whether `anvil_source` still exists on disk. This closes the canary
-# failure mode where a fresh consumer machine couldn't run anvil because
-# the install-time `anvil_source` path was machine-specific.
+# `commit` (issue #894) records the short git commit hash of the source
+# checkout that produced the install — "unknown" when ANVIL_ROOT isn't a git
+# checkout. It replaces the machine-local `anvil_source` absolute path as the
+# TRACKED provenance signal: a commit hash is byte-identical on every machine
+# that installed the same revision, unlike a source path (see the sidecar
+# note below). Not load-bearing for runtime invocation: the importable
+# `anvil/` package lives under .anvil/anvil/ regardless of `commit`.
+#
+# `anvil_source` (the absolute path of the installing machine's source
+# checkout) and `install_date` are MACHINE-LOCAL — meaningless in any other
+# checkout — so they are deliberately NOT written here. They live in a
+# gitignored sidecar instead (`write_install_local_sidecar`, issue #894),
+# mirroring Loom's `.loom/loom-source-path` and Repo Skills'
+# `.claude/skills/repo/.install-local.json`. This closes the canary failure
+# mode where a tracked absolute path was already wrong on every checkout but
+# the one that ran the install (repo#96).
 #
 # `lib_hash` (issue #490) records the as-installed hash of the Stage 5 lib
 # *override-target* files (the documented consumer-override assets under
@@ -834,16 +870,15 @@ write_guide() {
 # from ever going stale.
 write_manifest() {
   local target_dir="$1" manifest_path="$2"
-  local anvil_version="$3" anvil_source="$4" install_date="$5"
-  local installed_json="$6" skipped_json="$7" hashes_json="$8"
-  local versions_json="$9"
-  local layout_version="${10:-2}" lib_hash="${11:-}"
+  local anvil_version="$3" commit="$4"
+  local installed_json="$5" skipped_json="$6" hashes_json="$7"
+  local versions_json="$8"
+  local layout_version="${9:-2}" lib_hash="${10:-}"
   mkdir -p "$target_dir/.anvil"
   cat > "$manifest_path" <<MANIFEST_EOF
 {
   "anvil_version": "$anvil_version",
-  "anvil_source": "$anvil_source",
-  "install_date": "$install_date",
+  "commit": "$commit",
   "layout_version": $layout_version,
   "installed_skills": $installed_json,
   "skipped_overrides": $skipped_json,
@@ -852,6 +887,25 @@ write_manifest() {
   "lib_hash": "$lib_hash"
 }
 MANIFEST_EOF
+}
+
+# Write the machine-local install sidecar (issue #894 — C6). Holds the
+# fields that are meaningless outside the installing machine: the absolute
+# source checkout path (`anvil_source`) and the install timestamp
+# (`install_date`). Gitignored (see .gitignore's Anvil block) so it never
+# ships to another checkout; a fresh clone elsewhere legitimately has none.
+# Field names deliberately match the pre-#894 inline manifest fields so a
+# reader (e.g. `/repo:update-tools`'s sidecar-then-inline fallback) can use
+# the same key names regardless of which source it resolved.
+write_install_local_sidecar() {
+  local target_dir="$1" sidecar_path="$2" anvil_source="$3" install_date="$4"
+  mkdir -p "$target_dir/.anvil"
+  cat > "$sidecar_path" <<SIDECAR_EOF
+{
+  "anvil_source": "$anvil_source",
+  "install_date": "$install_date"
+}
+SIDECAR_EOF
 }
 
 # Write the consumer-side pyproject.toml that turns <target>/.anvil/ into
@@ -1013,6 +1067,9 @@ set_skill_version() {
 # Manifest path is also referenced by Stage 7 (for the recorded-hash lookup)
 # and Stage 9 (for the write). Defined here so both stages share it.
 MANIFEST="$TARGET/.anvil/install-metadata.json"
+# Machine-local install sidecar (issue #894 — C6): holds anvil_source /
+# install_date, gitignored, written alongside the manifest at Stage 9.
+INSTALL_LOCAL_SIDECAR="$TARGET/.anvil/.install-local.json"
 
 # ----- Stage 5: copy framework code (lib) -----------------------------------
 # Pre-#230 layout: framework Python shipped at <target>/.anvil/lib/ — NOT
@@ -2122,13 +2179,16 @@ write_anvil_gitignore() {
 # Anvil-owned .gitignore — suppresses the Python runtime artifacts the anvil
 # installer's own .anvil/ footprint generates (bytecode caches under the
 # .anvil/anvil/ mirror, the uv venv at .anvil/.venv/, and the setuptools
-# egg-info metadata `uv sync`'s editable install materializes). Patterns are
+# egg-info metadata `uv sync`'s editable install materializes) plus the
+# machine-local install sidecar (absolute source path + install date —
+# meaningless outside the installing machine, issue #894). Patterns are
 # relative to this directory. The installer writes this file once
 # (skip-if-exists), so any local additions you make here survive re-install.
 __pycache__/
 *.py[cod]
 .venv/
 *.egg-info/
+.install-local.json
 EOF
 }
 
@@ -2138,7 +2198,8 @@ EOF
 # existing file by append-if-missing (see the Contract note above). Only
 # later-added patterns belong here; the original three shipped with the file.
 ANVIL_GITIGNORE_UPGRADE_PATTERNS=(
-  '*.egg-info/'   # issue #877 — `uv sync --project .anvil` editable install
+  '*.egg-info/'          # issue #877 — `uv sync --project .anvil` editable install
+  '.install-local.json'  # issue #894 — machine-local install sidecar (C6)
 )
 
 # Echo (one per line) the entries of ANVIL_GITIGNORE_UPGRADE_PATTERNS that the
@@ -2222,6 +2283,33 @@ if [[ -d "$TARGET/.git" ]] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
+# ----- Stage 8.7: install .anvil/scripts/resync-installed.sh (issue #894) ---
+# Ships the consumer-side resync script (C7) that closes the "a fix merged to
+# Anvil's main does not reach an already-installed consumer" gap. It is
+# framework-owned (not a consumer-override target — mirrors the
+# unconditional Stage 8.5 pyproject.toml write, not the skip-if-exists
+# skill-body contract), so it is always refreshed to the source's current
+# copy, unlike a skill body.
+info "Stage 8.7: write .anvil/scripts/resync-installed.sh"
+RESYNC_SCRIPT_SRC="$ANVIL_ROOT/scripts/resync-installed.sh"
+RESYNC_SCRIPT_DST="$TARGET/.anvil/scripts/resync-installed.sh"
+
+install_resync_script() {
+  local src="$1" dst="$2"
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+  chmod 0755 "$dst"
+}
+
+if [[ -f "$RESYNC_SCRIPT_SRC" ]]; then
+  do_action "write .anvil/scripts/resync-installed.sh (consumer-side resync, #894)" \
+    install_resync_script "$RESYNC_SCRIPT_SRC" "$RESYNC_SCRIPT_DST"
+else
+  # Defensive only — scripts/resync-installed.sh ships in the same source
+  # tree as this installer; absence would mean a corrupted/partial checkout.
+  warn "source checkout missing scripts/resync-installed.sh -- skipping .anvil/scripts/resync-installed.sh"
+fi
+
 # ----- Stage 9: install manifest --------------------------------------------
 info "Stage 9: write install manifest"
 # MANIFEST is defined earlier (above Stage 5) because Stage 7 also reads it
@@ -2292,8 +2380,15 @@ HASHES_JSON="$(json_object_from_skill_hashes)"
 VERSIONS_JSON="$(json_object_from_skill_versions)"
 
 do_action "write $MANIFEST" \
-  write_manifest "$TARGET" "$MANIFEST" "$ANVIL_VERSION" "$ANVIL_ROOT" "$INSTALL_DATE" \
+  write_manifest "$TARGET" "$MANIFEST" "$ANVIL_VERSION" "$ANVIL_COMMIT" \
                  "$INSTALLED_JSON" "$SKIPPED_JSON" "$HASHES_JSON" "$VERSIONS_JSON" "2" "$LIB_HASH"
+
+# Machine-local sidecar (issue #894 — C6): anvil_source / install_date never
+# land in the tracked manifest above. Written unconditionally alongside it
+# (not skip-if-exists) so a re-install always re-stamps the current
+# machine's source path + date, same posture as the manifest itself.
+do_action "write $INSTALL_LOCAL_SIDECAR" \
+  write_install_local_sidecar "$TARGET" "$INSTALL_LOCAL_SIDECAR" "$ANVIL_ROOT" "$INSTALL_DATE"
 
 # ----- Stage 10: renderer dependency check ----------------------------------
 # Report which renderer binaries are present so a fresh install does not claim

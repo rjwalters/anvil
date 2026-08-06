@@ -373,17 +373,21 @@ def test_dry_run_prints_uv_sync_command_without_executing(tmp_path: Path) -> Non
 def test_manifest_anvil_source_is_provenance_not_runtime_dependency(
     tmp_path: Path,
 ) -> None:
-    """``install-metadata.json.anvil_source`` is install-provenance only.
+    """``.install-local.json``'s ``anvil_source`` is install-provenance only.
 
     Post-#230, the runtime import path is rooted at ``.anvil/anvil/`` and
-    does NOT consult ``anvil_source``. To prove this end-to-end we install
-    into a tmpdir, then mutate the manifest's ``anvil_source`` to point at
-    a non-existent path, then re-run the import-cycle assertion. The
-    import should still succeed because the runtime layout is self-
+    does NOT consult ``anvil_source``. Issue #894 moved ``anvil_source``
+    out of the tracked ``install-metadata.json`` into the gitignored
+    ``.install-local.json`` sidecar (it is a machine-local absolute path,
+    meaningless in any other checkout) — the provenance-only contract this
+    test guards is unchanged by that move. To prove it end-to-end we
+    install into a tmpdir, then mutate the sidecar's ``anvil_source`` to
+    point at a non-existent path, then re-run the import-cycle assertion.
+    The import should still succeed because the runtime layout is self-
     contained.
 
     (We don't actually delete the source repo on disk — that would break
-    the rest of the test suite — but the manifest-level mutation simulates
+    the rest of the test suite — but the sidecar-level mutation simulates
     the consumer-machine case where ``anvil_source`` was set at install
     time from a different machine.)
     """
@@ -397,11 +401,15 @@ def test_manifest_anvil_source_is_provenance_not_runtime_dependency(
     install = _install_into(target, skills="memo")
     assert install.returncode == 0, install.stderr
 
-    manifest_path = target / ".anvil" / "install-metadata.json"
-    manifest = json.loads(manifest_path.read_text())
+    sidecar_path = target / ".anvil" / ".install-local.json"
+    assert sidecar_path.is_file(), (
+        f".anvil/.install-local.json was not written by the install; "
+        f"stdout:\n{install.stdout}"
+    )
+    sidecar = json.loads(sidecar_path.read_text())
     # Mutate anvil_source to a path that definitely doesn't exist.
-    manifest["anvil_source"] = "/this/path/intentionally/does/not/exist"
-    manifest_path.write_text(json.dumps(manifest))
+    sidecar["anvil_source"] = "/this/path/intentionally/does/not/exist"
+    sidecar_path.write_text(json.dumps(sidecar))
 
     env = _sanitized_env()
     sync = subprocess.run(

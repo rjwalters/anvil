@@ -86,7 +86,7 @@ uv sync --project .anvil
 uv run --project .anvil python -c "from anvil.lib.render_gate import gate; print(gate.__module__)"
 ```
 
-The generated `.anvil/pyproject.toml` declares the framework's base runtime deps (`pydantic`, `pyyaml`); no manual `uv add` is required. The importable `anvil/` package mirror lives at `<consumer>/.anvil/anvil/`, fully self-contained — the install-time `anvil_source` recorded in `install-metadata.json` is provenance metadata only and is not consulted at runtime. The pre-#230 install layout (`.anvil/lib/` for framework Python) is detected on upgrade and surfaced with a one-line migration warning; no auto-deletion (hand-edited override files there are preserved for the operator to port).
+The generated `.anvil/pyproject.toml` declares the framework's base runtime deps (`pydantic`, `pyyaml`); no manual `uv add` is required. The importable `anvil/` package mirror lives at `<consumer>/.anvil/anvil/`, fully self-contained — the install-time `anvil_source` recorded in the gitignored `.anvil/.install-local.json` sidecar is provenance metadata only and is not consulted at runtime. The pre-#230 install layout (`.anvil/lib/` for framework Python) is detected on upgrade and surfaced with a one-line migration warning; no auto-deletion (hand-edited override files there are preserved for the operator to port).
 
 ### Running critics from multiple git worktrees
 

@@ -34,6 +34,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VERSION_SH = REPO_ROOT / "scripts" / "version.sh"
+VERSION_FILE = REPO_ROOT / "VERSION"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README_MD = REPO_ROOT / "README.md"
@@ -57,6 +58,7 @@ def _mirror_repo(tmp_path: Path, *, with_changelog: bool) -> Path:
     """
     (tmp_path / "scripts").mkdir()
     shutil.copy(VERSION_SH, tmp_path / "scripts" / "version.sh")
+    shutil.copy(VERSION_FILE, tmp_path / "VERSION")
     shutil.copy(CLAUDE_MD, tmp_path / "CLAUDE.md")
     shutil.copy(PYPROJECT, tmp_path / "pyproject.toml")
     shutil.copy(README_MD, tmp_path / "README.md")
@@ -135,7 +137,7 @@ def test_bump_tag_stages_dirty_changelog(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CHANGELOG.md", "CLAUDE.md", "pyproject.toml", "README.md"}, (
+    assert files == {"CHANGELOG.md", "VERSION", "CLAUDE.md", "pyproject.toml", "README.md"}, (
         f"tagged release commit should contain CHANGELOG.md + all version "
         f"files; got {sorted(files)!r}"
     )
@@ -165,7 +167,7 @@ def test_set_tag_stages_dirty_changelog(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CHANGELOG.md", "CLAUDE.md", "pyproject.toml", "README.md"}, (
+    assert files == {"CHANGELOG.md", "VERSION", "CLAUDE.md", "pyproject.toml", "README.md"}, (
         f"tagged release commit should contain CHANGELOG.md + all version "
         f"files; got {sorted(files)!r}"
     )
@@ -190,7 +192,7 @@ def test_bump_tag_clean_changelog_is_noop(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CLAUDE.md", "pyproject.toml", "README.md"}, (
+    assert files == {"VERSION", "CLAUDE.md", "pyproject.toml", "README.md"}, (
         f"release commit with a clean CHANGELOG.md should contain only the "
         f"version files; got {sorted(files)!r}"
     )
@@ -219,7 +221,7 @@ def test_bump_tag_without_changelog_succeeds(tmp_path: Path) -> None:
     )
 
     files = _head_files(root)
-    assert files == {"CLAUDE.md", "pyproject.toml", "README.md"}
+    assert files == {"VERSION", "CLAUDE.md", "pyproject.toml", "README.md"}
     tags = _run(["git", "tag", "--list"], cwd=root).stdout.split()
     assert f"v{expected}" in tags, (
         f"expected tag v{expected} not found; tags: {tags!r}"

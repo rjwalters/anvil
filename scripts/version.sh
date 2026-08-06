@@ -11,19 +11,26 @@
 #   ./scripts/version.sh bump minor --tag   # Bump minor + commit + tag
 #   ./scripts/version.sh bump major --tag   # Bump major + commit + tag
 #
-# Currently covers CLAUDE.md, pyproject.toml, and README.md. To extend when a
-# new version-bearing file lands, add it to VERSION_FILES below and add matching
-# case-arms to both get_version_from_file() and set_version().
+# Currently covers VERSION, CLAUDE.md, pyproject.toml, and README.md. To
+# extend when a new version-bearing file lands, add it to VERSION_FILES below
+# and add matching case-arms to both get_version_from_file() and
+# set_version().
 # The --tag paths additionally stage CHANGELOG.md when present, so the
 # release-notes promotion rides the tagged release commit (#638).
 #
 # The list / check / bump <level> --tag interface conforms to the upstream
 # Loom v0.10.4 release.md scripts/version.sh contract (#590).
+#
+# VERSION (#894) is the single source of truth `scripts/install-anvil.sh`
+# reads at install time (no more CLAUDE.md prose scrape) — it is listed here
+# so `check`/`bump`/`set` keep it in sync with the other two version-bearing
+# files; `get_version()`'s canonical read stays on CLAUDE.md, unchanged.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 VERSION_FILES=(
+  "VERSION"
   "CLAUDE.md"
   "pyproject.toml"
   "README.md"
@@ -36,6 +43,10 @@ get_version() {
 get_version_from_file() {
   local file="$1"
   case "$file" in
+    VERSION)
+      # Plain X.Y.Z, optionally with trailing whitespace/newline.
+      grep -oE '^[0-9]+\.[0-9]+\.[0-9]+$' "$REPO_ROOT/$file"
+      ;;
     CLAUDE.md)
       grep -o 'Anvil Version\*\*: [0-9]*\.[0-9]*\.[0-9]*' "$REPO_ROOT/$file" \
         | grep -o '[0-9]*\.[0-9]*\.[0-9]*'
@@ -92,6 +103,9 @@ set_version() {
   fi
   for file in "${VERSION_FILES[@]}"; do
     case "$file" in
+      VERSION)
+        printf '%s\n' "$new" > "$REPO_ROOT/$file"
+        ;;
       CLAUDE.md)
         sed -i.bak "s/Anvil Version\*\*: [0-9]*\.[0-9]*\.[0-9]*/Anvil Version**: $new/" "$REPO_ROOT/$file"
         rm "$REPO_ROOT/$file.bak"

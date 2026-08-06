@@ -25,6 +25,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VERSION_SH = REPO_ROOT / "scripts" / "version.sh"
+VERSION_FILE = REPO_ROOT / "VERSION"
 CLAUDE_MD = REPO_ROOT / "CLAUDE.md"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 README_MD = REPO_ROOT / "README.md"
@@ -34,6 +35,7 @@ def _mirror_repo(tmp_path: Path) -> Path:
     """Copy ``scripts/version.sh`` + the version-bearing files into ``tmp_path``."""
     (tmp_path / "scripts").mkdir()
     shutil.copy(VERSION_SH, tmp_path / "scripts" / "version.sh")
+    shutil.copy(VERSION_FILE, tmp_path / "VERSION")
     shutil.copy(CLAUDE_MD, tmp_path / "CLAUDE.md")
     shutil.copy(PYPROJECT, tmp_path / "pyproject.toml")
     shutil.copy(README_MD, tmp_path / "README.md")
@@ -89,6 +91,13 @@ def _readme_version(readme: Path) -> str:
     return match.group(1)
 
 
+def _version_file_version(version_file: Path) -> str:
+    text = version_file.read_text().strip()
+    match = re.fullmatch(r"\d+\.\d+\.\d+", text)
+    assert match is not None, f"could not parse version from {version_file}: {text!r}"
+    return match.group(0)
+
+
 # ---------- list subcommand ----------
 
 
@@ -103,16 +112,17 @@ def test_list_prints_version_files(tmp_path: Path) -> None:
         f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
     )
     lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert "VERSION" in lines, f"list output missing VERSION: {lines!r}"
     assert "CLAUDE.md" in lines, f"list output missing CLAUDE.md: {lines!r}"
     assert "pyproject.toml" in lines, (
         f"list output missing pyproject.toml: {lines!r}"
     )
     assert "README.md" in lines, f"list output missing README.md: {lines!r}"
-    # Exactly three entries today (README.md was added in #661; any future
-    # addition should update this assertion AND VERSION_FILES; we want the
-    # test to catch silent drops).
-    assert len(lines) == 3, (
-        f"list output should have exactly 3 entries (CLAUDE.md, "
+    # Exactly four entries today (VERSION was added in #894, README.md in
+    # #661; any future addition should update this assertion AND
+    # VERSION_FILES; we want the test to catch silent drops).
+    assert len(lines) == 4, (
+        f"list output should have exactly 4 entries (VERSION, CLAUDE.md, "
         f"pyproject.toml, README.md); got {lines!r}"
     )
 
@@ -134,6 +144,7 @@ def test_bump_patch_increments_patch(tmp_path: Path) -> None:
         f"`bump patch` failed:\n--- stdout ---\n{result.stdout}\n"
         f"--- stderr ---\n{result.stderr}"
     )
+    assert _version_file_version(root / "VERSION") == expected
     assert _claude_version(root / "CLAUDE.md") == expected
     assert _pyproject_version(root / "pyproject.toml") == expected
     assert _readme_version(root / "README.md") == expected
@@ -150,6 +161,7 @@ def test_bump_minor_resets_patch(tmp_path: Path) -> None:
 
     result = _run(["bash", str(script), "bump", "minor"], cwd=root)
     assert result.returncode == 0, result.stderr
+    assert _version_file_version(root / "VERSION") == expected
     assert _claude_version(root / "CLAUDE.md") == expected
     assert _pyproject_version(root / "pyproject.toml") == expected
     assert _readme_version(root / "README.md") == expected
@@ -166,6 +178,7 @@ def test_bump_major_resets_minor_and_patch(tmp_path: Path) -> None:
 
     result = _run(["bash", str(script), "bump", "major"], cwd=root)
     assert result.returncode == 0, result.stderr
+    assert _version_file_version(root / "VERSION") == expected
     assert _claude_version(root / "CLAUDE.md") == expected
     assert _pyproject_version(root / "pyproject.toml") == expected
     assert _readme_version(root / "README.md") == expected
@@ -229,6 +242,7 @@ def test_bump_without_tag_does_not_commit(tmp_path: Path) -> None:
     )
     # But the files should be modified (so a follow-up `git status` shows them).
     status = _run(["git", "status", "--short"], cwd=root).stdout
+    assert "VERSION" in status
     assert "CLAUDE.md" in status
     assert "pyproject.toml" in status
     assert "README.md" in status
@@ -251,6 +265,7 @@ def test_bump_with_tag_creates_commit_and_tag(tmp_path: Path) -> None:
     )
 
     # Files updated.
+    assert _version_file_version(root / "VERSION") == expected
     assert _claude_version(root / "CLAUDE.md") == expected
     assert _pyproject_version(root / "pyproject.toml") == expected
     assert _readme_version(root / "README.md") == expected
