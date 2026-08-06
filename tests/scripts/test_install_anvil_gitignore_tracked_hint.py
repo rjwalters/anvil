@@ -477,8 +477,11 @@ def test_append_preserves_hand_edited_content(tmp_path: Path) -> None:
         "the append must be strictly additive — existing content (comments, "
         f"blank lines, local patterns) must survive verbatim. Got:\n{after!r}"
     )
-    assert after == original + "*.egg-info/\n", (
-        f"expected exactly one appended line; got:\n{after!r}"
+    # Two upgrade patterns are reconciled today (*.egg-info/ from #877,
+    # .install-local.json from #894), appended in ANVIL_GITIGNORE_UPGRADE_PATTERNS
+    # array order.
+    assert after == original + "*.egg-info/\n.install-local.json\n", (
+        f"expected exactly the two missing upgrade patterns appended; got:\n{after!r}"
     )
     for pat in ("scratch/", "notes.local.md"):
         assert pat in _lines(gi), f"consumer's local pattern {pat!r} was lost"
@@ -488,17 +491,20 @@ def test_existing_pattern_is_not_duplicated(tmp_path: Path) -> None:
     """A consumer who already applied the workaround gets no duplicate line."""
     target = tmp_path / "already-patched"
     target.mkdir()
-    original = LEGACY_GITIGNORE + "*.egg-info/\n"
+    original = LEGACY_GITIGNORE + "*.egg-info/\n.install-local.json\n"
     gi = _write_existing_gitignore(target, original)
 
     result = _run("--skills=memo", str(target))
     _assert_ok(result)
 
     assert gi.read_text(encoding="utf-8") == original, (
-        "a file already containing *.egg-info/ must be left byte-identical; "
-        f"got:\n{gi.read_text(encoding='utf-8')!r}"
+        "a file already containing every upgrade pattern must be left "
+        f"byte-identical; got:\n{gi.read_text(encoding='utf-8')!r}"
     )
     assert "append *.egg-info/" not in result.stdout, (
+        f"installer reported an append it did not need to make:\n{result.stdout}"
+    )
+    assert "append .install-local.json" not in result.stdout, (
         f"installer reported an append it did not need to make:\n{result.stdout}"
     )
 
@@ -519,6 +525,9 @@ def test_append_dry_run_reports_and_writes_nothing(tmp_path: Path) -> None:
 
     assert "[dry-run] append *.egg-info/ to existing .anvil/.gitignore" in result.stdout, (
         f"expected the dry-run append action line; got:\n{result.stdout}"
+    )
+    assert "[dry-run] append .install-local.json to existing .anvil/.gitignore" in result.stdout, (
+        f"expected the dry-run append action line for the #894 sidecar pattern; got:\n{result.stdout}"
     )
     assert gi.read_text(encoding="utf-8") == LEGACY_GITIGNORE, (
         "--dry-run appended to .anvil/.gitignore"

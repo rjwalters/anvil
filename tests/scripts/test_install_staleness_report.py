@@ -78,6 +78,7 @@ def _copy_anvil_checkout(dst: Path) -> Path:
 
     dst.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO_ROOT / "CLAUDE.md", dst / "CLAUDE.md")
+    shutil.copy(REPO_ROOT / "VERSION", dst / "VERSION")
     shutil.copytree(REPO_ROOT / "anvil", dst / "anvil")
     (dst / "scripts").mkdir(exist_ok=True)
     shutil.copy(
@@ -104,12 +105,17 @@ def _anvil_version(checkout: Path = REPO_ROOT) -> str:
 
 
 def _set_fake_anvil_version(fake_anvil: Path, version: str) -> None:
-    """Rewrite the fake checkout's CLAUDE.md version line to ``version``.
+    """Rewrite the fake checkout's VERSION file (and CLAUDE.md, for realism) to ``version``.
 
     This is how a test simulates "the installing anvil is a newer release than
     the one that laid down the consumer's install" — the installer reads
-    ``ANVIL_VERSION`` from this exact line.
+    ``ANVIL_VERSION`` from the root ``VERSION`` file (issue #894); CLAUDE.md's
+    ``**Anvil Version**:`` line is also rewritten to keep the fake checkout
+    internally consistent, even though the installer no longer reads it.
     """
+
+    version_file = fake_anvil / "VERSION"
+    version_file.write_text(f"{version}\n")
 
     claude = fake_anvil / "CLAUDE.md"
     text = claude.read_text()
