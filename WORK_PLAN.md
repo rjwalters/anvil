@@ -2,26 +2,26 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-06 (Guide triage pass — issue #898 curated+approved and issue #899's PR opened to close it; PR #896 merge from the prior pass unchanged)*
+*Last updated: 2026-08-06 (Guide triage pass — PR #899 merged, closing issue #898 and bringing the shipped-skill count to 22; zero open PRs remain)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* #898 is the only `loom:issue`-labeled work, but it already has an open PR (#899) closing it and awaiting Judge review — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward.
+*Empty.* No open issues carry `loom:issue` — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward. The sole open issue, #888, is `loom:operator-only` and not eligible for `loom:urgent` (see below).
 
 ## In Progress (`loom:building`)
 
-*Empty.* No open issues carry `loom:building`. Issue #894 (installer contract: version-source + machine-local sidecar gaps) closed 2026-08-06 via PR #896.
+*Empty.* No open issues carry `loom:building`. Issue #898 (`anvil:deslop` utility skill) closed 2026-08-06 via merged PR #899.
 
 ## Ready for Work (`loom:issue`)
 
-- **#898**: "feat: deslop skill — iterate arbitrary prose clean of AI tells (anvil:deslop)" (`tier:goal-supporting`, `loom:curated`). Filed from the greentokens consumer repo for a new utility skill that cleans AI-drafted prose living outside any anvil project. Already has an open PR (#899) closing it — see "PRs Awaiting Review" below; no `loom:building` label was ever applied, but the issue is effectively covered.
+*Empty.* No open issues carry `loom:issue`.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-- **#899**: "feat(deslop): add anvil:deslop utility skill for cleaning AI-drafted prose outside any anvil project" — closes #898. Adds `anvil/skills/deslop/` (ingest → iterate → emit loop over `rhetoric_lint.py` + `project_brief.py` voice resolvers + `convergence.py`/`critics.py`), 36 new tests, README/CLAUDE.md skill-count updates.
+*Empty.* No open PRs. PR #899 (feat(deslop): add anvil:deslop utility skill) merged 2026-08-06, closing #898.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -45,7 +45,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Two open issues as of 2026-08-06: #898 (`loom:issue`, already covered by open PR #899 awaiting Judge review) and #888 (curated + `loom:operator-only`, awaiting human/Champion design review); one open PR (#899).** Issue #894 closed via merged PR #896. `loom:urgent` stays empty — #898 has no unclaimed work to direct (a PR already exists), and #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue` (the Guide never adds `loom:issue`; that's human/Champion approval). Next actions: Judge review of PR #899, and a human/Champion review of #888's design tradeoffs.
+**One open issue as of 2026-08-06: #888 (curated + `loom:operator-only`, awaiting human/Champion design review); zero open PRs.** Issue #898 closed via merged PR #899 (`anvil:deslop`, 22nd shipped skill); issue #894 closed via merged PR #896 (installer contract fixes). `loom:urgent` stays empty — #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human or Champion review of #888's design tradeoffs.
 
 ### Recurring themes the next wave of issues will likely touch
 
