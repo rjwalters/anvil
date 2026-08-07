@@ -149,7 +149,7 @@ Some notes.
 
 
 # The-atelier (numbered, bold-prefix). Subset of the on-disk BRIEF.md.
-BOTTEGA_SOURCES = """\
+ATELIER_SOURCES = """\
 # The Atelier — Memo Brief
 
 Narrative.
@@ -233,7 +233,7 @@ class TestSourcesParserShapes(unittest.TestCase):
 
     def test_parse_atelier_numbered_bold_prefix_shape(self) -> None:
         """The-atelier shape: ``1. **Title** — <description with inline URLs>``."""
-        entries = _parse_brief_sources(BOTTEGA_SOURCES)
+        entries = _parse_brief_sources(ATELIER_SOURCES)
         self._assert_basic(entries, 4)
         # Bold-prefix becomes the title.
         self.assertEqual(entries[0].title, "Venture-studio economics")
@@ -396,7 +396,7 @@ class TestSeedRefsFromBriefIntegration(unittest.TestCase):
     def test_seeds_stubs_per_sources_entry(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             thread_dir = Path(td) / "the-atelier"
-            _write_brief(thread_dir, BOTTEGA_SOURCES)
+            _write_brief(thread_dir, ATELIER_SOURCES)
             result = seed_refs_from_brief(thread_dir)
             self.assertIsInstance(result, SeedRefsResult)
             self.assertEqual(result.entries_parsed, 4)
@@ -567,7 +567,7 @@ class TestMigrateThreadStep13AutoInvoke(unittest.TestCase):
             # refs_seeded should be empty. Now overwrite BRIEF.md with
             # a §Sources block and re-run the helper to confirm
             # the integration works end-to-end.
-            result.brief_md.write_text(BOTTEGA_SOURCES, encoding="utf-8")
+            result.brief_md.write_text(ATELIER_SOURCES, encoding="utf-8")
             seed_result = seed_refs_from_brief(result.thread_root)
             self.assertEqual(seed_result.entries_parsed, 4)
             self.assertEqual(len(seed_result.stubs_written), 4)
@@ -754,7 +754,7 @@ class TestStudioCanarySmoke(unittest.TestCase):
     def test_atelier_shape_produces_nonempty_refs_dir(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             thread_dir = Path(td) / "the-atelier"
-            _write_brief(thread_dir, BOTTEGA_SOURCES)
+            _write_brief(thread_dir, ATELIER_SOURCES)
             result = seed_refs_from_brief(thread_dir)
             self.assertGreater(len(result.stubs_written), 0)
 

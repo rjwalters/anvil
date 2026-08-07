@@ -268,10 +268,12 @@ def test_cleanup_stale_staging_removes_leading_dot_tmp_dirs(tmp_path):
     removed = cleanup_stale_staging(tmp_path)
 
     names = sorted(p.name for p in removed)
+    # Alphabetical, because `names` is sorted() above — not the order the
+    # dirs were created in.
     assert names == [
         ".acme-seed.3.review.tmp",
-        ".meridian.7.audit.tmp",
         ".foo.1.narrative.tmp",
+        ".meridian.7.audit.tmp",
     ]
     # The final-named critic dir is preserved.
     assert (tmp_path / "acme-seed.3.review").exists()
