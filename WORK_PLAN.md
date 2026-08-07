@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-06 (Guide triage pass — PR #899 merged, closing issue #898 and bringing the shipped-skill count to 22; zero open PRs remain)*
+*Last updated: 2026-08-07 (Guide triage pass — no `loom:issue`/`loom:building`/`loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, is open outside the Loom label pipeline)*
 
 ---
 
@@ -21,7 +21,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-*Empty.* No open PRs. PR #899 (feat(deslop): add anvil:deslop utility skill) merged 2026-08-06, closing #898.
+*Empty.* No open PRs carry `loom:review-requested`. One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Skills 0.7.0 → 0.8.1" — opened directly by the repo owner (no labels), a tool-currency bump not routed through Curator/Builder. Per `CLAUDE.md`'s guidance on small mechanical changes, this class of PR doesn't require the full Loom review cycle; it awaits a direct human merge decision, not Judge/Champion action.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -45,7 +45,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**One open issue as of 2026-08-06: #888 (curated + `loom:operator-only`, awaiting human/Champion design review); zero open PRs.** Issue #898 closed via merged PR #899 (`anvil:deslop`, 22nd shipped skill); issue #894 closed via merged PR #896 (installer contract fixes). `loom:urgent` stays empty — #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human or Champion review of #888's design tradeoffs.
+**One open issue as of 2026-08-07: #888 (curated + `loom:operator-only`, awaiting human/Champion design review); one open PR (#902, unlabeled, human-authored tool bump — outside the Loom pipeline).** No orphaned `loom:building` issues, no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — #888 is not eligible for `loom:urgent` promotion because it isn't `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human or Champion review of #888's design tradeoffs (and, separately, a human merge decision on #902).
 
 ### Recurring themes the next wave of issues will likely touch
 
