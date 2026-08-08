@@ -51,13 +51,33 @@ Test matrix (per the curator's plan):
   not this gate).
 
 - ``matplotlib_chart_passes`` — A reasonably-shaped matplotlib chart
-  (1200x800) with no clamp. Treated as ``matplotlib`` diagram type
-  with 14 px intrinsic font. Displayed height clamps to 540 px;
-  glyph 14 * (540/800) = 9.45 px → ERROR. Demonstrates the gate is
-  not mermaid-specific.
+  (1200x800, no embedded ``pHYs`` DPI chunk) with no clamp. Treated as
+  ``matplotlib`` diagram type; since no DPI is embedded, the gate
+  assumes the shipped ``anvil.mplstyle`` default of 200 DPI, giving an
+  intrinsic glyph height of ``10pt * (200/72) ≈ 27.8 px``. Displayed
+  height clamps to 540 px; glyph ``27.8 * (540/800) ≈ 18.75 px`` →
+  ABOVE the warning threshold. NOT flagged. Demonstrates the gate is
+  not mermaid-specific *and* closes the issue #904 DPI-blindness bug:
+  pre-#904 this exact figure (with the un-DPI-scaled 14 px constant)
+  incorrectly fired an ``error``.
 
 - ``escape_hatch_whole_slide`` — Bare ``<!-- anvil-figure-legibility-
   disable -->`` (no name) suppresses every figure on that slide.
+
+- ``matplotlib_dpi_scaling`` (issue #904) — A 1000x1000 matplotlib
+  chart with an explicit ``pHYs`` DPI chunk, exercised at 72, 100, and
+  200 DPI. No clamp, so displayed height is the CSS default 540 px;
+  scale = 540/1000 = 0.54. Displayed glyph = ``10pt * (dpi/72) *
+  0.54``: 5.4 px @72 dpi (ERROR), 7.5 px @100 dpi (ERROR), 15.0 px
+  @200 dpi (passes, just above the 14 px warning floor). Pins the
+  DPI-proportional scaling directly, independent of the 200-DPI
+  fallback default.
+
+- ``matplotlib_genuinely_undersized_still_fires`` (issue #904) — A
+  1200x800 matplotlib chart at a real 200 DPI, constrained via an
+  explicit ``w:`` keyword to well under the CSS default. The DPI fix
+  must not blind the gate to a figure that is *actually* too small
+  once genuinely constrained — this is the issue's "important caveat."
 
 Runs under either ``python -m unittest discover anvil/skills/deck/tests/``
 or ``pytest anvil/skills/deck/tests/``.
@@ -114,6 +134,41 @@ def _make_minimal_png(width: int, height: int) -> bytes:
     return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
 
 
+def _make_png_with_dpi(width: int, height: int, dpi: float) -> bytes:
+    """Build a valid PNG with an explicit ``pHYs`` chunk declaring ``dpi``.
+
+    Mirrors matplotlib's ``savefig(dpi=D)`` output: ``ppux == ppuy ==
+    round(D / 0.0254)``, unit byte ``1`` (meters), inserted between
+    IHDR and IDAT (matplotlib's own chunk order).
+    """
+    sig = b"\x89PNG\r\n\x1a\n"
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+
+    ppu = round(dpi / 0.0254)
+    phys = struct.pack(">IIB", ppu, ppu, 1)
+
+    scanline = b"\x00" + b"\xff" * (width * 3)
+    raw = scanline * height
+    idat = zlib.compress(raw)
+
+    return (
+        sig
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"pHYs", phys)
+        + chunk(b"IDAT", idat)
+        + chunk(b"IEND", b"")
+    )
+
+
 def _write_deck(
     tmp_path: Path,
     figure_refs: list[str],
@@ -153,15 +208,24 @@ def _make_figure(
     height: int,
     *,
     diagram_type: str = "mermaid",
+    dpi: float | None = None,
 ) -> Path:
-    """Create a figures/<name>.png plus a sibling src/<name>.<ext> for type."""
+    """Create a figures/<name>.png plus a sibling src/<name>.<ext> for type.
+
+    ``dpi``, when given, embeds a ``pHYs`` chunk declaring that physical
+    density (mirrors matplotlib's ``savefig(dpi=...)``). Omitted by
+    default, matching a PNG with no declared density.
+    """
     figures = tmp_path / "figures"
     figures.mkdir(exist_ok=True)
     src = figures / "src"
     src.mkdir(exist_ok=True)
 
     png_path = figures / f"{name}.png"
-    png_path.write_bytes(_make_minimal_png(width, height))
+    if dpi is None:
+        png_path.write_bytes(_make_minimal_png(width, height))
+    else:
+        png_path.write_bytes(_make_png_with_dpi(width, height, dpi))
 
     # Sibling source for diagram-type classification.
     if diagram_type == "mermaid":
@@ -362,13 +426,20 @@ class TestMissingFigureSilentlySkipped(unittest.TestCase):
 class TestMatplotlibChartNotMermaidSpecial(unittest.TestCase):
     """The gate is diagram-type-aware but not mermaid-only.
 
-    A 1200x800 matplotlib chart (14 px intrinsic font, the matplotlib
-    default axis-label height) referenced with no clamp displays at
-    540 px (the CSS default cap). Scale = 540/800 = 0.675;
-    displayed glyph = 14 * 0.675 ≈ 9.45 px → ERROR.
+    A 1200x800 matplotlib chart with no embedded ``pHYs`` DPI chunk,
+    referenced with no clamp, displays at 540 px (the CSS default
+    cap). Since no DPI is declared, the gate assumes the shipped
+    ``anvil.mplstyle`` default of 200 DPI: intrinsic glyph height
+    = 10pt * (200/72) ≈ 27.8 px. Scale = 540/800 = 0.675;
+    displayed glyph ≈ 27.8 * 0.675 ≈ 18.75 px → ABOVE the warning
+    floor. NOT flagged.
+
+    This is the exact issue #904 regression case: pre-#904, the
+    un-DPI-scaled 14 px constant computed 14 * 0.675 ≈ 9.45 px and
+    fired an ``error`` on a figure that was demonstrably legible.
     """
 
-    def test_matplotlib_chart_under_floor_emits_error(self) -> None:
+    def test_matplotlib_chart_at_default_dpi_not_flagged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _make_figure(root, "chart", 1200, 800, diagram_type="matplotlib")
@@ -376,9 +447,82 @@ class TestMatplotlibChartNotMermaidSpecial(unittest.TestCase):
 
             result = lint_figures(deck)
 
+            self.assertEqual(len(result.errors), 0, result.to_summary())
+            self.assertEqual(len(result.warnings), 0, result.to_summary())
+
+
+class TestMatplotlibDpiScaling(unittest.TestCase):
+    """Issue #904: the gate reads the PNG's embedded DPI (``pHYs``).
+
+    A 1000x1000 matplotlib chart, no clamp, so displayed height is
+    the CSS default 540 px; scale = 540/1000 = 0.54. Displayed glyph
+    = ``10pt * (dpi/72) * 0.54``:
+
+    - 72 dpi:  10 * 1.000 * 0.54 =  5.4 px → ERROR
+    - 100 dpi: 10 * 1.389 * 0.54 =  7.5 px → ERROR
+    - 200 dpi: 10 * 2.778 * 0.54 = 15.0 px → passes (just above the
+      14 px warning floor)
+
+    Same figure geometry throughout — only the declared DPI changes —
+    so this pins the DPI-proportional scaling directly rather than
+    relying on the 200 DPI no-``pHYs`` fallback.
+    """
+
+    def test_72_dpi_emits_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_figure(root, "chart", 1000, 1000, diagram_type="matplotlib", dpi=72)
+            deck = _write_deck(root, ["![alt](figures/chart.png)"])
+
+            result = lint_figures(deck)
+
+            self.assertEqual(len(result.errors), 1, result.to_summary())
+            self.assertIn("matplotlib", result.errors[0].message)
+
+    def test_100_dpi_emits_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_figure(root, "chart", 1000, 1000, diagram_type="matplotlib", dpi=100)
+            deck = _write_deck(root, ["![alt](figures/chart.png)"])
+
+            result = lint_figures(deck)
+
+            self.assertEqual(len(result.errors), 1, result.to_summary())
+
+    def test_200_dpi_not_flagged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_figure(root, "chart", 1000, 1000, diagram_type="matplotlib", dpi=200)
+            deck = _write_deck(root, ["![alt](figures/chart.png)"])
+
+            result = lint_figures(deck)
+
+            self.assertEqual(len(result.errors), 0, result.to_summary())
+            self.assertEqual(len(result.warnings), 0, result.to_summary())
+
+
+class TestMatplotlibGenuinelyUndersizedStillFires(unittest.TestCase):
+    """Issue #904's "important caveat": a truly-undersized figure still fires.
+
+    A 1200x800 matplotlib chart rendered at a real 200 DPI (so the DPI
+    fix's scaling is in play), but referenced with an explicit ``w:``
+    keyword clamping it to 400 px — well under a third of the 1280 px
+    slide width. Width clamp dominates: displayed height =
+    400 * (800/1200) ≈ 266.7 px; scale ≈ 0.333; displayed glyph
+    ≈ 10 * (200/72) * 0.333 ≈ 9.3 px → ERROR. The DPI fix must not
+    blind the gate to a figure that is genuinely constrained too small.
+    """
+
+    def test_narrow_w_clamp_still_emits_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_figure(root, "chart", 1200, 800, diagram_type="matplotlib", dpi=200)
+            deck = _write_deck(root, ["![w:400px alt](figures/chart.png)"])
+
+            result = lint_figures(deck)
+
             self.assertEqual(len(result.errors), 1, result.to_summary())
             self.assertEqual(result.errors[0].rule, "figure-legibility-floor")
-            self.assertIn("matplotlib", result.errors[0].message)
 
 
 class TestWorstCaseAcrossSlides(unittest.TestCase):
