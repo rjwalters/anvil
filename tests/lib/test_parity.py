@@ -31,6 +31,7 @@ from anvil.lib.parity import (
     RULES_MEMO,
     UNIT_VOCABULARY,
     _extract_figure_corpus,
+    _extract_quarantine_corpus,
     _strip_token_numeric,
     lint_deck_memo_parity,
     lint_memo_deck_parity,
@@ -897,3 +898,406 @@ def test_economic_subset_emitted_under_memo_side_rule():
     econ_findings = [f for f in result.warnings if f.side == "only_in_memo_economic"]
     assert len(econ_findings) == 1
     assert econ_findings[0].rule == "memo_deck_parity"
+
+
+# ---------------------------------------------------------------------------
+# BRIEF-quarantine surface (issue #914)
+# ---------------------------------------------------------------------------
+
+
+def test_lint_source_no_quarantine_corpus_is_byte_identical():
+    """Backward-compat anchor: ``lint_source`` with no ``quarantine_corpus``
+    kwarg produces exactly the same result as passing the empty default."""
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Gross revenue $400M (net $256M). Class spread 20-40% (unverified).\n"
+    )
+    deck_body = "# Deck\n\nRevenue: $256M net.\n"
+
+    without_kwarg = lint_source(deck_body, memo_body, rule="deck_memo_parity")
+    with_empty = lint_source(
+        deck_body, memo_body, rule="deck_memo_parity", quarantine_corpus=frozenset()
+    )
+
+    assert without_kwarg.only_in_memo == with_empty.only_in_memo
+    assert without_kwarg.only_in_memo_economic == with_empty.only_in_memo_economic
+    assert without_kwarg.only_in_memo_quarantined == with_empty.only_in_memo_quarantined
+    assert without_kwarg.quarantine_violations == with_empty.quarantine_violations
+    # Every quarantine-shaped assertion is a true no-op when the corpus is empty.
+    assert without_kwarg.only_in_memo_quarantined == []
+    assert without_kwarg.quarantine_violations == []
+
+
+def test_quarantined_memo_token_does_not_promote_to_economic():
+    """A quarantined ``only_in_memo`` token that WOULD otherwise qualify for
+    economic promotion (money token near unit-economics vocab) is excluded
+    from ``only_in_memo_economic`` and carries the reframed side instead."""
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Gross revenue $400M drives our unit economics and ARR model.\n"
+    )
+    deck_body = "# Deck\n\nNo revenue slide.\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        quarantine_corpus=frozenset({"$400M"}),
+    )
+
+    assert "$400M" not in result.only_in_memo_economic, (
+        "a quarantined token must NEVER promote to only_in_memo_economic, "
+        f"even when economically eligible; got {result.only_in_memo_economic!r}"
+    )
+    assert "$400M" in result.only_in_memo_quarantined
+    # The underlying only_in_memo finding survives (additive-surfacing
+    # invariant, parallels the only_in_memo_economic contract).
+    assert "$400M" in result.only_in_memo
+
+
+def test_quarantined_token_still_emits_underlying_only_in_memo_finding():
+    """Invariant: ``set(only_in_memo_quarantined) ⊆ set(only_in_memo)`` —
+    every quarantined token is ALSO recorded as an ``only_in_memo``
+    finding with the ordinary (non-reframed) message."""
+    memo_body = "# Memo\n\nUnverified class spread 20-40% here.\n"
+    deck_body = "# Deck\n\nNo economics slide.\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        quarantine_corpus=frozenset({"20-40%"}),
+    )
+
+    assert set(result.only_in_memo_quarantined) <= set(result.only_in_memo)
+    only_in_memo_findings = [
+        f for f in result.warnings if f.side == "only_in_memo" and f.token == "20-40%"
+    ]
+    quarantined_findings = [
+        f
+        for f in result.warnings
+        if f.side == "only_in_memo_quarantined" and f.token == "20-40%"
+    ]
+    assert len(only_in_memo_findings) == 1
+    assert len(quarantined_findings) == 1
+    assert "correctly absent" in quarantined_findings[0].message.lower()
+
+
+def test_quarantined_token_in_deck_body_emits_violation():
+    """A quarantined token appearing in the DECK body is a new, real
+    hard-rule violation this lint did not previously detect."""
+    memo_body = "# Memo\n\nNet revenue $256M.\n"
+    deck_body = "# Deck\n\nQ&A note: gross revenue $400M.\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        quarantine_corpus=frozenset({"$400M"}),
+    )
+
+    assert "$400M" in result.quarantine_violations
+    violation_findings = [f for f in result.warnings if f.side == "quarantine_violation"]
+    assert len(violation_findings) == 1
+    assert violation_findings[0].token == "$400M"
+    assert violation_findings[0].severity == "warning"
+    assert "hard-rule violation" in violation_findings[0].message.lower()
+
+
+def test_quarantine_violation_fires_even_when_token_shared_with_memo():
+    """The reverse-violation finding fires on ANY deck-body presence, not
+    just the ``only_in_deck``-exclusive subset — a quarantined token that
+    (incorrectly) made it into BOTH bodies is still a violation."""
+    memo_body = "# Memo\n\nGross revenue $400M mentioned for context.\n"
+    deck_body = "# Deck\n\nGross revenue $400M on the summary slide.\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        quarantine_corpus=frozenset({"$400M"}),
+    )
+
+    # Shared token: NOT only_in_memo or only_in_deck...
+    assert "$400M" not in result.only_in_memo
+    assert "$400M" not in result.only_in_deck
+    # ...but still a quarantine violation, since it appears in the deck.
+    assert "$400M" in result.quarantine_violations
+
+
+def test_quarantine_corpus_no_hits_is_a_safe_no_op():
+    """A quarantine corpus present but never matched by either body
+    produces zero quarantine-shaped findings and does not crash."""
+    memo_body = "# Memo\n\nNo economics numbers here at all.\n"
+    deck_body = "# Deck\n\nNothing shared either.\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        quarantine_corpus=frozenset({"$999M", "77-88%"}),
+    )
+
+    assert result.only_in_memo_quarantined == []
+    assert result.quarantine_violations == []
+
+
+def test_escape_hatch_and_quarantine_compose():
+    """The existing ``<!-- anvil-lint-disable: ... -->`` escape hatch and
+    the quarantine reframe compose: a suppressed AND quarantined token's
+    reframed finding is ALSO downgraded to ``info`` — the two mechanisms
+    do not conflict, severity tracks suppression exactly as the economic
+    promotion already does."""
+    memo_body = (
+        "# Memo\n"
+        "\n"
+        "Gross revenue $400M. <!-- anvil-lint-disable: deck_memo_parity -->\n"
+    )
+    deck_body = "# Deck\n\nNo revenue slide.\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        quarantine_corpus=frozenset({"$400M"}),
+    )
+
+    assert "$400M" in result.only_in_memo_quarantined
+    quarantined_findings = [f for f in result.infos if f.side == "only_in_memo_quarantined"]
+    assert len(quarantined_findings) == 1, (
+        "a suppressed quarantined token's reframed finding must land in "
+        f"infos, not warnings; warnings={[f.side for f in result.warnings]!r}"
+    )
+
+
+def test_extract_quarantine_corpus_graceful_on_missing_brief(tmp_path: Path):
+    """No ``BRIEF.md`` at the project dir → empty frozenset (graceful path,
+    mirrors :func:`_extract_figure_corpus`'s missing-dir contract)."""
+    assert _extract_quarantine_corpus(tmp_path) == frozenset()
+    assert _extract_quarantine_corpus(tmp_path / "nonexistent") == frozenset()
+
+
+def test_extract_quarantine_corpus_reads_brief_quarantine_key(tmp_path: Path):
+    """The corpus is the normalized set of the BRIEF's ``quarantine:``
+    tokens — dash unification and money-magnitude uppercasing applied via
+    ``_normalize_token``, same as extractor-produced tokens."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: proj\n"
+        "quarantine:\n"
+        '  - "$400m"\n'
+        '  - "20–40%"\n'
+        "documents:\n"
+        "  - slug: acme\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+    corpus = _extract_quarantine_corpus(project)
+    # "$400m" normalizes to "$400M"; the en-dash range normalizes to ASCII.
+    assert corpus == frozenset({"$400M", "20-40%"})
+
+
+def test_extract_quarantine_corpus_no_quarantine_key_is_empty(tmp_path: Path):
+    """A BRIEF with no ``quarantine:`` key → empty frozenset (byte-identical
+    no-quarantine behavior)."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: proj\n"
+        "documents:\n"
+        "  - slug: acme\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+    assert _extract_quarantine_corpus(project) == frozenset()
+
+
+def test_extract_quarantine_corpus_graceful_on_malformed_brief(tmp_path: Path):
+    """A structurally-broken BRIEF.md (missing required ``project:`` field)
+    must NOT sink the parity lint — graceful empty, matching the per-file
+    graceful contract of :func:`_extract_figure_corpus`."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\ndocuments:\n  - slug: acme\n    artifact_type: investment-memo\n---\n",
+        encoding="utf-8",
+    )
+    assert _extract_quarantine_corpus(project) == frozenset()
+
+
+def test_lint_deck_memo_parity_reads_brief_quarantine_end_to_end(tmp_path: Path):
+    """Integration: ``lint_deck_memo_parity`` auto-discovers the project
+    BRIEF.md's ``quarantine:`` surface at ``<project>/BRIEF.md`` (the
+    parent of the deck thread root) and applies both the reframe and the
+    reverse-violation detection end to end — the issue #914 canary shape
+    (memo carries a quarantined $400M gross figure alongside the correct
+    $256M net figure; deck correctly omits the quarantined figure)."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: proj\n"
+        "quarantine:\n"
+        '  - "$400M"\n'
+        "documents:\n"
+        "  - slug: acme-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: acme-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    deck_version_dir = project / "acme-deck" / "acme-deck.1"
+    deck_version_dir.mkdir(parents=True)
+    (deck_version_dir / "deck.md").write_text(
+        "# Deck\n\nRevenue: $256M net.\n", encoding="utf-8"
+    )
+
+    memo_version_dir = project / "acme-memo" / "acme-memo.1"
+    memo_version_dir.mkdir(parents=True)
+    (memo_version_dir / "acme-memo.md").write_text(
+        "# Memo\n\nGross revenue $400M (net $256M).\n", encoding="utf-8"
+    )
+
+    result = lint_deck_memo_parity(deck_version_dir, memo_version_dir)
+
+    assert result.skipped is False
+    assert "$400M" not in result.only_in_memo_economic
+    assert "$400M" in result.only_in_memo_quarantined
+    assert result.quarantine_violations == []
+
+
+def test_lint_deck_memo_parity_detects_quarantine_violation_in_deck(tmp_path: Path):
+    """Integration: a quarantined figure that leaks into the deck body is
+    flagged as ``quarantine_violation`` end to end."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: proj\n"
+        "quarantine:\n"
+        '  - "$400M"\n'
+        "documents:\n"
+        "  - slug: acme-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: acme-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    deck_version_dir = project / "acme-deck" / "acme-deck.1"
+    deck_version_dir.mkdir(parents=True)
+    (deck_version_dir / "deck.md").write_text(
+        "# Deck\n\nSpeaker note: gross revenue $400M.\n", encoding="utf-8"
+    )
+
+    memo_version_dir = project / "acme-memo" / "acme-memo.1"
+    memo_version_dir.mkdir(parents=True)
+    (memo_version_dir / "acme-memo.md").write_text(
+        "# Memo\n\nNet revenue $256M.\n", encoding="utf-8"
+    )
+
+    result = lint_deck_memo_parity(deck_version_dir, memo_version_dir)
+
+    assert result.skipped is False
+    assert "$400M" in result.quarantine_violations
+
+
+def test_lint_deck_memo_parity_no_brief_is_byte_identical(tmp_path: Path):
+    """A project with no BRIEF.md at all → quarantine tier inactive,
+    behavior byte-identical to pre-#914."""
+    project = tmp_path / "proj"
+
+    deck_version_dir = project / "acme-deck" / "acme-deck.1"
+    deck_version_dir.mkdir(parents=True)
+    (deck_version_dir / "deck.md").write_text(
+        "# Deck\n\nNo revenue slide.\n", encoding="utf-8"
+    )
+
+    memo_version_dir = project / "acme-memo" / "acme-memo.1"
+    memo_version_dir.mkdir(parents=True)
+    (memo_version_dir / "acme-memo.md").write_text(
+        "# Memo\n\nGross revenue $400M.\n", encoding="utf-8"
+    )
+
+    result = lint_deck_memo_parity(deck_version_dir, memo_version_dir)
+
+    assert result.skipped is False
+    assert result.only_in_memo_quarantined == []
+    assert result.quarantine_violations == []
+    assert "$400M" in result.only_in_memo
+
+
+def test_lint_memo_deck_parity_reads_brief_quarantine_end_to_end(tmp_path: Path):
+    """Symmetric integration test on the memo-side wrapper: the memo-side
+    ``lint_memo_deck_parity`` ALSO auto-discovers the project BRIEF.md's
+    quarantine surface (project root = parent of the memo thread root)."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: proj\n"
+        "quarantine:\n"
+        '  - "$400M"\n'
+        "documents:\n"
+        "  - slug: acme-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: acme-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    deck_version_dir = project / "acme-deck" / "acme-deck.1"
+    deck_version_dir.mkdir(parents=True)
+    (deck_version_dir / "deck.md").write_text(
+        "# Deck\n\nRevenue: $256M net.\n", encoding="utf-8"
+    )
+
+    memo_version_dir = project / "acme-memo" / "acme-memo.1"
+    memo_version_dir.mkdir(parents=True)
+    (memo_version_dir / "acme-memo.md").write_text(
+        "# Memo\n\nGross revenue $400M (net $256M).\n", encoding="utf-8"
+    )
+
+    result = lint_memo_deck_parity(memo_version_dir, deck_version_dir)
+
+    assert result.skipped is False
+    assert "$400M" not in result.only_in_memo_economic
+    assert "$400M" in result.only_in_memo_quarantined
+    # Rule label reflects the memo-side rule.
+    quarantined_findings = [
+        f for f in result.warnings if f.side == "only_in_memo_quarantined"
+    ]
+    assert len(quarantined_findings) == 1
+    assert quarantined_findings[0].rule == "memo_deck_parity"
+
+
+def test_quarantine_interacts_predictably_with_figure_corpus():
+    """A token quarantined AND figure-carried is excluded from economic
+    promotion via the quarantine path regardless of the figure-corpus
+    suppression path — the two suppression mechanisms compose without
+    conflict (both independently keep the token out of
+    only_in_memo_economic)."""
+    memo_body = "# Memo\n\nGross revenue $400M near unit economics context.\n"
+    deck_body = "# Deck\n\n![Revenue chart](figures/fig_revenue.png)\n"
+
+    result = lint_source(
+        deck_body,
+        memo_body,
+        rule="deck_memo_parity",
+        figure_corpus=frozenset({"400"}),
+        quarantine_corpus=frozenset({"$400M"}),
+    )
+
+    assert "$400M" not in result.only_in_memo_economic
+    assert "$400M" in result.only_in_memo_quarantined

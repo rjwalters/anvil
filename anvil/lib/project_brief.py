@@ -1928,6 +1928,32 @@ class ProjectBrief(BaseModel):
         inactive (absent key, ``null``, or empty list) → byte-identical
         behavior. Path resolution is deferred to
         :func:`resolve_corpus_dirs`.
+    quarantine
+        Optional list of **literal** figure/range tokens (issue #914) that
+        a ``hard_rules`` entry forbids porting from the project's private
+        artifacts (e.g. a memo) into its customer-facing siblings (e.g. a
+        deck) — the classic shape is a superseded or unverified number
+        (``"$400M"`` when the correct disclosure is ``"$256M"``, or an
+        unverified ``"20-40%"`` spread). Distinct from ``hard_rules``:
+        ``hard_rules`` stays free-form discipline prose for the reviewer
+        (``"cite $256M net, not $400M gross"``); ``quarantine`` is the
+        machine-matchable token surface a lint can compare against —
+        the same split ``corpus`` already draws against ``voice.corpus``
+        (structured ground truth vs. prose guidance).
+
+        Consumed by ``anvil/lib/parity.py``'s deck↔memo parity lint via
+        the ``quarantine_corpus`` kwarg on ``lint_source()``: a listed
+        token found only in the memo body is reframed away from the
+        "should you port this?" promotion (``side="only_in_memo_quarantined"``)
+        rather than silently dropped, and the SAME token found anywhere
+        in the deck body raises a new ``side="quarantine_violation"``
+        finding — a real hard-rule violation. Entries are literal
+        strings; derived forms (e.g. a quarantined ``"20-40%"`` rate
+        reappearing as its arithmetic product) are NOT detected — see
+        the "Quarantine corpus" section of ``parity.py``'s module
+        docstring. Defaults to an empty list (tier inactive) →
+        byte-identical behavior for every BRIEF that does not declare
+        this key.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1939,6 +1965,7 @@ class ProjectBrief(BaseModel):
     theme: Optional[str] = Field(default=None)
     voice: Optional[VoiceDocs] = Field(default=None)
     corpus: Optional[List[str]] = Field(default=None)
+    quarantine: List[str] = Field(default_factory=list)
 
     def document_for_slug(self, slug: str) -> Optional[BriefDocument]:
         """Return the ``BriefDocument`` whose ``slug`` matches, or ``None``.
@@ -3694,8 +3721,9 @@ def _parse_brief_body(
 
     Raises ``ValueError`` on any schema violation. Recognized top-level
     keys: ``project``, ``audience``, ``hard_rules``, ``documents``,
-    ``theme``, ``voice``, ``corpus``. Other keys are ignored (forward-
-    compat surface for project-level fields that may land later).
+    ``theme``, ``voice``, ``corpus``, ``quarantine``. Other keys are
+    ignored (forward-compat surface for project-level fields that may
+    land later).
 
     The consumer artifact-type set (issue #394) is discovered ONCE per
     parse here and threaded down to the per-entry ``artifact_type``
@@ -3726,6 +3754,9 @@ def _parse_brief_body(
     theme = _normalize_theme(frontmatter.get("theme"))
     voice = _normalize_voice(frontmatter.get("voice"))
     corpus = _normalize_corpus_dirs(frontmatter.get("corpus"))
+    quarantine = _normalize_string_list(
+        frontmatter.get("quarantine"), "quarantine"
+    )
 
     try:
         return ProjectBrief(
@@ -3736,6 +3767,7 @@ def _parse_brief_body(
             theme=theme,
             voice=voice,
             corpus=corpus,
+            quarantine=quarantine,
         )
     except ValidationError as exc:
         raise ValueError(

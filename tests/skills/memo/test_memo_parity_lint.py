@@ -493,6 +493,132 @@ def test_lint_memo_deck_parity_with_real_files(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# BRIEF-quarantine surface (issue #914) — consumer-level coverage via the
+# memo-side skill-local re-export
+# ---------------------------------------------------------------------------
+
+
+def test_lint_memo_deck_parity_reframes_quarantined_memo_token(tmp_path: Path):
+    """End-to-end via the memo-side skill-local re-export: a project
+    ``BRIEF.md`` quarantine entry reframes a memo-only economic token away
+    from ``only_in_memo_economic`` promotion — the issue #914 canary shape."""
+    project = tmp_path / "familyrisk"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: familyrisk\n"
+        "quarantine:\n"
+        '  - "$400M"\n'
+        "documents:\n"
+        "  - slug: familyrisk-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: familyrisk-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    memo_dir = project / "familyrisk-memo" / "familyrisk-memo.1"
+    memo_dir.mkdir(parents=True)
+    (memo_dir / "familyrisk-memo.md").write_text(
+        "# Memo\n\nGross revenue $400M near unit economics context "
+        "(net $256M is the BRIEF-mandated figure).\n",
+        encoding="utf-8",
+    )
+
+    deck_dir = project / "familyrisk-deck" / "familyrisk-deck.1"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "deck.md").write_text(
+        "# Deck\n\nRevenue: $256M net.\n", encoding="utf-8"
+    )
+
+    result = lint_memo_deck_parity(memo_dir, deck_dir)
+
+    assert result.skipped is False
+    assert "$400M" not in result.only_in_memo_economic
+    assert "$400M" in result.only_in_memo_quarantined
+    assert "$400M" in result.only_in_memo
+
+
+def test_lint_memo_deck_parity_flags_quarantined_token_ported_into_deck(tmp_path: Path):
+    """End-to-end: a quarantined figure that leaks into the deck body is
+    flagged as ``quarantine_violation`` from the memo-side wrapper too —
+    schema parity across both wrapper directions."""
+    project = tmp_path / "familyrisk"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: familyrisk\n"
+        "quarantine:\n"
+        '  - "20-40%"\n'
+        "documents:\n"
+        "  - slug: familyrisk-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: familyrisk-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    memo_dir = project / "familyrisk-memo" / "familyrisk-memo.1"
+    memo_dir.mkdir(parents=True)
+    (memo_dir / "familyrisk-memo.md").write_text(
+        "# Memo\n\nUnverified estimate.\n", encoding="utf-8"
+    )
+
+    deck_dir = project / "familyrisk-deck" / "familyrisk-deck.1"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "deck.md").write_text(
+        "# Deck\n\nSpeaker note Q&A: preferred-vs-standard spread 20-40%.\n",
+        encoding="utf-8",
+    )
+
+    result = lint_memo_deck_parity(memo_dir, deck_dir)
+
+    assert result.skipped is False
+    assert "20-40%" in result.quarantine_violations
+    violation_findings = [f for f in result.warnings if f.side == "quarantine_violation"]
+    assert len(violation_findings) == 1
+    assert violation_findings[0].rule == "memo_deck_parity"
+
+
+def test_lint_memo_deck_parity_no_brief_quarantine_key_is_unaffected(tmp_path: Path):
+    """A project BRIEF with no ``quarantine:`` key behaves exactly as
+    pre-#914 on the memo-side wrapper too."""
+    project = tmp_path / "familyrisk"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: familyrisk\n"
+        "documents:\n"
+        "  - slug: familyrisk-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: familyrisk-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    memo_dir = project / "familyrisk-memo" / "familyrisk-memo.1"
+    memo_dir.mkdir(parents=True)
+    (memo_dir / "familyrisk-memo.md").write_text(
+        "# Memo\n\nGross revenue $400M near unit economics context.\n",
+        encoding="utf-8",
+    )
+
+    deck_dir = project / "familyrisk-deck" / "familyrisk-deck.1"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "deck.md").write_text("# Deck\n\nNo revenue slide.\n", encoding="utf-8")
+
+    result = lint_memo_deck_parity(memo_dir, deck_dir)
+
+    assert result.skipped is False
+    assert result.only_in_memo_quarantined == []
+    assert result.quarantine_violations == []
+    assert "$400M" in result.only_in_memo_economic
+
+
+# ---------------------------------------------------------------------------
 # AC12 — Symmetry test
 # ---------------------------------------------------------------------------
 
@@ -659,6 +785,21 @@ def test_memo_review_md_summary_block_demonstrates_both_shapes():
     assert "\"memo_deck_parity\"" in text
     # And the skip shape.
     assert "ran: false" in text or '"ran": false' in text
+
+
+def test_memo_review_md_documents_brief_quarantine_surface():
+    """The BRIEF-quarantine surface (issue #914) must be documented in
+    memo-review.md's step 4d region, naming the two new ``side`` values
+    and the derived-forms caveat."""
+    text = MEMO_REVIEW_MD.read_text(encoding="utf-8")
+    assert "quarantine" in text.lower(), (
+        "memo-review.md must document the BRIEF quarantine: surface"
+    )
+    assert "only_in_memo_quarantined" in text
+    assert "quarantine_violation" in text
+    assert "derived" in text.lower(), (
+        "memo-review.md must document the derived-forms caveat (issue #914)"
+    )
 
 
 # ---------------------------------------------------------------------------
