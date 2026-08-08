@@ -294,6 +294,21 @@
 
 ### Fixed
 
+- **`slide-content-overflow` no longer charges standalone-image alt text as
+  body prose** (#905). The lint's standalone-image branch was gated on
+  `len(raw_line.strip()) < 250` (`anvil/lib/marp_lint.py`), so a long,
+  accessible `![alt text](path)` string could push the line past the
+  threshold and fall through to the body-paragraph branch — where the alt
+  characters, never rendered on the slide, were double-charged as rendered
+  prose (per-70-char text rate) on top of the image's own cost, penalizing
+  decks for writing better accessibility text. Rekeys the branch on line
+  *structure* — reusing the existing `_STANDALONE_FIGURE_RE` anchored
+  whole-line image pattern (already load-bearing for
+  `figure-italic-supporting-line-too-long`) instead of a length heuristic —
+  so a standalone image line is recognized as an image regardless of
+  alt-text length. Adds a regression test asserting identical estimated
+  cost for slides differing only in alt-text length (40 vs. 400 chars).
+
 - **`essay-review` no longer calibrates voice fidelity against the
   artifact under review** (#890). A `voice.corpus` glob naturally
   points at the consumer's published archive — correct when drafting a
