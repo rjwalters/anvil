@@ -38,6 +38,23 @@ For each ``![alt](figures/<name>.png)`` reference in ``deck.md``:
    B.2). The displayed glyph height is
    ``intrinsic_text_h * (H_disp / intrinsic_png_h)``.
 
+   ``intrinsic_text_h`` is a height in **source PNG pixels**, so for any
+   renderer that lays text out in *physical* units (points) and
+   rasterizes at a chosen resolution it depends on that resolution.
+   matplotlib is exactly such a renderer: a 10 pt axis label is ~14 px
+   tall at matplotlib's own stock ``savefig.dpi`` of 100, but ~28 px
+   tall at the ``savefig.dpi: 200`` pinned by
+   ``anvil/lib/figures/anvil.mplstyle``. Treating 14 px as
+   resolution-independent understated the glyph size ~2x and fired
+   ``error`` on demonstrably legible figures (issue #904). The gate
+   therefore reads the PNG's own declared resolution from its ``pHYs``
+   chunk and rescales the constant by ``declared_dpi / reference_dpi``
+   (see ``Geometry.reference_dpi_by_diagram_type``). Because the
+   figure's intrinsic pixel height grows with DPI by the same factor,
+   the resulting estimate is DPI-invariant: the same physical figure
+   rendered at 72, 100 or 200 DPI yields the same displayed glyph
+   height, which is the physically correct answer.
+
 4. Threshold: ``< 14 px`` displayed → warning; ``< 11 px`` displayed →
    error. The "11 pt at projection scale" rule of thumb: at 1280x720
    Marp output, body text is 26 px ≈ 14.6 px at 96 DPI ≈ 11 pt. Any
@@ -127,10 +144,15 @@ class Geometry:
     The ``intrinsic_text_h_px_by_diagram_type`` mapping is the
     type-based proxy v1 uses in lieu of true image measurement (see the
     module docstring "Escalation hooks"). The keys are heuristic
-    classifications of the PNG source — ``mermaid`` is the only one
-    that matters today (matplotlib's 200 DPI default produces text
-    large enough that this gate would not fire on its own; the same
-    threshold still applies and will catch e.g. a stretched-down chart).
+    classifications of the PNG source.
+
+    Each constant is a height in **source PNG pixels**, and therefore
+    only meaningful together with the resolution it was calibrated at.
+    ``reference_dpi_by_diagram_type`` records that calibration DPI per
+    type; when a PNG declares its own resolution (``pHYs`` chunk) the
+    constant is rescaled by ``declared_dpi / reference_dpi``. A type
+    absent from that mapping is never rescaled — see its docstring for
+    why mermaid is deliberately excluded.
     """
 
     # Slide geometry (mirrors the deck Marp config + CSS).
@@ -152,19 +174,79 @@ class Geometry:
     # stock default) so we don't under-flag.
     intrinsic_text_h_px_by_diagram_type: tuple[tuple[str, float], ...] = (
         ("mermaid", 18.0),
-        ("matplotlib", 14.0),  # matplotlib default axis-label font
+        # matplotlib's default 10 pt axis-label font, at matplotlib's own
+        # stock `savefig.dpi` of 100: 10 pt * 100/72 ≈ 13.9 px. Rescaled
+        # per-figure by the PNG's declared DPI — see
+        # `reference_dpi_by_diagram_type` (issue #904).
+        ("matplotlib", 14.0),
         ("unknown", 16.0),
     )
 
-    def intrinsic_text_h_for(self, diagram_type: str) -> float:
-        """Return the heuristic intrinsic text-glyph height, in px."""
-        for key, value in self.intrinsic_text_h_px_by_diagram_type:
+    # Calibration DPI for the constants above, per diagram type. A type
+    # listed here has its constant rescaled by
+    # `declared_dpi / reference_dpi` whenever the PNG carries a `pHYs`
+    # chunk; a type NOT listed here is never rescaled.
+    #
+    # Only `matplotlib` is listed, and deliberately so:
+    #
+    # - matplotlib lays text out in points and rasterizes at
+    #   `savefig.dpi`, so its glyph height in PNG px is a direct
+    #   function of DPI — and it records that DPI in `pHYs` (verified:
+    #   a figure saved under `anvil.mplstyle` carries pHYs 7874 ppm ≈
+    #   200 DPI). This is the coupling issue #904 reported.
+    # - mermaid PNGs come from `mmdc` (Puppeteer/Chromium), which lays
+    #   text out in CSS px and multiplies by the `--scale 2`
+    #   device-pixel ratio pinned in `deck-figures` step 4. That factor
+    #   is NOT a DPI and is NOT recorded — verified: an `mmdc` PNG
+    #   carries no `pHYs` chunk at all. The 18 px constant stays as
+    #   calibrated in #563 rather than being rescaled off metadata that
+    #   does not exist.
+    # - `unknown` covers hand-placed PNGs whose text size has no
+    #   derivable relationship to any resolution metadata they happen
+    #   to carry; the conservative fixed constant is kept.
+    reference_dpi_by_diagram_type: tuple[tuple[str, float], ...] = (
+        ("matplotlib", 100.0),
+    )
+
+    def reference_dpi_for(self, diagram_type: str) -> float | None:
+        """Return the calibration DPI for a type, or ``None`` if unscaled."""
+        for key, value in self.reference_dpi_by_diagram_type:
             if key == diagram_type:
                 return value
+        return None
+
+    def intrinsic_text_h_for(
+        self,
+        diagram_type: str,
+        png_dpi: float | None = None,
+    ) -> float:
+        """Return the heuristic intrinsic text-glyph height, in PNG px.
+
+        ``png_dpi`` is the resolution the PNG declares for itself (from
+        its ``pHYs`` chunk). When it is known *and* the diagram type has
+        a calibration DPI, the constant is rescaled by
+        ``png_dpi / reference_dpi``. When either is absent the constant
+        is returned as calibrated — the conservative direction, since
+        under-estimating glyph height over-flags rather than
+        under-flags.
+        """
+        base = 16.0
         for key, value in self.intrinsic_text_h_px_by_diagram_type:
-            if key == "unknown":
-                return value
-        return 16.0
+            if key == diagram_type:
+                base = value
+                break
+        else:
+            for key, value in self.intrinsic_text_h_px_by_diagram_type:
+                if key == "unknown":
+                    base = value
+                    break
+
+        if png_dpi is None or png_dpi <= 0:
+            return base
+        reference_dpi = self.reference_dpi_for(diagram_type)
+        if reference_dpi is None or reference_dpi <= 0:
+            return base
+        return base * (png_dpi / reference_dpi)
 
 
 _DEFAULT_GEOMETRY = Geometry()
@@ -191,6 +273,59 @@ def _read_png_dimensions(data: bytes) -> tuple[int, int] | None:
     if width <= 0 or height <= 0:
         return None
     return (int(width), int(height))
+
+
+# Resolution metadata (issue #904) -------------------------------------------
+#
+# The optional `pHYs` chunk carries the image's declared physical
+# resolution: two big-endian u32 "pixels per unit" values (x, y) plus a
+# u8 unit specifier (1 == metre, 0 == unit-unknown / aspect ratio only).
+# The spec mandates it appear before the first IDAT, so the walk stops
+# there. Absent chunk -> `None`, and the caller keeps the type's
+# calibrated constant.
+#
+# Sanity band for the derived DPI: anything outside it is treated as
+# absent rather than trusted, so a corrupt or nonsense `pHYs` cannot
+# silently swing the gate by orders of magnitude.
+
+_METRES_PER_INCH = 0.0254
+_PHYS_UNIT_METRE = 1
+_MIN_PLAUSIBLE_DPI = 1.0
+_MAX_PLAUSIBLE_DPI = 2400.0
+
+
+def _read_png_dpi(data: bytes) -> float | None:
+    """Return the PNG's declared vertical DPI, or ``None`` if unknown.
+
+    ``None`` is returned for a non-PNG, a PNG with no ``pHYs`` chunk
+    (``mmdc``/Puppeteer output, most hand-authored PNGs), a ``pHYs``
+    whose unit specifier is not "metre", or a value outside the
+    plausible band.
+    """
+    if len(data) < 8 or not data.startswith(_PNG_SIGNATURE):
+        return None
+
+    offset = 8
+    total = len(data)
+    while offset + 8 <= total:
+        (length,) = struct.unpack(">I", data[offset : offset + 4])
+        chunk_type = data[offset + 4 : offset + 8]
+        if chunk_type in (b"IDAT", b"IEND"):
+            return None
+        if chunk_type == b"pHYs" and length >= 9 and offset + 8 + 9 <= total:
+            _ppu_x, ppu_y, unit = struct.unpack(">IIB", data[offset + 8 : offset + 17])
+            if unit != _PHYS_UNIT_METRE or ppu_y <= 0:
+                return None
+            dpi = ppu_y * _METRES_PER_INCH
+            if not (_MIN_PLAUSIBLE_DPI <= dpi <= _MAX_PLAUSIBLE_DPI):
+                return None
+            return float(dpi)
+        # 4 (length) + 4 (type) + length (data) + 4 (CRC)
+        next_offset = offset + 12 + length
+        if next_offset <= offset:  # overflow / malformed length
+            return None
+        offset = next_offset
+    return None
 
 
 # Deck-source parsing ----------------------------------------------------------
@@ -480,17 +615,24 @@ def _displayed_text_height_px(
     displayed_h_px: float,
     diagram_type: str,
     geo: Geometry,
+    png_dpi: float | None = None,
 ) -> float:
     """Estimate the displayed text-glyph height, in px.
 
     The scale ratio is ``displayed_h_px / intrinsic_h`` (the figure is
     scaled isotropically by ``object-fit: contain``), so the displayed
     glyph height is ``intrinsic_text_h * scale_ratio``.
+
+    ``png_dpi`` (from the PNG's ``pHYs`` chunk) resolution-corrects the
+    intrinsic constant for renderers that lay text out in points — see
+    ``Geometry.intrinsic_text_h_for``. Both the numerator (glyph height
+    in PNG px) and the denominator (``intrinsic_h``) scale with DPI, so
+    the result is DPI-invariant for a fixed physical figure (#904).
     """
     if intrinsic_h <= 0:
         return 0.0
     scale = displayed_h_px / intrinsic_h
-    return geo.intrinsic_text_h_for(diagram_type) * scale
+    return geo.intrinsic_text_h_for(diagram_type, png_dpi) * scale
 
 
 # Public API -------------------------------------------------------------------
@@ -536,6 +678,10 @@ def lint_figures(
       validation), not this gate.
     - Non-PNG references (e.g., SVG, JPG) are silently skipped — the
       IHDR-only reader returns ``None`` and the figure is not measured.
+    - The intrinsic glyph-height constant is resolution-corrected from
+      the PNG's ``pHYs`` chunk for diagram types whose renderer couples
+      glyph pixels to DPI (matplotlib). A PNG that declares no
+      resolution keeps the type's calibrated constant (issue #904).
     - A single figure referenced from N slides yields one finding per
       *worst-case* slide (the smallest displayed height across all
       references). This matches the curator's "check against the
@@ -555,6 +701,7 @@ def lint_figures(
     by_path_display: dict[str, float] = {}
     by_path_text: dict[str, float] = {}
     by_path_type: dict[str, str] = {}
+    by_path_dpi: dict[str, float | None] = {}
 
     figures_root = figures_dir if figures_dir is not None else deck_md_path.parent / "figures"
 
@@ -585,13 +732,14 @@ def lint_figures(
         if dims is None:
             continue
         intrinsic_w, intrinsic_h = dims
+        png_dpi = _read_png_dpi(data)
 
         diagram_type = _classify_diagram_type(candidate)
         displayed_h = _displayed_height_px(
             intrinsic_w, intrinsic_h, occ.h_clamp_px, occ.w_clamp_px, geo
         )
         displayed_text = _displayed_text_height_px(
-            intrinsic_w, intrinsic_h, displayed_h, diagram_type, geo
+            intrinsic_w, intrinsic_h, displayed_h, diagram_type, geo, png_dpi
         )
 
         # Worst-case across references: keep the occurrence with the
@@ -604,6 +752,7 @@ def lint_figures(
             by_path_display[ref_path] = displayed_h
             by_path_text[ref_path] = displayed_text
             by_path_type[ref_path] = diagram_type
+            by_path_dpi[ref_path] = png_dpi
 
     result = LintResult()
     for ref_path, occ in by_path.items():
@@ -611,6 +760,7 @@ def lint_figures(
         displayed_h = by_path_display[ref_path]
         displayed_text = by_path_text[ref_path]
         diagram_type = by_path_type[ref_path]
+        png_dpi = by_path_dpi[ref_path]
 
         if displayed_text >= geo.warning_threshold_px:
             continue
@@ -624,13 +774,16 @@ def lint_figures(
         else:
             severity = "warning"
 
-        intrinsic_text = geo.intrinsic_text_h_for(diagram_type)
+        intrinsic_text = geo.intrinsic_text_h_for(diagram_type, png_dpi)
+        dpi_note = (
+            f" at {png_dpi:.0f} DPI" if png_dpi is not None else " (DPI undeclared)"
+        )
         message = (
             f"Figure `{ref_path}` displays at ~{displayed_h:.0f} px tall "
             f"on slide {occ.slide} (intrinsic {intrinsic_w}x{intrinsic_h}, "
             f"diagram type: {diagram_type}). Estimated displayed glyph "
             f"height ~{displayed_text:.1f} px ({intrinsic_text:.0f} px "
-            f"source font × scale {displayed_h/intrinsic_h:.3f}); "
+            f"source font{dpi_note} × scale {displayed_h/intrinsic_h:.3f}); "
             f"projection legibility floor is "
             f"{geo.error_threshold_px:.0f} px (error) / "
             f"{geo.warning_threshold_px:.0f} px (warning). "

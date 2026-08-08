@@ -51,13 +51,39 @@ Test matrix (per the curator's plan):
   not this gate).
 
 - ``matplotlib_chart_passes`` — A reasonably-shaped matplotlib chart
-  (1200x800) with no clamp. Treated as ``matplotlib`` diagram type
-  with 14 px intrinsic font. Displayed height clamps to 540 px;
+  (1200x800) with no clamp and **no declared resolution**. Treated as
+  ``matplotlib`` diagram type at the calibrated 100 DPI fallback, so
+  the intrinsic font stays 14 px. Displayed height clamps to 540 px;
   glyph 14 * (540/800) = 9.45 px → ERROR. Demonstrates the gate is
   not mermaid-specific.
 
 - ``escape_hatch_whole_slide`` — Bare ``<!-- anvil-figure-legibility-
   disable -->`` (no name) suppresses every figure on that slide.
+
+DPI-awareness (issue #904)
+--------------------------
+
+The intrinsic-font constants are heights in *source PNG pixels*, so
+for matplotlib — which lays text out in points and rasterizes at
+``savefig.dpi`` — they only mean anything relative to the DPI they were
+calibrated at (100, matplotlib's own stock ``savefig.dpi``). The
+shipped ``anvil/lib/figures/anvil.mplstyle`` pins ``savefig.dpi: 200``,
+so a default 10 pt axis label is ~28 px, not 14 — the gate understated
+every matplotlib figure's glyph height ~2x and fired ``error`` on
+demonstrably legible figures. The gate now reads the PNG's ``pHYs``
+chunk and rescales.
+
+- ``dpi_invariance`` — the same *physical* figure (12 x 4.8 in, the
+  geometry of the canary's compliant charts) rendered at 72, 100 and
+  200 DPI must produce the same displayed-glyph estimate (~14.9 px)
+  and fire nothing at any of them.
+- ``undersized_still_fires`` — the same physical figure constrained by
+  a ``w:832px`` keyword (65% of the 1280 px content width, the case
+  the issue calls out as correctly flagged) still errors at all three
+  DPIs.
+- ``mermaid_not_rescaled`` — ``mmdc``/Puppeteer PNGs carry no ``pHYs``
+  chunk and their ``--scale 2`` device-pixel ratio is not a DPI, so
+  mermaid verdicts are unchanged even if a ``pHYs`` is present.
 
 Runs under either ``python -m unittest discover anvil/skills/deck/tests/``
 or ``pytest anvil/skills/deck/tests/``.
@@ -73,6 +99,7 @@ from pathlib import Path
 
 from anvil.skills.deck.lib.figure_legibility import (
     Geometry,
+    _read_png_dpi,
     lint_figures,
 )
 
@@ -82,16 +109,31 @@ from anvil.skills.deck.lib.figure_legibility import (
 # ---------------------------------------------------------------------------
 
 
-def _make_minimal_png(width: int, height: int) -> bytes:
+def _make_minimal_png(
+    width: int,
+    height: int,
+    *,
+    dpi: float | None = None,
+    phys_unit: int = 1,
+    phys_ppu: int | None = None,
+) -> bytes:
     """Build a valid PNG of the requested dimensions, no Pillow required.
 
-    The gate reads only the IHDR chunk (bytes 16-24); the image data
-    is irrelevant. We synthesize a single-colour image as cheaply as
-    possible: one scanline of zero filter + N white RGB triples,
-    repeated for ``height`` rows, zlib-compressed.
+    The gate reads the IHDR chunk (bytes 16-24) plus, when present, the
+    optional ``pHYs`` resolution chunk; the image data is irrelevant.
+    We synthesize a single-colour image as cheaply as possible: one
+    scanline of zero filter + N white RGB triples, repeated for
+    ``height`` rows, zlib-compressed.
 
     Mirrors the ``_make_tiny_png`` helper in test_imagegen.py
     (parameterized on dimensions).
+
+    ``dpi`` emits a ``pHYs`` chunk declaring that resolution — the same
+    metadata matplotlib writes (verified: a figure saved under
+    ``anvil.mplstyle`` carries pHYs 7874 ppm ≈ 200 DPI). ``phys_unit=0``
+    emits the "unit unknown / aspect ratio only" form, and ``phys_ppu``
+    overrides the pixels-per-metre value directly (for the
+    implausible-value path).
     """
     sig = b"\x89PNG\r\n\x1a\n"
 
@@ -106,12 +148,20 @@ def _make_minimal_png(width: int, height: int) -> bytes:
     # IHDR: width, height, bit depth 8, colour type 2 (RGB), 0/0/0.
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
 
+    # pHYs (optional): pixels-per-unit x/y + unit specifier (1 = metre).
+    phys = b""
+    if dpi is not None or phys_ppu is not None:
+        ppu = phys_ppu if phys_ppu is not None else int(round((dpi or 0) / 0.0254))
+        phys = chunk(b"pHYs", struct.pack(">IIB", ppu, ppu, phys_unit))
+
     # One scanline = filter byte (0) + W * 3 bytes RGB. All white.
     scanline = b"\x00" + b"\xff" * (width * 3)
     raw = scanline * height
     idat = zlib.compress(raw)
 
-    return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+    return (
+        sig + chunk(b"IHDR", ihdr) + phys + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+    )
 
 
 def _write_deck(
@@ -153,6 +203,7 @@ def _make_figure(
     height: int,
     *,
     diagram_type: str = "mermaid",
+    dpi: float | None = None,
 ) -> Path:
     """Create a figures/<name>.png plus a sibling src/<name>.<ext> for type."""
     figures = tmp_path / "figures"
@@ -161,7 +212,7 @@ def _make_figure(
     src.mkdir(exist_ok=True)
 
     png_path = figures / f"{name}.png"
-    png_path.write_bytes(_make_minimal_png(width, height))
+    png_path.write_bytes(_make_minimal_png(width, height, dpi=dpi))
 
     # Sibling source for diagram-type classification.
     if diagram_type == "mermaid":
@@ -362,10 +413,16 @@ class TestMissingFigureSilentlySkipped(unittest.TestCase):
 class TestMatplotlibChartNotMermaidSpecial(unittest.TestCase):
     """The gate is diagram-type-aware but not mermaid-only.
 
-    A 1200x800 matplotlib chart (14 px intrinsic font, the matplotlib
-    default axis-label height) referenced with no clamp displays at
-    540 px (the CSS default cap). Scale = 540/800 = 0.675;
-    displayed glyph = 14 * 0.675 ≈ 9.45 px → ERROR.
+    A 1200x800 matplotlib chart referenced with no clamp displays at
+    540 px (the CSS default cap). The PNG declares **no** resolution,
+    so the intrinsic font stays at its calibrated 14 px (matplotlib's
+    stock 100 DPI). Scale = 540/800 = 0.675; displayed glyph
+    = 14 * 0.675 ≈ 9.45 px → ERROR.
+
+    The paired test below is the same chart carrying a 200 DPI ``pHYs``
+    chunk — i.e. what matplotlib actually writes under the shipped
+    ``anvil.mplstyle`` — where the corrected arithmetic clears the
+    floor (issue #904).
     """
 
     def test_matplotlib_chart_under_floor_emits_error(self) -> None:
@@ -379,6 +436,26 @@ class TestMatplotlibChartNotMermaidSpecial(unittest.TestCase):
             self.assertEqual(len(result.errors), 1, result.to_summary())
             self.assertEqual(result.errors[0].rule, "figure-legibility-floor")
             self.assertIn("matplotlib", result.errors[0].message)
+            self.assertIn("DPI undeclared", result.errors[0].message)
+
+    def test_same_chart_at_declared_200_dpi_clears_the_floor(self) -> None:
+        """Same 6x4 in chart, now declaring the shipped 200 DPI.
+
+        1200x800 at 200 DPI is a 6 x 4 in figure. Intrinsic font
+        = 14 * (200/100) = 28 px; scale = 540/800 = 0.675; displayed
+        glyph = 18.9 px → no finding. Before #904 this fired ``error``
+        purely because the gate ignored the declared resolution.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_figure(root, "chart", 1200, 800, diagram_type="matplotlib", dpi=200)
+            deck = _write_deck(root, ["![alt](figures/chart.png)"])
+
+            result = lint_figures(deck)
+
+            self.assertEqual(len(result.errors), 0, result.to_summary())
+            self.assertEqual(len(result.warnings), 0, result.to_summary())
+            self.assertEqual(len(result.infos), 0, result.to_summary())
 
 
 class TestWorstCaseAcrossSlides(unittest.TestCase):
@@ -474,6 +551,213 @@ class TestGeometryOverride(unittest.TestCase):
             result_wide = lint_figures(deck, geometry=geo)
             self.assertEqual(len(result_wide.errors), 0)
             self.assertEqual(len(result_wide.warnings), 0)
+
+
+# ---------------------------------------------------------------------------
+# DPI awareness (issue #904)
+# ---------------------------------------------------------------------------
+#
+# The canary's compliant charts were ~12 x 4.8 in figures saved under
+# `anvil/lib/figures/anvil.mplstyle` (`savefig.dpi: 200`) with
+# default-size (10 pt) axis labels. Three independent measurements put
+# their displayed glyph height at 14.5-16.4 px; the gate reported
+# ~8.2-8.8 px and errored on all six. Expressing the same *physical*
+# figure at several DPIs is the sharpest form of the regression: the
+# displayed glyph height cannot depend on the resolution the PNG was
+# rasterized at.
+
+_CANARY_FIGURE_W_IN = 12.0
+_CANARY_FIGURE_H_IN = 4.8
+
+#: 72 (PostScript point), 100 (matplotlib's stock savefig.dpi) and 200
+#: (the DPI pinned by anvil.mplstyle) — the three cases the issue asks
+#: the regression test to cover.
+_DPIS: tuple[float, ...] = (72.0, 100.0, 200.0)
+
+
+def _canary_png_size(dpi: float) -> tuple[int, int]:
+    """PNG pixel dimensions of the canary-geometry figure at ``dpi``."""
+    return (
+        int(round(_CANARY_FIGURE_W_IN * dpi)),
+        int(round(_CANARY_FIGURE_H_IN * dpi)),
+    )
+
+
+class TestPhysChunkParsing(unittest.TestCase):
+    """``_read_png_dpi`` reads the optional PNG ``pHYs`` resolution chunk."""
+
+    def test_declared_dpi_round_trips(self) -> None:
+        for dpi in _DPIS:
+            with self.subTest(dpi=dpi):
+                data = _make_minimal_png(40, 30, dpi=dpi)
+                read = _read_png_dpi(data)
+                self.assertIsNotNone(read)
+                assert read is not None  # narrowing for type checkers
+                self.assertAlmostEqual(read, dpi, delta=0.5)
+
+    def test_absent_phys_chunk_yields_none(self) -> None:
+        self.assertIsNone(_read_png_dpi(_make_minimal_png(40, 30)))
+
+    def test_unit_unknown_yields_none(self) -> None:
+        """``unit == 0`` declares an aspect ratio, not a resolution."""
+        data = _make_minimal_png(40, 30, dpi=200, phys_unit=0)
+        self.assertIsNone(_read_png_dpi(data))
+
+    def test_implausible_values_yield_none(self) -> None:
+        # 1 pixel per metre (~0.025 DPI) and 10^7 ppm (~254000 DPI) are
+        # both outside the plausible band; a corrupt chunk must not be
+        # able to swing the gate by orders of magnitude.
+        for ppu in (1, 10_000_000):
+            with self.subTest(ppu=ppu):
+                data = _make_minimal_png(40, 30, phys_ppu=ppu)
+                self.assertIsNone(_read_png_dpi(data))
+
+    def test_non_png_yields_none(self) -> None:
+        self.assertIsNone(_read_png_dpi(b"<svg>not a real png</svg>"))
+
+
+class TestGeometryIntrinsicTextHeightScaling(unittest.TestCase):
+    """``Geometry.intrinsic_text_h_for`` rescales only DPI-coupled types."""
+
+    def test_matplotlib_scales_with_declared_dpi(self) -> None:
+        geo = Geometry()
+        # Calibrated at matplotlib's stock savefig.dpi of 100.
+        self.assertAlmostEqual(geo.intrinsic_text_h_for("matplotlib", 100.0), 14.0)
+        # anvil.mplstyle pins savefig.dpi: 200 → a 10 pt label is ~28 px.
+        self.assertAlmostEqual(geo.intrinsic_text_h_for("matplotlib", 200.0), 28.0)
+        self.assertAlmostEqual(geo.intrinsic_text_h_for("matplotlib", 72.0), 10.08)
+
+    def test_undeclared_dpi_keeps_the_calibrated_constant(self) -> None:
+        geo = Geometry()
+        self.assertAlmostEqual(geo.intrinsic_text_h_for("matplotlib", None), 14.0)
+        self.assertAlmostEqual(geo.intrinsic_text_h_for("matplotlib"), 14.0)
+
+    def test_mermaid_and_unknown_are_never_rescaled(self) -> None:
+        """``mmdc``'s ``--scale 2`` is a device-pixel ratio, not a DPI.
+
+        Puppeteer emits no ``pHYs`` at all, so there is nothing to read;
+        even when one is present the mermaid/unknown constants stay as
+        calibrated in #563 rather than being rescaled off metadata that
+        does not describe their text layout.
+        """
+        geo = Geometry()
+        for dpi in (None, 72.0, 96.0, 200.0):
+            with self.subTest(dpi=dpi):
+                self.assertAlmostEqual(geo.intrinsic_text_h_for("mermaid", dpi), 18.0)
+                self.assertAlmostEqual(geo.intrinsic_text_h_for("unknown", dpi), 16.0)
+
+
+class TestDpiInvariantGlyphEstimate(unittest.TestCase):
+    """The same physical figure must estimate the same glyph height.
+
+    Both the glyph height in PNG px and the figure's intrinsic pixel
+    height scale linearly with render DPI, so their ratio — and hence
+    the displayed glyph height on a fixed 1280x720 slide — is
+    DPI-invariant. Before #904 the numerator was held constant while the
+    denominator grew, which is precisely the ~2x understatement the
+    issue measured.
+    """
+
+    def test_estimate_is_equal_across_72_100_and_200_dpi(self) -> None:
+        estimates: list[float] = []
+        for dpi in _DPIS:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                width, height = _canary_png_size(dpi)
+                _make_figure(
+                    root, "chart", width, height, diagram_type="matplotlib", dpi=dpi
+                )
+                # A deliberately severe h: clamp so every DPI produces a
+                # finding whose message carries the numeric estimate.
+                deck = _write_deck(root, ["![h:120px alt](figures/chart.png)"])
+                result = lint_figures(deck)
+                self.assertEqual(len(result.errors), 1, result.to_summary())
+                message = result.errors[0].message
+                marker = "Estimated displayed glyph height ~"
+                start = message.index(marker) + len(marker)
+                estimates.append(float(message[start : message.index(" px", start)]))
+
+        self.assertEqual(len(estimates), len(_DPIS))
+        for value in estimates[1:]:
+            self.assertAlmostEqual(value, estimates[0], delta=0.1)
+
+
+class TestCompliantMatplotlibFigureDoesNotFire(unittest.TestCase):
+    """A compliant 200 DPI matplotlib chart must not fire the gate.
+
+    The canary geometry (12 x 4.8 in, default 10 pt axis labels) under
+    the CSS ``max-height: 75vh`` cap displays at ~512 px tall, giving a
+    displayed glyph height of ~14.9 px — above the 14 px warning floor
+    and consistent with the 14.5-16.4 px the issue measured. Before
+    #904 the gate estimated ~7.5 px and emitted ``error``.
+    """
+
+    def test_no_findings_at_any_dpi(self) -> None:
+        for dpi in _DPIS:
+            with self.subTest(dpi=dpi), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                width, height = _canary_png_size(dpi)
+                _make_figure(
+                    root, "chart", width, height, diagram_type="matplotlib", dpi=dpi
+                )
+                deck = _write_deck(root, ["![alt](figures/chart.png)"])
+
+                result = lint_figures(deck)
+
+                self.assertEqual(len(result.errors), 0, result.to_summary())
+                self.assertEqual(len(result.warnings), 0, result.to_summary())
+                self.assertEqual(len(result.infos), 0, result.to_summary())
+
+
+class TestUndersizedMatplotlibFigureStillFires(unittest.TestCase):
+    """The fix must not disable the gate on genuinely undersized figures.
+
+    Same physical figure, now constrained by a ``w:832px`` keyword —
+    65% of the 1280 px content width, the case the issue calls out as
+    correctly flagged pre-fix. Displayed height drops to ~333 px and
+    the displayed glyph to ~9.7 px → ``error`` at every DPI.
+    """
+
+    def test_w_keyword_constrained_figure_errors_at_any_dpi(self) -> None:
+        for dpi in _DPIS:
+            with self.subTest(dpi=dpi), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                width, height = _canary_png_size(dpi)
+                _make_figure(
+                    root, "chart", width, height, diagram_type="matplotlib", dpi=dpi
+                )
+                deck = _write_deck(root, ["![w:832px alt](figures/chart.png)"])
+
+                result = lint_figures(deck)
+
+                self.assertEqual(len(result.errors), 1, result.to_summary())
+                self.assertEqual(result.errors[0].rule, "figure-legibility-floor")
+                self.assertIn(f"at {dpi:.0f} DPI", result.errors[0].message)
+
+
+class TestMermaidVerdictsUnaffectedByDeclaredDpi(unittest.TestCase):
+    """Mermaid verdicts are byte-for-byte unchanged by #904."""
+
+    def test_well_formed_mermaid_still_passes_with_phys_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_figure(root, "tb", 800, 600, diagram_type="mermaid", dpi=200)
+            deck = _write_deck(root, ["![alt](figures/tb.png)"])
+
+            result = lint_figures(deck)
+
+            self.assertEqual(len(result.errors), 0, result.to_summary())
+            self.assertEqual(len(result.warnings), 0, result.to_summary())
+
+    def test_severely_clamped_mermaid_still_errors_with_phys_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _make_figure(root, "tall", 200, 1200, diagram_type="mermaid", dpi=200)
+            deck = _write_deck(root, ["![h:80px alt](figures/tall.png)"])
+
+            result = lint_figures(deck)
+
+            self.assertEqual(len(result.errors), 1, result.to_summary())
 
 
 if __name__ == "__main__":

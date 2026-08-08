@@ -294,6 +294,43 @@
 
 ### Fixed
 
+- **`deck` figure-legibility gate is no longer DPI-blind — it stopped
+  erroring on every compliant matplotlib figure** (#904). The gate's
+  intrinsic glyph-height constants
+  (`Geometry.intrinsic_text_h_px_by_diagram_type`) are heights in
+  *source PNG pixels*, but were applied regardless of the resolution
+  the PNG was rendered at. matplotlib lays text out in points and
+  rasterizes at `savefig.dpi`, which `anvil/lib/figures/anvil.mplstyle`
+  pins at 200 — so a default 10 pt axis label is ~28 px, not the 14 px
+  the constant assumed (14 px is that label at matplotlib's own stock
+  100 DPI). The gate therefore understated every matplotlib figure's
+  displayed glyph height ~2x, which straddles the 11 px error floor:
+  the canary hit it on a 13-slide deck where **all six** matplotlib
+  figures were flagged `error` both before and after a real legibility
+  fix, with three independent measurements (the figures phase,
+  `deck-design`, and `deck-vision` rasterizing the PDF at 96 DPI)
+  agreeing on 14.5-16.4 px displayed against the gate's 8.2-8.8 px.
+  `figure_legibility.py` now reads the PNG's declared resolution from
+  its optional `pHYs` chunk (`_read_png_dpi`, stdlib `struct` — the
+  same no-deps posture as the existing `_read_png_dimensions` IHDR
+  reader) and rescales the constant by `declared_dpi / reference_dpi`
+  per the new `Geometry.reference_dpi_by_diagram_type`. Since the
+  figure's intrinsic pixel height scales with DPI by the same factor,
+  the estimate is now DPI-invariant: the same physical chart at 72,
+  100 or 200 DPI scores identically, which is the physically correct
+  answer. Mermaid is deliberately **not** rescaled — `mmdc`'s
+  `--scale 2` is a device-pixel ratio, not a DPI, and Puppeteer emits
+  no `pHYs` chunk at all (verified), so the 18 px constant stays as
+  calibrated in #563 and every mermaid verdict is unchanged. A PNG
+  declaring no resolution likewise keeps its type's calibrated
+  constant, the conservative direction. The gate is *corrected, not
+  loosened*: a figure constrained by a `w:` keyword to ~65% of the
+  content width — the case the issue flags as correctly `error` pre-fix
+  — still errors at every DPI, and the consumer's only prior escape
+  (`<!-- anvil-figure-legibility-disable -->`, which also masks genuine
+  regressions in later revisions) is no longer the price of shipping a
+  legible chart.
+
 - **`essay-review` no longer calibrates voice fidelity against the
   artifact under review** (#890). A `voice.corpus` glob naturally
   points at the consumer's published archive — correct when drafting a
