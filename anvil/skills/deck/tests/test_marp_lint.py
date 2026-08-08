@@ -1056,5 +1056,97 @@ size: 16:9
         )
 
 
+class TestStandaloneImageAltTextLengthDoesNotAffectCost(unittest.TestCase):
+    """Issue #905 — a standalone image's alt-text length must not change cost.
+
+    The ``slide-content-overflow`` standalone-image branch used to be gated
+    on ``len(raw_line.strip()) < 250``. A long, accessible alt string could
+    push the line past that threshold, causing it to fall through to the
+    body-paragraph branch — where the alt characters were charged as
+    rendered prose (per-70-char text rate) *in addition to* the image's own
+    cost. Alt text is never rendered on the slide, so the estimated cost
+    must be identical regardless of alt-text length.
+    """
+
+    @staticmethod
+    def _slide_cost(alt_text: str) -> float:
+        from anvil.lib.marp_lint import Geometry, _estimate_slide_cost, _split_slides
+
+        source = f"""---
+marp: true
+size: 16:9
+---
+
+## Heading
+
+![{alt_text}](figures/photo.png)
+
+- One bullet
+"""
+        slide = _split_slides(source)[0]
+        breakdown = _estimate_slide_cost(slide, Geometry())
+        return breakdown.total_units
+
+    def test_short_and_long_alt_text_produce_same_cost(self) -> None:
+        short_alt = "a" * 40
+        long_alt = "a" * 400
+        self.assertEqual(self._slide_cost(short_alt), self._slide_cost(long_alt))
+
+    def test_long_alt_text_line_still_recognized_as_image(self) -> None:
+        """A >250-char image line must be charged as an image, not prose.
+
+        Regression guard for the misclassification itself (not just the
+        cost parity above): the breakdown must show an image-family label
+        and must NOT show a ``paragraph(...)`` charge for the image line.
+        """
+        from anvil.lib.marp_lint import Geometry, _estimate_slide_cost, _split_slides
+
+        long_alt = "a" * 400
+        self.assertGreater(
+            len(f"![{long_alt}](figures/photo.png)"), 250,
+            "fixture must actually exceed the old 250-char guard",
+        )
+        source = f"""---
+marp: true
+size: 16:9
+---
+
+## Heading
+
+![{long_alt}](figures/photo.png)
+"""
+        slide = _split_slides(source)[0]
+        breakdown = _estimate_slide_cost(slide, Geometry())
+        labels = [label for label, _units in breakdown.parts]
+        self.assertTrue(
+            any(label.startswith("image") for label in labels),
+            f"expected an image-family label, got {labels}",
+        )
+        self.assertFalse(
+            any(label.startswith("paragraph(") for label in labels),
+            f"alt text must not be charged as paragraph prose, got {labels}",
+        )
+
+    def test_short_alt_text_is_also_not_charged_as_prose(self) -> None:
+        """Sanity check: the < 250-char case was already correct pre-fix."""
+        from anvil.lib.marp_lint import Geometry, _estimate_slide_cost, _split_slides
+
+        short_alt = "a" * 40
+        source = f"""---
+marp: true
+size: 16:9
+---
+
+## Heading
+
+![{short_alt}](figures/photo.png)
+"""
+        slide = _split_slides(source)[0]
+        breakdown = _estimate_slide_cost(slide, Geometry())
+        labels = [label for label, _units in breakdown.parts]
+        self.assertTrue(any(label.startswith("image") for label in labels))
+        self.assertFalse(any(label.startswith("paragraph(") for label in labels))
+
+
 if __name__ == "__main__":
     unittest.main()
