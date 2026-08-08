@@ -294,6 +294,24 @@
 
 ### Fixed
 
+- **Deck theme: invisible ask-slide pagination + zebra-striped tables**
+  (#906). `deck-vision` rasterized a 13-slide deck at 96 DPI and found two
+  systematic `anvil-deck.css` defects. First, the pagination glyph
+  (`section::after`) is styled `var(--anvil-muted)` (`#6b6b6b`) with no
+  override for dark-background `_class` slides — measured contrast against
+  the `#1f4e7a` accent background was ~1.79:1, well under WCAG's 3:1 floor
+  for incidental text and visually absent in the render, on the ask slide
+  (the one slide most likely to be referenced by number in a follow-up
+  email) and the section-divider slide. Second, tables rendered with
+  alternating-row zebra shading inherited from the imported Marp `default`
+  theme, contradicting the stylesheet's own comment ("Tables — clean, no
+  shading on alternating rows (chartjunk)"); `section.ask` already
+  defeated this locally for ask-slide tables, but ordinary
+  (light-background) slides had no equivalent reset. Adds
+  `section.ask::after` and `section.section::after` overrides
+  (`rgba(255, 255, 255, 0.75)`, ~5.7:1 against the accent background) and
+  a theme-wide `section table tbody tr:nth-child(even)` transparent reset.
+
 - **`slide-content-overflow` no longer charges standalone-image alt text as
   body prose** (#905). The lint's standalone-image branch was gated on
   `len(raw_line.strip()) < 250` (`anvil/lib/marp_lint.py`), so a long,
