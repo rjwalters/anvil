@@ -184,6 +184,7 @@ The project BRIEF's frontmatter shape:
 project: <name>
 audience: [<primary>, <secondary>, ...]
 hard_rules: [<rule>, <rule>, ...]
+quarantine: [<literal-token>, <literal-token>, ...]
 documents:
   - slug: <slug-a>
     artifact_type: <one-of-the-registered-types>
@@ -193,6 +194,22 @@ documents:
     target_length: { pages: [min, max] }
 ---
 ```
+
+`quarantine:` (issue #914) is an optional list of **literal** figure/range
+tokens — distinct from `hard_rules:`'s free-form prose — that a hard rule
+forbids porting from a project's private artifacts (e.g. a memo) into its
+customer-facing siblings (e.g. a deck): the classic shape is a superseded
+or unverified number (`quarantine: ["$400M", "20-40%"]` alongside a
+`hard_rules:` entry like `"Cite $256M net revenue, never the $400M gross
+figure."`). Consumed by `anvil/lib/parity.py`'s deck↔memo parity lint
+(see `deck-review.md` step 5d / `memo-review.md` step 4d): a quarantined
+token found only in the memo is reframed as "correctly absent per BRIEF
+hard rule — do not port" instead of promoting under the load-bearing
+"should you port this?" framing, and the SAME token found anywhere in the
+deck raises a new hard-rule-violation finding. Entries are literal
+strings only — derived forms (e.g. a quarantined percentage's arithmetic
+product) are NOT detected. Absent/empty → tier inactive, byte-identical
+behavior.
 
 `audience:` accepts two equivalent shapes (issue #546). The flat list above is the canonical form. The role-keyed mapping form is also accepted for studio drafters who prefer to name precedence explicitly:
 

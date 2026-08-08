@@ -421,6 +421,135 @@ def test_lint_deck_memo_parity_with_real_files(tmp_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# BRIEF-quarantine surface (issue #914) — consumer-level coverage via the
+# skill-local re-export
+# ---------------------------------------------------------------------------
+
+
+def test_lint_deck_memo_parity_reframes_quarantined_memo_token(tmp_path: Path):
+    """End-to-end via the deck-side skill-local re-export: a project
+    ``BRIEF.md`` quarantine entry reframes a memo-only economic token away
+    from ``only_in_memo_economic`` promotion — the issue #914 canary shape
+    (a memo carrying a quarantined gross-revenue figure the BRIEF requires
+    be replaced with the net figure; the deck correctly omits it)."""
+    project = tmp_path / "familyrisk"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: familyrisk\n"
+        "hard_rules:\n"
+        '  - "Cite $256M net revenue, never the $400M gross figure."\n'
+        "quarantine:\n"
+        '  - "$400M"\n'
+        "documents:\n"
+        "  - slug: familyrisk-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: familyrisk-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    deck_dir = project / "familyrisk-deck" / "familyrisk-deck.1"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "deck.md").write_text(
+        "# Deck\n\nRevenue: $256M net.\n", encoding="utf-8"
+    )
+
+    memo_dir = project / "familyrisk-memo" / "familyrisk-memo.1"
+    memo_dir.mkdir(parents=True)
+    (memo_dir / "familyrisk-memo.md").write_text(
+        "# Memo\n\nGross revenue $400M near unit economics context "
+        "(net $256M is the BRIEF-mandated figure).\n",
+        encoding="utf-8",
+    )
+
+    result = lint_deck_memo_parity(deck_dir, memo_dir)
+
+    assert result.skipped is False
+    assert "$400M" not in result.only_in_memo_economic
+    assert "$400M" in result.only_in_memo_quarantined
+    assert "$400M" in result.only_in_memo  # underlying finding still present
+
+
+def test_lint_deck_memo_parity_flags_quarantined_token_ported_into_deck(tmp_path: Path):
+    """End-to-end: a quarantined figure that leaks into the deck body (the
+    near-miss this issue cites — a speaker-note Q&A picking up a
+    quarantined figure) is flagged as ``quarantine_violation``."""
+    project = tmp_path / "familyrisk"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: familyrisk\n"
+        "quarantine:\n"
+        '  - "20-40%"\n'
+        "documents:\n"
+        "  - slug: familyrisk-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: familyrisk-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    deck_dir = project / "familyrisk-deck" / "familyrisk-deck.1"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "deck.md").write_text(
+        "# Deck\n\nSpeaker note Q&A: preferred-vs-standard spread 20-40%.\n",
+        encoding="utf-8",
+    )
+
+    memo_dir = project / "familyrisk-memo" / "familyrisk-memo.1"
+    memo_dir.mkdir(parents=True)
+    (memo_dir / "familyrisk-memo.md").write_text(
+        "# Memo\n\nUnverified estimate.\n", encoding="utf-8"
+    )
+
+    result = lint_deck_memo_parity(deck_dir, memo_dir)
+
+    assert result.skipped is False
+    assert "20-40%" in result.quarantine_violations
+
+
+def test_lint_deck_memo_parity_no_brief_quarantine_key_is_unaffected(tmp_path: Path):
+    """A project BRIEF with no ``quarantine:`` key behaves exactly as
+    pre-#914 — regression guard for the byte-identical-default invariant
+    at the consumer (skill-local re-export) layer."""
+    project = tmp_path / "familyrisk"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\n"
+        "project: familyrisk\n"
+        "documents:\n"
+        "  - slug: familyrisk-deck\n"
+        "    artifact_type: deck\n"
+        "  - slug: familyrisk-memo\n"
+        "    artifact_type: investment-memo\n"
+        "---\n\n# BRIEF\n",
+        encoding="utf-8",
+    )
+
+    deck_dir = project / "familyrisk-deck" / "familyrisk-deck.1"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "deck.md").write_text("# Deck\n\nNo revenue slide.\n", encoding="utf-8")
+
+    memo_dir = project / "familyrisk-memo" / "familyrisk-memo.1"
+    memo_dir.mkdir(parents=True)
+    (memo_dir / "familyrisk-memo.md").write_text(
+        "# Memo\n\nGross revenue $400M near unit economics context.\n",
+        encoding="utf-8",
+    )
+
+    result = lint_deck_memo_parity(deck_dir, memo_dir)
+
+    assert result.skipped is False
+    assert result.only_in_memo_quarantined == []
+    assert result.quarantine_violations == []
+    # Absent a quarantine surface, the economic promotion fires normally.
+    assert "$400M" in result.only_in_memo_economic
+
+
+# ---------------------------------------------------------------------------
 # Doc-coverage: deck-review.md must have step 5d wiring
 # ---------------------------------------------------------------------------
 
@@ -480,6 +609,21 @@ def test_deck_review_md_findings_subsection_documented():
     must be referenced in the deck-review.md ``findings.md`` shape (AC4)."""
     text = DECK_REVIEW_MD.read_text(encoding="utf-8")
     assert "Parity-lint findings" in text
+
+
+def test_deck_review_md_documents_brief_quarantine_surface():
+    """The BRIEF-quarantine surface (issue #914) must be documented in
+    deck-review.md's step 5d region, naming the two new ``side`` values
+    and the derived-forms caveat."""
+    text = DECK_REVIEW_MD.read_text(encoding="utf-8")
+    assert "quarantine" in text.lower(), (
+        "deck-review.md must document the BRIEF quarantine: surface"
+    )
+    assert "only_in_memo_quarantined" in text
+    assert "quarantine_violation" in text
+    assert "derived" in text.lower(), (
+        "deck-review.md must document the derived-forms caveat (issue #914)"
+    )
 
 
 # ---------------------------------------------------------------------------
