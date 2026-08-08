@@ -30,6 +30,9 @@ from anvil.lib.critics import (
     compute_verdict,
     discover_critics,
     load_review,
+    parse_memo_scoring_table,
+    parse_memo_verdict_decision,
+    parse_memo_verdict_total,
 )
 from anvil.lib.review_schema import (
     CriticalFlag,
@@ -769,3 +772,97 @@ def test_end_to_end_three_critic_run(tmp_path):
     # Same expectation as the in-memory aggregate test.
     assert agg.verdict == Verdict.BLOCK
     assert agg.total == sum(s.score for s in agg.scores if s.score is not None)
+
+
+# ---------------------------------------------------------------------------
+# Emphasis-tolerant scoring-table parsing (issue #912)
+# ---------------------------------------------------------------------------
+
+_SCORING_HEADER = (
+    "| # | Dimension | Weight | Score | Justification |\n"
+    "|---|---|---|---|---|\n"
+)
+
+
+def test_parse_memo_scoring_table_bare_digits():
+    """The pre-#912 baseline: bare-digit Weight/Score cells parse fine."""
+    text = _SCORING_HEADER + "| 1 | Recommendation clarity | 5 | 5 | ok |\n"
+    scores = parse_memo_scoring_table(text)
+    assert len(scores) == 1
+    assert scores[0].dimension == "Recommendation clarity"
+    assert scores[0].score == 5
+    assert scores[0].max == 5
+
+
+def test_parse_memo_scoring_table_bolded_score_not_dropped():
+    """A fully-bolded Score cell must not silently vanish (issue #912)."""
+    text = _SCORING_HEADER + "| 1 | Recommendation clarity | 5 | **5** | ok |\n"
+    scores = parse_memo_scoring_table(text)
+    assert len(scores) == 1
+    assert scores[0].score == 5
+    assert scores[0].max == 5
+
+
+def test_parse_memo_scoring_table_bolded_weight_not_dropped():
+    """A bolded Weight cell must not silently vanish either."""
+    text = _SCORING_HEADER + "| 1 | Recommendation clarity | **5** | 4 | ok |\n"
+    scores = parse_memo_scoring_table(text)
+    assert len(scores) == 1
+    assert scores[0].score == 4
+    assert scores[0].max == 5
+
+
+def test_parse_memo_scoring_table_single_and_double_asterisk_and_underscore():
+    """``*5*``, ``**5**``, and ``__5__`` all normalize to the bare value."""
+    text = (
+        _SCORING_HEADER
+        + "| 1 | dim1 | 5 | *5* | ok |\n"
+        + "| 2 | dim2 | 5 | **4** | ok |\n"
+        + "| 3 | dim3 | 5 | __3__ | ok |\n"
+    )
+    scores = parse_memo_scoring_table(text)
+    assert [s.score for s in scores] == [5, 4, 3]
+
+
+def test_parse_memo_scoring_table_bolded_null_variants():
+    """Bolded ``null``/``N/A``/``-`` score cells still map to ``None``."""
+    text = (
+        _SCORING_HEADER
+        + "| 1 | dim1 | 5 | **null** | not owned |\n"
+        + "| 2 | dim2 | 5 | *N/A* | not owned |\n"
+        + "| 3 | dim3 | 5 | __-__ | not owned |\n"
+    )
+    scores = parse_memo_scoring_table(text)
+    assert all(s.score is None for s in scores)
+    assert len(scores) == 3
+
+
+def test_parse_memo_scoring_table_mixed_bare_and_bolded_rows():
+    """A table with some bare rows and some bolded rows parses every row."""
+    text = (
+        _SCORING_HEADER
+        + "| 1 | dim1 | 5 | 5 | ok |\n"
+        + "| 2 | dim2 | 5 | **3** | ok |\n"
+        + "| 3 | dim3 | **5** | **4** | ok |\n"
+    )
+    scores = parse_memo_scoring_table(text)
+    assert [s.score for s in scores] == [5, 3, 4]
+    assert [s.max for s in scores] == [5, 5, 5]
+
+
+def test_parse_memo_scoring_table_header_row_still_rejected():
+    """The header row itself (Weight/Score as words) never parses as data."""
+    scores = parse_memo_scoring_table(_SCORING_HEADER)
+    assert scores == []
+
+
+def test_parse_memo_verdict_total_bolded_value():
+    """``**Total**: **44**/44`` (value-bolded) parses the same as bare."""
+    assert parse_memo_verdict_total("**Total**: **44**/44") == (44, 44)
+    assert parse_memo_verdict_total("Total: 41/44") == (41, 44)
+
+
+def test_parse_memo_verdict_decision_bolded_value():
+    """``Decision: `advance: **true**` `` (value-bolded) parses correctly."""
+    assert parse_memo_verdict_decision("Decision: `advance: **true**`") is True
+    assert parse_memo_verdict_decision("Decision: advance: false") is False
