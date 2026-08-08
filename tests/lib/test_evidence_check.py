@@ -54,6 +54,7 @@ import pytest
 
 from anvil.lib.evidence_check import (
     ELISION_WINDOW_CHARS,
+    EMPTY_SCORECARD,
     FABRICATED_EVIDENCE,
     FIXED_BODY_NAMES,
     MIN_QUOTE_CHARS,
@@ -664,6 +665,67 @@ class TestCheckScoringText:
         findings, checked = check_scoring_text(table, BODY)
         assert findings == []
         assert checked == 1
+
+    def test_bolded_score_cell_still_checked(self) -> None:
+        """A bolded Score cell must not silently drop the row (issue #912)."""
+        table = scoring_table(
+            [("Recommendation clarity", 5, "**4**", MATCHING_JUST)]
+        )
+        findings, checked = check_scoring_text(table, BODY)
+        assert checked == 1
+        assert findings == []
+
+
+class TestEmptyScorecardGuard:
+    """A scorecard-shaped table that parses to zero rows must error, not
+    silently pass (issue #912) — the load-bearing half of the fix.
+    """
+
+    def test_fully_bolded_table_before_912_fix_would_vanish(self) -> None:
+        # Every Weight/Score cell bolded — reproduces the exact canary
+        # scenario from the issue body. Confirms the row is now parsed
+        # (not the empty-scorecard path) once #912's regex fix applies.
+        table = (
+            "| # | Dimension | Weight | Score | Justification |\n"
+            "|---|---|---|---|---|\n"
+            f"| 1 | Recommendation clarity | **5** | **5** | {MATCHING_JUST} |\n"
+        )
+        findings, checked = check_scoring_text(table, BODY)
+        assert checked == 1
+        assert findings == []
+
+    def test_zero_rows_under_header_row_is_an_error(self) -> None:
+        # A Weight/Score header row is present, but every data row is
+        # malformed beyond the emphasis-tolerance fix (e.g. missing a
+        # pipe cell) — the table parses to zero rows.
+        text = (
+            "| # | Dimension | Weight | Score | Justification |\n"
+            "|---|---|---|---|---|\n"
+            "this is not a table row at all\n"
+        )
+        findings, checked = check_scoring_text(text, BODY)
+        assert checked == 0
+        assert len(findings) == 1
+        assert findings[0].code == EMPTY_SCORECARD
+        assert findings[0].severity == SEVERITY_MAJOR
+
+    def test_zero_rows_under_dimension_scores_heading_is_an_error(self) -> None:
+        text = (
+            "## Dimension scores\n\n"
+            "Scoring was performed but not recorded in table form.\n"
+        )
+        findings, checked = check_scoring_text(text, BODY)
+        assert checked == 0
+        assert len(findings) == 1
+        assert findings[0].code == EMPTY_SCORECARD
+
+    def test_no_scorecard_at_all_is_a_clean_pass(self) -> None:
+        # Text with no scorecard heading and no Weight/Score header row —
+        # genuinely nothing to check, not the vacuous-pass bug.
+        text = "Just some prose findings, no table here.\n"
+        findings, checked = check_scoring_text(text, BODY)
+        assert findings == []
+        assert checked == 0
 
 
 class TestAbsenceMarker:
@@ -1546,6 +1608,32 @@ class TestMachineSummaryTableFallback:
         findings, checked = check_summary_text(text, SPEC_TEX)
         assert checked == 1
         assert findings[0].code == FABRICATED_EVIDENCE
+
+    def test_bolded_score_cell_still_checked(self) -> None:
+        """The table fallback also tolerates bolded Score cells (#912)."""
+        text = summary_md_table(
+            [("Specification completeness", 5, "**4**", SPEC_MATCHING_JUST)]
+        )
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 1
+        assert findings == []
+
+    def test_zero_rows_under_header_row_is_an_error(self) -> None:
+        """No JSON dims, and the table itself parses to zero rows (#912)."""
+        text = (
+            "```json\n"
+            '{"critic": "review", "rubric": {"id": "x", "total": 45, '
+            '"advance_threshold": 39, "dimensions": 9}}\n'
+            "```\n\n"
+            "| # | Dimension | Weight | Score | Justification |\n"
+            "|---|---|---|---|---|\n"
+            "this is not a table row at all\n"
+        )
+        assert parse_machine_summary_dimensions(text) == []
+        findings, checked = check_summary_text(text, SPEC_TEX)
+        assert checked == 0
+        assert len(findings) == 1
+        assert findings[0].code == EMPTY_SCORECARD
 
 
 def _write_meta(critic_dir: Path, kind: str) -> None:

@@ -608,6 +608,49 @@ def test_dir_explicit_kwargs_override_stamps(tmp_path):
     assert mismatch.detail == "44 != 40"
 
 
+def test_dir_empty_scoring_table_yields_sharpened_parse_error(tmp_path):
+    """issue #912: a scoring.md that parses to zero rows (empty scores
+    list) must still surface as a `parse_error` finding — never a silent
+    pass, never an unhandled exception — and the message must point at
+    the actual cause instead of the bare pydantic "empty list" text."""
+    critic_dir = tmp_path / "memo.5.review"
+    critic_dir.mkdir()
+    (critic_dir / "scoring.md").write_text(SCORING_HEADER)  # zero data rows
+    (critic_dir / "verdict.md").write_text(
+        "# Verdict\n\n**Total**: 0/44\n**Decision**: `advance: false`\n"
+    )
+    (critic_dir / "comments.md").write_text("# Comments\n\nNone.\n")
+    (critic_dir / "_meta.json").write_text(json.dumps(STAMPED_META))
+
+    findings = check_review_dir(critic_dir)
+    assert len(findings) == 1
+    assert findings[0].code == PARSE_ERROR
+    assert findings[0].severity == SEVERITY_ERROR
+    assert "zero rows" in findings[0].message
+    assert "markdown emphasis" in findings[0].message
+
+
+def test_dir_value_bolded_total_and_decision_parse_correctly(tmp_path):
+    """issue #912: a bolded Total/Decision *value* (not just the label)
+    must still parse — mirrors the scoring-table emphasis-tolerance fix."""
+    critic_dir = tmp_path / "memo.5.review"
+    critic_dir.mkdir()
+    rows = "".join(
+        f"| {i} | Dimension {i} | {w} | {w} | fine |\n"
+        for i, w in enumerate(MEMO_WEIGHTS, start=1)
+    )
+    (critic_dir / "scoring.md").write_text(SCORING_HEADER + rows)
+    (critic_dir / "verdict.md").write_text(
+        "# Verdict\n\n**Total**: **44**/44\n"
+        "**Decision**: `advance: **true**`\n"
+    )
+    (critic_dir / "comments.md").write_text("# Comments\n\nNone.\n")
+    (critic_dir / "_meta.json").write_text(json.dumps(STAMPED_META))
+
+    findings = check_review_dir(critic_dir)
+    assert findings == []
+
+
 def test_finding_is_frozen_dataclass():
     f = ScorecardFinding(
         code=PARSE_ERROR, severity=SEVERITY_ERROR, detail="x", message="y"
