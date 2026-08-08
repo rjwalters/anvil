@@ -948,8 +948,13 @@ def _accumulate_line_costs(
             just_added_paragraph_break = False
             continue
 
-        # Image (standalone block — image on its own paragraph).
-        if _IMAGE_RE.search(raw_line) and len(raw_line.strip()) < 250:
+        # Image (standalone block — image on its own paragraph). Keyed on
+        # line *structure* (the whole line is one image node), not on
+        # ``len(raw_line)`` — a long, accessible alt-text string must not
+        # push a standalone image into the body-paragraph branch below,
+        # where its alt-text characters would be charged as rendered prose.
+        # See #905.
+        if _STANDALONE_FIGURE_RE.match(raw_line):
             # Parse the alt-string for Marp sizing keywords (`bg`, `h:N`,
             # `w:N`, …). `_image_cost_units` returns the vertical body-flow
             # cost; see its docstring for the keyword→cost mapping.

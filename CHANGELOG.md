@@ -294,6 +294,21 @@
 
 ### Fixed
 
+- **`slide-content-overflow` no longer charges image alt-text as body
+  prose** (#905). The standalone-image branch of `marp_lint`'s capacity
+  model was guarded on `len(raw_line.strip()) < 250`: a `![alt](path)`
+  line whose alt text pushed the whole line past 250 characters fell
+  through to the body-paragraph branch, where the alt-text characters
+  were charged at `1.0u` per 70 chars plus `image_small_units` — the more
+  descriptive the alt text, the higher the estimated cost, penalizing
+  decks for writing accessible alt text. Canary: a 13-slide deck
+  (`familyrisk`) drew 1 hard error + 7 warnings from `slide-content-
+  overflow` that did not exist in the rendered PDF (the worst "offender"
+  had 47px of clearance). The standalone-image branch is now keyed on
+  line *structure* (`_STANDALONE_FIGURE_RE` — the whole line is exactly
+  one image node) instead of raw line length, so alt-text length never
+  affects the estimate.
+
 - **`essay-review` no longer calibrates voice fidelity against the
   artifact under review** (#890). A `voice.corpus` glob naturally
   points at the consumer's published archive — correct when drafting a

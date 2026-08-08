@@ -1056,5 +1056,131 @@ size: 16:9
         )
 
 
+class TestStandaloneImageAltTextNotChargedAsProse(unittest.TestCase):
+    """Issue #905 — a standalone image's alt-text length must not affect cost.
+
+    Pre-#905, the standalone-image branch was guarded on
+    ``len(raw_line.strip()) < 250``: a ``![alt](path)`` line whose alt text
+    pushed the whole line past 250 characters fell through to the
+    body-paragraph branch, where the alt-text characters were charged at
+    ``1.0u`` per 70 chars plus ``image_small_units`` — i.e. the more
+    descriptive the alt text, the higher the estimated cost. The fix keys
+    the standalone-image branch on line *structure* (``_STANDALONE_FIGURE_RE``
+    — the whole line is exactly one image node) instead of raw line length.
+    """
+
+    def test_short_and_long_alt_text_produce_identical_breakdown(self) -> None:
+        """AC3 — identical slides differing only in alt-text length cost the same.
+
+        A 40-char alt string and a 400-char alt string (well past the old
+        250-char line-length guard) on an otherwise-identical standalone
+        image line must produce the exact same cost breakdown — alt text is
+        never rendered, so its length must never enter the estimate.
+        """
+        from anvil.lib.marp_lint import Geometry, _estimate_slide_cost, _split_slides
+
+        short_alt = "a" * 40
+        long_alt = "b" * 400
+
+        def _slide_cost(alt: str) -> tuple:
+            source = f"""---
+marp: true
+size: 16:9
+---
+
+## Heading
+
+![{alt}](figures/photo.png)
+
+- One bullet
+"""
+            slide = _split_slides(source)[0]
+            breakdown = _estimate_slide_cost(slide, Geometry())
+            return breakdown.total_units, [label for label, _ in breakdown.parts]
+
+        short_total, short_labels = _slide_cost(short_alt)
+        long_total, long_labels = _slide_cost(long_alt)
+
+        self.assertEqual(
+            short_total,
+            long_total,
+            "a 400-char alt string must cost the same as a 40-char alt "
+            f"string; got {short_total}u vs {long_total}u",
+        )
+        self.assertEqual(short_labels, long_labels)
+
+    def test_long_alt_text_standalone_image_does_not_overflow(self) -> None:
+        """A long, accessible alt string on a standalone image must not flag.
+
+        Reproduces the canary repro from #905: a 13-slide deck's standalone
+        images carried descriptive (>250-char) alt text and were pushed
+        into the body-paragraph accounting branch, charging the alt-text
+        characters as rendered prose and firing a phantom
+        ``slide-content-overflow`` error on a slide the rendered PDF showed
+        comfortably inside the safe area.
+        """
+        long_alt = (
+            "A detailed, accessible description of the chart that explains "
+            "the axes, the trend shown, and the key takeaway for a screen "
+            "reader user who cannot see the rendered image at all, written "
+            "out in full sentences rather than a terse caption."
+        )
+        source = f"""---
+marp: true
+size: 16:9
+---
+
+## Chart
+
+![{long_alt}](figures/chart.png)
+
+- One bullet
+- Another bullet
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f
+            for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(
+            overflow_findings,
+            [],
+            f"descriptive alt text must not trigger overflow; got "
+            f"{[f.message for f in overflow_findings]}",
+        )
+
+    def test_standalone_image_still_recognized_regardless_of_alt_length(self) -> None:
+        """AC1 — the standalone-image branch fires for alt text of any length.
+
+        Direct check that ``_image_cost_units`` (the standalone-image cost
+        path) is reached — not the body-paragraph fallback — for an alt
+        string far longer than the old 250-char line-length guard.
+        """
+        from anvil.lib.marp_lint import Geometry, _estimate_slide_cost, _split_slides
+
+        alt = "c" * 300
+        source = f"""---
+marp: true
+size: 16:9
+---
+
+## Heading
+
+![{alt}](figures/photo.png)
+"""
+        slide = _split_slides(source)[0]
+        breakdown = _estimate_slide_cost(slide, Geometry())
+        labels = [label for label, _ in breakdown.parts]
+        self.assertTrue(
+            any(label.startswith("image") for label in labels),
+            f"expected a standalone-image cost label, got {labels}",
+        )
+        self.assertFalse(
+            any("paragraph(" in label for label in labels),
+            f"alt text must not fall through to the paragraph branch, got {labels}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
