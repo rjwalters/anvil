@@ -91,6 +91,21 @@ where the lint emits one warning finding naming the error and runs
 defaults-only (the same defect-to-surface posture as the grounding
 docs, with zero extra machinery).
 
+**Voice-sample precedence: when the resolved corpus contradicts a
+default lint rule, override the rule — not the corpus.** A project's
+`corpus` exemplars sometimes show a real authorial habit (the em-dash
+case is canonical) at a frequency the rhetoric lint's generic
+AI-tell defaults would flag. The documented fix lives on the lint side,
+not here: declare a project-local `voice.rhetoric_rules` file that
+`disable`s the specific default rule id(s) (e.g. `em-dash-density`,
+`no-opening-emdash`) rather than loosening the framework default for
+every project. See `anvil/lib/rhetoric_lint.py`'s module docstring,
+section "Voice-sample precedence (a per-project override, not a
+framework default change)", for the full worked example. A drafter or
+reviewer who has already loaded the `corpus` for judgment-side
+calibration is looking at exactly the evidence needed to decide whether
+this override applies.
+
 ## Activation pattern (the #428/#452 contract)
 
 - **No `voice:` block → byte-identical behavior.** No suffix, no
