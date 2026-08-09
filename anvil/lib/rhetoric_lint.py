@@ -108,6 +108,53 @@ a consumer rule whose ``id`` collides with a default **replaces** it;
 to ``"error"`` — an ``"error"`` (or any unknown severity) is coerced
 back to ``"warning"`` because the dimension is advisory by contract.
 
+Voice-sample precedence (a per-project override, not a framework
+default change)
+----------------------------------------------------------------
+
+The default rule set encodes a **generic** AI-tell prior: most AI-drafted
+prose over-uses certain patterns (em dashes among them), so
+``em-dash-density`` / ``no-opening-emdash`` fire by default. That prior
+is *wrong* for a specific author whose own writing genuinely favors the
+flagged pattern at a measurable frequency — a real human stylistic
+signature, not an AI tell, for that author. The documented resolution
+is the **voice-sample precedence** pattern: when a project's
+voice-grounding corpus (the ``values`` → ``style_guide`` → ``vocabulary``
+→ ``corpus`` resolution order documented in
+:mod:`anvil.lib.snippets.voice_grounding`, issue #461) shows the flagged
+pattern occurring at that frequency in the author's own published
+exemplars, the consumer supplies a project-local ``voice.rhetoric_rules``
+file (resolved by
+:func:`anvil.lib.project_brief.resolve_rhetoric_rules`, issue #468) that
+``disable``\\ s the specific default rule id(s) for that project.
+
+This is **not** a request to loosen the framework default — the default
+stays generically correct for every project that has not made this
+declaration. It is a **per-project opt-out**, scoped by the existing
+``disable`` merge semantics above, and it composes with the
+voice-grounding contract rather than duplicating it: the corpus already
+resolved for judgment-side voice calibration is the same evidence a
+consumer inspects before deciding to disable a lint rule for their own
+project.
+
+**Worked example (the canonical em-dash case, mirroring the
+``blader/humanizer`` one-sentence rule — "if a user's writing sample
+uses em dashes at a measured frequency, keep them at roughly that
+frequency instead of scrubbing them per the generic ban"):** a project
+whose ``voice.corpus`` exemplars show sustained em-dash use above the
+default 8-per-1000-words ceiling declares, in the file referenced by
+``voice.rhetoric_rules``::
+
+    {
+      "name": "project-rhetoric-overrides",
+      "rules": [],
+      "disable": ["em-dash-density", "no-opening-emdash"]
+    }
+
+With that file resolved, both em-dash rules are switched off for this
+project's lint runs; every other project consuming the framework
+defaults keeps scrubbing em dashes exactly as before.
+
 Graceful degradation: malformed consumer JSON (unparseable file, or a
 top-level shape that is not the documented object) produces a
 defaults-only run plus ONE warning finding naming the parse error (the
