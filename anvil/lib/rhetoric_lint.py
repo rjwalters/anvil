@@ -12,7 +12,7 @@ blocks: findings are warning severity at most, and the judgment call
 stays with the dim 9 critics.
 
 The rule-set SHAPE reimplements draftwell's ``packages/styleguide/``
-named-rule-set model in pure stdlib Python (no TypeScript port). Four
+named-rule-set model in pure stdlib Python (no TypeScript port). Five
 rule kinds:
 
 - ``phrase`` — a case-insensitive, word-boundary literal. Straight
@@ -46,6 +46,35 @@ rule kinds:
   style, the pathology is the tail of multi-clause sentences a reader
   must re-parse, and the tail is what this rule measures. Shares
   ``min_words`` (the frequency floor) with the ``frequency`` kind.
+- ``sentence_variance`` — a rhythm-uniformity sibling of
+  ``long_sentence`` (issue #921), reusing the same naive sentence
+  tokenization (:func:`_sentence_word_counts`, computed once per
+  document and shared with ``long_sentence`` when both are active).
+  Where ``long_sentence`` measures the *tail* (how many individual
+  sentences are pathologically long), ``sentence_variance`` measures
+  the *shape* of the whole distribution: the coefficient of variation
+  (population stdev / mean) of sentence word counts. A document can
+  pass ``long_sentence`` cleanly — no single sentence is too long —
+  while every sentence still runs a near-identical length, the
+  flattened-rhythm failure mode neither ``long_sentence`` nor any
+  markup-density rule can see. The rule fires when the CV falls
+  **below** ``min_cv`` (default :data:`DEFAULT_SENTENCE_VARIANCE_MIN_CV`)
+  — the inverse polarity of every other density rule in this module,
+  which fire above a ceiling. Two sample-size floors guard against a
+  degenerate statistic on small texts: ``min_words`` (shared with
+  ``frequency``/``long_sentence``) and ``min_sentences`` (default
+  :data:`DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES`) — a single sentence
+  makes the CV trivially zero (stdev of one value is zero), and a
+  handful of sentences makes it unstable, so both are required before
+  the rule evaluates. This is a **readability/rhythm** signal, the
+  same justification ``long_sentence``'s docstring already uses (a
+  reader who is handed sentence after sentence of identical shape
+  starts skimming, not reading) — it is deliberately **not** shipped,
+  documented, or tunable as an AI-detector-burstiness-evasion knob;
+  consumers who want to defeat a detector's "burstiness" heuristic get
+  no support for that from this module, and any patch that reframes
+  this rule (or its calibration) around detector evasion should be
+  rejected on sight.
 
 JSON rule-set schema (consumer files)
 -------------------------------------
@@ -68,6 +97,8 @@ self-documenting for consumer files)::
         {"id": "long-sentence-density", "kind": "long_sentence",
          "sentence_word_threshold": 40, "max_per_1000_words": 4,
          "message": "..."},
+        {"id": "sentence-variance-floor", "kind": "sentence_variance",
+         "min_cv": 0.35, "message": "..."},
         {"id": "no-internal-jargon", "kind": "regex",
          "sources_block_exempt": True,
          "pattern": "\\\\bTBD-INTERNAL\\\\b", "message": "..."}
@@ -233,6 +264,7 @@ from __future__ import annotations
 
 import json
 import re
+import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence, Union
@@ -244,12 +276,17 @@ RULE_KIND_PHRASE = "phrase"
 RULE_KIND_REGEX = "regex"
 RULE_KIND_FREQUENCY = "frequency"
 RULE_KIND_LONG_SENTENCE = "long_sentence"
+RULE_KIND_SENTENCE_VARIANCE = "sentence_variance"
 _VALID_KINDS = (
     RULE_KIND_PHRASE,
     RULE_KIND_REGEX,
     RULE_KIND_FREQUENCY,
     RULE_KIND_LONG_SENTENCE,
+    RULE_KIND_SENTENCE_VARIANCE,
 )
+# Kinds with no ``pattern`` key: they measure document-level statistics
+# (sentence-length tail / distribution shape) rather than matching text.
+_PATTERNLESS_KINDS = (RULE_KIND_LONG_SENTENCE, RULE_KIND_SENTENCE_VARIANCE)
 
 # Severities. The dimension is advisory by contract: ``warning`` is the
 # ceiling. Anything else (notably ``"error"``) is coerced to ``warning``.
@@ -295,6 +332,37 @@ EMPHASIS_MAX_PER_1000_WORDS = 20
 # tail. Deliberately not a mean-length cap — see the module docstring.
 DEFAULT_LONG_SENTENCE_WORD_THRESHOLD = 40
 LONG_SENTENCE_MAX_PER_1000_WORDS = 4
+
+# Sentence-variance-floor defaults (issue #921). Calibrated by computing the
+# coefficient of variation (population stdev / mean) of naive sentence word
+# counts over the repo's real anvil-authored worked-example bodies (the
+# `.N/` version-dir prose across essay, primer, memoir, spec,
+# ip-uspto-provisional, ip-uspto, installation, proposal, and datasheet
+# examples, plus the memo BRIEF templates and the clean-memo test fixture) —
+# NOT the humanizer-repo corpus mined in #919, which is uncalibrated
+# guidance, not a threshold. Every one of those genuine-prose documents with
+# >=50 words measured CV >= 0.413 (lowest: a short attribution memo body),
+# with most well above 0.5 and several long documents exceeding 1.0. A
+# document artificially flattened to the failure mode this rule targets —
+# every sentence landing in an 18-22 word band, the shape #919's mining
+# report calls out — measures CV ~0.08; even a looser 15-25 word band
+# measures ~0.16. 0.35 sits with clear headroom below the observed
+# real-prose floor (~18% below the lowest genuine sample) while sitting
+# well above the pathological-uniformity range, mirroring how
+# DEFAULT_LONG_SENTENCE_WORD_THRESHOLD was picked with headroom above a
+# healthy range and below an observed pathological one. Two sample-size
+# floors avoid a degenerate statistic on tiny texts: `min_words` (shared
+# with `frequency`/`long_sentence`) and `min_sentences` below — a
+# single-sentence text has stdev zero by construction (CV = 0), which
+# would otherwise always fire. `min_sentences` = 6 was picked directly
+# against this same corpus: a 5-sentence, 88-word test fixture (an
+# edge-case BRIEF.md, not representative prose at any meaningful scale)
+# measured CV 0.346 — inside noise distance of the 0.35 floor purely
+# because 5 data points is too small a sample for the statistic to be
+# stable — while every corpus document with >=6 sentences cleared the
+# floor with real margin.
+DEFAULT_SENTENCE_VARIANCE_MIN_CV = 0.35
+DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES = 6
 
 # Suppression-directive rule tokens honored by default. The memo gate's
 # dimension name is the documented consumer-facing token
@@ -544,6 +612,17 @@ DEFAULT_RHETORIC_RULES: tuple[dict, ...] = (
             "multi-clause sentences over ~40 words force a re-parse — "
             "split them or cut a clause instead of absorbing it into the "
             "sentence."
+        ),
+    },
+    {
+        "id": "sentence-variance-floor",
+        "kind": RULE_KIND_SENTENCE_VARIANCE,
+        "min_cv": DEFAULT_SENTENCE_VARIANCE_MIN_CV,
+        "message": (
+            "Sentence-length variance is below the readability floor; "
+            "a run of near-identical sentence lengths flattens rhythm and "
+            "reads as monotonous — vary sentence length structurally, not "
+            "just its content."
         ),
     },
     {
@@ -1111,11 +1190,11 @@ def _validate_rule(rule: object) -> tuple[Optional[dict], Optional[str]]:
             f"rule {rule_id!r}: invalid kind {kind!r} "
             f"(expected one of {', '.join(_VALID_KINDS)})",
         )
-    # ``long_sentence`` rules have no regex pattern — they count sentences
-    # by word length, not matches — so ``pattern`` is required for every
-    # other kind only.
+    # ``long_sentence``/``sentence_variance`` rules have no regex pattern —
+    # they measure document-level sentence-length statistics, not matches —
+    # so ``pattern`` is required for every other kind only.
     pattern: Optional[str] = None
-    if kind != RULE_KIND_LONG_SENTENCE:
+    if kind not in _PATTERNLESS_KINDS:
         pattern = rule.get("pattern")
         if not isinstance(pattern, str) or not pattern:
             return (None, f"rule {rule_id!r}: missing string 'pattern'")
@@ -1165,6 +1244,43 @@ def _validate_rule(rule: object) -> tuple[Optional[dict], Optional[str]]:
                 f"(got {sentence_word_threshold!r})",
             )
         normalized["sentence_word_threshold"] = int(sentence_word_threshold)
+    elif kind == RULE_KIND_SENTENCE_VARIANCE:
+        min_cv = rule.get("min_cv")
+        if (
+            isinstance(min_cv, bool)
+            or not isinstance(min_cv, (int, float))
+            or min_cv <= 0
+        ):
+            return (
+                None,
+                f"rule {rule_id!r}: sentence_variance kind requires numeric "
+                f"'min_cv' > 0 (got {min_cv!r})",
+            )
+        normalized["min_cv"] = float(min_cv)
+        min_words = rule.get("min_words", DEFAULT_FREQUENCY_MIN_WORDS)
+        if (
+            isinstance(min_words, bool)
+            or not isinstance(min_words, (int, float))
+            or min_words < 0
+        ):
+            min_words = DEFAULT_FREQUENCY_MIN_WORDS
+        normalized["min_words"] = int(min_words)
+        # Sample-size floor distinct from ``min_words``: a document could
+        # clear the word floor with very few sentences (e.g. one long run-on
+        # sentence), and a CV computed over fewer than a handful of
+        # sentences is a coin flip, not a rhythm measurement. Permissive
+        # coercion (like ``min_words``) — an invalid override falls back to
+        # the documented default rather than erroring the whole rule.
+        min_sentences = rule.get(
+            "min_sentences", DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES
+        )
+        if (
+            isinstance(min_sentences, bool)
+            or not isinstance(min_sentences, (int, float))
+            or min_sentences < 2
+        ):
+            min_sentences = DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES
+        normalized["min_sentences"] = int(min_sentences)
     elif kind == RULE_KIND_FREQUENCY:
         threshold = rule.get("max_per_1000_words")
         if (
@@ -1426,9 +1542,9 @@ def lint_rhetoric(
     words = sum(len(_WORD_RE.findall(line)) for line in scan_lines)
     # Computed once for all positional (``scope: "first-line"``) rules.
     first_prose_lineno = _first_prose_lineno(scan_lines, text)
-    # Computed lazily (only if a ``long_sentence`` rule is active) and
-    # cached across rules — the tokenization does not depend on any
-    # per-rule setting, only ``sentence_word_threshold`` does.
+    # Computed lazily (only if a ``long_sentence`` or ``sentence_variance``
+    # rule is active) and cached across both kinds — the tokenization does
+    # not depend on any per-rule setting.
     sentence_word_counts: Optional[list[int]] = None
     # Computed once for all ``sources_block_exempt`` rules (issue #751).
     sources_lines = _sources_block_lines(text)
@@ -1452,6 +1568,37 @@ def lint_rhetoric(
                             f"({count} sentence(s) over {threshold} words "
                             f"in {words} words = {density:.1f}/1000; "
                             f"threshold {rule['max_per_1000_words']:g}/1000)."
+                        ),
+                        line=None,
+                        match=None,
+                    )
+                )
+            continue
+        if rule["kind"] == RULE_KIND_SENTENCE_VARIANCE:
+            if words < rule["min_words"] or words == 0:
+                continue
+            if sentence_word_counts is None:
+                sentence_word_counts = _sentence_word_counts(scan_lines)
+            # Zero-word "sentences" (e.g. a stray "..." run) are not a
+            # length observation; excluding them keeps the statistic about
+            # actual sentence rhythm, not tokenization artifacts.
+            counts = [wc for wc in sentence_word_counts if wc > 0]
+            if len(counts) < rule["min_sentences"]:
+                continue
+            mean = statistics.mean(counts)
+            if mean <= 0:
+                continue
+            cv = statistics.pstdev(counts) / mean
+            if cv < rule["min_cv"]:
+                findings.append(
+                    RhetoricFinding(
+                        rule_id=rule["id"],
+                        severity=rule["severity"],
+                        message=(
+                            f"{rule['message']} "
+                            f"(coefficient of variation {cv:.2f} across "
+                            f"{len(counts)} sentence(s), mean {mean:.1f} "
+                            f"words; floor {rule['min_cv']:g})."
                         ),
                         line=None,
                         match=None,
@@ -1528,6 +1675,8 @@ __all__ = [
     "DEFAULT_FREQUENCY_MIN_WORDS",
     "DEFAULT_LONG_SENTENCE_WORD_THRESHOLD",
     "DEFAULT_RHETORIC_RULES",
+    "DEFAULT_SENTENCE_VARIANCE_MIN_CV",
+    "DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES",
     "DEFAULT_SUPPRESS_RULES",
     "EMDASH_MAX_PER_1000_WORDS",
     "EMPHASIS_MAX_PER_1000_WORDS",
@@ -1536,6 +1685,7 @@ __all__ = [
     "RULE_KIND_LONG_SENTENCE",
     "RULE_KIND_PHRASE",
     "RULE_KIND_REGEX",
+    "RULE_KIND_SENTENCE_VARIANCE",
     "RhetoricFinding",
     "RhetoricLintResult",
     "SEVERITY_INFO",

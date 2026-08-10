@@ -35,6 +35,8 @@ from anvil.lib.rhetoric_lint import (
     DEFAULT_FREQUENCY_MIN_WORDS,
     DEFAULT_LONG_SENTENCE_WORD_THRESHOLD,
     DEFAULT_RHETORIC_RULES,
+    DEFAULT_SENTENCE_VARIANCE_MIN_CV,
+    DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES,
     EMDASH_MAX_PER_1000_WORDS,
     EMPHASIS_MAX_PER_1000_WORDS,
     LONG_SENTENCE_MAX_PER_1000_WORDS,
@@ -42,6 +44,7 @@ from anvil.lib.rhetoric_lint import (
     RULE_KIND_LONG_SENTENCE,
     RULE_KIND_PHRASE,
     RULE_KIND_REGEX,
+    RULE_KIND_SENTENCE_VARIANCE,
     RhetoricLintResult,
     _collapse_markdown_links,
     _scannable_lines,
@@ -79,7 +82,15 @@ def test_module_is_pure_stdlib():
         elif isinstance(node, ast.ImportFrom):
             if node.module:
                 imported.add(node.module.split(".")[0])
-    allowed = {"__future__", "json", "re", "dataclasses", "pathlib", "typing"}
+    allowed = {
+        "__future__",
+        "json",
+        "re",
+        "statistics",
+        "dataclasses",
+        "pathlib",
+        "typing",
+    }
     assert imported <= allowed, f"non-stdlib imports: {imported - allowed}"
     # Belt-and-braces: every import resolves from the stdlib set.
     assert imported - {"__future__"} <= set(sys.stdlib_module_names)
@@ -458,6 +469,175 @@ def test_long_sentence_density_disable_via_config():
 
 
 # ---------------------------------------------------------------------------
+# sentence-variance-floor (issue #921): rhythm-uniformity sibling of
+# long-sentence-density — fires BELOW a coefficient-of-variation floor
+# (inverse polarity of every other density rule in this module).
+# ---------------------------------------------------------------------------
+
+
+def _fixed_length_sentences(count: int, length: int, start_idx: int = 0) -> str:
+    """``count`` sentences of exactly ``length`` words each (CV == 0) — the
+    pathological flattened-rhythm shape this rule targets."""
+    sentences: list[str] = []
+    idx = start_idx
+    for _ in range(count):
+        sentences.append(_sentence(length, idx))
+        idx += length
+    return " ".join(sentences) + "\n"
+
+
+def _varied_length_sentences(lengths: list) -> str:
+    """Sentences whose lengths follow ``lengths`` — a realistic, irregular
+    mix of short/medium/long sentences."""
+    sentences: list[str] = []
+    idx = 0
+    for length in lengths:
+        sentences.append(_sentence(length, idx))
+        idx += length
+    return " ".join(sentences) + "\n"
+
+
+def test_default_set_contains_sentence_variance_floor_rule():
+    matches = [
+        r for r in DEFAULT_RHETORIC_RULES if r["id"] == "sentence-variance-floor"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["kind"] == RULE_KIND_SENTENCE_VARIANCE
+    assert matches[0]["min_cv"] == DEFAULT_SENTENCE_VARIANCE_MIN_CV == 0.35
+
+
+def test_sentence_variance_fires_on_uniform_sentence_lengths():
+    """Acceptance criterion: identical-length sentences (CV == 0) — the
+    'every sentence runs 18-22 words' flattened-rhythm failure mode — warns
+    even though no single sentence is long enough to trip long_sentence."""
+    text = _fixed_length_sentences(10, 20)
+    hits = _active(lint_rhetoric(text))
+    assert [f.rule_id for f in hits] == ["sentence-variance-floor"]
+    assert hits[0].line is None  # document-level, no line anchor
+    assert hits[0].match is None
+    assert "coefficient of variation 0.00" in hits[0].message
+    assert "floor 0.35" in hits[0].message
+
+
+def test_sentence_variance_no_finding_on_varied_sentence_lengths():
+    """A realistic mix of short/medium/long sentences (CV ~0.59) clears
+    the floor — variety, not any particular mean length, is what this
+    rule rewards. Lengths are kept <=40 words so the fixture does not
+    also cross the unrelated long-sentence-density tail threshold."""
+    lengths = [5, 30, 10, 35, 8, 25, 12, 30, 6, 20]
+    text = _varied_length_sentences(lengths)
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_sentence_variance_min_words_floor():
+    """Uniform sentences below the shared 50-word floor produce no finding."""
+    text = _fixed_length_sentences(6, 5)  # 30 words total
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_sentence_variance_min_sentences_floor():
+    """Uniform sentences that clear min_words but not the min_sentences
+    sample-size floor (default 6) produce no finding."""
+    text = _fixed_length_sentences(5, 20)  # 100 words, 5 sentences
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_sentence_variance_degenerate_single_sentence_no_finding():
+    """Edge case (issue #921 test plan): a single sentence has stdev zero
+    by construction (CV trivially 0), which the min_sentences floor must
+    suppress rather than treat as a maximally-uniform document. A lone
+    80-word sentence also crosses the unrelated long-sentence-density
+    tail threshold at this small a word count, so that sibling rule is
+    disabled to isolate the assertion to sentence-variance-floor."""
+    res = lint_rhetoric(
+        _sentence(80), extra_rules={"disable": ["long-sentence-density"]}
+    )
+    assert _active(res) == []
+
+
+def test_sentence_variance_degenerate_two_sentences_no_finding():
+    """Edge case (issue #921 test plan): 2 sentences is still below the
+    sample-size floor, whatever their CV happens to be."""
+    text = _fixed_length_sentences(2, 40)
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_sentence_variance_disable_via_config():
+    text = _fixed_length_sentences(10, 20)
+    res = lint_rhetoric(
+        text, extra_rules={"disable": ["sentence-variance-floor"]}
+    )
+    assert _active(res) == []
+
+
+def test_sentence_variance_excludes_code_and_comments():
+    """Uniform 'sentences' inside fenced code / HTML comments do not feed
+    the statistic — only the varied body prose is measured."""
+    uniform_fenced = ("w " * 20 + ".\n") * 10
+    text = (
+        _varied_length_sentences([5, 30, 10, 35, 8, 25, 12, 30, 6, 20])
+        + "```\n"
+        + uniform_fenced
+        + "```\n"
+        + "<!-- "
+        + uniform_fenced
+        + " -->\n"
+    )
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_validate_rule_sentence_variance_no_pattern_required():
+    normalized, error = _validate_rule(
+        {
+            "id": "sv",
+            "kind": RULE_KIND_SENTENCE_VARIANCE,
+            "min_cv": 0.35,
+            "message": "m",
+        }
+    )
+    assert error is None, error
+    assert normalized is not None
+    assert "pattern" not in normalized
+    assert normalized["min_sentences"] == DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES
+
+
+def test_validate_rule_sentence_variance_requires_min_cv(tmp_path):
+    path = _write_rules(
+        tmp_path, {"rules": [{"id": "sv", "kind": "sentence_variance"}]}
+    )
+    result = lint_rhetoric("Plain text.", extra_rules_path=path)
+    config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
+    assert len(config) == 1
+    assert "min_cv" in config[0].message
+
+
+def test_validate_rule_sentence_variance_invalid_min_cv(tmp_path):
+    path = _write_rules(
+        tmp_path,
+        {"rules": [{"id": "sv", "kind": "sentence_variance", "min_cv": 0}]},
+    )
+    result = lint_rhetoric("Plain text.", extra_rules_path=path)
+    config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
+    assert len(config) == 1
+    assert "min_cv" in config[0].message
+
+
+def test_validate_rule_sentence_variance_invalid_min_sentences_falls_back():
+    """``min_sentences`` is permissively coerced (like ``min_words``), not
+    a hard validation error, when the override is unusable."""
+    normalized, error = _validate_rule(
+        {
+            "id": "sv",
+            "kind": RULE_KIND_SENTENCE_VARIANCE,
+            "min_cv": 0.35,
+            "min_sentences": 1,
+        }
+    )
+    assert error is None, error
+    assert normalized["min_sentences"] == DEFAULT_SENTENCE_VARIANCE_MIN_SENTENCES
+
+
+# ---------------------------------------------------------------------------
 # no-grade-tags-in-body (issue #751): internal evidence-grade taxonomy
 # leaking into reader-facing prose
 # ---------------------------------------------------------------------------
@@ -570,7 +750,16 @@ def test_long_sentence_density_excludes_code_and_comments():
         + fenced_long * 10
         + " -->\n"
     )
-    assert _active(lint_rhetoric(text)) == []
+    # ``_long_sentence_doc(0, ...)`` is all-filler: ~146 uniform 5-word
+    # sentences, a synthetic shape built to exercise the long-sentence
+    # tail metric, not representative prose rhythm. It legitimately trips
+    # ``sentence-variance-floor`` (CV ~0.0) — scope this test to the rule
+    # kind it exercises (issue #921 sibling rule).
+    assert _active(
+        lint_rhetoric(
+            text, extra_rules={"disable": ["sentence-variance-floor"]}
+        )
+    ) == []
 
 
 def test_sentence_word_counts_joins_wrapped_lines():
@@ -1000,15 +1189,18 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
     file in the repo (fixture memo bodies, BRIEF templates) plus the
     other skills' worked examples.
 
-    Five *style-density / self-reference* rules are asserted separately
+    Six *style-density / self-reference* rules are asserted separately
     rather than against this corpus, for the same reason: the repo's own
     fixture prose is em-dash-dense AI-written text (10-30 em-dashes per
     1000 words, several opening directly on an em-dash), some fixture
     bodies are bold-dense and/or carry multi-clause 40+ word sentences,
-    and the BRIEF templates carry document-describing commentary ("the
-    memo is deliberately non-prescriptive") — each is exactly the tell
-    its rule exists to flag, so none can serve as the "good prose"
-    baseline. The clean-memo fixture
+    the BRIEF templates carry document-describing commentary ("the
+    memo is deliberately non-prescriptive"), and a pair of
+    ``scorecard_check`` fixtures are literally a Markdown table of
+    per-dimension justification cells rendered as short, near-uniform
+    "sentences" (a structural table artifact, not prose rhythm) — each
+    is exactly the tell its rule exists to flag, so none can serve as
+    the "good prose" baseline. The clean-memo fixture
     (``test_zero_findings_on_clean_memo_fixture``) and the dedicated
     per-rule tests below are the real zero-findings baseline for:
 
@@ -1016,7 +1208,8 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
       (positional, issue #601);
     - ``emphasis-density`` (*frequency*, bold spans) and
       ``no-meta-commentary`` (issue #745);
-    - ``long-sentence-density`` (*long_sentence*, issue #750).
+    - ``long-sentence-density`` (*long_sentence*, issue #750);
+    - ``sentence-variance-floor`` (*sentence_variance*, issue #921).
     """
     style_density_excluded = (
         "em-dash-density",
@@ -1024,6 +1217,7 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
         "emphasis-density",
         "no-meta-commentary",
         "long-sentence-density",
+        "sentence-variance-floor",
     )
     corpus = (
         sorted((REPO_ROOT / "anvil/skills/memo/tests/fixtures").rglob("*.md"))
