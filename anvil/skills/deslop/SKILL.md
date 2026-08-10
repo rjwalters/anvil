@@ -132,6 +132,19 @@ Per iteration:
 4. **Revise (LLM)** — below threshold and under the cap: the agent
    addresses the critic's findings/fix strings, writes the next iteration
    via `write_version`, and the loop repeats from step 1.
+5. **Deterministic no-fabrication gate** (issue #922) — immediately after
+   step 4 writes the next iteration, `lib/orchestrate.py::check_no_fabrication`
+   diffs it against the iteration it revised and names every numeral,
+   proper-noun-shaped phrase, and citation-shaped token (bracketed ref,
+   URL, quoted string) that appears in the new iteration but not in the
+   prior one, any resolved voice-grounding doc, or an explicit
+   operator-supplied detail (`extra_allowed_tokens`). This is the
+   **deterministic** counterpart to `blader/humanizer`'s LLM self-audit
+   question (mining report `docs/research/919-ai-humanizer-mining.md`
+   bucket c.1) — a named, mechanical finding, not something only caught if
+   the critique step happens to notice it. Advisory like the lint pass;
+   findings carry forward into the next iteration's critique step so they
+   must be explicitly addressed or dismissed, never silently dropped.
 
 Termination follows the framework-standard resolution order
 (`anvil.lib.convergence`): a `critical_flags`-typed `no_go` short-circuits
@@ -181,9 +194,18 @@ an existing `anvil/lib/` primitive):
   `anvil.lib.project_brief.resolve_voice_docs` /
   `resolve_rhetoric_rules` wrappers, the `_review.json` builder/writer,
   `anvil.lib.critics.discover_critics` / `load_review` / `aggregate`
-  composition, `anvil.lib.convergence.decide_termination` wiring, and the
-  diff/rationale emitter (new orchestration; every judgment/convergence
-  primitive it calls already existed).
+  composition, `anvil.lib.convergence.decide_termination` wiring, the
+  diff/rationale emitter, and the `check_no_fabrication` wrapper (new
+  orchestration; every judgment/convergence primitive it calls already
+  existed).
+- `no_fabrication.py` — the deterministic no-fabrication diff gate (issue
+  #922): extracts numerals / proper-noun-shaped phrases / citation-shaped
+  tokens through `anvil.lib.rhetoric_lint.scannable_lines`'s
+  fenced-code/HTML-comment/inline-code exclusion mask (a second consumer
+  of the same exclusion scope `lint_rhetoric` uses — composes with it,
+  does not duplicate it), then diffs iteration N against N+1 with two
+  documented exception paths: tokens resolvable from a voice-grounding doc,
+  and explicit operator-supplied detail.
 
 ## State machine
 
@@ -228,3 +250,9 @@ pattern). Files (per the #58 distinct-filename convention):
 - `test_deslop_readonly.py` — a full ingest → lint → review → emit pass
   never mutates the source file (SHA-256 before/after), and ingestion
   alone writes nothing to the source's directory.
+- `test_deslop_no_fabrication.py` — the deterministic no-fabrication gate
+  (issue #922): a clean revision (no new facts) passes silently, a
+  revision that invents a number/name/citation is flagged, a revision
+  that pulls a specific detail from a resolved voice-grounding doc is NOT
+  flagged, and the fenced-code/HTML-comment/inline-code exclusion scope
+  suppresses false positives on embedded code samples.

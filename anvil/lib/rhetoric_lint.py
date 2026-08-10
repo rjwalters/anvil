@@ -1492,6 +1492,27 @@ def _resolve_rules(
 # Public API ----------------------------------------------------------------------
 
 
+def scannable_lines(text: str) -> list[str]:
+    """Public entry point for the fenced-code / HTML-comment / inline-code
+    exclusion mask (issue #922).
+
+    Thin public wrapper around :func:`_scannable_lines`, whose docstring
+    documents the exact exclusion contract (fenced code blocks blanked
+    wholesale, HTML comments stripped including multi-line spans, inline
+    code spans removed — one output line per input line, so line numbers
+    stay anchored to the original source). Exists so a second consumer can
+    reuse the identical exclusion scope without re-implementing it or
+    reaching into a leading-underscore internal: `anvil:deslop`'s
+    deterministic no-fabrication gate
+    (`anvil/skills/deslop/lib/no_fabrication.py`) diffs iteration N against
+    N+1 over this same masked text so a fenced code sample pasted into
+    ingested prose can never register as an "introduced" numeral / proper
+    noun / citation token. Byte-identical output to
+    :func:`_scannable_lines` — this function does no additional work.
+    """
+    return _scannable_lines(text)
+
+
 def lint_rhetoric(
     text: str,
     *,
@@ -1691,4 +1712,5 @@ __all__ = [
     "SEVERITY_INFO",
     "SEVERITY_WARNING",
     "lint_rhetoric",
+    "scannable_lines",
 ]

@@ -36,15 +36,17 @@ _PACKAGE_NAME = "deslop_lib"
 _lib = load_skill_lib(
     "deslop",
     _LIB_DIR,
-    ["ingest", "orchestrate"],
+    ["ingest", "orchestrate", "no_fabrication"],
     package_name=_PACKAGE_NAME,
 )
 
 ingest = _lib.ingest
 orchestrate = _lib.orchestrate
+no_fabrication = _lib.no_fabrication
 
 
 __all__ = [
     "ingest",
     "orchestrate",
+    "no_fabrication",
 ]

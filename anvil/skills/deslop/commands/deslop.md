@@ -89,7 +89,10 @@ lint = orchestrate.lint_body(orchestrate.read_version(thread_dir, n), project_di
 
 `project_dir` is `--project <dir>` or `None`. `lint.findings` is
 advisory — never blocking on its own — but every finding is evidence the
-critique step below should cite or explicitly decide not to act on.
+critique step below should cite or explicitly decide not to act on. For
+`n > 1`, also read forward the `no_fabrication.findings` carried over from
+the previous iteration's step 3e (below) — same "evidence to cite or
+explicitly dismiss" contract.
 
 **3b. Resolve voice grounding (once, not per iteration — the docs don't
 change mid-loop).**
@@ -119,6 +122,16 @@ resolved voice docs, when present) and judge:
   voice, or does it sound like every other AI-drafted paragraph? Pass
   `voice_adherence=None` (never a fabricated `0`) when `voice_docs` is
   empty.
+
+For `n > 1`, also resolve every `no_fabrication.findings` entry carried
+forward from the previous iteration's step 3e (issue #922 — the
+deterministic no-fabrication gate): for each flagged numeral / proper noun
+/ citation-shaped token, either confirm it traces to the source/voice
+docs/operator (note why in the justification — it will not be re-flagged
+if it still matches on the next diff) or treat it as a fabricated-claim
+`CriticalFlag` when it does not. A gate finding is advisory evidence, not
+an automatic critical flag — the critique step makes the call, same as it
+does for `lint.findings`.
 
 Build and write the review:
 
@@ -168,6 +181,33 @@ sand off working phrasing while chasing the rest. Write the result:
 ```python
 orchestrate.write_version(thread_dir, n + 1, revised_prose)
 ```
+
+**Deterministic no-fabrication gate (issue #922).** Immediately after
+writing iteration `n + 1`, diff it against the iteration it revised:
+
+```python
+no_fabrication = orchestrate.check_no_fabrication(
+    thread_dir, n, voice_docs=voice_docs,
+    # extra_allowed_tokens=[...] — pass any specific the operator dictated
+    # directly (outside the ingested source and voice_docs) that this
+    # revision legitimately introduces, e.g. a real figure supplied to
+    # replace a vague claim. Omit when nothing was operator-supplied.
+)
+```
+
+`no_fabrication.findings` names every numeral, proper-noun-shaped phrase,
+and citation-shaped token (bracketed ref, URL, quoted string) that
+appears in iteration `n + 1` but not in iteration `n`, any resolved
+voice-grounding doc, or `extra_allowed_tokens` — the same fenced-code /
+HTML-comment / inline-code exclusion scope `lint_body` already applies, so
+a code sample in the ingested prose never trips it. This is a
+**deterministic** check, not the LLM self-audit question
+`blader/humanizer` relies on (mining report bucket c.1) — every finding is
+named and mechanical, not something only caught if the critique step
+happens to notice it. It is advisory, like `lint.findings`: nothing here
+blocks on its own. Carry `no_fabrication.findings` forward into the next
+iteration's step 3c (see above) so the critique step is forced to address
+each one explicitly rather than silently pass it through.
 
 ### 4. Emit
 

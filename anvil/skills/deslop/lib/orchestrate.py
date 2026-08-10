@@ -26,6 +26,11 @@ This module supplies every **deterministic** primitive the
 - **Emission**: cleaned text + per-change rationale + (for file inputs) a
   ready-to-apply diff. `anvil:deslop` NEVER writes to the ingested
   source — every write here lands under the scratchpad thread directory.
+- The **deterministic no-fabrication gate**
+  (``anvil.skills.deslop.lib.no_fabrication.diff_no_fabrication``, issue
+  #922) diffing iteration N against N+1 for introduced numerals / proper
+  nouns / citation-shaped tokens absent from the prior iteration, every
+  resolved voice-grounding doc, and any explicit operator-supplied detail.
 
 What this module deliberately does NOT do: score rhetorical economy or
 voice adherence itself. That is the judgment call `commands/deslop.md`
@@ -40,7 +45,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 from anvil.lib.convergence import decide_termination
 from anvil.lib.critics import aggregate, discover_critics, load_review
@@ -57,6 +62,7 @@ from anvil.lib.review_schema import (
 from anvil.lib.rhetoric_lint import RhetoricLintResult, lint_rhetoric
 
 from .ingest import IngestedItem
+from .no_fabrication import NoFabricationResult, diff_no_fabrication
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -196,6 +202,55 @@ def voice_context(
     if project_dir is None:
         return []
     return resolve_voice_docs(Path(project_dir), exclude_self_slug=exclude_self_slug)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic no-fabrication gate (issue #922)
+# ---------------------------------------------------------------------------
+
+
+def check_no_fabrication(
+    thread_dir: Path,
+    n: int,
+    *,
+    voice_docs: Optional[Sequence[object]] = None,
+    extra_allowed_tokens: Optional[Sequence[str]] = None,
+) -> NoFabricationResult:
+    """Diff iteration ``n`` against iteration ``n + 1`` for fabricated
+    numerals / proper nouns / citation-shaped tokens (issue #922).
+
+    Thin wrapper over :func:`anvil.skills.deslop.lib.no_fabrication.diff_no_fabrication`
+    that reads both versions off disk via :func:`read_version` and flattens
+    ``voice_docs`` (the return value of :func:`voice_context` — a list of
+    ``ResolvedVoiceDoc``-shaped objects with a ``.paths`` attribute) into
+    the bare path list the pure diff function expects. A plain string/Path
+    is also accepted per element, so a caller that already has bare paths
+    does not need to fake the ``ResolvedVoiceDoc`` shape.
+
+    Call this **after** step 3e writes iteration ``n + 1`` — the findings
+    on the returned :class:`NoFabricationResult` are evidence the *next*
+    iteration's step 3c critique should cite or explicitly decide not to
+    act on, exactly like :func:`lint_body`'s findings. This is advisory
+    evidence, not a hard block: nothing in this module raises or forces a
+    verdict.
+    """
+    prior = read_version(thread_dir, n)
+    revised = read_version(thread_dir, n + 1)
+
+    voice_doc_paths: List[str] = []
+    for doc in voice_docs or ():
+        paths = getattr(doc, "paths", None)
+        if paths:
+            voice_doc_paths.extend(paths)
+        elif isinstance(doc, (str, Path)):
+            voice_doc_paths.append(str(doc))
+
+    return diff_no_fabrication(
+        prior,
+        revised,
+        voice_doc_paths=voice_doc_paths,
+        extra_allowed_tokens=extra_allowed_tokens,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +495,7 @@ __all__ = [
     "read_version",
     "lint_body",
     "voice_context",
+    "check_no_fabrication",
     "new_review",
     "write_critic_review",
     "aggregate_reviews",
