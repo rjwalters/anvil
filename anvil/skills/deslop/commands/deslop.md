@@ -91,6 +91,31 @@ lint = orchestrate.lint_body(orchestrate.read_version(thread_dir, n), project_di
 advisory — never blocking on its own — but every finding is evidence the
 critique step below should cite or explicitly decide not to act on.
 
+**On every iteration after the first** (`n > 1`), also run the
+deterministic **no-fabrication gate** (issue #922) comparing this
+iteration against the one the prior revise step produced it from:
+
+```python
+if n > 1:
+    fabrication = orchestrate.check_fabrication(thread_dir, n - 1, n, voice_docs=voice_docs)
+```
+
+`voice_docs` is the list step 3b resolves — by the time iteration `n > 1`
+runs, iteration 1's 3b step has already assigned it (3b explicitly
+resolves once, not per iteration, since the corpus doesn't change
+mid-loop), so it is simply in scope here. `fabrication.findings` names
+every numeral / proper-noun /
+citation-shaped token iteration `n` introduced that iteration `n - 1`
+didn't carry and no resolved voice-grounding doc carries either —
+**advisory evidence, same posture as `lint.findings`**: it does not
+block the loop by itself, but every finding is a named, deterministic
+item the critique step below MUST cite or explicitly waive (never
+silently drop). A finding whose introducing line the agent marked
+`<!-- anvil-lint-disable: deslop_no_fabrication -->` — the accepted
+carve-out for a detail sourced from the operator directly, not a voice
+doc the automatic resolution missed — arrives at `severity="info"`
+instead of `"warning"`; still report it, just not as an outstanding item.
+
 **3b. Resolve voice grounding (once, not per iteration — the docs don't
 change mid-loop).**
 
@@ -119,6 +144,20 @@ resolved voice docs, when present) and judge:
   voice, or does it sound like every other AI-drafted paragraph? Pass
   `voice_adherence=None` (never a fabricated `0`) when `voice_docs` is
   empty.
+
+When `fabrication.findings` is non-empty (only possible on `n > 1`),
+address every `severity="warning"` entry explicitly before scoring: for
+each, either confirm the token traces to the prior iteration or a voice
+doc after all (a gate false positive — the extractors are permissive
+supersets, not a semantic fact-checker) and note that in the
+justification, or treat it as a real fabrication and both deduct from
+`rhetorical_economy` and add a `critical_flags` entry
+(`anvil.lib.review_schema.CriticalFlag(type="fabricated_claim", ...)` —
+the `type` tag is skill-defined free text, mirroring the schema's own
+`"fabricated_traction"` example) so 3d's verdict can `BLOCK` on it rather
+than let the loop `ADVANCE`/`REVISE` past an unaddressed invented fact.
+`severity="info"` entries (suppressed via `anvil-lint-disable`) need no
+action beyond noting the operator already accepted them.
 
 Build and write the review:
 

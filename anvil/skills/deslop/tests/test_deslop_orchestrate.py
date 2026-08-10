@@ -3,7 +3,9 @@
 Covers scratchpad-thread management, the deterministic lint pass (default
 + consumer-declared rhetoric rules), voice-grounding resolution, the
 typed-review round trip through `anvil.lib.critics`, the
-convergence-driven iterate loop, and the cleaned-text/rationale/diff
+convergence-driven iterate loop, the deterministic no-fabrication gate
+wrapper (issue #922; the extraction/diff logic itself is covered in
+`test_deslop_fabrication_gate.py`), and the cleaned-text/rationale/diff
 emission (never touching the ingested source).
 """
 
@@ -148,6 +150,69 @@ def test_voice_context_resolves_declared_docs(tmp_path: Path) -> None:
     assert {"values", "style_guide", "vocabulary"} <= kinds
     for entry in resolved:
         assert entry.missing is False
+
+
+# ---------------------------------------------------------------------------
+# Deterministic no-fabrication gate (issue #922) — wrapper composition.
+# The extraction/diff logic itself is unit-tested directly against
+# `fabrication_gate.check_no_fabrication` in
+# `test_deslop_fabrication_gate.py`; these tests cover
+# `orchestrate.check_fabrication`'s thread-version + voice-doc plumbing.
+# ---------------------------------------------------------------------------
+
+
+def test_check_fabrication_flags_introduced_claim_with_no_voice_docs(
+    tmp_path: Path,
+) -> None:
+    thread_dir = orchestrate.init_thread(tmp_path, "landing-copy")
+    orchestrate.write_version(thread_dir, 1, "Our product helps teams ship faster.\n")
+    orchestrate.write_version(
+        thread_dir, 2, "Our product helped Acme Corporation cut costs by $2.5M.\n"
+    )
+
+    result = orchestrate.check_fabrication(thread_dir, 1, 2, voice_docs=[])
+
+    tokens = {f.token for f in result.findings}
+    assert "$2.5M" in tokens
+    assert "Acme Corporation" in tokens
+
+
+def test_check_fabrication_silent_when_revision_adds_no_new_facts(
+    tmp_path: Path,
+) -> None:
+    thread_dir = orchestrate.init_thread(tmp_path, "landing-copy")
+    orchestrate.write_version(thread_dir, 1, "Acme Corporation raised $2.5M in Q1.\n")
+    orchestrate.write_version(thread_dir, 2, "Acme Corporation closed a $2.5M round.\n")
+
+    result = orchestrate.check_fabrication(thread_dir, 1, 2, voice_docs=[])
+
+    assert result.findings == []
+
+
+def test_check_fabrication_honors_resolved_voice_grounding_docs(
+    tmp_path: Path,
+) -> None:
+    project_dir = tmp_path / "project"
+    _write_project_with_voice_and_rules(project_dir, disable_important_to_note=False)
+    # The corpus doc carries the specific figure the revision introduces —
+    # legitimate specificity sourced from the voice-grounding tier, not a
+    # fabrication (the `blader/humanizer` "specific comes from the source"
+    # carve-out).
+    (project_dir / "VALUES.md").write_text(
+        "# Values\n\nDirectness. Our flagship case study, Acme Corporation, saved $2.5M.\n",
+        encoding="utf-8",
+    )
+
+    thread_dir = orchestrate.init_thread(tmp_path, "landing-copy")
+    orchestrate.write_version(thread_dir, 1, "Our product helps teams ship faster.\n")
+    orchestrate.write_version(
+        thread_dir, 2, "Our product helped Acme Corporation cut costs by $2.5M.\n"
+    )
+
+    voice_docs = orchestrate.voice_context(project_dir)
+    result = orchestrate.check_fabrication(thread_dir, 1, 2, voice_docs=voice_docs)
+
+    assert result.findings == []
 
 
 # ---------------------------------------------------------------------------

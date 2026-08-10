@@ -23,6 +23,14 @@ This module supplies every **deterministic** primitive the
   ``anvil.lib.critics.aggregate``) — the same iterate-until-converged
   machinery every other anvil lifecycle skill already uses. This module
   does NOT reimplement convergence logic.
+- **The deterministic no-fabrication gate** (``.fabrication_gate.
+  check_no_fabrication``, issue #922) — a post-revise diff between
+  iteration N and N+1 flagging numerals / proper nouns / citation-shaped
+  tokens introduced in the revision that weren't present in the prior
+  iteration or in any resolved voice-grounding doc. Advisory, same as
+  the lint pass: it never blocks on its own, but every finding is
+  evidence the next iteration's critique step (3c) must cite or
+  explicitly decide not to act on.
 - **Emission**: cleaned text + per-change rationale + (for file inputs) a
   ready-to-apply diff. `anvil:deslop` NEVER writes to the ingested
   source — every write here lands under the scratchpad thread directory.
@@ -40,7 +48,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 from anvil.lib.convergence import decide_termination
 from anvil.lib.critics import aggregate, discover_critics, load_review
@@ -56,6 +64,7 @@ from anvil.lib.review_schema import (
 )
 from anvil.lib.rhetoric_lint import RhetoricLintResult, lint_rhetoric
 
+from .fabrication_gate import FabricationGateResult, check_no_fabrication
 from .ingest import IngestedItem
 
 # ---------------------------------------------------------------------------
@@ -196,6 +205,71 @@ def voice_context(
     if project_dir is None:
         return []
     return resolve_voice_docs(Path(project_dir), exclude_self_slug=exclude_self_slug)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic no-fabrication gate (issue #922)
+# ---------------------------------------------------------------------------
+
+
+def _voice_doc_texts(voice_docs: Sequence[object]) -> List[str]:
+    """Read every resolved voice-grounding doc's file content.
+
+    ``voice_docs`` is the list :func:`voice_context` returns (each entry
+    a ``ResolvedVoiceDoc``-shaped object exposing ``.paths``). Builds the
+    "known" text corpus :func:`check_fabrication` unions with the prior
+    iteration's tokens — a detail the revision pulled from the author's
+    own values/style/vocabulary/corpus docs is legitimate specificity,
+    not fabrication (the `blader/humanizer` "specific comes from the
+    source or the user" carve-out).
+
+    Graceful, mirroring the broken-declaration tolerance ``voice_context``
+    already carries: an unreadable or missing path is skipped rather than
+    raising, since a single broken voice doc must not sink the gate.
+    """
+    texts: List[str] = []
+    for doc in voice_docs:
+        for p in getattr(doc, "paths", None) or []:
+            try:
+                texts.append(Path(p).read_text(encoding="utf-8"))
+            except OSError:
+                continue
+    return texts
+
+
+def check_fabrication(
+    thread_dir: Path,
+    prior_n: int,
+    new_n: int,
+    *,
+    voice_docs: Optional[Sequence[object]] = None,
+) -> FabricationGateResult:
+    """Run the no-fabrication gate between iteration ``prior_n`` and
+    ``new_n`` (issue #922).
+
+    Thin composition over :func:`read_version` (thread-relative version
+    IO already lives here) and
+    :func:`anvil.skills.deslop.lib.fabrication_gate.check_no_fabrication`
+    (the deterministic diff itself — no diff/extraction logic is
+    reimplemented in this module). ``voice_docs`` is the list
+    :func:`voice_context` returned for this run (``[]``/``None`` when no
+    ``--project`` was given); its resolved file contents are read via
+    :func:`_voice_doc_texts` and unioned into the "known" corpus so a
+    detail sourced from a voice-grounding doc is never flagged.
+
+    Called from `commands/deslop.md` step 3e, right after
+    :func:`write_version` writes iteration ``new_n`` — the findings feed
+    the NEXT iteration's critique pass (3c) as advisory evidence, exactly
+    like :func:`lint_body`'s findings. This gate never blocks the loop by
+    itself; it has no bearing on :func:`decide_next`'s verdict unless the
+    agent chooses to encode a specific finding as a
+    ``anvil.lib.review_schema.CriticalFlag`` when building the next
+    review.
+    """
+    prior_body = read_version(thread_dir, prior_n)
+    new_body = read_version(thread_dir, new_n)
+    known_texts = _voice_doc_texts(voice_docs or [])
+    return check_no_fabrication(prior_body, new_body, known_texts=known_texts)
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +514,7 @@ __all__ = [
     "read_version",
     "lint_body",
     "voice_context",
+    "check_fabrication",
     "new_review",
     "write_critic_review",
     "aggregate_reviews",
