@@ -91,25 +91,43 @@ def test_module_is_pure_stdlib():
 
 
 def test_default_rules_all_valid_and_conservative_count():
-    """Every default validates against the documented schema; ~20-35 rules."""
+    """Every default validates against the documented schema; ~20-60 rules.
+
+    The upper bound was raised from 35 to 60 in issue #920, which adopted
+    bucket (a) of the #919 AI-humanizer-corpus mining report (18 new
+    rules distilled from ~41 individually FP-checked candidate patterns
+    by combining thematically related candidates under a shared id —
+    e.g. the promo triad and fake-significance cluster each ship as one
+    rule with an alternation regex, not one id per term). 60 leaves
+    headroom above the actual post-#920 count for future additions
+    without every batch needing its own bound bump.
+    """
     for rule in DEFAULT_RHETORIC_RULES:
         normalized, error = _validate_rule(rule)
         assert error is None, error
         assert normalized is not None
-    assert 20 <= len(DEFAULT_RHETORIC_RULES) <= 35
+    assert 20 <= len(DEFAULT_RHETORIC_RULES) <= 60
     ids = [r["id"] for r in DEFAULT_RHETORIC_RULES]
     assert len(ids) == len(set(ids)), "duplicate default rule ids"
 
 
 def test_default_set_frequency_rules_are_emdash_and_emphasis():
-    """Two frequency defaults ship: em-dash density and bold-span density
-    (issue #745). Both carry a positive ``max_per_1000_words``."""
+    """Four frequency defaults ship: em-dash density and bold-span density
+    (issue #745), plus curly-quote density and hyphen-pair density
+    (issue #920). All four carry a positive ``max_per_1000_words``."""
     freq = {
         r["id"]: r
         for r in DEFAULT_RHETORIC_RULES
         if r["kind"] == RULE_KIND_FREQUENCY
     }
-    assert set(freq) == {"em-dash-density", "emphasis-density"}
+    assert set(freq) == {
+        "em-dash-density",
+        "emphasis-density",
+        "no-curly-quotes",
+        "hyphen-pair-density",
+    }
+    for rule_id in ("no-curly-quotes", "hyphen-pair-density"):
+        assert freq[rule_id]["max_per_1000_words"] > 0
     assert freq["em-dash-density"]["pattern"] == "—"
     assert (
         freq["em-dash-density"]["max_per_1000_words"]
@@ -1266,3 +1284,196 @@ def test_voice_readme_documents_density_tightening_recipe():
     ).read_text(encoding="utf-8")
     assert "em-dash-density" in readme
     assert "max_per_1000_words" in readme
+
+
+# ---------------------------------------------------------------------------
+# Issue #920: bucket (a) of the #919 AI-humanizer-corpus mining report
+# ---------------------------------------------------------------------------
+#
+# 16 phrase/regex additions, table-driven: each tuple fires the named
+# rule on ``hit_text`` and produces zero findings on ``no_hit_text``
+# (the "zero-findings-on-good-prose" bar the module docstring
+# documents). The two frequency-kind additions (``no-curly-quotes``,
+# ``hyphen-pair-density``) get dedicated density tests below, matching
+# the existing ``em-dash-density`` / ``emphasis-density`` test shape.
+
+_ISSUE_920_PHRASE_REGEX_CASES = [
+    (
+        "no-copula-avoidance-cluster",
+        "The dashboard stands as a bridge between sales and finance.",
+        "The dashboard is a bridge between sales and finance.",
+    ),
+    (
+        "no-copula-avoidance-cluster",
+        "This tool functions as a router for support tickets.",
+        "This tool routes support tickets.",
+    ),
+    (
+        "no-copula-avoidance-cluster",
+        "The plan features a phased rollout.",
+        "The plan has a phased rollout.",
+    ),
+    (
+        "no-align-with",
+        "The proposal must align with the Q3 roadmap.",
+        "The proposal must match the Q3 roadmap.",
+    ),
+    (
+        "no-garner",
+        "The pitch garnered strong investor interest.",
+        "The pitch earned strong investor interest.",
+    ),
+    (
+        "no-ai-buzzword-nouns",
+        "The interplay of pricing and churn drove the decision.",
+        "The relationship between pricing and churn drove the decision.",
+    ),
+    (
+        "no-ai-buzzword-adjectives",
+        "The renowned lab reviewed the data.",
+        "The well-known lab reviewed the data.",
+    ),
+    (
+        "no-promo-triad",
+        "The team shipped a cutting-edge caching layer.",
+        "The team shipped a new caching layer.",
+    ),
+    (
+        "no-superficial-ing-padding",
+        "This finding is highlighting a gap in coverage.",
+        "This finding shows a gap in coverage.",
+    ),
+    (
+        "no-negative-parallelism",
+        "Not only did revenue grow, but margins improved as well.",
+        "Revenue grew and margins improved.",
+    ),
+    (
+        "no-more-than-just",
+        "This release is more than just a bug fix.",
+        "This release is a bug fix plus two features.",
+    ),
+    (
+        "no-fake-significance-cluster",
+        "The launch marked a turning point for the team.",
+        "The launch changed how the team plans releases.",
+    ),
+    (
+        "no-sets-the-stage",
+        "The pilot is setting the stage for a full rollout.",
+        "The pilot enables a full rollout.",
+    ),
+    (
+        "no-it-is-believed",
+        "It is widely believed that adoption will accelerate.",
+        "Analysts project adoption will accelerate.",
+    ),
+    (
+        "no-sycophantic-cluster",
+        "I hope this helps clarify the release plan.",
+        "Let me know if the release plan needs changes.",
+    ),
+    (
+        "no-knowledge-cutoff",
+        "Pricing is current up to my last training update.",
+        "Pricing is current as of the Q3 filing.",
+    ),
+    (
+        "no-copy-paste-artifact",
+        "The draft still has a stray oaicite marker in it.",
+        "The draft cites the filing directly.",
+    ),
+]
+
+
+def test_issue_920_phrase_regex_rules_fire_and_do_not_false_positive():
+    for rule_id, hit_text, no_hit_text in _ISSUE_920_PHRASE_REGEX_CASES:
+        hit_ids = [f.rule_id for f in _active(lint_rhetoric(hit_text))]
+        assert rule_id in hit_ids, (
+            f"{rule_id} did not fire on {hit_text!r} (got {hit_ids})"
+        )
+        no_hit_ids = [f.rule_id for f in _active(lint_rhetoric(no_hit_text))]
+        assert rule_id not in no_hit_ids, (
+            f"{rule_id} false-positived on {no_hit_text!r}"
+        )
+
+
+def test_issue_920_weasel_attribution_requires_plural_noun_and_real_verb():
+    """Calibration fix: plural-only nouns + 'note' dropped from the verb
+    alternation, so a singular 'Critic' heading never collides."""
+    hit = "Critics say the redesign missed the mark."
+    assert [f.rule_id for f in _active(lint_rhetoric(hit))] == [
+        "no-weasel-attribution"
+    ]
+    # The exact FP the #919 mining report found: a routine section
+    # heading, not an attribution phrase.
+    no_hit = "## Critic note -> change\n\nRevised the intro paragraph.\n"
+    ids = [f.rule_id for f in _active(lint_rhetoric(no_hit))]
+    assert "no-weasel-attribution" not in ids
+
+
+def test_issue_920_negative_parallelism_does_not_cross_sentences():
+    """Span-capped: 'not just' in one sentence must not reach a 'but' in
+    the next sentence."""
+    text = "This is not just a formality. But the schedule still holds.\n"
+    ids = [f.rule_id for f in _active(lint_rhetoric(text))]
+    assert "no-negative-parallelism" not in ids
+
+
+# ---------------------------------------------------------------------------
+# Issue #920: no-curly-quotes (frequency)
+# ---------------------------------------------------------------------------
+
+
+def test_curly_quotes_over_threshold_fires_document_level():
+    text = _words(1000) + "\n" + "‘a’ “b” " * 3  # 12/1000 > 2
+    hits = _active(lint_rhetoric(text))
+    assert [f.rule_id for f in hits] == ["no-curly-quotes"]
+    assert hits[0].line is None
+
+
+def test_curly_quotes_under_threshold_no_finding():
+    text = _words(1000) + "\n" + "It's a plain apostrophe sentence.\n"
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_curly_quotes_disable_via_config():
+    text = _words(1000) + "\n" + "‘a’ “b” " * 3
+    res = lint_rhetoric(text, extra_rules={"disable": ["no-curly-quotes"]})
+    assert _active(res) == []
+
+
+# ---------------------------------------------------------------------------
+# Issue #920: hyphen-pair-density (frequency, with the calibration fix)
+# ---------------------------------------------------------------------------
+
+
+def test_hyphen_pair_density_over_threshold_fires_document_level():
+    text = (
+        _words(1000)
+        + "\n"
+        + "data-driven cross-functional best-in-class future-proof "
+    )  # 4/1000 > 3
+    hits = _active(lint_rhetoric(text))
+    assert [f.rule_id for f in hits] == ["hyphen-pair-density"]
+    assert hits[0].line is None
+
+
+def test_hyphen_pair_density_under_threshold_no_finding():
+    text = _words(1000) + "\n" + "third-party review only.\n"  # 1/1000 <= 3
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_hyphen_pair_density_excludes_neutral_engineering_terms():
+    """Calibration fix: the exact #919 mining-report FP — repeated
+    'End-to-end' headings plus real-time/long-term prose — must not
+    fire, since those are domain-neutral engineering vocabulary, not
+    the marketing-register compounds this rule targets."""
+    text = (
+        "## End-to-end smoke flow\n\n"
+        + _words(1000)
+        + "\n"
+        + "end-to-end real-time long-term " * 5
+    )
+    ids = [f.rule_id for f in _active(lint_rhetoric(text))]
+    assert "hyphen-pair-density" not in ids

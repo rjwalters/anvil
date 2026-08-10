@@ -148,10 +148,13 @@ Default rule set
 ----------------
 
 :data:`DEFAULT_RHETORIC_RULES` is the in-module default set (the
-``DEFAULT_PLACEHOLDER_PATTERNS`` precedent): ~30 conservative,
-high-confidence AI-tells. Inclusion bar: the phrase must be (a) a
-documented LLM-overuse marker and (b) rare in competent human
-business/technical prose. Common discourse markers (``moreover``,
+``DEFAULT_PLACEHOLDER_PATTERNS`` precedent): conservative,
+high-confidence AI-tells (grown from ~30 to ~50 in issue #920, which
+adopted bucket (a) of the #919 AI-humanizer-corpus mining report by
+combining thematically related candidates under a shared id — see the
+issue #920 rules below for the full batch). Inclusion bar: the phrase
+must be (a) a documented LLM-overuse marker and (b) rare in competent
+human business/technical prose. Common discourse markers (``moreover``,
 ``furthermore``, ``however``) are explicitly excluded — too many false
 positives on good prose.
 
@@ -510,6 +513,181 @@ DEFAULT_RHETORIC_RULES: tuple[dict, ...] = (
         "pattern": r"\[(?:SOLID|DERIVED|ASSUMPTION|ESTIMATE|MEDIUM|HIGH|LOW)\b[^\[\]]*\]",
         "sources_block_exempt": True,
         "message": "Evidence-grade tag leaked into body prose; preserve the grade in the Sources block / an exhibit ledger / a refs/ stub and use a plain-language hedge in prose instead (rubric.md §\"Grade-tag leakage (issue #751)\").",
+    },
+    # ------------------------------------------------------------------
+    # Issue #920 (bucket a of #919's AI-humanizer-corpus mining report,
+    # `docs/research/919-ai-humanizer-mining.md` §"(a) Drop-in additions"):
+    # 18 rules distilled from ~41 individually FP-checked candidate
+    # patterns. Several thematically related candidates are combined
+    # under one id via a single alternation regex — the same shape the
+    # module already uses (``no-crucial-role``, ``no-fast-paced``,
+    # ``no-unlock-potential`` above each cover multiple word forms under
+    # one id) — trading id-per-term granularity for a bounded rule-count
+    # growth (33 -> 51) rather than the 69-75 a literal one-id-per-term
+    # adoption would produce. See the PR description for the full
+    # count/threshold rationale.
+    {
+        "id": "no-copula-avoidance-cluster",
+        "kind": RULE_KIND_REGEX,
+        # Siblings of ``no-serves-as-a``: other copula-avoidance verbs
+        # the mining report found in the same family.
+        "pattern": r"\b(?:stands|functions) as (?:a|an)\b|\b(?:features|boasts) (?:a|an)\b",
+        "message": "'stands as a/an', 'functions as a/an', 'features a/an', 'boasts a/an' are copula-avoidance siblings of 'serves as a'; prefer 'is' or the concrete verb.",
+    },
+    {
+        "id": "no-align-with",
+        "kind": RULE_KIND_PHRASE,
+        "pattern": "align with",
+        "message": "'align with' is a documented AI-vocabulary marker; name the concrete relationship instead (match, support, follow).",
+    },
+    {
+        "id": "no-garner",
+        "kind": RULE_KIND_REGEX,
+        "pattern": r"\bgarner(?:s|ed|ing)?\b",
+        "message": "'garner(s/ed/ing)' is a documented AI-vocabulary marker; prefer 'earn', 'win', or 'get'.",
+    },
+    {
+        "id": "no-ai-buzzword-nouns",
+        "kind": RULE_KIND_REGEX,
+        # interplay / intricate(-acy/-acies) / cornerstone / paradigm /
+        # synergy — combined per the mining report's own clustering.
+        "pattern": r"\binterplay\b|\bintricat(?:e|acy|acies)\b|\bcornerstone\b|\bparadigm\b|\bsynergy\b",
+        "message": "AI-vocabulary noun ('interplay', 'intricate(-acy)', 'cornerstone', 'paradigm', 'synergy'); name the specific relationship or mechanism instead.",
+    },
+    {
+        "id": "no-ai-buzzword-adjectives",
+        "kind": RULE_KIND_REGEX,
+        # renowned / groundbreaking / nestled / robust / holistic.
+        "pattern": r"\brenowned\b|\bgroundbreaking\b|\bnestled\b|\brobust\b|\bholistic\b",
+        "message": "AI-vocabulary adjective ('renowned', 'groundbreaking', 'nestled', 'robust', 'holistic'); replace with a concrete, falsifiable descriptor.",
+    },
+    {
+        "id": "no-promo-triad",
+        "kind": RULE_KIND_REGEX,
+        # cutting-edge / state-of-the-art / world-class — the mining
+        # report's "promo triad".
+        "pattern": r"\bcutting-edge\b|\bstate-of-the-art\b|\bworld-class\b",
+        "message": "'cutting-edge' / 'state-of-the-art' / 'world-class' is marketing filler; name the specific capability instead.",
+    },
+    {
+        "id": "no-superficial-ing-padding",
+        "kind": RULE_KIND_REGEX,
+        # highlighting / showcas(e|es|ed|ing) / reflecting /
+        # symboliz(e|es|ed|ing) / foster(s|ed|ing)? — superficial
+        # "-ing"-analysis padding. ('underscoring' is deliberately
+        # excluded: it duplicates the existing no-underscores-verb rule
+        # above.)
+        "pattern": r"\bhighlighting\b|\bshowcas(?:e|es|ed|ing)\b|\breflecting\b|\bsymboliz(?:e|es|ed|ing)\b|\bfoster(?:s|ed|ing)?\b",
+        "message": "Superficial '-ing'-analysis padding ('highlighting', 'showcasing', 'reflecting', 'symbolizing', 'fostering'); state the claim directly instead of gesturing at it.",
+    },
+    {
+        "id": "no-negative-parallelism",
+        "kind": RULE_KIND_REGEX,
+        # "not only ... but", "not just ... but", "it's not X, it's Y" —
+        # span-capped to ~80 chars and to a single sentence (no
+        # terminator crossed) so the pattern cannot bridge two unrelated
+        # sentences.
+        "pattern": (
+            r"\bnot only\b[^.!?\n]{0,80}?\bbut\b"
+            r"|\bnot just\b[^.!?\n]{0,80}?\bbut\b"
+            r"|\bit(?:['’]s| is) not\b[^.!?\n]{0,80}?,\s*it(?:['’]s| is)\b"
+        ),
+        "message": "Negative-parallelism construction ('not only... but', 'not just... but', 'it's not X, it's Y') is an AI-tell rhetorical device; state the claim plainly.",
+    },
+    {
+        "id": "no-more-than-just",
+        "kind": RULE_KIND_PHRASE,
+        "pattern": "more than just",
+        "message": "'more than just' is a hedge-and-inflate construction; state what it actually is.",
+    },
+    {
+        "id": "no-fake-significance-cluster",
+        "kind": RULE_KIND_REGEX,
+        # indelible mark / turning point / focal point / deeply rooted /
+        # evolving landscape — the mining report's "fake-significance
+        # cluster".
+        "pattern": r"\bindelible mark\b|\bturning point\b|\bfocal point\b|\bdeeply rooted\b|\bevolving landscape\b",
+        "message": "Fake-significance phrase ('indelible mark', 'turning point', 'focal point', 'deeply rooted', 'evolving landscape') asserts importance instead of showing it; state the concrete claim.",
+    },
+    {
+        "id": "no-sets-the-stage",
+        "kind": RULE_KIND_REGEX,
+        "pattern": r"\bsett?ing the stage\b",
+        "message": "'setting the stage' is an AI-tell scene-setting metaphor; state what actually enables the next step.",
+    },
+    {
+        "id": "no-it-is-believed",
+        "kind": RULE_KIND_REGEX,
+        "pattern": r"\bit is (?:widely )?(?:believed|considered|known|thought)\b",
+        "message": "'it is (widely) believed/considered/known/thought' is unattributed weasel phrasing; name who believes it or cut the hedge.",
+    },
+    {
+        "id": "no-sycophantic-cluster",
+        "kind": RULE_KIND_REGEX,
+        # Chat/assistant-artifact leak: sycophantic filler that belongs
+        # in a chat transcript, not document body prose.
+        "pattern": r"\bi hope this helps\b|\bgreat question\b|\byou['’]re absolutely right\b",
+        "message": "Sycophantic chat-assistant artifact ('I hope this helps', 'great question', 'you're absolutely right') leaked into the document body; remove it.",
+    },
+    {
+        "id": "no-knowledge-cutoff",
+        "kind": RULE_KIND_REGEX,
+        # Chat/assistant-artifact leak: knowledge-cutoff disclaimer.
+        "pattern": r"\bup to my last training update\b|\bas of my (?:last|knowledge) (?:update|cutoff)\b",
+        "message": "Knowledge-cutoff disclaimer ('up to my last training update', 'as of my knowledge cutoff') is a chat-assistant artifact; remove it and date the claim in-document instead.",
+    },
+    {
+        "id": "no-copy-paste-artifact",
+        "kind": RULE_KIND_REGEX,
+        # Chat/assistant-artifact leak: vendor-specific citation/copy
+        # markers documented on Wikipedia's "Signs of AI writing" page.
+        "pattern": r"oaicite|contentReference|oai_citation|turn\d+search\d+|grok_card|attached_file",
+        "message": "Copy-paste chat/assistant citation artifact leaked into the document body; remove it and replace with a real citation.",
+    },
+    {
+        "id": "no-curly-quotes",
+        "kind": RULE_KIND_FREQUENCY,
+        # Typographic (curly) quote/apostrophe marks. Mirrors
+        # ``em-dash-density``'s shape: a low density ceiling rather than
+        # a hard ban, since a single quoted excerpt pasted from
+        # elsewhere should not fire the lint.
+        "pattern": r"[‘’“”]",
+        "label": "curly quote",
+        "max_per_1000_words": 2,
+        "message": "Curly (typographic) quote marks above a low density is a documented AI-writing-tool tell in plain-markdown house style; use straight quotes/apostrophes.",
+    },
+    {
+        "id": "no-weasel-attribution",
+        "kind": RULE_KIND_REGEX,
+        # Calibration fix (issue #920, found during the #919 FP check):
+        # the plural-only noun group avoids matching a singular
+        # "Critic" heading (e.g. "## Critic note -> change") against a
+        # following verb; "note" is also dropped from the verb
+        # alternation (too generic a verb to pair with a heading noun).
+        "pattern": (
+            r"\b(?:experts|studies|researchers|observers|critics) "
+            r"(?:say|says|show|shows|argue|argues|believe|believes|"
+            r"claim|claims|suggest|suggests)\b"
+        ),
+        "message": "Unattributed weasel attribution ('experts/studies/researchers/observers/critics say/show/argue/...'); name the actual source or cut the hedge.",
+    },
+    {
+        "id": "hyphen-pair-density",
+        "kind": RULE_KIND_FREQUENCY,
+        # Calibration fix (issue #920, found during the #919 FP check):
+        # end-to-end / real-time / long-term are domain-neutral
+        # engineering vocabulary (they fired on "## End-to-end smoke
+        # flow" dev-doc headings), not the marketing-register compounds
+        # this rule targets, so they are deliberately excluded from the
+        # word list.
+        "pattern": (
+            r"\b(?:data-driven|cross-functional|best-in-class|"
+            r"future-proof|value-add|client-facing|decision-making|"
+            r"third-party)\b"
+        ),
+        "label": "marketing-register hyphenated compound",
+        "max_per_1000_words": 3,
+        "message": "Marketing-register hyphenated-compound density is elevated; name the specific mechanism instead of the compound buzzword.",
     },
 )
 
