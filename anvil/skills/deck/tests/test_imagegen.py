@@ -68,6 +68,7 @@ from imagegen import (  # noqa: E402
     run_imagegen,
     DEFAULT_PRESET_KEY,
     SHARED_SUFFIX,
+    _latest_version_dir,
 )
 from prompt_journal import JournalEntry, read_journal  # noqa: E402
 
@@ -172,6 +173,7 @@ def _build_thread_fixture(
     deck_md: str | None = None,
     speaker_notes: str | None = None,
     slot_prompt_sidecars: dict[str, str] | None = None,
+    layout: str = "flat",
 ) -> Path:
     """Create a minimal portfolio + thread + version-dir tree for tests.
 
@@ -192,13 +194,26 @@ def _build_thread_fixture(
         slot_prompt_sidecars: Mapping ``{slot_name: prompt_body}`` for
             sidecar prompt files written to
             ``assets/generated/<slot>.prompt.md``.
+        layout: ``"flat"`` (default; pre-#382 —
+            ``<portfolio>/<thread>.<version>/`` directly under
+            ``portfolio``, preserved for un-migrated-consumer coverage)
+            or ``"nested"`` (post-#382 artifact contract —
+            ``<portfolio>/<thread>/<thread>.<version>/``, matching
+            ``commands/deck-imagegen.md`` § "Inputs"). ``BRIEF.md``
+            always lives at ``<portfolio>/<thread>/BRIEF.md`` regardless
+            of layout — only the version dir's placement varies (#948).
 
     Returns:
-        The version directory path (``<portfolio>/<thread>.<version>/``).
+        The version directory path.
     """
     thread_dir = portfolio / thread
     thread_dir.mkdir(parents=True, exist_ok=True)
-    version_dir = portfolio / f"{thread}.{version}"
+    if layout == "nested":
+        version_dir = thread_dir / f"{thread}.{version}"
+    elif layout == "flat":
+        version_dir = portfolio / f"{thread}.{version}"
+    else:
+        raise ValueError(f"unknown layout {layout!r}: expected 'flat' or 'nested'")
     version_dir.mkdir(parents=True, exist_ok=True)
 
     # BRIEF.md frontmatter.
@@ -708,6 +723,123 @@ class TestRunImagegenHappyPath(unittest.TestCase):
             self.assertTrue(
                 progress["phases"]["imagegen"]["completed"].endswith("Z")
             )
+
+
+class TestLatestVersionDirLayouts(unittest.TestCase):
+    """``_latest_version_dir`` resolves both post-#382 nested and
+    pre-#382 flat thread layouts (issue #948).
+    """
+
+    def test_nested_layout_resolves(self) -> None:
+        """Post-#382 nested layout: <portfolio>/<thread>/<thread>.{N}/."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            version_dir = _build_thread_fixture(portfolio, layout="nested")
+            resolved = _latest_version_dir(portfolio, "acme")
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved.resolve(), version_dir.resolve())
+            self.assertTrue((resolved / "deck.md").exists())
+
+    def test_nested_layout_picks_highest_n(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(portfolio, layout="nested", version=1)
+            v2 = _build_thread_fixture(portfolio, layout="nested", version=2)
+            resolved = _latest_version_dir(portfolio, "acme")
+            self.assertEqual(resolved.resolve(), v2.resolve())
+
+    def test_flat_layout_fallback_still_resolves(self) -> None:
+        """Pre-#382 flat layout (no nested <thread>/ wrapper) still works."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            version_dir = _build_thread_fixture(portfolio, layout="flat")
+            resolved = _latest_version_dir(portfolio, "acme")
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved.resolve(), version_dir.resolve())
+            self.assertTrue((resolved / "deck.md").exists())
+
+    def test_latest_symlink_pin_takes_precedence_over_highest(self) -> None:
+        """A pinned <thread>.latest symlink resolves over the highest N."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            v1 = _build_thread_fixture(portfolio, layout="nested", version=1)
+            _build_thread_fixture(portfolio, layout="nested", version=2)
+            thread_dir = portfolio / "acme"
+            # Pin .latest to v1 even though v2 (the highest N) exists.
+            (thread_dir / "acme.latest").symlink_to("acme.1", target_is_directory=True)
+            resolved = _latest_version_dir(portfolio, "acme")
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved.resolve(), v1.resolve())
+            # deck.md is reachable through the symlink transparently.
+            self.assertTrue((resolved / "deck.md").exists())
+
+    def test_no_nested_or_flat_version_dirs_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            (portfolio / "acme").mkdir()
+            self.assertIsNone(_latest_version_dir(portfolio, "acme"))
+
+    def test_dangling_latest_symlink_still_returned(self) -> None:
+        """A dangling ``.latest`` symlink wins per ``resolve_latest``'s
+        documented symlink-precedence contract — the caller (here,
+        ``run_imagegen`` via the ``deck.md`` existence check) is
+        responsible for surfacing the broken-target case cleanly.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            thread_dir = portfolio / "acme"
+            thread_dir.mkdir()
+            # Symlink target ("acme.9") does not exist on disk.
+            (thread_dir / "acme.latest").symlink_to(
+                "acme.9", target_is_directory=True
+            )
+            resolved = _latest_version_dir(portfolio, "acme")
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved, thread_dir / "acme.latest")
+            self.assertFalse((resolved / "deck.md").exists())
+
+    def test_mid_migration_nested_takes_precedence_over_flat(self) -> None:
+        """Both a flat AND a nested version dir present: nested wins.
+
+        The documented artifact contract is nested-first; a thread
+        mid-migration (an old flat dir left behind alongside a new
+        nested one) should resolve to the nested, contract-conformant
+        version, not silently fall back to the stale flat sibling.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            nested = _build_thread_fixture(portfolio, layout="nested", version=1)
+            # A stray flat dir for the same thread/version, simulating a
+            # leftover from before migration.
+            flat_dir = portfolio / "acme.1"
+            flat_dir.mkdir()
+            (flat_dir / "deck.md").write_text("# stale flat copy\n", encoding="utf-8")
+            resolved = _latest_version_dir(portfolio, "acme")
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved.resolve(), nested.resolve())
+
+
+class TestRunImagegenNestedLayout(unittest.TestCase):
+    """``run_imagegen`` dispatches correctly against the nested layout."""
+
+    def test_dispatches_against_nested_thread_layout(self) -> None:
+        adapter = _MockAdapter()
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            version_dir = _build_thread_fixture(portfolio, layout="nested")
+            result = run_imagegen(
+                "acme",
+                portfolio=portfolio,
+                adapter=adapter,
+                backend_name_for_journal="mock.adapter",
+            )
+            self.assertEqual(result.phase_state, "done")
+            self.assertEqual(len(result.slots), 2)
+            self.assertTrue(
+                (version_dir / "assets" / "generated" / "hero.png").exists()
+            )
+            journal = read_journal(version_dir / "assets" / "_prompts.json")
+            self.assertEqual(set(journal.keys()), {"hero.png", "lifestyle.png"})
 
 
 class TestRunImagegenOptInGate(unittest.TestCase):
