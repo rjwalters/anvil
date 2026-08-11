@@ -130,6 +130,21 @@ def overfull_same_line_diff_amount_log() -> Path:
 
 
 @pytest.fixture
+def overfull_input_child_log() -> Path:
+    """Parent-``\\input``s-a-child fixture (issue #961).
+
+    ``spec.tex`` ``\\input``s ``claims.tex``; the ONLY overfull box in the
+    log is emitted while ``claims.tex`` is open on the TeX log's
+    parenthesis-delimited file-scope stack (between the ``(./claims.tex``
+    open marker and its matching ``)``). A naive "always attribute to the
+    top-level document" parse mislabels this as ``spec.tex``; the ``at
+    lines 62--63`` span is actually ``claims.tex``'s own line count (TeX
+    resets the line counter when a new file is opened via ``\\input``).
+    """
+    return FIXTURES / "overfull_input_child.txt"
+
+
+@pytest.fixture
 def compile_failure_log() -> Path:
     return FIXTURES / "compile_failure.txt"
 
@@ -255,6 +270,70 @@ def test_overfull_line_span_extraction(
     )
     hbox = next(b for b in r.overfull_boxes if b["kind"] == "hbox")
     assert hbox["line"] == 42
+
+
+def test_overfull_box_attributed_to_input_child_file(
+    empty_pdf, fake_pdfinfo_3pages_path, overfull_input_child_log
+):
+    """A box emitted inside an ``\\input``'d child is attributed to the
+    child file, not the top-level document (issue #961).
+
+    Regression for the misattribution that would send a scoped reviser
+    dispatched to fix "the overfull at spec.tex:62--63" to edit the wrong
+    file (``spec.tex``) while the real defect sat untouched in
+    ``claims.tex``. Both call sites — pre-flight Check 9 and the audit
+    render-gate backstop — invoke this same ``gate()`` (via
+    ``compile_and_gate``), so a single library-level regression here
+    covers both.
+    """
+    r = gate(
+        empty_pdf,
+        log_path=overfull_input_child_log,
+        source_paths=[Path("spec.tex"), Path("claims.tex")],
+        page_cap=None,
+        overfull_threshold_pt=2.0,
+        pdfinfo_path=fake_pdfinfo_3pages_path,
+    )
+    assert len(r.overfull_boxes) == 1
+    box = r.overfull_boxes[0]
+    assert box["amount_pt"] == pytest.approx(5.056)
+    assert box["line"] == 62
+    assert box["file"] == "claims.tex"
+
+    overfull_findings = [f for f in r.findings if f.gate == DIM_OVERFULL]
+    assert len(overfull_findings) == 1
+    # File-relative location naming the child, not the parent doc or the
+    # compile log path.
+    assert overfull_findings[0].location == "claims.tex:L62"
+    assert "claims.tex" in overfull_findings[0].message
+    assert "spec.tex" not in overfull_findings[0].location
+
+
+def test_file_scope_transitions_tracks_nested_input(overfull_input_child_log):
+    """Unit-level check of the scope-stack walker itself (issue #961).
+
+    Confirms the file at the overfull box's log offset resolves to
+    ``claims.tex`` while the file at the log's start (before any file
+    opens) is ``None``, and that a same-line open+close (the ``.cls``
+    files) doesn't disturb the ``spec.tex`` frame around it.
+    """
+    import anvil.lib.render_gate as rg
+
+    log_text = overfull_input_child_log.read_text(encoding="utf-8")
+    positions, files = rg._file_scope_transitions(log_text)
+
+    # Before the first "(./spec.tex" marker, no file is open yet.
+    assert rg._file_at_offset(positions, files, 0) is None
+
+    # At the overfull box's match offset, claims.tex is the innermost
+    # open file.
+    m = rg._OVERFULL_RE.search(log_text)
+    assert m is not None
+    assert rg._file_at_offset(positions, files, m.start()) == "claims.tex"
+
+    # After the log's final content, the still-open (never explicitly
+    # closed in this truncated fixture) outermost frame is spec.tex.
+    assert rg._file_at_offset(positions, files, len(log_text) - 1) == "spec.tex"
 
 
 def test_overfull_sphere_canary_shape(
