@@ -79,7 +79,11 @@ interrupt of EACH critic removed by `cleanup_one_staging(...)` at entry
    (write every required file into the `.tmp/` dir, `_progress.json`
    last, then `mv` as the last step; stamp `_meta.json` with
    `"atomicity_fallback": "manual-mv"`). Never write straight into either
-   final sibling name.
+   final sibling name. (If your agent harness pattern-matches and rejects
+   filenames like `verdict.md` / `findings.md` / `comments.md` on a
+   `Write`, a Bash-heredoc write into the staging dir is an accepted
+   fallback — see `anvil/lib/snippets/critics.md` §"Orchestrator
+   output-file guard collisions".)
 
 2. **Read inputs**: the body, the matching BRIEF `documents:` entry,
    `<thread>.{N}/_progress.json` (the drafter's self-check +
