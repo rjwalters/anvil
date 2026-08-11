@@ -68,6 +68,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+# Canonical ``.latest`` resolver (issue #948): promoted to ``anvil/lib/``
+# and already consumed the same way — a direct module-level import —
+# by ``anvil/skills/deck/lib/parity_lint.py`` and
+# ``anvil/skills/deck/lib/marp_lint.py`` (both re-export from
+# ``anvil.lib.*`` at import time). See ``_latest_version_dir`` below for
+# how it composes with the pre-#382 flat-layout fallback.
+from anvil.lib.latest_resolution import resolve_latest
+
 # Import the prompt-journal primitive from the sibling module. The
 # fallback path mirrors the test-import convention in
 # ``tests/test_prompt_journal.py`` (sys.path-insert the lib dir and
@@ -922,6 +930,35 @@ def resolve_slot_prompt(
 # Match ``<slug>.<N>`` where N is one or more digits and there is no
 # trailing tag (so we skip critic siblings like ``<slug>.1.review``).
 def _latest_version_dir(portfolio: Path, thread: str) -> Path | None:
+    """Resolve the latest ``<thread>.{N}/`` version directory.
+
+    Nested-layout-first (issue #948): the documented artifact contract
+    (``commands/deck-imagegen.md`` § "Inputs") nests version dirs under
+    the thread root — ``<portfolio>/<thread>/<thread>.{N}/`` — so the
+    first attempt delegates to the framework's canonical resolver,
+    :func:`anvil.lib.latest_resolution.resolve_latest`, called against
+    ``<portfolio>/<thread>`` (the thread dir). That resolver also
+    honors a pinned ``<thread>.latest`` symlink (or real directory),
+    taking precedence over walk-to-highest when present.
+
+    Falls back to the pre-#382 **flat** layout —
+    ``<portfolio>/<thread>.{N}/`` directly under ``portfolio``, with no
+    nested ``<thread>/`` wrapper — when the nested lookup finds nothing.
+    This preserves un-migrated consumer repos (``anvil:project-migrate``
+    exists precisely because not every consumer has moved to the nested
+    layout yet); dropping flat support would be a regression, not a fix.
+
+    Returns the resolved directory (which may itself be a ``.latest``
+    symlink — callers only ever read ``version_dir / "deck.md"``
+    afterward, which follows the symlink transparently via the
+    filesystem), or ``None`` if neither layout resolves.
+    """
+    thread_dir = portfolio / thread
+    nested = resolve_latest(thread_dir, thread)
+    if nested is not None:
+        return nested
+
+    # Flat-layout fallback: <slug>.<N>/ directly under ``portfolio``.
     pattern = re.compile(rf"^{re.escape(thread)}\.(\d+)$")
     best: tuple[int, Path] | None = None
     for entry in portfolio.iterdir():
@@ -1185,9 +1222,17 @@ def run_imagegen(
 
     Args:
         thread: Thread slug (positional argument from the command).
-        portfolio: The directory that contains both ``<thread>/`` and
-            ``<thread>.{N}/`` (typically the current working directory of
-            the command).
+        portfolio: The project root that contains the thread root
+            ``<thread>/`` (typically the current working directory of
+            the command). The latest version dir is resolved as
+            ``<portfolio>/<thread>/<thread>.{N}/`` per the nested
+            artifact contract (``commands/deck-imagegen.md`` §
+            "Inputs") — including a pinned ``<thread>.latest`` symlink,
+            when present, via
+            :func:`anvil.lib.latest_resolution.resolve_latest`. A
+            pre-#382 flat layout, ``<portfolio>/<thread>.{N}/`` with no
+            nested ``<thread>/`` wrapper, is still resolved as a
+            fallback for un-migrated consumer repos.
         config_path: Optional override for ``.anvil/config.json`` path.
             Defaults to ``<portfolio>/.anvil/config.json``. When
             ``adapter`` is supplied, the config file is NOT read (tests
