@@ -95,7 +95,7 @@ def _all_source_agents() -> set[str]:
 
 
 def test_source_ships_the_expected_agent_registry() -> None:
-    """The source registry is 69 ``anvil-<skill>-<phase>.md`` files.
+    """The source registry is 71 ``anvil-<skill>-<phase>.md`` files.
 
     This pins the total the full-install no-regression test compares against.
     If the registry grows/shrinks, update this and the full-install count in
@@ -103,11 +103,13 @@ def test_source_ships_the_expected_agent_registry() -> None:
     #686, which added the 5 ``anvil-primer-*.md`` lifecycle agents; grew from
     59 to 64 under issue #697/#706, which added the 5 ``anvil-spec-*.md``
     lifecycle agents; grew from 64 to 69 under issue #740, which added the 5
-    ``anvil-memoir-*.md`` lifecycle agents.)
+    ``anvil-memoir-*.md`` lifecycle agents; grew from 69 to 71 under issue
+    #952, which added the ``anvil-deck-economics`` and ``anvil-deck-vision``
+    specialist agents.)
     """
 
-    assert len(_all_source_agents()) == 69, (
-        "expected 69 anvil-*.md source agents; the registry changed — update "
+    assert len(_all_source_agents()) == 71, (
+        "expected 71 anvil-*.md source agents; the registry changed — update "
         "this test and test_full_install_still_ships_all_agents together"
     )
 
@@ -241,12 +243,12 @@ def test_multi_skill_install_is_the_union(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Full install: no regression (all 69)
+# Full install: no regression (all 71)
 # ---------------------------------------------------------------------------
 
 
 def test_full_install_still_ships_all_agents(tmp_path: Path) -> None:
-    """A no-``--skills=`` install still copies every source agent (all 69)."""
+    """A no-``--skills=`` install still copies every source agent (all 71)."""
 
     target = tmp_path / "full-target"
     target.mkdir()

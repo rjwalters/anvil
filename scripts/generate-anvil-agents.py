@@ -10,15 +10,17 @@ shipping artifact is the markdown under `anvil/agents/`.
 
 Issue #377 — Loom-style subagent pattern. Per-skill-phase vocabulary
 (`anvil-<skill>-<phase>`). Lifecycle roles: drafter, reviewer, reviser,
-auditor, figurer. Plus 3 deck specialists called out as load-bearing for the
-24-critic fan-out (narrative, market, design).
+auditor, figurer. Plus deck specialists called out as load-bearing for the
+deck skill's critic fan-out (narrative, market, design, plus economics and
+vision added under issue #952 to cover the skill's full documented default
+critic set — SKILL.md §"Sibling-critic convention").
 
 Curator-chosen scope (v0): one agent per (skill, phase) where the
-corresponding `commands/<skill>-<phase>.md` file exists, plus the 3 deck
+corresponding `commands/<skill>-<phase>.md` file exists, plus the deck
 specialists. The arithmetic in the curator's enrichment ("29 lifecycle
 types") is off by a few entries — the actual count derived from existing
-commands is 38 lifecycle + 3 specialists = 41. See PR description for the
-scope-clarification note.
+commands is 38 lifecycle + 3 specialists = 41 at v0; issue #952 added 2 more
+specialists (economics, vision) on top of that baseline.
 """
 
 from __future__ import annotations
@@ -163,8 +165,24 @@ SKILL_PHASE_EXTRA_NOTES = {
 }
 
 # Specialist agents for the deck skill (issue #377 friction point 3 — the
-# 24-critic fan-out). Each tuple is (suffix, command-stem, role-display,
-# one-line-summary, owned-dims).
+# 24-critic fan-out; extended for economics (#550/#551, dim 10) and vision
+# (#26/#30) under issue #952 so the generated agent set covers every critic
+# in the deck skill's documented default fan-out — SKILL.md §"Sibling-critic
+# convention": `review + narrative + market + design + economics`, plus the
+# separately-documented `deck-vision` command). Each tuple is
+# (suffix, command-stem, role-display, one-line-summary, owned-dims,
+# expected-outputs-override, is_vision_shaped).
+#
+# `expected-outputs-override` is ``None`` for specialists that write the
+# shared `_summary.md`-shaped sidecar (`DECK_SPECIALIST_EXPECTED_OUTPUTS`
+# below); `deck-vision` writes a genuinely different sidecar shape
+# (`_review.json` canonical-schema, no `_summary.md`/`findings.md`/
+# `comments.md` — see `deck-vision.md` "Writes" line) so it supplies its own
+# list. `is_vision_shaped` swaps the body/description wording that
+# references the main /49-rubric partial-coverage `_summary.md` contract for
+# wording that references the six-dimension vision-rubric subset instead
+# (`deck-vision.md` §"Owned vision dimensions") — vision scores none of the
+# deck's main rubric dimensions.
 DECK_SPECIALISTS = [
     (
         "narrative",
@@ -172,6 +190,8 @@ DECK_SPECIALISTS = [
         "Narrative-arc Critic",
         "evaluate the deck as a single narrative argument and score rubric dims 1 (narrative arc) and 7 (ask specificity)",
         "1, 7",
+        None,
+        False,
     ),
     (
         "market",
@@ -179,6 +199,8 @@ DECK_SPECIALISTS = [
         "Market / Competitor Critic",
         "verify TAM/SAM/SOM arithmetic and competitive framing; score rubric dims 3 (market size credibility) and 4 (solution differentiation)",
         "3, 4",
+        None,
+        False,
     ),
     (
         "design",
@@ -186,6 +208,26 @@ DECK_SPECIALISTS = [
         "Design Critic",
         "render the deck to PDF + per-slide PNGs and score rubric dim 8 (design polish) on the rendered artifact",
         "8",
+        None,
+        False,
+    ),
+    (
+        "economics",
+        "deck-economics",
+        "Business-model / Unit-economics Critic",
+        "conduct an adversarial economic-diligence pass on the deck's business-model, pricing, and unit-economics slides and score rubric dim 10 (business-model & unit-economics credibility)",
+        "10",
+        None,
+        False,
+    ),
+    (
+        "vision",
+        "deck-vision",
+        "Vision-language-model Critic",
+        "render the deck to PDF + per-slide PNGs and use a vision-language model to score rendered-only defects (vertical overflow, label cropping, axis legibility, palette adherence, mathtext artifacts, slide density)",
+        "v1–v6",
+        ["_review.json", "_meta.json", "_progress.json"],
+        True,
     ),
 ]
 DECK_SPECIALIST_TOOLS = "Read, Glob, Grep, Bash, Write"
@@ -267,19 +309,58 @@ Important: This subagent is dispatched parallel-safe. Use the staging pattern de
 
 
 def render_deck_specialist_agent(
-    suffix: str, command_stem: str, role: str, summary: str, owned_dims: str
+    suffix: str,
+    command_stem: str,
+    role: str,
+    summary: str,
+    owned_dims: str,
+    expected_outputs_override: list[str] | None,
+    is_vision_shaped: bool,
 ) -> str:
-    """Render the markdown body for a deck-specialist agent."""
+    """Render the markdown body for a deck-specialist agent.
+
+    ``expected_outputs_override`` supplies a specialist-specific sidecar
+    manifest when it differs from the shared `_summary.md`-shaped one
+    (currently only `deck-vision`, which writes `_review.json` per
+    `deck-vision.md` "Writes"). ``is_vision_shaped`` swaps the
+    rubric-dimension wording between "main /49-rubric partial-coverage
+    `_summary.md`" (the three original specialists + economics) and the
+    six-dimension vision-rubric subset (vision does not score the deck's
+    main rubric at all — see `deck-vision.md` §"Owned vision dimensions").
+    """
     agent_name = f"anvil-deck-{suffix}"
     command_path = f".anvil/skills/deck/commands/{command_stem}.md"
     staging_pattern = f".{{thread}}.{{N}}.{suffix}.tmp/"
-
-    description = (
-        f"Anvil Deck {role} - "
-        f"Specialist subagent that executes the `anvil:{command_stem}` critic command. "
-        f"Owns rubric dimensions {owned_dims} of the /40 deck rubric. "
-        f"Use when running parallel specialist critics on a deck version directory."
+    expected_outputs = (
+        expected_outputs_override
+        if expected_outputs_override is not None
+        else DECK_SPECIALIST_EXPECTED_OUTPUTS
     )
+
+    if is_vision_shaped:
+        description = (
+            f"Anvil Deck {role} - "
+            f"Specialist subagent that executes the `anvil:{command_stem}` critic command. "
+            f"Owns the six-dimension vision-rubric subset ({owned_dims}); does not score the "
+            f"main /49 deck rubric. "
+            f"Use when running parallel specialist critics on a deck version directory."
+        )
+        owned_dims_line = (
+            f"- Owned vision-rubric dimensions ({owned_dims}) and the `_review.json` "
+            "canonical schema (`kind=vision`) — this critic does not score the deck's main "
+            "10-dimension rubric"
+        )
+    else:
+        description = (
+            f"Anvil Deck {role} - "
+            f"Specialist subagent that executes the `anvil:{command_stem}` critic command. "
+            f"Owns rubric dimensions {owned_dims} of the /49 deck rubric. "
+            f"Use when running parallel specialist critics on a deck version directory."
+        )
+        owned_dims_line = (
+            f"- Owned rubric dimensions ({owned_dims}) and the partial-coverage "
+            "`_summary.md` shape (un-owned dims remain `null`)"
+        )
 
     frontmatter_lines = [
         "---",
@@ -287,7 +368,7 @@ def render_deck_specialist_agent(
         f"description: {description}",
         f"tools: {DECK_SPECIALIST_TOOLS}",
         f"staging_pattern: \"{staging_pattern}\"",
-        f"expected_outputs:{render_yaml_list(DECK_SPECIALIST_EXPECTED_OUTPUTS)}",
+        f"expected_outputs:{render_yaml_list(expected_outputs)}",
         "---",
     ]
     frontmatter = "\n".join(frontmatter_lines)
@@ -299,7 +380,7 @@ Your role is to {summary} for the `anvil:deck` skill.
 
 Follow the complete command definition in `{command_path}` for:
 - Required inputs (latest `<thread>.{{N}}/deck.md`, `BRIEF.md`, any supporting figures / refs)
-- Owned rubric dimensions ({owned_dims}) and the partial-coverage `_summary.md` shape (un-owned dims remain `null`)
+{owned_dims_line}
 - Sidecar output filenames and the read-only-once-written discipline
 - Atomicity / staging contract via `anvil/lib/sidecar.py::staged_sidecar`
 
@@ -328,7 +409,15 @@ def enumerate_agents() -> list[tuple[str, str]]:
             agent_name = f"anvil-{skill}-{suffix}"
             body = render_lifecycle_agent(skill, phase)
             agents.append((agent_name, body))
-    for suffix, command_stem, role, summary, owned_dims in DECK_SPECIALISTS:
+    for (
+        suffix,
+        command_stem,
+        role,
+        summary,
+        owned_dims,
+        expected_outputs_override,
+        is_vision_shaped,
+    ) in DECK_SPECIALISTS:
         command_path = (
             SKILLS_DIR / "deck" / "commands" / f"{command_stem}.md"
         )
@@ -340,7 +429,13 @@ def enumerate_agents() -> list[tuple[str, str]]:
             continue
         agent_name = f"anvil-deck-{suffix}"
         body = render_deck_specialist_agent(
-            suffix, command_stem, role, summary, owned_dims
+            suffix,
+            command_stem,
+            role,
+            summary,
+            owned_dims,
+            expected_outputs_override,
+            is_vision_shaped,
         )
         agents.append((agent_name, body))
     return agents

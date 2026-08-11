@@ -38,8 +38,9 @@ SKILLS_DIR = REPO_ROOT / "anvil" / "skills"
 # essay under issue #460, primer under issue #686, spec under issue
 # #697/#706, memoir under issue #740).
 # Each artifact-class skill gets lifecycle agents for every phase whose
-# command exists; deck additionally gets 3 specialist agents (narrative,
-# market, design).
+# command exists; deck additionally gets 5 specialist agents (narrative,
+# market, design, economics, vision — economics and vision added under
+# issue #952 to cover the skill's full documented default critic set).
 ARTIFACT_SKILLS = [
     "memo",
     "deck",
@@ -64,7 +65,7 @@ PHASE_SUFFIX = {
     "audit": "auditor",
     "figures": "figurer",
 }
-DECK_SPECIALISTS = ["narrative", "market", "design"]
+DECK_SPECIALISTS = ["narrative", "market", "design", "economics", "vision"]
 
 
 def parse_frontmatter(path: pathlib.Path) -> tuple[dict, str]:

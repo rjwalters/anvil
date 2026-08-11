@@ -99,12 +99,15 @@ def test_role_tool_profile(agent_path: pathlib.Path) -> None:
     )
 
 
-# The 3 deck specialists are critic-shaped (write sidecar, don't edit
-# version body) — same scope as reviewers.
+# The deck specialists are critic-shaped (write sidecar, don't edit
+# version body) — same scope as reviewers. economics and vision added
+# under issue #952 to cover the skill's full documented default critic set.
 DECK_SPECIALIST_STEMS = {
     "anvil-deck-narrative",
     "anvil-deck-market",
     "anvil-deck-design",
+    "anvil-deck-economics",
+    "anvil-deck-vision",
 }
 
 
