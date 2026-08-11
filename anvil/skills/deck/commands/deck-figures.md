@@ -104,6 +104,32 @@ Nested under the thread root `<thread>/`:
      fences) does NOT trigger this preflight — `mmdc` is only required when a
      diagram is present.
 
+   **Launchability, not just presence (#692).** `check_mmdc_available()` only
+   tests that the binary is on PATH — it reports available while `mmdc`'s
+   pinned Puppeteer Chromium is absent from `~/.cache/puppeteer`, in which
+   case every diagram render dies at browser launch with an opaque
+   `Could not find Chrome ver. <pinned>`. When `mmdc` IS on PATH, call
+   `anvil/lib/render.py::check_mmdc_launchable()` (a trivial one-node probe
+   render, unit-tested) **once before committing to the batch of diagram
+   renders**. On `False`:
+
+   - Emit a `[blocker]` quoting `anvil/lib/render.py::MMDC_LAUNCH_REMEDIATION`
+     verbatim — it names the two working fixes: install the pinned browser
+     with `npx puppeteer browsers install chrome`, or point `mmdc` at an
+     existing system Chrome via `mmdc --puppeteerConfigFile <file>` where
+     `<file>` contains
+     `{"executablePath":"/path/to/google-chrome","args":["--no-sandbox"]}`.
+   - **Write the same proactive `figures/<name>.png-FAILED.md` stub** for each
+     diagram that would have been rendered, naming the launch failure and that
+     remediation — identical graceful-degrade path to the absent-binary case
+     above.
+   - Skip the `mmdc` render path for this run; never abort the phase (the
+     matplotlib + reference validation steps still run).
+   - A deck with zero diagrams does NOT trigger this probe either — like the
+     PATH check, launchability is only required when a diagram is present
+     (and the probe costs a real Chromium cold start, so it is never run
+     speculatively).
+
    When `mmdc` is present, render each diagram with:
    ```bash
    mmdc \
