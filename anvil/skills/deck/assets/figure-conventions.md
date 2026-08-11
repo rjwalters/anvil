@@ -163,10 +163,15 @@ def _find_anvil_root(start: Path) -> Path:
 
     Tolerates non-canonical thread depths — uses search-up rather than a
     hard-coded ``parents[N]`` index, so the script works from any directory
-    underneath the consumer repo root.
+    underneath the consumer repo root. Tries the canonical nested layout
+    (``.anvil/anvil/lib/``) first, then the pre-#230 flat layout
+    (``.anvil/lib/``); either way the returned root composes with
+    ``lib/figures/...``.
     """
     for p in [start, *start.parents]:
-        if (p / ".anvil" / "lib" / "figures" / "palette.json").is_file():
+        if (p / ".anvil" / "anvil" / "lib" / "figures" / "palette.json").is_file():
+            return p / ".anvil" / "anvil"
+        if (p / ".anvil" / "lib" / "figures" / "palette.json").is_file():  # pre-#230 layout
             return p / ".anvil"
     raise FileNotFoundError("could not locate .anvil/ ancestor of " + str(start))
 
@@ -375,10 +380,13 @@ from pathlib import Path
 
 # --- shared on-brand style (section 3): JSON-read pattern for bare python3.
 #     Walks up from __file__ until it finds a .anvil/ ancestor — tolerates
-#     non-canonical thread depths.
+#     non-canonical thread depths. Canonical nested layout first, pre-#230
+#     flat layout as a fallback.
 def _find_anvil_root(start: Path) -> Path:
     for p in [start, *start.parents]:
-        if (p / ".anvil" / "lib" / "figures" / "palette.json").is_file():
+        if (p / ".anvil" / "anvil" / "lib" / "figures" / "palette.json").is_file():
+            return p / ".anvil" / "anvil"
+        if (p / ".anvil" / "lib" / "figures" / "palette.json").is_file():  # pre-#230 layout
             return p / ".anvil"
     raise FileNotFoundError("could not locate .anvil/ ancestor of " + str(start))
 
