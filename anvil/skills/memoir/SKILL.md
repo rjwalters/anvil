@@ -179,23 +179,40 @@ see §"Iteration cap and override contract" below for the full semantics.
 
 ## Iteration cap and override contract
 
-The cap bounds **how many version dirs a chapter thread may accumulate**,
-and `metadata.iteration` always equals the version-dir number. The
-governing predicate lives in `commands/memoir-revise.md` step 3:
-`memoir-revise` refuses to write `<thread>.{N+1}/` when
-`N + 1 > effective_max_iterations`. At the default cap of 4 the
-worst-case terminal version dir is `<thread>.4/` — there is no
-`<thread>.5/` under a default cap.
+**`max_iterations` counts REVISIONS, not version dirs (issue #933).**
+`metadata.iteration` always equals the version-dir number (the
+framework-wide convention), but the cap is checked against
+`iteration - 1` — the initial draft (`<thread>.1/`, `memoir-draft`'s
+output) is never charged against the budget, only `memoir-revise`'s own
+writes are. The governing predicate lives in `commands/memoir-revise.md`
+step 3: `memoir-revise` refuses to write `<thread>.{N+1}/` when
+`N > effective_max_iterations`. At the default cap of 4 a chapter
+therefore gets one free draft plus 4 revision opportunities, and the
+worst-case terminal version dir is `<thread>.5/` — there is no
+`<thread>.6/` under a default cap.
 
-**At `iteration == max_iterations` (issue #869)** the thread is not
-"capped," "blocked," or "at risk." The combined-verdict pre-check runs
-*before* the cap check, so a chapter that satisfies §Combined verdict at
-exactly the cap reports `AUDITED` and terminates normally — the cap was
-reached but was never the terminating condition. The refusal fires only
-on the **next** invocation, and only if a critic still blocks. Reports
-(`memoir-revise`'s status line, `memoir`'s `Iter` column and `Operator
-notes`) MUST distinguish these two cases; describing a clean `4/4`
-terminus as capped is a reporting bug.
+This is a deliberate correction to the original #869 predicate
+(`N + 1 > effective_max_iterations`, which counted the draft as a
+chargeable iteration): a fabrication fix or any other framework-mandated
+repair discovered on the LAST revision a chapter could otherwise afford
+had nowhere to be validated — the write that fixed the defect was itself
+the write that exhausted the budget. See
+`commands/memoir-revise.md` §"Iteration-cap check" for the full
+predicate and §"Convergence" for the two ceiling outcomes.
+
+**At the ceiling (issues #869, #933)** the thread is not "capped,"
+"blocked," or "at risk" merely because it has consumed every revision
+slot. The combined-verdict pre-check runs *before* the cap check, so a
+chapter that satisfies §Combined verdict at (or before) the ceiling
+reports `AUDITED` and terminates normally — the cap was reached but was
+never the terminating condition. The refusal fires only on the **next**
+invocation, and only if a critic still blocks. Reports (`memoir-revise`'s
+status line, `memoir`'s `Iter` column and `Operator notes`) MUST
+distinguish two very different states: **converged** (`AUDITED`, whether
+or not the last slot was spent) versus **final version written and
+unvalidatable** (`BLOCKED`, the last slot was spent and the version it
+produced is not clean) — describing a clean terminus as capped, or a
+capped-and-blocked thread as merely "at the ceiling," is a reporting bug.
 
 **Raising the ceiling is an explicit, recorded operator decision.** It is
 never a silent edit and never something a command does on its own

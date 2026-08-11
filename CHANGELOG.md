@@ -294,6 +294,40 @@
 
 ### Fixed
 
+- **`anvil:memoir` — the final revision under `max_iterations` can now
+  actually be validated** (#933). `memoir-revise`'s #869 cap predicate
+  (`N + 1 > effective_max_iterations`) counted the free initial draft
+  the same as every framework-mandated repair, so the LAST version a
+  thread could afford could be *written* (e.g. a fabrication fix) but
+  never *scored* — the write that fixed the defect was itself the write
+  that exhausted the budget, and the thread BLOCKED with an unvalidated,
+  possibly still-defective final version and no visibility into why.
+  Canary-hit twice on the same `walters-family-tree` session (`05-quebec`
+  as a near-miss, an operator-raised cap on `03-garrard` reasoning "leave
+  room for one further pass" — i.e. manually reserving a slot the
+  lifecycle itself did not). `max_iterations` now counts **revisions**,
+  not version dirs: the predicate becomes `N > effective_max_iterations`
+  (the draft, `<thread>.1/`, is never chargeable), so a chapter gets its
+  one free draft plus `max_iterations` revision opportunities, and the
+  revision that fixes the last defect always has a slot to be critiqued.
+  Step 3 also prints an explicit **pre-write budget notice** before
+  writing the version that would consume the final slot — the budget
+  consequence is stated before the exhausting write, not only after it
+  in the BLOCKED notice — and the BLOCKED notice's state line now names
+  what happened (`<thread>.{N} is a final version written and
+  unvalidatable under the current cap`) rather than a bare "hit the
+  cap", so it reads distinctly from the healthy "converged, slot(s)
+  unspent" `AUDITED` terminus, which never reaches this notice at all.
+  `memoir.md`'s `Iter` column and SKILL.md's override contract are
+  updated to match (revisions consumed, not the raw version-dir count).
+  Map-only repairs still consume a revision slot exactly as before
+  (#869) — only whether the draft itself counts changed. The same
+  version-vs-revision off-by-one is duplicated skill-locally across
+  `memo`/`paper`/`report`/`deck`/`slides`/`ip-uspto`/
+  `ip-uspto-provisional`/`installation`/`proposal`/`datasheet`; this fix
+  is scoped to `memoir` only (issue #933's canary), left as a known
+  follow-up for the other skills.
+
 - **Deck theme: invisible ask-slide pagination + zebra-striped tables**
   (#906). `deck-vision` rasterized a 13-slide deck at 96 DPI and found two
   systematic `anvil-deck.css` defects. First, the pagination glyph
