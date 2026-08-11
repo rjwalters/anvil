@@ -47,6 +47,12 @@ Anvil-specific design choices vs. upstream
   ``<!-- anvil-lint-disable: slide-content-overflow -->`` suppresses the
   rule for that one slide; the finding is downgraded to ``info`` so the
   reviser still sees that the slide is dense but ``advance`` is not blocked.
+  The deck skill documents when applying it is sanctioned (issue #965):
+  a singleton-``_class:`` slide — typically the one ``title`` slide, which
+  the post-render ``auto_shrink_detector`` peer-relative rule structurally
+  cannot cross-check — may be suppressed only after ``deck-vision``'s v1
+  ``vertical_overflow`` reads the rendered PNG clean, with that citation
+  recorded. See ``anvil/skills/deck/commands/deck-revise.md`` step 7c.
 - **Aspect- and CSS-aware capacity model (issue #622).** Two refinements
   brought the source-side estimate into agreement with the rendered PDF on
   keyword-less decks (the default drafter output), where the flat charges
