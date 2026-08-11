@@ -2,28 +2,28 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-11 (Guide triage pass — new issue #941 (AI-authorship byline) entered the pipeline already `loom:curated` + `loom:building`; no `loom:issue`/`loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, is open outside the Loom label pipeline)*
+*Last updated: 2026-08-11 (Guide triage pass — issue #941 (AI-authorship byline) shipped via PR #946; three new `deck-imagegen` friction issues filed (#947, #948, #949), #947 triaged straight to `loom:urgent` and claimed by a Builder within the same pass; no `loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, remains open outside the Loom label pipeline)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* No open issues carry `loom:issue` — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward. #888 and #918 are `loom:operator-only` and not eligible for `loom:urgent` (see below).
+- **#947**: "deck-imagegen: documented '[deck_imagegen]' extra does not exist in the generated consumer pyproject" (`tier:goal-supporting`, `loom:complexity=mechanical`). Marked urgent this pass as the only ready (`loom:issue`) work in the backlog — a quick, well-scoped fix (add the missing `deck_imagegen` extra to the generated consumer `pyproject.toml`, or correct the two docs that name it) that unblocks a first-run onboarding command currently failing verbatim. Already claimed by a Builder (`loom:building`) within the same triage pass.
 
 ## In Progress (`loom:building`)
 
-- **#941**: "Optional AI-authorship byline: opt-in provenance line on rendered artifacts" (`tier:goal-supporting`). Claimed by a Builder shortly after filing (2026-08-11); no orphan signal (`loom-recover-orphans --verbose` reports it watched but well within the 4h staleness threshold).
+- **#947**: see above — claimed and building.
 
-Both issues that were in progress as of the previous pass shipped: #933 merged via PR #939 ("fix(memoir): let the final revision under max_iterations get a critic pass") and #934 merged via PR #936 ("fix(provenance-anchor): parse every claim table, not just the first") — both closed 2026-08-11; see `WORK_LOG.md`.
+#941 shipped this pass via PR #946 ("feat: opt-in AI-authorship byline (ai_byline: BRIEF block)"), closed 2026-08-11; see `WORK_LOG.md`.
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* No open issues carry `loom:issue`.
+*Empty.* #947 was the only `loom:issue` item this pass and has already been claimed by a Builder (see In Progress).
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-*Empty.* PR #936 (closes #934) merged 2026-08-11.
+*Empty.*
 
 One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Skills 0.7.0 → 0.8.1" — opened directly by the repo owner (no labels), a tool-currency bump not routed through Curator/Builder. Per `CLAUDE.md`'s guidance on small mechanical changes, this class of PR doesn't require the full Loom review cycle; it awaits a direct human merge decision, not Judge/Champion action.
 
@@ -37,11 +37,12 @@ One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Ski
 
 ## Blocked (`loom:blocked`)
 
-*Empty.* The three previously-blocked issues (#800, #746, #743) all closed 2026-07-30 when their pending PRs (#805, #761, #763) merged — see `WORK_LOG.md`.
+*Empty.*
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-*Empty.*
+- **#948**: "deck-imagegen: _latest_version_dir misses post-#382 nested thread layout" — `loom:curating`, Curator actively enhancing.
+- **#949**: "deck-imagegen: speaker-notes prompt extraction leaks human slot-notes into the dispatched prompt" — filed 2026-08-11, no labels yet, awaiting Curator pickup.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -53,7 +54,7 @@ One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Ski
 
 ## Backlog state
 
-**Three open issues as of 2026-08-11: #941 (`loom:building`, AI-authorship byline, claimed shortly after filing), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** The two issues that were in progress last pass (#933, #934) both shipped this pass via PR #939 and PR #936 respectively. One open PR outside the Loom pipeline: #902 (unlabeled, human-authored tool bump), awaiting a direct human merge decision. No orphaned `loom:building` issues (`loom-recover-orphans --verbose` shows #941 watched but well within its staleness threshold), no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — no open issue carries `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human runs the daemon-recovery command for #918, and a human or Champion reviews #888's design tradeoffs; the backlog otherwise has no queued ready work — #941 is already claimed and building.
+**Five open issues as of 2026-08-11, three of them a fresh `deck-imagegen` cluster filed this pass: #947 (`loom:building` + `loom:urgent`, missing pyproject extra, claimed within this triage pass), #948 (`loom:curating`, nested-thread-layout bug), #949 (unlabeled, prompt-leak bug, awaiting Curator), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** #941 (AI-authorship byline), the sole in-progress issue last pass, shipped via PR #946. One open PR outside the Loom pipeline: #902 (unlabeled, human-authored tool bump), awaiting a direct human merge decision. No orphaned `loom:building` issues (`loom-recover-orphans --verbose` reports none), no `loom:blocked` issues, no open epics. Next action: a Builder works #947 (already claimed), Curator finishes #948 and picks up #949, and a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run.
 
 ### Recurring themes the next wave of issues will likely touch
 
