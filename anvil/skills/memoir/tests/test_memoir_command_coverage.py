@@ -444,19 +444,43 @@ class TestIterationCapContract(unittest.TestCase):
 
     def test_revise_states_the_cap_predicate(self):
         text = _read("commands/memoir-revise.md")
-        self.assertIn("N + 1 > effective_max_iterations", text)
-        # The off-by-one the issue complains about: under the predicate
-        # the terminal dir is <thread>.{max_iterations}/, not .5/.
-        self.assertIn("<thread>.{max_iterations}/", text)
-        self.assertNotIn("worst-case terminal version `<thread>.5/`", text)
+        # issue #933: the cap is checked against revisions consumed, not
+        # the raw version-dir number, so the free initial draft
+        # (`<thread>.1/`) no longer counts against the budget.
+        self.assertIn("N > effective_max_iterations", text)
+        # The worst-case terminal dir is one past the cap (`<thread>.5/`
+        # at the default), not `<thread>.{max_iterations}/` — a revision
+        # is always permitted a validating critic pass.
+        self.assertIn("<thread>.{max_iterations + 1}/", text)
+        self.assertIn("counts REVISIONS, not version dirs", text)
 
     def test_revise_documents_behavior_at_the_ceiling(self):
         flat = _flat("commands/memoir-revise.md")
         self.assertIn("iteration == max_iterations", flat)
-        # Refuse / warn / proceed must be answered unambiguously.
-        self.assertIn("refuses; it never warns-and-proceeds", flat)
+        # Refuse / warn / proceed must be answered unambiguously: warn
+        # once (pre-write budget notice, #933), then refuse once the
+        # budget is truly exhausted — never warn-and-proceed past it.
+        self.assertIn("it never warns-and-proceeds *past* the cap", flat)
         # A clean terminus at the ceiling is NOT blocked.
         self.assertIn("was never the *terminating condition*", flat)
+
+    def test_revise_states_the_prewrite_budget_notice(self):
+        """issue #933: the budget consequence is stated BEFORE the write
+        that exhausts it, not only after (the BLOCKED notice / step-10
+        report)."""
+        flat = _flat("commands/memoir-revise.md")
+        self.assertIn("Pre-write budget notice", flat)
+        self.assertIn("Budget notice:", flat)
+        self.assertIn("consumes the FINAL revision", flat)
+        self.assertIn("This is advisory, not a refusal", flat)
+
+    def test_blocked_notice_names_final_version_unvalidatable(self):
+        """issue #933: the BLOCKED report must distinguish "converged,
+        slot unspent" from "final version written and unvalidatable" —
+        they are very different states for a human to inherit."""
+        flat = _flat("commands/memoir-revise.md")
+        self.assertIn("final version written and unvalidatable", flat)
+        self.assertIn("Converged", flat)
 
     def test_revise_documents_the_blocked_notice_contract(self):
         flat = _flat("commands/memoir-revise.md")
@@ -551,9 +575,19 @@ class TestIterationCapContract(unittest.TestCase):
 
     def test_orchestrator_distinguishes_clean_terminus_from_blocked(self):
         flat = _flat("commands/memoir.md")
-        self.assertIn("N + 1 > max_iterations", flat)
+        # issue #933: the predicate is checked against revisions
+        # consumed (`N`), not the raw version-dir count (`N + 1`).
+        self.assertIn("N > effective_max_iterations", flat)
         self.assertIn("is `AUDITED` is terminal and healthy", flat)
         self.assertIn("revision_class", flat)
+
+    def test_orchestrator_iter_column_reports_revisions_not_versions(self):
+        """issue #933: the `Iter` column reports revisions consumed
+        (`metadata.iteration - 1`), not the raw version-dir number — a
+        thread at `<slug>.4/` under the default cap shows `Iter 3/4`."""
+        text = _read("commands/memoir.md")
+        self.assertIn("revisions consumed", text)
+        self.assertIn("metadata.iteration - 1", text)
 
 
 class TestRubric(unittest.TestCase):
