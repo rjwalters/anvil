@@ -207,6 +207,32 @@ not run the positioning critic — after a search, the operator runs
 `ip-uspto-prior-art` / `ip-uspto-provisional-prior-art` as usual, which now
 has art to score against.
 
+## Lifecycle wiring — the opt-in pre-critic step (issue #958)
+
+Running this skill by hand before the positioning critic is one more thing
+an operator has to remember, which is the gap deterministic pre-flight and
+the audit backstop were introduced to close elsewhere in the framework. So
+`lib/prior_art_step.py` exposes the *same* search as an **opt-in,
+off-by-default** step the two ip skills' prior-art commands run as their
+step 0:
+
+```python
+step  = import_skill_lib_module("ip-search", <lib dir>, "prior_art_step")
+result = step.run_step(thread_dir, cli_enable=None)   # None ⇒ the thread config decides
+print(step.summary_line(result, "ip-uspto-provisional"))
+```
+
+| Surface | Contract |
+|---|---|
+| `resolve_config(thread, cli_enable=None)` | Reads `<thread>/.anvil.json` → `prior_art_search` (`true`/`false`, or an object with `enabled` / `corpus` / `query` / `max_references` / `min_score`). Absent ⇒ **off**. Malformed JSON, an unrecognized value, or an invalid option ⇒ **off / default** plus a warning — a config the parser cannot understand must never enable network access. `cli_enable` (`--prior-art-search` / `--no-prior-art-search`) wins in both directions. |
+| `run_step(thread, …)` | Off ⇒ returns `state="disabled"` **without calling `run()` at all** (no corpus client, no API-key read, no network call, no cost). On ⇒ calls `run()` with `force=False` **pinned** — a caller passing `force` is refused — so a re-run adds nothing and rewrites nothing. Never raises: `degraded` / `error` / `unavailable` are reported states, and `result.blocking` is always `False`. |
+| `partition_prior_art(thread)` | The mechanical `(machine_fetched, operator_authored)` split of `<thread>/prior-art/*.md`, keyed on the `source: "anvil:ip-search/…"` frontmatter marker. Only the leading frontmatter block attributes a file, so an operator's reference that merely mentions this tool in prose stays theirs. |
+
+The step writes nothing of its own — its only on-disk effect is whatever
+`run()` writes under `<thread>/prior-art/`. When it finds nothing (or
+cannot run), the critic takes its documented "no prior art supplied →
+Dim 5 `null`" path exactly as on a thread that never enabled the knob.
+
 ## Out of scope (v1)
 
 - **Claim-text retrieval.** Neither corpus returns claims in the search
@@ -228,7 +254,9 @@ term vocabulary), `query.py` (features → deterministic queries + manual
 fallback URLs), `corpus.py` (stdlib `urllib` clients + API-key resolution +
 the degradation contract), `reference.py` (frontmatter/body rendering,
 slugging, relevance scoring, and the write-scope guard), `orchestrate.py`
-(single `run()` entry).
+(single `run()` entry), `prior_art_step.py` (the issue #958 opt-in
+lifecycle step — knob resolution, the pinned-`force` invocation, and the
+provenance partition).
 
 `corpus.py` follows the `anvil/lib/cite.py` precedent for external-API
 integration: stdlib only, explicit `User-Agent`, bounded exponential
@@ -258,3 +286,9 @@ pattern). Files (per the #58 distinct-filename convention):
   zero mutation outside `prior-art/` and that `--dry-run` writes nothing.
 - `test_ip_search_orchestrate.py` — end-to-end `ok` / `degraded` / `error`,
   no-overwrite discipline, re-run idempotence, corpus selection.
+- `test_ip_search_prior_art_step.py` — the issue #958 lifecycle step: the
+  knob off (a runner that raises if called, plus a tree hash proving the
+  thread is byte-identical), every fail-safe config path, the knob on
+  populating `prior-art/` so Dim 5 can score, re-run idempotence over
+  operator-authored files, the refused `force`, and the provenance
+  partition.

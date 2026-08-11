@@ -39,12 +39,12 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    | `EMPTY` (no brief) | `ip-uspto-intake <thread>` (after placing disclosure in `<thread>/refs/`) |
    | `INTAKE_DONE` (brief but no inventorship) | `ip-uspto-inventorship <thread>` |
    | `INVENTORSHIP_DONE` (no draft yet) | `ip-uspto-draft <thread>` |
-   | `DRAFTED` (no critics yet) | `ip-uspto-review <thread>` then `ip-uspto-101 <thread>` then `ip-uspto-112 <thread>` then `ip-uspto-claims <thread>` then `ip-uspto-prior-art <thread>` (or run in parallel) |
+   | `DRAFTED` (no critics yet) | `ip-uspto-review <thread>` then `ip-uspto-101 <thread>` then `ip-uspto-112 <thread>` then `ip-uspto-claims <thread>` then `ip-uspto-prior-art <thread>` (or run in parallel; `-prior-art` self-runs the opt-in `ip-search` step first when `prior_art_search` is set — see below) |
    | `REVIEWED` (aggregate <39 OR critical flag, under iteration cap) | `ip-uspto-revise <thread>` |
    | `REVIEWED` (aggregate <39 OR critical flag, AT iteration cap) | `BLOCKED — human review required` |
    | `REVIEWED` (aggregate ≥39, no critical flag) | `ip-uspto-audit <thread>` (then `READY` → `AUDITED`) |
    | `REVISED` (pre-flight not yet run on the new version) | `ip-uspto-pre-flight <thread>` |
-   | `PRE_FLIGHT_PASSED` | `ip-uspto-review <thread>` (and other critics) |
+   | `PRE_FLIGHT_PASSED` | `ip-uspto-review <thread>` (and other critics; `-prior-art` again self-runs the opt-in `ip-search` step first when `prior_art_search` is set) |
    | `READY` (audit not yet run) | `ip-uspto-audit <thread>` |
    | `AUDITED` (figures missing) | `ip-uspto-figures <thread>` |
    | `AUDITED` (figures done; inventorship re-check pending) | `ip-uspto-inventorship <thread>` (re-validate against final claims) |
@@ -88,12 +88,14 @@ If `<slug>/.anvil.json` exists, read it for thread-level overrides:
 ```json
 {
   "max_iterations": 7,
-  "critics": ["review", "s101", "s112", "claims"]
+  "critics": ["review", "s101", "s112", "claims"],
+  "prior_art_search": true
 }
 ```
 
 - `max_iterations` overrides the default of 5.
 - `critics` overrides the default critic set. The orchestrator uses this set to compute "critics done" and to detect missing critics.
+- `prior_art_search` (issue #958) is the **opt-in, off-by-default** pre-critic search step: when set, `ip-uspto-prior-art` runs `anvil:ip-search` for the thread before opening its sidecar, so dimension 5 scores against freshly-searched art. `true`/`false`, or an object carrying `enabled` / `corpus` / `query` / `max_references` / `min_score`. **Absent ⇒ off, and the lifecycle is byte-identical to a pre-#958 install** (no corpus query, no API-key read, no network call). The step never overwrites collected references, marks what it fetched with `source: "anvil:ip-search/<corpus>"` frontmatter, and never blocks the critic. Full contract: `commands/ip-uspto-prior-art.md` §"Step 0". Surface a thread with the knob set in the per-thread row (e.g. `priorart+search`) so the report tells the truth about what the next command will do.
 
 ## Notes
 

@@ -141,6 +141,22 @@ carrying `title` / `inventors` / `publication_date` / `kind` / `summary`
 `assignee` / `url` / `source` / `retrieved`. See `SKILL.md` for the full
 contract, the body sections, and the slug rule.
 
+## Running as a lifecycle step instead of by hand (issue #958)
+
+A thread can opt in to having this search run automatically, immediately
+before the prior-art positioning critic, by setting
+`{ "prior_art_search": true }` in `<thread>/.anvil.json`. `ip-uspto-prior-art`
+/ `ip-uspto-provisional-prior-art` then invoke `lib/prior_art_step.py`'s
+`run_step()` as their step 0 — the same `run()` documented above, with
+`force` pinned off and every failure mode reported rather than raised.
+
+**Absent the knob the step does not run at all** — no corpus query, no
+API-key read, no network call — so an un-opted-in thread behaves byte-
+identically to a pre-#958 install. Invoking `/anvil:ip-search` by hand is
+unaffected either way; the knob only governs the automatic invocation. See
+`SKILL.md` §"Lifecycle wiring" for the surface and each skill's
+`commands/*-prior-art.md` §"Step 0" for the operator-facing contract.
+
 ## Write scope
 
 `<thread>/prior-art/` and nothing else, ever. Version dirs

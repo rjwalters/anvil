@@ -37,12 +37,12 @@ A single command an operator (or orchestrating agent) runs to see the state of e
    |---|---|
    | `EMPTY` (no brief) | `ip-uspto-intake <thread>` (brief shape reused from `anvil:ip-uspto`; place disclosure in `<thread>/refs/` first) — or hand-author `<thread>/BRIEF.md` |
    | `INTAKE_DONE` | `ip-uspto-provisional-draft <thread>` |
-   | `DRAFTED` (no critics yet) | `ip-uspto-provisional-review <thread>` + `ip-uspto-provisional-112 <thread>` + `ip-uspto-provisional-prior-art <thread>` (serial or parallel) |
+   | `DRAFTED` (no critics yet) | `ip-uspto-provisional-review <thread>` + `ip-uspto-provisional-112 <thread>` + `ip-uspto-provisional-prior-art <thread>` (serial or parallel; `-prior-art` self-runs the opt-in `ip-search` step first when `prior_art_search` is set — see below) |
    | `REVIEWED` (aggregate <39 OR critical flag, under iteration cap) | `ip-uspto-provisional-revise <thread>` |
    | `REVIEWED` (aggregate <39 OR critical flag, AT iteration cap) | `BLOCKED — human review required` |
    | `REVIEWED` (aggregate ≥39, no critical flag) | `ip-uspto-provisional-revise <thread>` (writes the `READY` marker) |
    | `REVISED` (pre-flight not yet run) | `ip-uspto-provisional-pre-flight <thread>` (mechanical gate on the `REVISED → REVIEWED` edge) |
-   | `REVISED` (pre-flight PASSED) | run the configured critics on the new version (plus the opt-in `claimseed` when a seed is present) |
+   | `REVISED` (pre-flight PASSED) | run the configured critics on the new version (plus the opt-in `claimseed` when a seed is present); `-prior-art` again self-runs the opt-in `ip-search` step first when `prior_art_search` is set |
    | `REVISED` (pre-flight FAILED) | `ip-uspto-provisional-revise <thread>` (address pre-flight blockers; report `PRE_FLIGHT_FAILED`) |
    | `READY` | `ip-uspto-provisional-audit <thread>` (post-convergence fact-check) |
    | `AUDITED` (audit passed) | `ip-uspto-provisional-finalize <thread>` (assemble the `<thread>.counsel/` filing package) |
@@ -77,12 +77,14 @@ Follow with `## Anomalies` (if any) and `## Operator notes` (iteration cap reach
 ```json
 {
   "max_iterations": 7,
-  "critics": ["review", "s112", "priorart"]
+  "critics": ["review", "s112", "priorart"],
+  "prior_art_search": true
 }
 ```
 
 - `max_iterations` overrides the default of 5.
 - `critics` overrides the default set; a set omitting `s112` is invalid (report as an anomaly, do not honor it).
+- `prior_art_search` (issue #958) is the **opt-in, off-by-default** pre-critic search step: when set, `ip-uspto-provisional-prior-art` runs `anvil:ip-search` for the thread before opening its sidecar, so dimension 5 scores against freshly-searched art. `true`/`false`, or an object carrying `enabled` / `corpus` / `query` / `max_references` / `min_score`. **Absent ⇒ off, and the lifecycle is byte-identical to a pre-#958 install** (no corpus query, no API-key read, no network call). The step never overwrites collected references, marks what it fetched with `source: "anvil:ip-search/<corpus>"` frontmatter, and never blocks the critic. Full contract: `commands/ip-uspto-provisional-prior-art.md` §"Step 0". Surface a thread with the knob set in the per-thread row (e.g. `priorart+search`) so the report tells the truth about what the next command will do.
 
 ## Notes
 

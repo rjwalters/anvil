@@ -17,6 +17,32 @@ This critic evaluates the disclosure against prior art the **operator supplied**
 
 **To collect art before running this critic**, use `anvil:ip-search` (issue #957) — it derives queries from this thread's `BRIEF.md` §3 inventive-feature inventory (the same disclosure denominator the `s112` critic scores against), queries a live corpus (PatentsView / USPTO Open Data Portal, with Google Patents as a documented manual fallback when no API key is configured), and writes reference summaries into `<thread>/prior-art/` in exactly the frontmatter shape step 2 below enumerates. It is a drafting aid, not a clearance search, and its per-reference relevance note is mechanical term overlap only — the positioning verdict on dimension 5 stays entirely this critic's.
 
+**Opt-in automation of that collection step** (issue #958): a thread may set `{ "prior_art_search": true }` in `<thread>/.anvil.json`, in which case **step 0 below** runs `anvil:ip-search` for this thread immediately before the critic opens its sidecar. This does not change the non-scope above — the search is a *supply* stage delegated wholesale to a separate skill, running outside this critic's sidecar and contributing nothing to the score. The critic itself still performs no search, still reads only what is on disk in `<thread>/prior-art/`, and still owns every dimension-5 judgment. **Absent the knob, step 0 is skipped entirely and this command behaves byte-identically to its pre-#958 form** — no corpus query, no API-key read, no network call.
+
+## Step 0 — optional prior-art search (opt-in, OFF by default)
+
+This is a **deterministic pre-flight before judgment** in the framework's usual sense: a cheap mechanical supply step that fires before the expensive content review, so the positioning critic scores against freshly-searched art rather than whatever happened to be hand-collected.
+
+Resolve and run it via `anvil/skills/ip-search/lib/prior_art_step.py` (`.anvil/skills/ip-search/lib/` in a consumer install), loaded with the shared skill-lib loader exactly as `commands/ip-search.md` §1 documents:
+
+```python
+from anvil.lib.skill_lib_loader import import_skill_lib_module
+
+step = import_skill_lib_module(
+    "ip-search", Path("anvil/skills/ip-search/lib"), "prior_art_step"
+)
+
+result = step.run_step(thread_dir, cli_enable=cli_enable)   # cli_enable is None unless a flag was passed
+print(step.summary_line(result, "ip-uspto-provisional"))
+```
+
+- **Knob**: `<thread>/.anvil.json` → `prior_art_search`, a sibling top-level key alongside the existing `max_iterations` / `critics` overrides. Accepts `true` / `false`, or an object carrying `enabled` / `corpus` / `query` / `max_references` / `min_score`. **Absent ⇒ off.** A malformed `.anvil.json`, an unrecognized value, or an invalid option fails **safe** (step stays off / falls back to the default) with a warning — a config the parser cannot understand never enables network access.
+- **CLI override**: `--prior-art-search` forces the step on for one invocation, `--no-prior-art-search` forces it off. Either wins over the thread config; absent both, the file decides.
+- **Never overwrites**: the step pins `force=False` and refuses a caller-supplied `force`. `ip-search` skips a patent an existing file already covers and numeric-suffixes a colliding slug, so a re-run adds nothing and rewrites nothing. Operator-authored `prior-art/*.md` (and hand-pasted claim text in machine-fetched ones) survive every lifecycle re-run.
+- **Machine-fetched art is marked**: every file `ip-search` writes carries `source: "anvil:ip-search/<corpus>"` frontmatter. `step.partition_prior_art(<thread>)` returns the mechanical `(machine_fetched, operator_authored)` split, reported in `result.report`, so a human can always tell the two apart. Only the leading frontmatter block attributes a file — a hand-written reference that merely mentions the tool in prose stays the operator's.
+- **Never blocks**: `result.blocking` is always `False`. A `degraded` search (no API key, unreachable corpus), an `error` (no `BRIEF.md`), or an `unavailable` state (`anvil:ip-search` not installed/runnable) are reported in the run log and stepped over — proceed to step 1 regardless. In every non-`ok` case the step wrote nothing, so if the dir is still empty the critic takes the documented "no prior art supplied → Dim 5 `null`" path in step 2 exactly as it does today.
+- Report the step's outcome **before** the critic's own report line, and surface `result.warnings` verbatim. Never present a `degraded` step as a critic failure, and never invent references to fill the gap.
+
 **No anticipation verdicts.** With claims optional (and unexamined either way), there is no §102/§103 claim-by-claim adjudication to run. The provisional question is different: does the *disclosure* position the invention against the known art so the eventual conversion can be drafted around it, and does the spec avoid poisoning that conversion?
 
 ## Rubric dimension owned (per `rubric.md`)
@@ -40,6 +66,7 @@ This critic evaluates the disclosure against prior art the **operator supplied**
 
 ## Procedure
 
+0. **Optional prior-art search** — run the opt-in step documented above, *before* anything below. Off by default; never blocks; writes only into `<thread>/prior-art/`. Skip straight to step 1 when the knob is unset.
 1. **Discover state, sweep, open sidecar**: highest `N` with `<thread>.{N}/spec.tex`; `cleanup_one_staging(<thread>.{N}.priorart)`; if `<thread>.{N}.priorart/` exists, exit early. Otherwise open `staged_sidecar(final_dir=<thread>.{N}.priorart, required_files=["_summary.md", "findings.md", "_meta.json", "_progress.json"])`; all writes inside the staging dir. Initialize `_progress.json` and `_meta.json` with `scorecard_kind: "machine-summary"`, **`rubric_id: "anvil-ip-provisional-v1"`, `rubric_total: 45`, `advance_threshold: 39`** (issue #346 stamping).
 
    **Non-Python-driver ordering (fail-open, manual fallback)** — issue #645: `staged_sidecar` is a Python context manager. A manual/agent session with **no orchestrating Python driver** cannot hold its `with` block open across the file writes below (it writes files with its own editing tool between discrete steps), so it MUST use the equivalent CLI shim rather than writing straight into the final `<thread>.{N}.priorart/` dir (which silently reopens the #350 partial-write defect this primitive exists to close). Two tiers, in preference order:
@@ -53,7 +80,7 @@ This critic evaluates the disclosure against prior art the **operator supplied**
 
    The two tiers land a byte-identical on-disk result to the `staged_sidecar` context-manager path; they exist only to give a Python-less session a code-enforced (tier 1) or contract-faithful (tier 2) route to the same atomicity guarantee. When an orchestrating Python driver IS present, use `staged_sidecar` directly as documented above — the CLI shim is not needed. (If your agent harness pattern-matches and rejects the `findings.md` filename on a `Write`, a Bash-heredoc write into the staging dir is an accepted fallback — see `anvil/lib/snippets/critics.md` §"Orchestrator output-file guard collisions".)
 
-2. **Check prior-art supply**: enumerate `<thread>/prior-art/**` (markdown summaries preferred — frontmatter `title`/`inventors`/`publication_date`/`kind`/`summary`; PDFs excerpt-and-summarize; per-reference subdirs accepted). If empty: write `_summary.md` with Dim 5 `null` and the "no prior art supplied — operator may add references and re-run" note, plus `findings.md` / `_meta.json` / `_progress.json`, and exit the sidecar context (`done`).
+2. **Check prior-art supply**: enumerate `<thread>/prior-art/**` — including anything step 0 just added, and noting that a `degraded` / `error` / skipped step 0 leaves the dir exactly as it found it (markdown summaries preferred — frontmatter `title`/`inventors`/`publication_date`/`kind`/`summary`; PDFs excerpt-and-summarize; per-reference subdirs accepted). If empty: write `_summary.md` with Dim 5 `null` and the "no prior art supplied — operator may add references and re-run" note, plus `findings.md` / `_meta.json` / `_progress.json`, and exit the sidecar context (`done`).
 3. **Read the disclosure**: spec in full, with the Background section read twice — once for content, once for **admissions**.
 
 ### Evaluate Dimension 5 — prior-art positioning (score 0–4)
@@ -101,7 +128,8 @@ Standard. Re-running after the operator adds references is expected — but sinc
 
 ## Notes for the priorart agent
 
-- **No prior art supplied is a legitimate state.** Score `null`, note it, return `done`. Do not invent references.
+- **No prior art supplied is a legitimate state.** Score `null`, note it, return `done`. Do not invent references. This holds whether or not step 0 ran — a search that found nothing (or could not run) leaves the same empty dir the operator would have left.
+- **Step 0 renders no judgment.** `ip-search`'s per-reference relevance note is mechanical term overlap — retrieval evidence, not a positioning verdict. Score a machine-fetched reference exactly as you would one the operator collected by hand; the `source:` marker is provenance, not weight.
 - **Admissions are the provisional-specific trap.** A careless Background sentence costs nothing today and binds the conversion forever.
 - **You are positioning a disclosure, not adjudicating claims.** Keep the §102/§103 vocabulary out of the verdict; it returns at conversion time in `anvil:ip-uspto`.
 
