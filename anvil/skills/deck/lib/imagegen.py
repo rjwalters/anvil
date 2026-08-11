@@ -877,13 +877,20 @@ def resolve_slot_prompt(
 ) -> str:
     """Resolve the slide-specific prompt body for a slot.
 
-    Resolution order (per ``deck-imagegen.md`` § "Procedure" step 4):
+    Resolution order (per ``deck-imagegen.md`` § "Procedure" step 8):
 
     1. Sibling file ``<version_dir>/assets/generated/<slot>.prompt.md``
        — wins if present. Whole file content is the prompt (with
        leading/trailing whitespace stripped).
     2. ``speaker-notes.md`` section ``## Imagery prompt: <slot>`` —
-       the body after the heading until the next H2 or EOF.
+       ONLY the first blank-line-separated paragraph after the
+       heading is the prompt. Anything after the first blank line
+       (a second paragraph, a trailing aside, etc.) is treated as a
+       human-facing note and is NOT included in the resolved prompt —
+       drafters may leave a note there (e.g. an on-slide caption
+       reminder) without it leaking into the dispatched prompt and
+       being rendered as visible text by the image backend. A section
+       with no blank line at all resolves in full (no truncation).
 
     Args:
         slot: The slot name.
@@ -912,9 +919,16 @@ def resolve_slot_prompt(
         )
         m = pattern.search(speaker_notes_text)
         if m:
-            body = m.group("body").strip()
-            if body:
-                return body
+            section_body = m.group("body").strip()
+            if section_body:
+                # Only the first blank-line-separated paragraph is the
+                # prompt; anything after the first blank line is a
+                # human-facing aside and must not reach the backend.
+                first_paragraph = re.split(r"\n\s*\n", section_body, maxsplit=1)[
+                    0
+                ].strip()
+                if first_paragraph:
+                    return first_paragraph
     raise ImagegenError(
         f"no prompt source for slot {slot!r}: expected either "
         f"``{sidecar.relative_to(version_dir.parent) if sidecar.is_relative_to(version_dir.parent) else sidecar}`` "
