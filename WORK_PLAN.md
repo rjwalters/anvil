@@ -2,32 +2,39 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-11 (Guide triage pass — #947 shipped via PR #953 (mirrored the `deck_imagegen` extra into the generated consumer pyproject); the `deck-imagegen`/figure-conventions cluster advanced: #948 and #951 claimed by Builders, #949 curated and also claimed, #954 opened against #948 and awaiting Judge review; a new issue #952 (deck agent-set generation gap) entered curation; urgent queue is empty — no `loom:issue` work is currently unclaimed; no `loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, remains open outside the Loom label pipeline)*
+*Last updated: 2026-08-11 (Guide triage pass — #961 and #960 shipped via PR #967 (render-gate `\input`-scope attribution) and PR #966 (imagegen field-block terminator); the prior urgent pair is now closed and off the board. The `957`/`952`/`962` building trio each has a PR open for review (#969, #968, #970); a new issue #964 (deck-figures legibility gate) entered building, and #965 (deck-review auto-shrink singleton-class gap) entered curation, unclaimed. Urgent queue is empty — nothing currently rises above the building/blocked/operator-only work already in flight; no unlabeled issues awaiting Curator; PR #902, a human-authored tool-currency chore, remains open outside the Loom label pipeline)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-- **#961**: "Pre-flight/audit render-gate misattributes overfull-box line numbers across \input boundaries" (`tier:goal-supporting`, `loom:issue`). `render_gate` is shared infrastructure across every paginated LaTeX skill; hit twice on a live `ip-uspto-provisional` filing where a misattributed overfull-box location pointed a scoped reviser at the wrong file (`spec.tex` instead of the `\input`'d `claims.tex`). Routine complexity, clear regression-test shape.
-- **#960**: "deck-imagegen: _extract_field_block swallows '**Worked example**:' blocks into preset prompt prefixes" (`tier:goal-supporting`, `loom:issue`). Every consumer using the shipped preset library (`studio-product`, `documentary`, ...) dispatches image-generation prompts polluted with fabricated worked-example content because the block-terminator regex doesn't recognize two-word `**Field**:` markers. Routine complexity.
+*Empty.* No `loom:issue` work is currently unclaimed and ready to promote — everything approved is already `loom:building`.
 
 ## Ready for Work (`loom:issue`)
 
-- **#961** and **#960** (above) — both promoted to `loom:urgent` this pass; no additional unclaimed `loom:issue` work beyond the urgent two.
+*Empty* (beyond the `loom:building` issue below, which already carries `loom:issue` from its prior approval).
 
 ## In Progress (`loom:building`)
 
-- **#957**: "Build anvil:ip-search — a prior-art search skill feeding the positioning critic" (`loom:issue` + `loom:building` + `loom:curated`, `tier:goal-supporting`). Claimed by a Builder; live per the daemon sweep journal.
-- **#952**: "generate-anvil-agents: deck agent set missing economics (default critic, dim 10) and vision" (`loom:building` + `loom:curated`, `tier:goal-supporting`). Claimed; no PR yet, label age well under `loom-recover-orphans`' 4h staleness threshold — not orphaned.
+- **#957**: "Build anvil:ip-search — a prior-art search skill feeding the positioning critic" (`loom:issue` + `loom:building` + `loom:curated`, `tier:goal-supporting`). PR #969 open (`loom:reviewing` + `loom:review-requested`).
+- **#964**: "deck-figures: legibility gate heuristic ignores render scale and actual font sizes — false errors in both directions" (`loom:building` + `loom:curated`, `tier:goal-supporting`). Claimed; no PR yet.
+- **#962**: "Critic findings.md write blocked by report-file guard; agents forced into heredoc workaround" (`loom:building` + `loom:curated`, `tier:goal-supporting`). PR #970 open (`loom:review-requested`).
+- **#952**: "generate-anvil-agents: deck agent set missing economics (default critic, dim 10) and vision" (`loom:building` + `loom:curated`, `tier:goal-supporting`). PR #968 open (`loom:review-requested`).
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-*Empty.*
+- **#970**: "docs(critics): propagate orchestrator guard-collision breadcrumb to 31 commands" — closes #962.
+- **#969**: "feat(ip-search): add prior-art search skill feeding the positioning critic" — closes #957; also carries `loom:reviewing`.
+- **#968**: "feat(agents): add deck-economics and deck-vision specialist agents" — closes #952.
 
 ## Approved (Awaiting Merge) (`loom:pr`)
 
 *Empty.*
+
+## Curated, Not Yet Claimed (`loom:curated`)
+
+- **#965**: "deck-review: auto-shrink detector skips singleton classes, leaving title-slide overflow lint errors uncrosscheckable" — curated but no tier label and no `loom:issue` yet; awaiting tier assignment / Champion promotion.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -39,11 +46,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Blocked (`loom:blocked`)
 
-- **#958**: "Wire an opt-in ip-search step into the ip-uspto(-provisional) lifecycle before the priorart critic" — depends on #957 (still open, currently `loom:building`). Stays blocked until #957 ships an invocable `ip-search` command.
+- **#958**: "Wire an opt-in ip-search step into the ip-uspto(-provisional) lifecycle before the priorart critic" — depends on #957 (still open, currently `loom:building`, PR #969 open). Stays blocked until #957 ships an invocable `ip-search` command.
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
-- **#962**: "Critic findings.md write blocked by report-file guard; agents forced into heredoc workaround" — filed with no labels yet; a cross-skill harness-adjacent friction report (every critic-writing agent in a real `ip-uspto-provisional` run hit a Write-tool guard false-positive on `findings.md` and fell back to a Bash heredoc). Awaiting Curator triage/tiering; not yet eligible for `loom:issue` or `loom:urgent`.
+*Empty.*
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -55,7 +62,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Eight open issues as of 2026-08-11: #961 and #960 (newly promoted to `loom:urgent` this pass, both `tier:goal-supporting`), #957 and #952 (`loom:building`, both live/not orphaned per `loom-recover-orphans`), #958 (`loom:blocked` on #957, dependency still open), #962 (unlabeled, awaiting Curator triage), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** No PRs are currently open in the Loom review pipeline (`loom:review-requested` / `loom:pr` both empty); one PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans --recover` found no orphaned `loom:building` claims this pass. All recently merged PRs (#954, #955, #959, plus the earlier #953/#946/#943/#939/#936 batch) correctly closed their linked issues — no orphaned closures found. Next action: Builders continue #957/#952, a human or Champion reviews #888's design tradeoffs, #918 awaits a human daemon-recovery run, and Curator triages #962.
+**Eight open issues as of 2026-08-11: #964, #962, #957, and #952 (all `loom:building`, each with a PR open except #964; none orphaned per `loom-recover-orphans --recover`), #965 (`loom:curated`, unclaimed, no tier label yet), #958 (`loom:blocked` on #957, dependency still open), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** Three PRs are open in the Loom review pipeline (`loom:review-requested`: #970, #969, #968); none yet approved (`loom:pr` empty). One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans --recover` found no orphaned `loom:building` claims this pass (two claims — #962, #952 — are watched but well under the 4h staleness threshold). All recently merged PRs (#967, #966, plus the earlier #959/#955/#954/#953/#946 batch) correctly closed their linked issues — no orphaned closures found. Next action: Judge reviews #970/#969/#968, a human or Champion reviews #888's design tradeoffs and #965's tiering, #918 awaits a human daemon-recovery run.
 
 ### Recurring themes the next wave of issues will likely touch
 
