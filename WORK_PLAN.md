@@ -9,12 +9,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* No open issues carry `loom:issue` — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward. #933 is already claimed (`loom:building`, see below); #888 and #918 are `loom:operator-only` and not eligible for `loom:urgent` (see below).
+*Empty.* No open issues carry `loom:issue` — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward. #888 and #918 are `loom:operator-only` and not eligible for `loom:urgent` (see below).
 
 ## In Progress (`loom:building`)
 
-- **#933**: "At max_iterations the final version can be written but never fixed — the cap counts versions, so the last revision is unvalidatable" (`loom:curated`, `tier:goal-supporting`). Canary-surfaced on a 15-thread `memoir` book: when `memoir-revise` writes a repair on the last permitted version slot, there is no slot left to validate that repair, so a thread can BLOCK holding a known defect with no path to clear it. Claimed by a Builder (claim age ~9m as of this pass, well under the 4h orphan-recovery threshold — confirmed live, not orphaned).
-- **#934**: "parse_provenance_table reads only the first claim table — 5 of 115 rows on a nine-table map, and repoint_drifted_anchors writes on that basis" (`loom:curated`, `tier:goal-supporting`). Moved from curation to `loom:building` this pass (claim age ~15m); Builder already opened PR #936 "fix(provenance-anchor): parse every claim table, not just the first" — see PRs Awaiting Review below.
+*Empty.* Both issues that were in progress as of the previous pass shipped: #933 merged via PR #939 ("fix(memoir): let the final revision under max_iterations get a critic pass") and #934 merged via PR #936 ("fix(provenance-anchor): parse every claim table, not just the first") — both closed 2026-08-11; see `WORK_LOG.md`.
 
 ## Ready for Work (`loom:issue`)
 
@@ -22,7 +21,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-- **#936**: "fix(provenance-anchor): parse every claim table, not just the first" (closes #934). Rewrites `parse_provenance_table` as a single forward pass that resets on table boundaries instead of breaking, so every conforming claim table in a multi-table `provenance.md` is parsed (not just the first); `repoint_drifted_anchors` now repoints across every table. Opened 2026-08-11, awaiting Judge.
+*Empty.* PR #936 (closes #934) merged 2026-08-11.
 
 One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Skills 0.7.0 → 0.8.1" — opened directly by the repo owner (no labels), a tool-currency bump not routed through Curator/Builder. Per `CLAUDE.md`'s guidance on small mechanical changes, this class of PR doesn't require the full Loom review cycle; it awaits a direct human merge decision, not Judge/Champion action.
 
@@ -40,7 +39,7 @@ One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Ski
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-*Empty.* #934 (the multi-table provenance-parsing defect) moved past curation to `loom:building` this pass — see "In Progress" above.
+*Empty.*
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -52,7 +51,7 @@ One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Ski
 
 ## Backlog state
 
-**Four open issues as of 2026-08-11: #933 and #934 (both `loom:building` + `loom:curated`, in progress — see above; #934's fix is already out for review as PR #936), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation); two open PRs (#936, `loom:review-requested`, awaiting Judge; #902, unlabeled, human-authored tool bump — outside the Loom pipeline).** No orphaned `loom:building` issues (both #933's and #934's claims were confirmed live via `loom-recover-orphans`), no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — no open issue carries `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a Builder continues #933, Judge reviews PR #936 for #934, a human runs the daemon-recovery command for #918, a human or Champion reviews #888's design tradeoffs, and (separately) a human merge decision on #902.
+**Two open issues as of 2026-08-11: #888 (curated + `loom:operator-only`, awaiting human/Champion design review) and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** The two issues that were in progress last pass (#933, #934) both shipped this pass via PR #939 and PR #936 respectively. One open PR outside the Loom pipeline: #902 (unlabeled, human-authored tool bump), awaiting a direct human merge decision. No orphaned `loom:building` issues (`loom-recover-orphans --verbose` reports none), no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — no open issue carries `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human runs the daemon-recovery command for #918, and a human or Champion reviews #888's design tradeoffs; the backlog otherwise has no queued work for a Builder to pick up.
 
 ### Recurring themes the next wave of issues will likely touch
 
