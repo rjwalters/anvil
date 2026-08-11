@@ -2,31 +2,27 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-11 (Guide triage pass — #961 and #960 shipped via PR #967 (render-gate `\input`-scope attribution) and PR #966 (imagegen field-block terminator); the prior urgent pair is now closed and off the board. The `957`/`952`/`962` building trio each has a PR open for review (#969, #968, #970); a new issue #964 (deck-figures legibility gate) entered building, and #965 (deck-review auto-shrink singleton-class gap) entered curation, unclaimed. Urgent queue is empty — nothing currently rises above the building/blocked/operator-only work already in flight; no unlabeled issues awaiting Curator; PR #902, a human-authored tool-currency chore, remains open outside the Loom label pipeline)*
+*Last updated: 2026-08-11 (Guide triage pass — the prior building trio (#957/#952/#962) and #964 all shipped via PR #969/#968/#970/#972; only #965 and #958 remain open work, both now `loom:building`. #958 ("wire ip-search into the lifecycle") is the direct follow-on to #957 and was promoted + claimed within this same pass — marked `loom:urgent` as the sole ready candidate, then claimed by a Builder minutes later. Both #965 and #958 briefly carried a stray `loom:issue` alongside `loom:building` (Builder claim step left the prior-approval label in place); cleaned up as label hygiene, no state otherwise changed. #965 has PR #973 open for review (documents the sanctioned resolution for singleton-class overflow, per curator decision D4). Urgent queue: 1/3 filled (#958). No unlabeled issues awaiting Curator; PR #902, a human-authored tool-currency chore, remains open outside the Loom label pipeline)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* No `loom:issue` work is currently unclaimed and ready to promote — everything approved is already `loom:building`.
+- **#958**: "Wire an opt-in ip-search step into the ip-uspto(-provisional) lifecycle before the priorart critic" (`loom:building` + `loom:curated` + `loom:urgent`, `tier:goal-supporting`). Promoted to urgent as the only ready issue this pass; a Builder claimed it (added `loom:building`) shortly after. Left `loom:urgent` in place per policy — work already underway.
 
 ## Ready for Work (`loom:issue`)
 
-*Empty* (beyond the `loom:building` issue below, which already carries `loom:issue` from its prior approval).
+*Empty.* Nothing carries a bare `loom:issue` right now — the only two issues that recently did (#958, #965) are both `loom:building`.
 
 ## In Progress (`loom:building`)
 
-- **#957**: "Build anvil:ip-search — a prior-art search skill feeding the positioning critic" (`loom:issue` + `loom:building` + `loom:curated`, `tier:goal-supporting`). PR #969 open (`loom:reviewing` + `loom:review-requested`).
-- **#964**: "deck-figures: legibility gate heuristic ignores render scale and actual font sizes — false errors in both directions" (`loom:building` + `loom:curated`, `tier:goal-supporting`). Claimed; no PR yet.
-- **#962**: "Critic findings.md write blocked by report-file guard; agents forced into heredoc workaround" (`loom:building` + `loom:curated`, `tier:goal-supporting`). PR #970 open (`loom:review-requested`).
-- **#952**: "generate-anvil-agents: deck agent set missing economics (default critic, dim 10) and vision" (`loom:building` + `loom:curated`, `tier:goal-supporting`). PR #968 open (`loom:review-requested`).
+- **#958**: "Wire an opt-in ip-search step into the ip-uspto(-provisional) lifecycle before the priorart critic" (`loom:curated` + `loom:urgent`, `tier:goal-supporting`). Claimed; no PR yet.
+- **#965**: "deck-review: auto-shrink detector skips singleton classes, leaving title-slide overflow lint errors uncrosscheckable" (`loom:curated`, `tier:goal-supporting`). PR #973 open (`loom:review-requested`).
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-- **#970**: "docs(critics): propagate orchestrator guard-collision breadcrumb to 31 commands" — closes #962.
-- **#969**: "feat(ip-search): add prior-art search skill feeding the positioning critic" — closes #957; also carries `loom:reviewing`.
-- **#968**: "feat(agents): add deck-economics and deck-vision specialist agents" — closes #952.
+- **#973**: "docs(deck): name the sanctioned resolution for singleton-class overflow errors" — resolves #965's unified-gate hole (curator Option B: document the sanctioned resolution, not a peerless absolute-margin floor).
 
 ## Approved (Awaiting Merge) (`loom:pr`)
 
@@ -34,7 +30,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-- **#965**: "deck-review: auto-shrink detector skips singleton classes, leaving title-slide overflow lint errors uncrosscheckable" — curated but no tier label and no `loom:issue` yet; awaiting tier assignment / Champion promotion.
+*Empty.* #958 and #965 are both now `loom:building` (see above).
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -46,7 +42,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Blocked (`loom:blocked`)
 
-- **#958**: "Wire an opt-in ip-search step into the ip-uspto(-provisional) lifecycle before the priorart critic" — depends on #957 (still open, currently `loom:building`, PR #969 open). Stays blocked until #957 ships an invocable `ip-search` command.
+*Empty.* #958's prior block (on #957) resolved when #957 merged (PR #969); #958 is now `loom:building`.
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
@@ -62,7 +58,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Eight open issues as of 2026-08-11: #964, #962, #957, and #952 (all `loom:building`, each with a PR open except #964; none orphaned per `loom-recover-orphans --recover`), #965 (`loom:curated`, unclaimed, no tier label yet), #958 (`loom:blocked` on #957, dependency still open), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** Three PRs are open in the Loom review pipeline (`loom:review-requested`: #970, #969, #968); none yet approved (`loom:pr` empty). One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans --recover` found no orphaned `loom:building` claims this pass (two claims — #962, #952 — are watched but well under the 4h staleness threshold). All recently merged PRs (#967, #966, plus the earlier #959/#955/#954/#953/#946 batch) correctly closed their linked issues — no orphaned closures found. Next action: Judge reviews #970/#969/#968, a human or Champion reviews #888's design tradeoffs and #965's tiering, #918 awaits a human daemon-recovery run.
+**Four open issues as of 2026-08-11: #958 and #965 (both `loom:building`; #958 with a PR pending, #965 with PR #973 open for review; neither orphaned per `loom-recover-orphans --recover`), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** One PR is open in the Loom review pipeline (`loom:review-requested`: #973); none yet approved (`loom:pr` empty). One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans --recover` found no orphaned `loom:building` claims this pass (#965's claim is watched but well under the 4h staleness threshold). All recently merged PRs (#972, #970, #969, #968, plus the earlier batch) correctly closed their linked issues — no orphaned closures found. Two issues (#958, #965) briefly carried a stray `loom:issue` alongside `loom:building` this pass — cleaned up as label hygiene; worth a look if the Builder claim step keeps leaving it behind. Next action: Judge reviews #973, a human or Champion reviews #888's design tradeoffs, #918 awaits a human daemon-recovery run.
 
 ### Recurring themes the next wave of issues will likely touch
 
