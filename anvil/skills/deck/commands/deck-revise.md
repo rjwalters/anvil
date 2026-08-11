@@ -107,6 +107,18 @@ For the decision:
      - **Deliberate omission (requires justification).** When the drop is intentional (e.g., the deck targets a different audience that does not need the unit-economics detail; the memo carries an in-progress assumption the deck deliberately omits), add `<!-- anvil-lint-disable: deck_memo_parity -->` on the memo line carrying the token AND record under `_revision-log.md` § "Parity-lint resolutions (economic subset)" as `Resolution: deliberate omission — <one-line reason>`. The escape-hatch directive on the **memo** line (not the deck line) silences both the broader `only_in_memo` finding and the `only_in_memo_economic` finding on the next iteration.
      - **Decline (rare).** When the token is in the economic subset but on review is actually not load-bearing (e.g., a percentage in a footnote that the classifier promoted via proximity to a vocab term that does not apply to that specific number), record under `_revision-log.md` § "Parity-lint resolutions (economic subset)" as `Resolution: declined — false positive; <one-line reason>`. The next iteration will re-fire the warning; if it persists, the operator can suppress with the escape-hatch directive.
    - **Do NOT silently treat the economic subset the same as the broader set.** The bulk-dismiss response is the canary failure mode this step exists to prevent. Even when the resolution is `deliberate omission`, the reviser MUST visit each token in the subset and emit a per-token entry in the revision log.
+7c. **Resolve singleton-class `slide-content-overflow` errors via the vision cross-check** — issue #965:
+   - Read `<thread>.{N}.review/_summary.md`'s `lint.auto_shrink.uncrosscheckable_singletons` (the same list surfaces under `findings.md` § "Singleton-class overflow errors (uncrosscheckable by the post-render detector)"). Empty list, missing field (a pre-#965 review), or no entries → **this step is inactive** and the revision proceeds exactly as before.
+   - **Why this step exists.** `deck-review`'s two pre-flight lints are designed as one gate whose `advance:false` a reviser can trust without opening the rendered PDF (`deck-review.md` step 5c §"the unified-gate contract"). That gate has exactly one structural hole: the post-render `auto_shrink_detector` is a **peer-relative** rule and never flags a `_class:` with too few pages for a median — the deliberate D4 tautology contract. So a `title` slide (image + subtitle + kicker + footer is the densest single slide in most decks, and most decks have exactly one) can carry a blocking source-side `slide-content-overflow` error that nothing post-render either confirms or refutes. Without a named resolution the reviser's only remaining move is a manual look at the PDF — the exact step the gate exists to eliminate.
+   - **Resolution order. Fixing the slide is the first resort; the escape hatch is the last.**
+     1. **Fix the slide (default).** Apply the source-side lint's suggested fix in `<thread>.{N+1}/deck.md` — trim the kicker, drop the subtitle to speaker-notes, clamp the image with an `h:NNNpx` keyword. This needs no cross-check and no justification, and it is the right answer whenever the slide is genuinely dense. Record it as an ordinary lint resolution.
+     2. **Only if you judge the source-side estimate a false positive, get the rendered-side cross-check.** Open `<thread>.{N}.vision/_review.json` and find the v1 `vertical_overflow` dimension's findings for that slide. Per `commands/deck-vision.md`, v1 is "the deeper companion to `marp_lint`'s slide-content-overflow rule" — scored per-slide from the rendered PNGs by a VLM. It is an automated critic pass, so citing it is NOT the hand-confirm-against-the-PDF step `deck-review.md` step 5c forbids, and unlike the pixel-bbox detector it is not defeated by a background image on the title slide.
+   - **Three outcomes, only one of which licenses the escape hatch:**
+     - **v1 reports a finding on that slide** (or the `rendered_overflow_unrecoverable` critical flag names it) → the source-side error is **CONFIRMED**. Fix the slide. The escape hatch is NOT available.
+     - **v1 is clean on that slide** → the source-side error is **REFUTED** by the rendered-side critic. The escape hatch is now justified: add `<!-- anvil-lint-disable: slide-content-overflow -->` to that slide in `<thread>.{N+1}/deck.md` (per-slide directive, `anvil/lib/marp_lint.py` §"Escape hatch" — it downgrades the finding to `info` so the next `deck-review` still shows the slide is dense but `advance` is no longer blocked) AND record the citation in `_revision-log.md` § "Singleton-class overflow resolutions (issue #965)". **The citation is mandatory**: sidecar path, version, and what v1 actually said. An escape hatch without it is indistinguishable from silencing an error you did not check.
+     - **No `<thread>.{N}.vision/` sibling exists, or it carries no v1 score** → there is no cross-check, so the escape hatch is **NOT justified**. Either run `deck-vision` on `<thread>.{N}` and re-enter this step, or fall back to outcome 1 and fix the slide. Do NOT open the PDF yourself and do NOT apply the escape hatch on your own reading of the markdown source — a source-side reading is what raised the error in the first place.
+   - **Findings are leads, not evidence (step 7) applies here verbatim.** The reviewer may have summarized the vision verdict in `findings.md` as a convenience. Before applying an escape hatch on the strength of it, open `<thread>.{N}.vision/_review.json` and read the v1 entry yourself. If the sidecar disagrees with the summary, the sidecar wins and the correction goes in the revision log.
+   - **Scope.** This step governs `slide-content-overflow` errors on singleton-class slides only. An overflow error on a `content` slide is peer-comparable, the detector already weighed in, and the ordinary "fix it" path applies with no escape hatch.
 8. **Produce revised `deck.md`** at `<thread>.{N+1}/deck.md`:
    - Address each planned change.
    - **Preserve the no-fabrication contract**: every number / name / asset on a slide must continue to trace to `<thread>/BRIEF.md`. The reviser is allowed to drop content but not invent.
@@ -201,6 +213,25 @@ For the decision:
     | $2.50 | memo line 12 | ported — added "$2.50 contribution margin per seat" to Slide 9 (Business model). |
     | 8% | memo line 14 | deliberate omission — added `<!-- anvil-lint-disable: deck_memo_parity -->` on memo line 14; the deck deliberately omits the per-segment attach-rate breakdown for narrative density. |
 
+    ## Singleton-class overflow resolutions (issue #965)
+
+    One row per slide in
+    `<thread>.{N}.review/_summary.md`'s
+    `lint.auto_shrink.uncrosscheckable_singletons` list. These are
+    source-side `slide-content-overflow` errors the post-render
+    auto-shrink detector could not confirm or refute (singleton
+    `_class:`, no peers for a median) — see step 7c. ONLY present when
+    the list is non-empty. When the resolution is `escape hatch`, the
+    `deck-vision` v1 citation is MANDATORY: an escape hatch without a
+    named rendered-side cross-check is indistinguishable from
+    silencing an unchecked error.
+
+    | Slide | Class | Resolution |
+    |---|---|---|
+    | 1 | title | fixed — moved the kicker line to speaker-notes and clamped the hero image to `h:320px`; source-side estimate now under capacity. No escape hatch needed. |
+    | 1 | title | escape hatch — cross-checked against `acme-seed.1.vision/_review.json`: v1 `vertical_overflow` scored 5/5 with no finding on Slide 1, so the source-side capacity estimate is refuted for the `bg right:40%` panel layout. Added `<!-- anvil-lint-disable: slide-content-overflow -->` to Slide 1 of `acme-seed.2/deck.md`. |
+    | 1 | title | fixed (vision confirmed) — `acme-seed.1.vision/_review.json` v1 `vertical_overflow` reports "subtitle clipped at slide bottom" on Slide 1; the source-side error is confirmed, so the slide was trimmed rather than suppressed. |
+
     ## Stale token findings
 
     Detected by `anvil/lib/revise_consistency.sweep` in step 9.5. See
@@ -248,6 +279,7 @@ When step 3's iteration cap check fires (`N + 1 > effective_max_iterations`), th
 - **Do not regress.** If a dimension scored ≥75% in the prior aggregated verdict, it should score ≥75% after revise. The `_revision-log.md` table is the audit trail proving you didn't lose ground.
 - **Critical flags trump everything.** A revision that addresses 5 major findings but ignores a critical flag is a failed revision.
 - **Restructure when the critic says so.** A `[structural]` finding (kind axis in `findings.md`, per `commands/deck-narrative.md` step 8) is the critic's explicit signal that clause edits won't fix the underlying arc problem. Restructure first (reorder / merge / split / drop the slides named in the finding), then clause-edit within the new structure. Document the reorder in `_revision-log.md` so the next narrative pass can see the structural change was intentional. In-place clause-edits remain the default for the unmarked / `[in-place]` findings — restructure authority is gated on the `[structural]` kind marker, not granted blanket.
+- **Never silence a lint error you did not cross-check.** The per-slide escape hatch `<!-- anvil-lint-disable: slide-content-overflow -->` is legitimate on exactly one path: a singleton-class slide (`title` / `ask`) whose source-side overflow error the post-render auto-shrink detector could not peer-compare, AND whose `deck-vision` v1 `vertical_overflow` verdict on the rendered PNG is clean. The playbook is step 7c; the `_revision-log.md` § "Singleton-class overflow resolutions" citation is mandatory. Fixing the slide is always available and always preferable; opening the rendered PDF by hand is never the sanctioned cross-check.
 - **Declined findings are a feature.** Sometimes critics are wrong (or the resolution would violate the no-fabrication contract). Document the disagreement in `_revision-log.md` so the next critic pass can re-evaluate with full context.
 - **Conflict resolution must be explicit.** When critics disagree, pick one and document why. A silent synthesis is harder to audit than an explicit one.
 - **The reviser may not invent.** If a finding asks for a number / name / asset not in the brief, the reviser declines with `Resolution: declined — not in brief; founder follow-up needed`. The reviser is never the source of factual content.
