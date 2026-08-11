@@ -71,6 +71,31 @@ def _provenance_table(rows: str) -> str:
     )
 
 
+def _one_table(n_rows: int, prefix: str = "row") -> str:
+    """A single conforming claim table with ``n_rows`` synthetic data
+    rows (content is irrelevant to row-count assertions)."""
+    header = "| Claim | Source file | Line range | Anchor | Notes |\n"
+    sep = "|-------|-------------|------------|--------|-------|\n"
+    body = "".join(
+        f'| "{prefix} claim {i}" | nita3.txt | {i} | "filler line {i}" | note {i} |\n'
+        for i in range(1, n_rows + 1)
+    )
+    return header + sep + body
+
+
+def _multi_table_doc(*row_counts: int, blank_between: bool = True) -> str:
+    """Build a ``provenance.md`` with one table per entry in
+    ``row_counts``, each table holding that many synthetic data rows."""
+    parts = ["# Claim provenance\n\n"]
+    for i, count in enumerate(row_counts):
+        if i > 0:
+            if blank_between:
+                parts.append(f"\n## Chapter {i + 1}\n\n")
+            # else: no separator at all -> tables are directly adjacent.
+        parts.append(_one_table(count, prefix=f"t{i}"))
+    return "".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # parse_provenance_table
 # ---------------------------------------------------------------------------
@@ -119,6 +144,96 @@ class TestParseProvenanceTable:
         )
         table = parse_provenance_table(path)
         assert table.rows[0].line_range == (7, 7)
+
+
+# ---------------------------------------------------------------------------
+# Multi-table regression (issue #934) — a provenance.md holding several
+# independent claim tables must have EVERY table's rows parsed, not just
+# the first. Row counts are hand-computed from the synthetic fixtures
+# built by _multi_table_doc()/_one_table() above.
+# ---------------------------------------------------------------------------
+
+
+class TestMultiTableParsing:
+    @pytest.mark.parametrize(
+        "row_counts",
+        [
+            (3, 2),  # 2 tables, 5 rows
+            (2, 3, 4),  # 3 tables, 9 rows
+            (1, 2, 3, 4, 5),  # 5 tables, 15 rows
+            (1,) * 9,  # 9 tables, 9 rows
+            (5, 8, 3, 12, 1, 7, 9, 4, 6),  # 9 tables, 55 rows (varied sizes)
+        ],
+    )
+    def test_row_count_matches_hand_count_across_tables(
+        self, tmp_path: Path, row_counts
+    ):
+        path = _write(
+            tmp_path / "provenance.md", _multi_table_doc(*row_counts)
+        )
+        table = parse_provenance_table(path)
+        assert len(table.tables) == len(row_counts)
+        assert len(table.rows) == sum(row_counts)
+        # Every table's own rows are attributed to it via table_index.
+        for i, count in enumerate(row_counts):
+            assert sum(1 for r in table.rows if r.table_index == i) == count
+
+    def test_two_table_baseline_regression_guard(self, tmp_path: Path):
+        """The narrowest possible regression guard for #934: a
+        single-table map must still report exactly its own rows (this
+        already passed before the fix — see the pre-existing single-
+        table tests above), and a TWO-table map must report the SUM of
+        both tables' rows, not just the first table's."""
+        path = _write(tmp_path / "provenance.md", _multi_table_doc(4, 6))
+        table = parse_provenance_table(path)
+        assert len(table.tables) == 2
+        assert len(table.rows) == 10
+
+    def test_adjacent_tables_with_no_blank_line_both_parsed(self, tmp_path: Path):
+        """A second table's header immediately follows the first
+        table's last data row, with no blank line in between."""
+        path = _write(
+            tmp_path / "provenance.md",
+            _multi_table_doc(3, 4, blank_between=False),
+        )
+        table = parse_provenance_table(path)
+        assert len(table.tables) == 2
+        assert len(table.rows) == 7
+
+    def test_nonconforming_table_reported_not_silently_skipped(self, tmp_path: Path):
+        doc = (
+            "# Claim provenance\n\n"
+            + _one_table(2, prefix="t0")
+            + "\n## Unrelated table\n\n"
+            "| Foo | Bar |\n"
+            "|-----|-----|\n"
+            "| 1 | 2 |\n"
+            "| 3 | 4 |\n"
+            "\n## Chapter 2\n\n"
+            + _one_table(3, prefix="t1")
+        )
+        path = _write(tmp_path / "provenance.md", doc)
+        table = parse_provenance_table(path)
+        # Only the two conforming (Claim/Source) tables contribute rows.
+        assert len(table.tables) == 2
+        assert len(table.rows) == 5
+        # The non-conforming table is reported, not dropped.
+        assert len(table.skipped_tables) == 1
+        skipped = table.skipped_tables[0]
+        assert skipped.header == ["Foo", "Bar"]
+        assert "Claim/Source" in skipped.reason
+
+    def test_zero_conforming_tables_still_returns_empty_result(self, tmp_path: Path):
+        path = _write(
+            tmp_path / "provenance.md",
+            "# No tables here\n\nJust prose.\n",
+        )
+        table = parse_provenance_table(path)
+        assert table.tables == []
+        assert table.rows == []
+        assert table.header == []
+        assert table.line_range_col is None
+        assert table.anchor_col is None
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +347,56 @@ class TestResolveAnchor:
         assert report["counts"][STATUS_RESOLVED] == 1
 
 
+class TestCheckProvenanceAnchorsAggregation:
+    """`total_rows` / `anchor_column_present` must describe the WHOLE
+    FILE (aggregated across every table), not just the first table
+    (issue #934 acceptance criterion)."""
+
+    def test_total_rows_sums_across_all_tables(self, tmp_path: Path, corpus_dir: Path):
+        path = _write(
+            tmp_path / "provenance.md", _multi_table_doc(2, 3, 4)
+        )
+        report = check_provenance_anchors(path, [corpus_dir])
+        assert report["table_count"] == 3
+        assert report["total_rows"] == 9
+        assert len(report["rows"]) == 9
+
+    def test_anchor_column_present_true_if_any_table_has_it(
+        self, tmp_path: Path, corpus_dir: Path
+    ):
+        """Table 1 is legacy (no Anchor column); table 2 has one — the
+        file-level flag must be True because AT LEAST ONE table has it,
+        not False just because the first table lacks it."""
+        doc = (
+            "# Claim provenance\n\n"
+            "| Claim | Source file | Line range | Notes |\n"
+            "|-------|-------------|------------|-------|\n"
+            '| "legacy claim" | nita3.txt | 1 | pre-anchor row |\n'
+            "\n## Chapter 2\n\n"
+            + _one_table(2, prefix="t1")
+        )
+        path = _write(tmp_path / "provenance.md", doc)
+        report = check_provenance_anchors(path, [corpus_dir])
+        assert report["table_count"] == 2
+        assert report["anchor_column_present"] is True
+        assert report["total_rows"] == 3
+
+    def test_skipped_tables_surfaced_in_report(self, tmp_path: Path, corpus_dir: Path):
+        doc = (
+            "# Claim provenance\n\n"
+            + _one_table(2, prefix="t0")
+            + "\n## Unrelated\n\n"
+            "| Foo | Bar |\n"
+            "|-----|-----|\n"
+            "| 1 | 2 |\n"
+        )
+        path = _write(tmp_path / "provenance.md", doc)
+        report = check_provenance_anchors(path, [corpus_dir])
+        assert report["total_rows"] == 2
+        assert len(report["skipped_tables"]) == 1
+        assert report["skipped_tables"][0]["header"] == ["Foo", "Bar"]
+
+
 # ---------------------------------------------------------------------------
 # repoint_drifted_anchors
 # ---------------------------------------------------------------------------
@@ -289,6 +454,67 @@ class TestRepointDriftedAnchors:
         result = repoint_drifted_anchors(path, [corpus_dir])
         assert result["repointed"] == []
         assert path.read_text(encoding="utf-8") == original
+
+    def test_repoints_drifted_rows_across_multiple_tables(
+        self, tmp_path: Path, corpus_dir: Path
+    ):
+        """The sharpest edge from #934: repoint_drifted_anchors must not
+        report success having only examined table 1 of several — a
+        drifted row in the SECOND table must also get repointed."""
+        second_text = "\n".join(
+            [f"other filler {i}" for i in range(1, 7)]
+            + ["She said the journey took six weeks in total."]
+            + ["other filler 8"]
+        )
+        _write(corpus_dir / "second.txt", second_text)
+
+        doc = (
+            "# Claim provenance\n\n"
+            + "| Claim | Source file | Line range | Anchor | Notes |\n"
+            "|-------|-------------|------------|--------|-------|\n"
+            '| "factory" | nita3.txt | 3-5 | "The factory burned down in the summer of 1942" | recall |\n'
+            "\n## Chapter 2\n\n"
+            "| Claim | Source file | Line range | Anchor | Notes |\n"
+            "|-------|-------------|------------|--------|-------|\n"
+            '| "journey" | second.txt | 1-2 | "She said the journey took six weeks in total." | recall |\n'
+        )
+        path = _write(tmp_path / "provenance.md", doc)
+
+        result = repoint_drifted_anchors(path, [corpus_dir])
+        assert len(result["repointed"]) == 2
+        assert result["table_count"] == 2
+        old_ranges = {r["old_line_range"] for r in result["repointed"]}
+        new_ranges = {r["new_line_range"] for r in result["repointed"]}
+        assert old_ranges == {"3-5", "1-2"}
+        assert new_ranges == {"10", "7"}
+
+        # Re-checking now reports no drift in either table.
+        report = check_provenance_anchors(path, [corpus_dir])
+        assert report["drifted"] is False
+        assert report["total_rows"] == 2
+
+    def test_refuses_and_warns_on_nonconforming_table(
+        self, tmp_path: Path, corpus_dir: Path
+    ):
+        """A non-conforming table alongside a conforming, drifted one:
+        the conforming table is still repointed, and the non-conforming
+        one is explicitly surfaced — never silently dropped."""
+        doc = (
+            "# Claim provenance\n\n"
+            + "| Claim | Source file | Line range | Anchor | Notes |\n"
+            "|-------|-------------|------------|--------|-------|\n"
+            '| "factory" | nita3.txt | 3-5 | "The factory burned down in the summer of 1942" | recall |\n'
+            "\n## Unrelated\n\n"
+            "| Foo | Bar |\n"
+            "|-----|-----|\n"
+            "| 1 | 2 |\n"
+        )
+        path = _write(tmp_path / "provenance.md", doc)
+        result = repoint_drifted_anchors(path, [corpus_dir])
+        assert len(result["repointed"]) == 1
+        assert len(result["skipped_tables"]) == 1
+        assert "WARNING" in result["detail"]
+        assert "not" in result["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
