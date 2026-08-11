@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-11 (Guide triage pass — #934 moved from curating to `loom:building` and its PR #936 opened with `loom:review-requested`; no `loom:issue`/`loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, is open outside the Loom label pipeline)*
+*Last updated: 2026-08-11 (Guide triage pass — new issue #941 (AI-authorship byline) entered the pipeline already `loom:curated` + `loom:building`; no `loom:issue`/`loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, is open outside the Loom label pipeline)*
 
 ---
 
@@ -13,7 +13,9 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.* Both issues that were in progress as of the previous pass shipped: #933 merged via PR #939 ("fix(memoir): let the final revision under max_iterations get a critic pass") and #934 merged via PR #936 ("fix(provenance-anchor): parse every claim table, not just the first") — both closed 2026-08-11; see `WORK_LOG.md`.
+- **#941**: "Optional AI-authorship byline: opt-in provenance line on rendered artifacts" (`tier:goal-supporting`). Claimed by a Builder shortly after filing (2026-08-11); no orphan signal (`loom-recover-orphans --verbose` reports it watched but well within the 4h staleness threshold).
+
+Both issues that were in progress as of the previous pass shipped: #933 merged via PR #939 ("fix(memoir): let the final revision under max_iterations get a critic pass") and #934 merged via PR #936 ("fix(provenance-anchor): parse every claim table, not just the first") — both closed 2026-08-11; see `WORK_LOG.md`.
 
 ## Ready for Work (`loom:issue`)
 
@@ -51,7 +53,7 @@ One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Ski
 
 ## Backlog state
 
-**Two open issues as of 2026-08-11: #888 (curated + `loom:operator-only`, awaiting human/Champion design review) and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** The two issues that were in progress last pass (#933, #934) both shipped this pass via PR #939 and PR #936 respectively. One open PR outside the Loom pipeline: #902 (unlabeled, human-authored tool bump), awaiting a direct human merge decision. No orphaned `loom:building` issues (`loom-recover-orphans --verbose` reports none), no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — no open issue carries `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human runs the daemon-recovery command for #918, and a human or Champion reviews #888's design tradeoffs; the backlog otherwise has no queued work for a Builder to pick up.
+**Three open issues as of 2026-08-11: #941 (`loom:building`, AI-authorship byline, claimed shortly after filing), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** The two issues that were in progress last pass (#933, #934) both shipped this pass via PR #939 and PR #936 respectively. One open PR outside the Loom pipeline: #902 (unlabeled, human-authored tool bump), awaiting a direct human merge decision. No orphaned `loom:building` issues (`loom-recover-orphans --verbose` shows #941 watched but well within its staleness threshold), no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — no open issue carries `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human runs the daemon-recovery command for #918, and a human or Champion reviews #888's design tradeoffs; the backlog otherwise has no queued ready work — #941 is already claimed and building.
 
 ### Recurring themes the next wave of issues will likely touch
 
