@@ -4,6 +4,24 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-08-10
+
+- **PR #931**: feat(diff): local side-by-side prose diff viewer (closes #925) — new `anvil:diff` utility skill, a local, ephemeral, read-only viewer rendering a stdlib-only word-level side-by-side HTML diff between two anvil version dirs, a deslop origin/cleaned.txt pair, or two arbitrary files; binds `127.0.0.1` only, never writes to any input path, bringing the shipped-skill count to 23
+- **PR #929**: feat(deslop): add deterministic no-fabrication diff gate to the revise loop (closes #922)
+- **PR #928**: feat(rhetoric-lint): add sentence_variance rhythm-uniformity rule kind (closes #921)
+- **PR #927**: feat(lib): add 18 AI-humanizer-corpus default rules to rhetoric_lint, bucket a (closes #920)
+- **PR #926**: docs: document voice-sample precedence pattern for rhetoric_rules overrides (closes #923)
+- **PR #924**: docs(research): mine open-source AI-humanizer corpus for rhetoric-lint gaps (closes #919)
+
+### 2026-08-08
+
+- **PR #917**: feat(parity): reframe BRIEF-quarantined figures instead of promoting them under only_in_memo_economic (closes #914)
+- **PR #916**: fix(lib): tolerate markdown emphasis in memo scoring tables, error on zero-row scorecards (closes #912)
+- **PR #915**: feat(memo-redteam): self-derived calibration mode when no strongman exists (closes #913)
+- **PR #909**: fix(deck): visible ask-slide pagination + no table zebra striping (closes #906)
+- **PR #908**: fix(deck): scale figure-legibility glyph height by actual render DPI (closes #904)
+- **PR #907**: fix(marp_lint): key standalone-image detection on line structure, not length (closes #905)
+
 ### 2026-08-06
 
 - **PR #899**: feat(deslop): add anvil:deslop utility skill for cleaning AI-drafted prose outside any anvil project (closes #898) — new utility skill (ingest → iterate → emit loop over `rhetoric_lint.py` + `project_brief.py` voice resolvers + `convergence.py`/`critics.py`, unmodified), bringing the shipped-skill count to 22; JSX/TSX/JS/TS/Vue/Svelte source-literal extraction explicitly out of scope for v1
