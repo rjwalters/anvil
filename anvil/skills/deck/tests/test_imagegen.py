@@ -619,6 +619,44 @@ class TestResolveSlotPrompt(unittest.TestCase):
             )
             self.assertEqual(out, "the hero prompt")
 
+    def test_speaker_notes_excludes_trailing_human_aside(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            v = Path(tmp) / "acme.1"
+            v.mkdir(parents=True)
+            notes = (
+                "# Speaker notes\n\n"
+                "## Imagery prompt: hero\n\n"
+                "the hero prompt\n\n"
+                "on-slide caption note: attribute to Jane Doe, not "
+                "part of the prompt\n\n"
+                "## Imagery prompt: other\n\nthe other prompt\n"
+            )
+            out = resolve_slot_prompt(
+                "hero", version_dir=v, speaker_notes_text=notes
+            )
+            self.assertEqual(out, "the hero prompt")
+            self.assertNotIn("caption note", out)
+            self.assertNotIn("Jane Doe", out)
+
+    def test_speaker_notes_no_blank_line_resolves_in_full(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            v = Path(tmp) / "acme.1"
+            v.mkdir(parents=True)
+            notes = (
+                "# Speaker notes\n\n"
+                "## Imagery prompt: hero\n\n"
+                "a prompt that wraps across\n"
+                "a single unbroken paragraph with no blank line\n"
+            )
+            out = resolve_slot_prompt(
+                "hero", version_dir=v, speaker_notes_text=notes
+            )
+            self.assertEqual(
+                out,
+                "a prompt that wraps across\n"
+                "a single unbroken paragraph with no blank line",
+            )
+
     def test_missing_both_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             v = Path(tmp) / "acme.1"
