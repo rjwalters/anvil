@@ -68,6 +68,7 @@ from imagegen import (  # noqa: E402
     run_imagegen,
     DEFAULT_PRESET_KEY,
     SHARED_SUFFIX,
+    _extract_field_block,
     _latest_version_dir,
 )
 from prompt_journal import JournalEntry, read_journal  # noqa: E402
@@ -507,8 +508,78 @@ class TestLoadStylePresets(unittest.TestCase):
             self.assertIn(key, presets, f"missing preset {key!r}")
         # editorial-photography must have a non-empty prefix.
         self.assertTrue(presets["editorial-photography"]["prefix"])
-        # raw must have an empty prefix (per the spec).
+        # raw must have an empty prefix and suffix (per the spec) — a
+        # non-regression check (#960): the widened terminator regex must
+        # not disturb raw's short-circuit-to-empty behavior.
         self.assertEqual(presets["raw"]["prefix"], "")
+        self.assertEqual(presets["raw"]["suffix"], "")
+
+    def test_no_shipped_preset_leaks_worked_example_content(self) -> None:
+        """Regression for #960: a multi-word bold marker like
+        ``**Worked example**:`` must terminate the preceding
+        ``**Prefix**:``/``**Suffix**:`` block, not get swallowed into it.
+        """
+        shipped = _LIB.parent / "assets" / "imagery-style-presets.md"
+        if not shipped.exists():
+            self.skipTest(
+                f"shipped presets file not found at {shipped}; this is a "
+                f"co-located lib check and not a hard test prerequisite"
+            )
+        presets = load_style_presets(shipped)
+        for key, fields in presets.items():
+            for field_name, value in fields.items():
+                self.assertNotIn(
+                    "Worked example",
+                    value,
+                    f"preset {key!r} {field_name!r} leaked a Worked "
+                    f"example block: {value!r}",
+                )
+                self.assertNotIn(
+                    "---",
+                    value,
+                    f"preset {key!r} {field_name!r} leaked a literal "
+                    f"'---' separator: {value!r}",
+                )
+
+
+class TestExtractFieldBlock(unittest.TestCase):
+    """Regression coverage for #960: multi-word bold markers must
+    terminate a ``**<field>**:`` block just like single-word markers.
+    """
+
+    def test_multiword_marker_terminates_prefix_block(self) -> None:
+        body = (
+            "**Prefix**: studio product photography, clean background.\n"
+            "\n"
+            "**Worked example**: a compact industrial gateway device on "
+            "a white background.\n"
+            "\n"
+            "---\n"
+        )
+        prefix = _extract_field_block(body, "Prefix")
+        self.assertEqual(prefix, "studio product photography, clean background.")
+        self.assertNotIn("Worked example", prefix)
+        self.assertNotIn("gateway", prefix)
+        self.assertNotIn("---", prefix)
+
+    def test_multiword_marker_terminates_suffix_block(self) -> None:
+        body = (
+            "**Suffix**: no on-image text, no watermark.\n"
+            "\n"
+            "**Worked example**: fabricated alternate subject text.\n"
+        )
+        suffix = _extract_field_block(body, "Suffix")
+        self.assertEqual(suffix, "no on-image text, no watermark.")
+        self.assertNotIn("Worked example", suffix)
+
+    def test_singleword_marker_still_terminates(self) -> None:
+        """Non-regression: the original single-word-marker terminator
+        behavior (e.g. ``**Suffix**:`` following ``**Prefix**:``) still
+        works after widening the terminator pattern.
+        """
+        body = "**Prefix**: prefix text.\n\n**Suffix**: suffix text.\n"
+        self.assertEqual(_extract_field_block(body, "Prefix"), "prefix text.")
+        self.assertEqual(_extract_field_block(body, "Suffix"), "suffix text.")
 
 
 class TestComposePrompt(unittest.TestCase):

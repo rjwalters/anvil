@@ -713,14 +713,17 @@ def _extract_field_block(body: str, field_name: str) -> str | None:
     """Extract the body of a ``**<field_name>**:`` block from preset prose.
 
     The block runs from the ``**<field>**:`` marker to the next
-    ``**<other>**:`` marker, the next H3 heading, or end-of-chunk.
+    ``**<other>**:`` marker, the next H3 heading, or end-of-chunk. The
+    terminator marker may be multi-word (e.g. ``**Worked example**:``) —
+    any non-empty bold span immediately followed by a colon terminates the
+    block, not just single-word markers like ``**Suffix**:``.
 
     Blockquote prefixes (``> ``) are stripped. Surrounding whitespace is
     collapsed. The italic ``*(empty…)*`` marker becomes the empty string.
     Returns ``None`` when the field is not present in this chunk.
     """
     pattern = re.compile(
-        rf"\*\*{re.escape(field_name)}\*\*\s*:\s*(.*?)(?=\n\s*\*\*[A-Z][A-Za-z]+\*\*\s*:|\n###|\Z)",
+        rf"\*\*{re.escape(field_name)}\*\*\s*:\s*(.*?)(?=\n\s*\*\*[^*\n]+\*\*\s*:|\n###|\Z)",
         re.DOTALL,
     )
     m = pattern.search(body)
