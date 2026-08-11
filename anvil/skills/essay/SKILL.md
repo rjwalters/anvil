@@ -94,6 +94,12 @@ Thresholds: **≥35/44 advances** (general tier — personal/professional voice 
 
 Anything past that boundary (front-matter injection for the site generator, image asset pipelines, deploy) is out of scope by design. A consumer wanting a publish command writes it natively against this contract.
 
+## AI-authorship byline (opt-in, off by default — issue #941)
+
+A project MAY declare a top-level `ai_byline:` block on its `BRIEF.md` (`anvil/lib/project_brief.py::AiByline`, resolved by `resolve_ai_byline(project_dir)`) to have `essay-draft` / `essay-revise` append a short, configurable AI-authorship disclosure line to the rendered body. **Strictly opt-in** (`enabled: true` required; absent block or `enabled: false` — the default — is byte-identical to a pre-#941 install, no line is ever rendered). This is an editorial provenance choice made entirely by the consumer, **not** a substitute for, or a claim about, the intrinsic token-level model-output watermark, and it is distinct from the `corpus:` claim-provenance tier (#597) — see `anvil/lib/snippets/provenance.md` for the boundary discussion.
+
+When active, the resolved line (custom `text:` template with `{model}`/`{date}` interpolation, or a generic default) is inserted at the declared `placement:` — `byline` (default; an italicized line directly under the title), `footer` (an italicized closing paragraph), or `frontmatter-only` (recorded in `_progress.json.metadata.ai_byline_text` only, no visible body line — for a consumer whose site template renders its own byline from front matter). See `essay-draft.md` step 3d / step 5 and `essay-revise.md` step 5c for the exact insertion mechanics. The line survives into `SHARE/` and compiled-book output for free, since it is baked into the source `<thread>.md` at draft/revise time, the same way the voice/corpus tiers are.
+
 ## Gates — blocking vs advisory
 
 Deterministic pre-flight fires **before** the expensive content review (the framework-wide "deterministic pre-flight before judgment" pattern). The reviewer records every gate outcome in `<thread>.{N}.review/_gate.json` and the blocking outcomes feed the verdict:

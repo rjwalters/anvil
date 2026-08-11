@@ -38,6 +38,34 @@ voice-identity misattribution — right substance, rendered in the wrong
 voice — is #598's flag. The two tiers are independent and a memoir may
 declare both.
 
+## Scope boundary (vs. the AI-authorship byline, #941)
+
+A third, unrelated tier lives beside this one: the opt-in `ai_byline:`
+BRIEF block (`anvil/lib/project_brief.py::AiByline` /
+`resolve_ai_byline`, rendered by `anvil/lib/ai_byline.py`). Where this
+contract (`corpus:`) verifies **substance** — does a claim trace to a
+real source passage? — the AI-byline tier discloses **authorship**: a
+short, consumer-configured line an artifact's drafter/reviser can append
+to a rendered deliverable stating it was drafted with AI assistance.
+
+The two are independent and unrelated: a project may declare `corpus:`
+without `ai_byline:` (verified substance, no authorship disclosure), or
+`ai_byline:` without `corpus:` (authorship disclosed, no local-corpus
+verification applies — e.g. an essay with no evidentiary corpus), or
+both, or neither. Neither tier implies the other.
+
+The AI-authorship byline is **also** distinct from — and not a
+substitute for — the intrinsic, server-side, token-level model-output
+watermark (the green-list logit-bias mechanism mandated for EU AI Act
+transparency). That watermark targets the *adversarial* case (detecting
+AI text passed off as human) and is entirely out of a consumer's
+control. The byline is the *honest-actor* complement: a self-publisher's
+own, detachable, discretionary editorial choice to disclose AI
+assistance on their own terms. It carries no tamper-resistance claim and
+makes no claim to be a watermark. See `anvil/lib/ai_byline.py` and the
+per-skill `ai_byline:` integration (e.g. `essay`'s SKILL.md
+§"AI-authorship byline") for the rendering contract.
+
 ## Section 1 — BRIEF activation
 
 A project declares its factual ground truth via ONE optional
