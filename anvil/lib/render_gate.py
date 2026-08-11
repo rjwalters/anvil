@@ -198,6 +198,7 @@ threshold drift cannot silently re-open the hole.
 
 from __future__ import annotations
 
+import bisect
 import re
 import shutil
 import struct
@@ -382,6 +383,22 @@ _OVERFULL_RE = re.compile(
     r"Overfull\s+\\(?P<kind>[hv])box\s+\(\s*(?P<amount>\d+(?:\.\d+)?)pt\s+too\s+(?:wide|high)\s*\)"
     r"(?:[^\n]*?at\s+lines?\s+(?P<line_start>\d+)(?:--(?P<line_end>\d+))?)?",
     re.IGNORECASE,
+)
+
+# TeX/LaTeX engine logs delimit "now processing this file" with a bare
+# ``(<path>`` — no space between the paren and the path — and close it with
+# a matching ``)`` once the engine returns to the including file (issue
+# #961). The path is whatever kpathsea resolved: a job-relative ``./foo.tex``
+# for a document-local ``\input``, or an absolute path for a class/style
+# file pulled from the TeX distribution. Matched only when the path ends in
+# a recognized TeX source/support extension so we don't false-positive on
+# unrelated parenthetical prose the engine or a package emits (e.g. "(see
+# the log for details)"). No leading-character requirement on the path
+# itself — absolute paths (``/usr/.../article.cls``) and relative ones
+# (``./claims.tex``) both match.
+_FILE_OPEN_RE = re.compile(
+    r"\((?P<path>[^\s()]+\.(?:tex|sty|cls|clo|cfg|def|fd|ldf|cnf|map|enc))"
+    r"(?=[\s)]|$)"
 )
 
 # Regex for the last-N LaTeX error lines (``! ...``). Used to surface engine
@@ -683,25 +700,105 @@ def _count_pages_with_pdfinfo(
     return None
 
 
-def _parse_overfull_boxes(log_text: str, threshold_pt: float) -> list[dict]:
+def _file_scope_transitions(log_text: str) -> tuple[list[int], list[Optional[str]]]:
+    """Walk the TeX log's parenthesis-delimited file-open/close scope stack.
+
+    TeX/LaTeX engines announce "now processing this file" as a bare
+    ``(<path>`` (no intervening whitespace) and close it with a matching
+    ``)`` once control returns to the including file — the same
+    convention used for class/style files (``(./anvil-uspto.cls)``) and for
+    nested ``\\input``/``\\include`` targets (``(./claims.tex ... )``).
+    Non-file parenthesized text (hyperref chatter, "(see the log for
+    details)", etc.) still opens/closes a stack frame — it just isn't
+    *tagged* as a file frame — so file-frame nesting stays correct even
+    when interleaved with unrelated parens.
+
+    Returns two parallel lists ``(positions, files)`` sorted by ascending
+    log offset: ``positions[i]`` is the log offset at which the innermost
+    open file became ``files[i]`` (``None`` before the first file-open, e.g.
+    the engine banner lines). Feed this into :func:`_file_at_offset` to
+    resolve "which file was open when this log offset was emitted" for any
+    match position.
+    """
+    positions: list[int] = []
+    files: list[Optional[str]] = []
+    file_stack: list[str] = []
+    # Parallel to the *full* paren stack (file + non-file frames) so a close
+    # paren always pops the correct kind of frame — a non-file paren nested
+    # inside an open file frame must not accidentally pop the file frame.
+    is_file_frame: list[bool] = []
+    length = len(log_text)
+    i = 0
+    while i < length:
+        ch = log_text[i]
+        if ch == "(":
+            m = _FILE_OPEN_RE.match(log_text, i)
+            if m:
+                name = Path(m.group("path")).name
+                file_stack.append(name)
+                is_file_frame.append(True)
+                positions.append(i)
+                files.append(name)
+            else:
+                is_file_frame.append(False)
+        elif ch == ")":
+            if is_file_frame:
+                was_file = is_file_frame.pop()
+                if was_file and file_stack:
+                    file_stack.pop()
+                    positions.append(i + 1)
+                    files.append(file_stack[-1] if file_stack else None)
+        i += 1
+    return positions, files
+
+
+def _file_at_offset(
+    positions: list[int], files: list[Optional[str]], offset: int
+) -> Optional[str]:
+    """Return the file open at ``offset`` per the ``_file_scope_transitions``
+    lists, or ``None`` if no file-open precedes ``offset``."""
+    idx = bisect.bisect_right(positions, offset) - 1
+    if idx < 0:
+        return None
+    return files[idx]
+
+
+def _parse_overfull_boxes(
+    log_text: str, threshold_pt: float, *, root_name: Optional[str] = None
+) -> list[dict]:
     """Return the list of overfull-box hits exceeding ``threshold_pt``.
 
-    Each entry: ``{kind, amount_pt, line, raw}``. Threshold is strictly
-    greater than: a 5.0pt-over-threshold-5.0 box is NOT reported (matches
-    typical LaTeX overfull tolerance — exactly-at-threshold boxes are
-    cosmetic).
+    Each entry: ``{kind, amount_pt, line, file, raw}``. Threshold is
+    strictly greater than: a 5.0pt-over-threshold-5.0 box is NOT reported
+    (matches typical LaTeX overfull tolerance — exactly-at-threshold boxes
+    are cosmetic).
+
+    **File attribution (issue #961).** A box's "at lines NN--MM" span is
+    TeX's line count *within whichever file is currently open* — when a
+    parent document ``\\input``s a child (``spec.tex`` pulling in
+    ``claims.tex``), a box emitted while the child is open reports line
+    numbers relative to the child, not the parent. We resolve the file
+    each hit actually belongs to by replaying the log's
+    ``(./file.tex ... )`` scope stack (:func:`_file_scope_transitions`) up
+    to the hit's log offset, so ``file`` is the innermost open file at that
+    point — ``claims.tex``, not the top-level ``spec.tex``, for a box
+    emitted between the child's open and close markers. When the log has
+    no recognizable file-open marker at all (e.g. a synthetic log with no
+    preamble), ``file`` falls back to ``root_name`` (typically the
+    top-level ``.tex`` file's basename, when the caller has it) or
+    ``None``.
 
     **Dedupe contract (issue #668).** Multi-pass LaTeX cycles
     (``pdflatex → bibtex → pdflatex → pdflatex``, as captured by
     e.g. ``paper-audit``'s ``compile-log.txt``) re-emit the *same* overfull
     warning on every ``pdflatex`` invocation, so a single real overfull box
     appears once per pass in the concatenated log. We deduplicate by
-    ``(line, amount_pt, kind)`` — LaTeX line numbers are stable across
-    passes for line-anchored warnings (hbox ``at lines N--M``, vbox
-    ``detected at line N``), so identical triples are re-emissions of the
+    ``(file, line, amount_pt, kind)`` — LaTeX line numbers are stable
+    across passes for line-anchored warnings (hbox ``at lines N--M``, vbox
+    ``detected at line N``), so identical tuples are re-emissions of the
     same underlying box, not independent defects. First occurrence wins, so
-    ``line``/``raw``/``kind`` reflect the first pass's text and single-pass
-    logs (no duplicate triples) are returned byte-identically.
+    ``line``/``file``/``raw``/``kind`` reflect the first pass's text and
+    single-pass logs (no duplicate tuples) are returned byte-identically.
 
     Hits with no captured ``line`` (the regex line-span group is absent)
     are **never** collapsed together: a genuinely line-less log with several
@@ -714,7 +811,8 @@ def _parse_overfull_boxes(log_text: str, threshold_pt: float) -> list[dict]:
     log that flagged before still flags after.
     """
     hits: list[dict] = []
-    seen: set[tuple[int, float, str]] = set()
+    seen: set[tuple[Optional[str], int, float, str]] = set()
+    positions, files = _file_scope_transitions(log_text)
     for m in _OVERFULL_RE.finditer(log_text):
         amount = float(m.group("amount"))
         if amount <= threshold_pt:
@@ -722,8 +820,9 @@ def _parse_overfull_boxes(log_text: str, threshold_pt: float) -> list[dict]:
         line_start = m.group("line_start")
         line = int(line_start) if line_start else None
         kind = f"{m.group('kind').lower()}box"
+        file_name = _file_at_offset(positions, files, m.start()) or root_name
         if line is not None:
-            key = (line, amount, kind)
+            key = (file_name, line, amount, kind)
             if key in seen:
                 continue
             seen.add(key)
@@ -732,6 +831,7 @@ def _parse_overfull_boxes(log_text: str, threshold_pt: float) -> list[dict]:
                 "kind": kind,
                 "amount_pt": amount,
                 "line": line,
+                "file": file_name,
                 "raw": m.group(0).strip(),
             }
         )
@@ -1338,7 +1438,17 @@ def gate(
             log_text = log_p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             log_text = ""
-        overfull = _parse_overfull_boxes(log_text, overfull_threshold_pt)
+        # Best-effort fallback name for the top-level document, used only
+        # when the log itself has no recognizable file-open marker (so the
+        # scope-stack walk in ``_parse_overfull_boxes`` can't resolve a
+        # file at all). ``sources[0]`` is the tex_path passed to
+        # ``compile_and_gate``/``gate`` when the caller supplies one;
+        # otherwise fall back to the PDF's stem (``compile_and_gate`` names
+        # the PDF after ``tex_path.stem``).
+        root_name = sources[0].name if sources else f"{pdf_path.stem}.tex"
+        overfull = _parse_overfull_boxes(
+            log_text, overfull_threshold_pt, root_name=root_name
+        )
         if overfull:
             failed.add(DIM_OVERFULL)
             reasons.append(
@@ -1347,15 +1457,22 @@ def gate(
             )
             for box in overfull:
                 line_note = f"L{box['line']}" if box["line"] else "L?"
+                # File-relative attribution (issue #961): a box emitted
+                # while an \input'd child file was open on the TeX log's
+                # scope stack is attributed to that child (e.g.
+                # ``claims.tex``), not the top-level document, with a line
+                # number relative to the file it names.
+                file_note = box["file"] if box["file"] else str(log_p)
                 findings.append(
                     GateFinding(
                         gate=DIM_OVERFULL,
                         severity="error",
                         message=(
                             f"Overfull \\{box['kind']} "
-                            f"({box['amount_pt']:.1f}pt over) at {line_note}."
+                            f"({box['amount_pt']:.1f}pt over) in "
+                            f"{file_note} at {line_note}."
                         ),
-                        location=f"{log_p}:{line_note}",
+                        location=f"{file_note}:{line_note}",
                     )
                 )
 

@@ -1,0 +1,16 @@
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024)
+entering extended mode
+(./spec.tex
+LaTeX2e <2024-06-01> patch level 1
+Document Class: anvil-uspto 2025-01-01 v1.0 USPTO patent application
+(./anvil-uspto.cls)
+(/usr/local/texlive/2024/texmf-dist/tex/latex/base/article.cls)
+[1] [13]
+(./claims.tex [14]
+Overfull \hbox (5.056pt too wide) in paragraph at lines 62--63
+[]\OT1/cmr/m/n/10 A dependent method claim reciting the sphere radius pa-
+rameter a second time.
+)
+[15]
+Output written on spec.pdf (16 pages, 34567 bytes).
+Transcript written on spec.log.
