@@ -13,7 +13,9 @@ The priorart sibling is **read-only once written**. Critical flags short-circuit
 
 ## Scope and important non-scope
 
-This critic evaluates the application against prior art the **operator has supplied** in `<thread>/prior-art/`. It does **not** perform its own patent search. Patent searching is a distinct discipline (USPTO classification, Boolean queries, Espacenet/Google Patents/PatBase, IPC/CPC classes) that requires dedicated tooling and time budget. A future skill (potentially `anvil:ip-search`) may address it.
+This critic evaluates the application against prior art the **operator has supplied** in `<thread>/prior-art/`. It does **not** perform its own patent search. Patent searching is a distinct discipline (USPTO classification, Boolean queries, Espacenet/Google Patents/PatBase, IPC/CPC classes) that requires dedicated tooling and time budget.
+
+**To collect art before running this critic**, use `anvil:ip-search` (issue #957) — it derives queries from the thread's `BRIEF.md` inventive-feature inventory, queries a live corpus (PatentsView / USPTO Open Data Portal, with Google Patents as a documented manual fallback when no API key is configured), and writes reference summaries into `<thread>/prior-art/` in exactly the frontmatter shape this critic parses. It is a drafting aid, not a clearance search, and it renders no positioning verdict — dimension 5 remains entirely this critic's to score.
 
 If `<thread>/prior-art/` is empty or absent, this critic produces a `_summary.md` noting that no prior art was supplied and recommending operator supply some before re-running. It does NOT score Dimension 5 in that case (leaves score `null`).
 

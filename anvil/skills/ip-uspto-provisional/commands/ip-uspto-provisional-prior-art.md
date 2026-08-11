@@ -15,6 +15,8 @@ The priorart sibling is **read-only once written**.
 
 This critic evaluates the disclosure against prior art the **operator supplied** in `<thread>/prior-art/`. It does **not** perform its own patent search (same non-scope as `anvil:ip-uspto`'s prior-art critic). If `<thread>/prior-art/` is empty or absent, it writes a `_summary.md` noting that, leaves Dimension 5 `null`, and finishes `done` — a legitimate state, not an error.
 
+**To collect art before running this critic**, use `anvil:ip-search` (issue #957) — it derives queries from this thread's `BRIEF.md` §3 inventive-feature inventory (the same disclosure denominator the `s112` critic scores against), queries a live corpus (PatentsView / USPTO Open Data Portal, with Google Patents as a documented manual fallback when no API key is configured), and writes reference summaries into `<thread>/prior-art/` in exactly the frontmatter shape step 2 below enumerates. It is a drafting aid, not a clearance search, and its per-reference relevance note is mechanical term overlap only — the positioning verdict on dimension 5 stays entirely this critic's.
+
 **No anticipation verdicts.** With claims optional (and unexamined either way), there is no §102/§103 claim-by-claim adjudication to run. The provisional question is different: does the *disclosure* position the invention against the known art so the eventual conversion can be drafted around it, and does the spec avoid poisoning that conversion?
 
 ## Rubric dimension owned (per `rubric.md`)
