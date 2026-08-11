@@ -53,7 +53,7 @@ and trim it in place):
 ## Why the `code_ref` glob is illustrative-only
 
 The vendored `BRIEF.md` keeps `code_ref: ../../bridge/**/*.rs` (de-pathed from
-the original absolute `/Users/rwalters/GitHub/botho/bridge/**/*.rs`). That glob
+the original absolute `/Users/you/GitHub/botho/bridge/**/*.rs`). That glob
 points at **botho's own bridge Rust workspace**, which is deliberately NOT
 vendored here (out of scope, large, not anvil's to maintain). When this example
 is copied standalone the glob **matches nothing**, and
