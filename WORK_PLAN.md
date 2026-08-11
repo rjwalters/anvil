@@ -2,18 +2,18 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-11 (Guide triage pass — no `loom:issue`/`loom:building`/`loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, is open outside the Loom label pipeline)*
+*Last updated: 2026-08-11 (Guide triage pass — #933 now `loom:building` and #934 entered `loom:curating` since the morning pass; no `loom:issue`/`loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, is open outside the Loom label pipeline)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* No open issues carry `loom:issue` — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward. Both open issues, #888 and #918, are `loom:operator-only` and not eligible for `loom:urgent` (see below).
+*Empty.* No open issues carry `loom:issue` — there is no unclaimed ready work for `loom:urgent` to direct a Builder toward. #933 is already claimed (`loom:building`, see below); #888 and #918 are `loom:operator-only` and not eligible for `loom:urgent` (see below).
 
 ## In Progress (`loom:building`)
 
-*Empty.* No open issues carry `loom:building`. Since the last pass, twelve PRs merged closing twelve issues (#904–#906, #912–#914, #919–#923, #925) — see `WORK_LOG.md` 2026-08-08 and 2026-08-10.
+- **#933**: "At max_iterations the final version can be written but never fixed — the cap counts versions, so the last revision is unvalidatable" (`loom:curated`, `tier:goal-supporting`). Canary-surfaced on a 15-thread `memoir` book: when `memoir-revise` writes a repair on the last permitted version slot, there is no slot left to validate that repair, so a thread can BLOCK holding a known defect with no path to clear it. Claimed by a Builder this pass (claim age ~37m, well under the 4h orphan-recovery threshold — confirmed live, not orphaned).
 
 ## Ready for Work (`loom:issue`)
 
@@ -37,7 +37,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-*Empty.* No issues carry `loom:triage` or `loom:curating`.
+- **#934**: "parse_provenance_table reads only the first claim table — 5 of 115 rows on a nine-table map, and repoint_drifted_anchors writes on that basis." Canary-measured on the same `walters-family-tree` consumer: two independent early `break`s in `anvil/lib/provenance_anchor.py::parse_provenance_table` (`:230-238` header discovery, `:259-263` row iteration) stop parsing at the first claim table in a multi-table `provenance.md`; `repoint_drifted_anchors` (`:591`) then writes anchor repoints on the truncated result — on a nine-table map only 5 of 115 rows are seen. With Curator now; not yet eligible for `loom:issue` promotion.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -49,7 +49,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Two open issues as of 2026-08-11: #888 (curated + `loom:operator-only`, awaiting human/Champion design review) and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation); one open PR (#902, unlabeled, human-authored tool bump — outside the Loom pipeline).** No orphaned `loom:building` issues, no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — neither open issue is eligible for `loom:urgent` promotion because neither carries `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a human runs the daemon-recovery command for #918, a human or Champion reviews #888's design tradeoffs, and (separately) a human merge decision on #902.
+**Four open issues as of 2026-08-11: #933 (`loom:building` + `loom:curated`, in progress — see above), #934 (`loom:curating`, awaiting curation), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation); one open PR (#902, unlabeled, human-authored tool bump — outside the Loom pipeline).** No orphaned `loom:building` issues (#933's claim was confirmed live via `loom-recover-orphans`), no stale `loom:blocked` issues, no open epics. `loom:urgent` stays empty — no open issue carries `loom:issue`, and the Guide never adds `loom:issue` (that's human/Champion approval, not triage). Next action: a Builder continues #933, Curator finishes triaging #934, a human runs the daemon-recovery command for #918, a human or Champion reviews #888's design tradeoffs, and (separately) a human merge decision on #902.
 
 ### Recurring themes the next wave of issues will likely touch
 
