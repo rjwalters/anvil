@@ -915,13 +915,15 @@ SIDECAR_EOF
 # importable mirror written by Stage 5 + Stage 7).
 #
 # The optional-extras mirror is intentionally narrower than the source
-# repo's: only `auto_shrink` is forwarded (the one extra that's currently
-# wired through `anvil/lib/render.py::check_auto_shrink_deps_available`).
-# `dev` is omitted — consumers running `uv sync --project .anvil` don't
-# need pytest to invoke the framework. New extras added to the source
-# `pyproject.toml` are auto-mirrored here only when this function is
+# repo's: only `auto_shrink` and `deck_imagegen` are forwarded (the extras
+# that are currently wired through `anvil/lib/render.py`'s
+# `check_auto_shrink_deps_available` and the `anvil:deck` deck-imagegen
+# dispatcher's JPEG/WebP-to-PNG transcode path, issue #564). `dev` is
+# omitted — consumers running `uv sync --project .anvil` don't need pytest
+# to invoke the framework. New extras added to the source `pyproject.toml`
+# (e.g. `image_lint`) are auto-mirrored here only when this function is
 # updated — by design, since each extra needs a deliberate "yes, the
-# consumer needs this at runtime" decision.
+# consumer needs this at runtime" decision (issue #947).
 #
 # Path layout assumption: the consumer's anvil package lives at
 # <target>/.anvil/anvil/ (written by Stage 5). The setuptools include
@@ -987,6 +989,15 @@ dependencies = [
 auto_shrink = [
     "Pillow>=12.3.0",
     "numpy>=1.24",
+]
+# \`anvil:deck\` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
+# Real image backends (Flux, DALL-E, SDXL, etc.) often default to JPEG or
+# WebP rather than PNG; the deck-imagegen dispatcher transcodes those to PNG
+# via Pillow before writing to disk. PNG-native adapters need no extras —
+# this only fires when the adapter actually returns non-PNG bytes. Pillow
+# floor matches \`[auto_shrink]\` — see #744.
+deck_imagegen = [
+    "Pillow>=12.3.0",
 ]
 
 [tool.uv]
