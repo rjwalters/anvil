@@ -71,6 +71,20 @@ def _provenance_table(rows: str) -> str:
     )
 
 
+def _multi_provenance_table(*table_rows: str) -> str:
+    """Build a ``provenance.md`` with one 5-column claim table per
+    ``table_rows`` entry, each with its own header — mirrors a real
+    multi-source provenance map (one table per corpus file)."""
+    sections = []
+    for i, rows in enumerate(table_rows, start=1):
+        sections.append(
+            f"## Source {i}\n\n"
+            "| Claim | Source file | Line range | Anchor | Notes |\n"
+            "|-------|-------------|------------|--------|-------|\n" + rows
+        )
+    return "# Claim provenance\n\n" + "\n".join(sections)
+
+
 # ---------------------------------------------------------------------------
 # parse_provenance_table
 # ---------------------------------------------------------------------------
@@ -119,6 +133,129 @@ class TestParseProvenanceTable:
         )
         table = parse_provenance_table(path)
         assert table.rows[0].line_range == (7, 7)
+
+    def test_single_table_row_output_is_unchanged_by_multi_table_support(
+        self, tmp_path: Path
+    ):
+        """Regression guard for issue #934: a single-table file must
+        parse to the exact same row fields it did before multi-table
+        support was added."""
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| "The factory burned down" | nita3.txt | 3-5 | "The factory burned down in the summer of 1942" | verbatim recall |\n'
+                '| Legacy claim | nita3.txt | 1-2 |  | pre-anchor row |\n'
+            ),
+        )
+        table = parse_provenance_table(path)
+        assert table.skipped_tables == []
+        assert len(table.rows) == 2
+        first, second = table.rows
+        assert (first.claim, first.source_file, first.line_range, first.anchor) == (
+            '"The factory burned down"',
+            "nita3.txt",
+            (3, 5),
+            "The factory burned down in the summer of 1942",
+        )
+        assert (second.claim, second.line_range, second.anchor) == (
+            "Legacy claim",
+            (1, 2),
+            None,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Multi-table provenance.md files (issue #934)
+# ---------------------------------------------------------------------------
+
+
+class TestMultipleTables:
+    def test_parses_rows_from_every_table(self, tmp_path: Path):
+        path = _write(
+            tmp_path / "provenance.md",
+            _multi_provenance_table(
+                '| "factory" | nita3.txt | 10 | "The factory burned down in the summer of 1942" | recall |\n',
+                '| "filler seven" | nita3.txt | 7 | "filler line 7" | recall |\n'
+                '| "filler eight" | nita3.txt | 8 | "filler line 8" | recall |\n',
+            ),
+        )
+        table = parse_provenance_table(path)
+        assert table.skipped_tables == []
+        assert len(table.rows) == 3
+        assert [r.claim for r in table.rows] == [
+            '"factory"',
+            '"filler seven"',
+            '"filler eight"',
+        ]
+
+    def test_check_and_repoint_cover_every_table(
+        self, tmp_path: Path, corpus_dir: Path
+    ):
+        path = _write(
+            tmp_path / "provenance.md",
+            _multi_provenance_table(
+                # table 1: drifted
+                '| "factory" | nita3.txt | 3-5 | "The factory burned down in the summer of 1942" | recall |\n',
+                # table 2: also drifted, distinct row/anchor
+                '| "filler seven" | nita3.txt | 1 | "filler line 7" | recall |\n',
+            ),
+        )
+        report = check_provenance_anchors(path, [corpus_dir])
+        assert report["total_rows"] == 2
+        assert report["anchor_column_present"] is True
+        assert report["counts"][STATUS_DRIFTED] == 2
+        assert report["drifted"] is True
+
+        result = repoint_drifted_anchors(path, [corpus_dir])
+        assert len(result["repointed"]) == 2
+        claims_repointed = {r["claim"] for r in result["repointed"]}
+        assert claims_repointed == {'"factory"', '"filler seven"'}
+
+        report_after = check_provenance_anchors(path, [corpus_dir])
+        assert report_after["drifted"] is False
+        assert report_after["counts"][STATUS_RESOLVED] == 2
+
+    def test_three_tables_hand_counted(self, tmp_path: Path):
+        path = _write(
+            tmp_path / "provenance.md",
+            _multi_provenance_table(
+                '| a1 | nita3.txt | 1 | "filler line 1" | n |\n',
+                '| b1 | nita3.txt | 2 | "filler line 2" | n |\n'
+                '| b2 | nita3.txt | 3 | "filler line 3" | n |\n',
+                '| c1 | nita3.txt | 4 | "filler line 4" | n |\n'
+                '| c2 | nita3.txt | 5 | "filler line 5" | n |\n'
+                '| c3 | nita3.txt | 6 | "filler line 6" | n |\n',
+            ),
+        )
+        table = parse_provenance_table(path)
+        assert len(table.rows) == 6
+
+    def test_non_conforming_table_is_reported_not_silently_dropped(
+        self, tmp_path: Path
+    ):
+        content = (
+            "# Notes\n\n"
+            "| Name | Value |\n"
+            "|------|-------|\n"
+            "| foo | bar |\n"
+            "\n"
+            "# Claim provenance\n\n"
+            "| Claim | Source file | Line range | Anchor | Notes |\n"
+            "|-------|-------------|------------|--------|-------|\n"
+            '| "factory" | nita3.txt | 10 | "The factory burned down in the summer of 1942" | recall |\n'
+        )
+        path = _write(tmp_path / "provenance.md", content)
+        table = parse_provenance_table(path)
+        assert len(table.rows) == 1
+        assert len(table.skipped_tables) == 1
+        skipped = table.skipped_tables[0]
+        assert skipped["start_line"] == 3
+        assert skipped["end_line"] == 5
+
+        # The check report surfaces the same diagnostic, loud rather
+        # than silent.
+        report = check_provenance_anchors(path, [tmp_path])
+        assert len(report["skipped_tables"]) == 1
 
 
 # ---------------------------------------------------------------------------

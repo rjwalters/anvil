@@ -84,7 +84,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -199,17 +199,48 @@ class ProvenanceRow:
 
     notes: str
 
+    line_range_col: Optional[int] = None
+    """0-based ``Line range`` column index within *this row's own table*
+    (a ``provenance.md`` may hold several tables with independent column
+    layouts). ``None`` if that table has no ``Line range`` column. Used
+    by :func:`repoint_drifted_anchors` to rewrite the correct cell —
+    distinct from :attr:`ParsedProvenanceTable.line_range_col`, which
+    only reflects the *first* table in the file."""
+
+    anchor_col: Optional[int] = None
+    """0-based ``Anchor`` column index within this row's own table, or
+    ``None`` if that table has no ``Anchor`` column. See
+    :attr:`line_range_col`."""
+
 
 @dataclass
 class ParsedProvenanceTable:
     """A parsed ``provenance.md`` file: header + rows + the raw lines
-    (kept for :func:`repoint_drifted_anchors` to rewrite in place)."""
+    (kept for :func:`repoint_drifted_anchors` to rewrite in place).
+
+    A ``provenance.md`` file may contain **several** claim tables (e.g.
+    one per corpus source), separated by prose or blank lines. Every
+    conforming table's rows are collected into :attr:`rows`. ``header`` /
+    ``line_range_col`` / ``anchor_col`` describe only the *first* table
+    found — kept for backward compatibility with single-table files —
+    while :attr:`has_anchor_column` and each row's own
+    :attr:`ProvenanceRow.line_range_col` / :attr:`ProvenanceRow.anchor_col`
+    describe the whole file."""
 
     header: List[str]
     line_range_col: Optional[int]
     anchor_col: Optional[int]
     rows: List[ProvenanceRow]
     lines: List[str]
+    has_anchor_column: bool = False
+    """Whether *any* table in the file declared an ``Anchor`` column —
+    unlike :attr:`anchor_col`, this reflects the whole file, not just the
+    first table."""
+
+    skipped_tables: List[Dict[str, Any]] = field(default_factory=list)
+    """Non-conforming pipe-delimited blocks that were encountered but
+    never resolved into a table with a recognizable ``Claim``/``Source``
+    header — reported rather than silently dropped, per issue #934."""
 
 
 def parse_provenance_table(path: Path) -> ParsedProvenanceTable:
@@ -218,80 +249,138 @@ def parse_provenance_table(path: Path) -> ParsedProvenanceTable:
     Tolerates both the legacy 4-column shape (``Claim | Source file |
     Line range | Notes``) and the anchor-bearing 5-column shape
     (``Claim | Source file | Line range | Anchor | Notes``) — column
-    identity is derived from the header row, not a fixed position, so
-    either shape (or a consumer-reordered variant) parses correctly.
-    Rows in a legacy table (no ``Anchor`` header) get ``anchor=None``
-    (:data:`STATUS_NO_ANCHOR`) rather than raising.
+    identity is derived from each table's own header row, not a fixed
+    position, so either shape (or a consumer-reordered variant) parses
+    correctly. Rows in a legacy table (no ``Anchor`` header) get
+    ``anchor=None`` (:data:`STATUS_NO_ANCHOR`) rather than raising.
+
+    A file MAY contain multiple claim tables (issue #934) — every
+    conforming table's rows are returned, not just the first. A blank or
+    otherwise non-pipe line ends the current table and resumes scanning
+    for the next one, mirroring a consumer's own multi-table
+    ``check-citations.py::parse_map`` reference implementation. A
+    pipe-delimited block that never resolves into a recognized
+    ``Claim``/``Source`` header is reported in
+    :attr:`ParsedProvenanceTable.skipped_tables` rather than silently
+    dropped.
     """
     lines = Path(path).read_text(encoding="utf-8").splitlines()
 
     header: List[str] = []
     header_idx: Optional[int] = None
-    for idx, line in enumerate(lines):
-        if not line.strip().startswith("|"):
-            continue
-        cells = _split_row(line)
-        lowered = [c.lower() for c in cells]
-        if "claim" in lowered and any("source" in c for c in lowered):
-            header = cells
-            header_idx = idx
-            break
+    line_range_col: Optional[int] = None
+    anchor_col: Optional[int] = None
+    has_anchor_column = False
 
-    if header_idx is None:
-        return ParsedProvenanceTable(
-            header=[], line_range_col=None, anchor_col=None, rows=[], lines=lines
-        )
+    rows: List[ProvenanceRow] = []
+    skipped_tables: List[Dict[str, Any]] = []
 
-    lowered_header = [c.lower() for c in header]
-
-    def _find_col(*names: str) -> Optional[int]:
-        for i, cell in enumerate(lowered_header):
+    def _find_col(lowered_cells: List[str], *names: str) -> Optional[int]:
+        for i, cell in enumerate(lowered_cells):
             if any(name in cell for name in names):
                 return i
         return None
 
-    claim_col = _find_col("claim")
-    source_col = _find_col("source")
-    line_range_col = _find_col("line range", "line-range")
-    anchor_col = _find_col("anchor")
-    notes_col = _find_col("notes")
+    cur_cols: Optional[Dict[str, Optional[int]]] = None
+    block_start_idx: Optional[int] = None
+    block_saw_header = False
 
-    rows: List[ProvenanceRow] = []
-    for row_idx in range(header_idx + 1, len(lines)):
-        line = lines[row_idx]
+    def _close_block(end_idx: int) -> None:
+        # Reports a pipe-delimited block that ended without ever
+        # resolving into a table with a recognizable header — a
+        # non-conforming table, made loud instead of silently dropped.
+        nonlocal block_start_idx, block_saw_header
+        if block_start_idx is not None and not block_saw_header:
+            skipped_tables.append(
+                {
+                    "start_line": block_start_idx + 1,
+                    "end_line": end_idx,
+                    "detail": (
+                        "pipe-delimited block has no header row "
+                        "containing both a 'Claim' and a 'Source' "
+                        "column — not parsed as a claim table."
+                    ),
+                }
+            )
+        block_start_idx = None
+        block_saw_header = False
+
+    for idx, line in enumerate(lines):
         if not line.strip().startswith("|"):
-            break
+            # A blank (or otherwise non-pipe) line ends the current
+            # table; a provenance.md may hold several.
+            _close_block(idx)
+            cur_cols = None
+            continue
+
+        if block_start_idx is None:
+            block_start_idx = idx
+
         cells = _split_row(line)
+
+        if cur_cols is None:
+            lowered = [c.lower() for c in cells]
+            if "claim" in lowered and any("source" in c for c in lowered):
+                block_saw_header = True
+                this_line_range_col = _find_col(lowered, "line range", "line-range")
+                this_anchor_col = _find_col(lowered, "anchor")
+                cur_cols = {
+                    "claim": _find_col(lowered, "claim"),
+                    "source": _find_col(lowered, "source"),
+                    "line_range": this_line_range_col,
+                    "anchor": this_anchor_col,
+                    "notes": _find_col(lowered, "notes"),
+                }
+                if this_anchor_col is not None:
+                    has_anchor_column = True
+                if header_idx is None:
+                    # First table in the file drives the back-compat
+                    # top-level header / line_range_col / anchor_col.
+                    header = cells
+                    header_idx = idx
+                    line_range_col = this_line_range_col
+                    anchor_col = this_anchor_col
+            # Either the header row itself (not a data row), or a
+            # not-yet-recognized pipe row within a still-unresolved
+            # block — neither becomes a ProvenanceRow.
+            continue
+
         if _is_separator_row(cells):
             continue
         if len(cells) < 2:
             continue
 
-        def _cell(col: Optional[int]) -> str:
-            if col is None or col >= len(cells):
+        def _cell(col: Optional[int], row_cells: List[str] = cells) -> str:
+            if col is None or col >= len(row_cells):
                 return ""
-            return cells[col]
+            return row_cells[col]
 
-        claim = _cell(claim_col)
-        source_file = _cell(source_col)
-        line_range_raw = _cell(line_range_col)
-        notes = _cell(notes_col)
-        anchor_cell = _cell(anchor_col) if anchor_col is not None else None
+        row_line_range_col = cur_cols["line_range"]
+        row_anchor_col = cur_cols["anchor"]
+        claim = _cell(cur_cols["claim"])
+        source_file = _cell(cur_cols["source"])
+        line_range_raw = _cell(row_line_range_col)
+        notes = _cell(cur_cols["notes"])
+        anchor_cell = _cell(row_anchor_col) if row_anchor_col is not None else None
         anchor = anchor_cell.strip("\"'“” ") if anchor_cell else None
         if anchor is not None and not anchor:
             anchor = None
 
         rows.append(
             ProvenanceRow(
-                line_no=row_idx + 1,
+                line_no=idx + 1,
                 claim=claim,
                 source_file=source_file,
                 line_range_raw=line_range_raw,
                 line_range=_parse_line_range(line_range_raw),
                 anchor=anchor,
                 notes=notes,
+                line_range_col=row_line_range_col,
+                anchor_col=row_anchor_col,
             )
         )
+
+    _close_block(len(lines))
 
     return ParsedProvenanceTable(
         header=header,
@@ -299,6 +388,8 @@ def parse_provenance_table(path: Path) -> ParsedProvenanceTable:
         anchor_col=anchor_col,
         rows=rows,
         lines=lines,
+        has_anchor_column=has_anchor_column,
+        skipped_tables=skipped_tables,
     )
 
 
@@ -536,8 +627,12 @@ def check_provenance_anchors(
     """Resolve every row of ``provenance_path`` against ``corpus_roots``.
 
     Returns a JSON-serializable report: per-row resolutions plus summary
-    counts across the five statuses. Never raises for a missing/empty
-    provenance file — an empty table reports zero rows.
+    counts across the five statuses. ``total_rows`` and
+    ``anchor_column_present`` describe every table in the file, not just
+    the first (issue #934) — likewise ``skipped_tables`` lists any
+    pipe-delimited block that never resolved into a recognizable claim
+    table. Never raises for a missing/empty provenance file — an empty
+    table reports zero rows.
     """
     table = parse_provenance_table(provenance_path)
     counts: Dict[str, int] = {status: 0 for status in _STATUSES}
@@ -552,7 +647,8 @@ def check_provenance_anchors(
     return {
         "provenance_path": str(provenance_path),
         "total_rows": len(table.rows),
-        "anchor_column_present": table.anchor_col is not None,
+        "anchor_column_present": table.has_anchor_column,
+        "skipped_tables": table.skipped_tables,
         "counts": counts,
         "drifted": counts[STATUS_DRIFTED] > 0,
         "rows": [r.to_json() for r in resolutions],
@@ -592,29 +688,40 @@ def repoint_drifted_anchors(
     provenance_path: Path, corpus_roots: Sequence[Path]
 ) -> Dict[str, Any]:
     """Mechanically rewrite the ``Line range`` cell of every
-    :data:`STATUS_DRIFTED` row to its anchor's resolved current location.
+    :data:`STATUS_DRIFTED` row to its anchor's resolved current location,
+    across **every** table in the file (issue #934) — not just the
+    first.
 
     Only :data:`STATUS_DRIFTED` rows are touched; every other row (and
     every non-table line — prose, headings) is written back byte-
-    identical. A no-op (returns ``repointed: []``) when the table has no
-    ``Anchor`` column, no rows, or nothing drifted. Atomic write via
-    tmp-then-``os.replace``.
+    identical. A row whose own table has no ``Line range`` and/or
+    ``Anchor`` column is skipped (never repointed, never an error) —
+    each row is evaluated against its own table's column layout, not a
+    single file-wide one. A no-op (returns ``repointed: []``) when no
+    table in the file has both columns, no rows exist, or nothing
+    drifted. Atomic write via tmp-then-``os.replace``.
     """
     table = parse_provenance_table(provenance_path)
     repointed: List[Dict[str, Any]] = []
 
-    if table.line_range_col is None or table.anchor_col is None:
+    repointable_rows = [
+        row
+        for row in table.rows
+        if row.line_range_col is not None and row.anchor_col is not None
+    ]
+    if not repointable_rows:
         return {
             "provenance_path": str(provenance_path),
             "repointed": repointed,
+            "skipped_tables": table.skipped_tables,
             "detail": (
-                "table has no Line range and/or Anchor column — nothing "
-                "to mechanically repoint."
+                "no table in this file has both a Line range and an "
+                "Anchor column — nothing to mechanically repoint."
             ),
         }
 
     new_lines = list(table.lines)
-    for row in table.rows:
+    for row in repointable_rows:
         file_path = resolve_source_file(row.source_file, corpus_roots)
         resolution = resolve_anchor(file_path, row)
         if resolution.status != STATUS_DRIFTED or resolution.resolved_range is None:
@@ -622,7 +729,7 @@ def repoint_drifted_anchors(
         idx = row.line_no - 1
         new_value = _format_line_range(resolution.resolved_range)
         new_lines[idx] = _rewrite_line_range_cell(
-            new_lines[idx], table.line_range_col, new_value
+            new_lines[idx], row.line_range_col, new_value
         )
         repointed.append(
             {
@@ -642,9 +749,11 @@ def repoint_drifted_anchors(
     return {
         "provenance_path": str(provenance_path),
         "repointed": repointed,
+        "skipped_tables": table.skipped_tables,
         "detail": (
-            f"mechanically repointed {len(repointed)} drifted row(s); "
-            "Claim/Source file/Anchor/Notes left untouched."
+            f"mechanically repointed {len(repointed)} drifted row(s) "
+            "across all conforming tables; Claim/Source file/Anchor/"
+            "Notes left untouched."
             if repointed
             else "no drifted rows found — nothing repointed."
         ),
