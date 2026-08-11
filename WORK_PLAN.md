@@ -2,28 +2,30 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-11 (Guide triage pass — issue #941 (AI-authorship byline) shipped via PR #946; three new `deck-imagegen` friction issues filed (#947, #948, #949), #947 triaged straight to `loom:urgent` and claimed by a Builder within the same pass; no `loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, remains open outside the Loom label pipeline)*
+*Last updated: 2026-08-11 (Guide triage pass — #947 shipped via PR #953 (mirrored the `deck_imagegen` extra into the generated consumer pyproject); the `deck-imagegen`/figure-conventions cluster advanced: #948 and #951 claimed by Builders, #949 curated and also claimed, #954 opened against #948 and awaiting Judge review; a new issue #952 (deck agent-set generation gap) entered curation; urgent queue is empty — no `loom:issue` work is currently unclaimed; no `loom:blocked`/`loom:epic` issues open; PR #902, a human-authored tool-currency chore, remains open outside the Loom label pipeline)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-- **#947**: "deck-imagegen: documented '[deck_imagegen]' extra does not exist in the generated consumer pyproject" (`tier:goal-supporting`, `loom:complexity=mechanical`). Marked urgent this pass as the only ready (`loom:issue`) work in the backlog — a quick, well-scoped fix (add the missing `deck_imagegen` extra to the generated consumer `pyproject.toml`, or correct the two docs that name it) that unblocks a first-run onboarding command currently failing verbatim. Already claimed by a Builder (`loom:building`) within the same triage pass.
+*Empty.* No `loom:issue` items are currently unclaimed — everything ready this pass has already been picked up by a Builder (see In Progress).
 
 ## In Progress (`loom:building`)
 
-- **#947**: see above — claimed and building.
+- **#951**: "figure-conventions §3: _find_anvil_root snippet contradicts its own docstring (flat vs nested palette path); mmdc first-run browser failure undocumented" (`tier:goal-supporting`). Claimed by a Builder; live per `loom-recover-orphans` (label age well under the 4h staleness threshold).
+- **#949**: "deck-imagegen: speaker-notes prompt extraction leaks human slot-notes into the dispatched prompt" (`tier:goal-supporting`). Claimed by a Builder; live per `loom-recover-orphans`.
+- **#948**: "deck-imagegen: _latest_version_dir misses post-#382 nested thread layout" (`tier:goal-supporting`). Claimed by a Builder; PR #954 already open against it, awaiting Judge review (see below).
 
-#941 shipped this pass via PR #946 ("feat: opt-in AI-authorship byline (ai_byline: BRIEF block)"), closed 2026-08-11; see `WORK_LOG.md`.
+#947 shipped this pass via PR #953 ("fix: mirror the deck_imagegen extra into the generated consumer pyproject"), closed 2026-08-11; see `WORK_LOG.md`.
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* #947 was the only `loom:issue` item this pass and has already been claimed by a Builder (see In Progress).
+*Empty.* All `loom:issue` work this pass has already been claimed by a Builder (see In Progress).
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-*Empty.*
+- **#954**: "fix(deck): resolve nested thread layout in deck-imagegen's version lookup" — closes #948, currently `loom:reviewing` (Judge picked it up).
 
 One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Skills 0.7.0 → 0.8.1" — opened directly by the repo owner (no labels), a tool-currency bump not routed through Curator/Builder. Per `CLAUDE.md`'s guidance on small mechanical changes, this class of PR doesn't require the full Loom review cycle; it awaits a direct human merge decision, not Judge/Champion action.
 
@@ -41,8 +43,7 @@ One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Ski
 
 ## Triage queue (`loom:triage` / `loom:curating`)
 
-- **#948**: "deck-imagegen: _latest_version_dir misses post-#382 nested thread layout" — `loom:curating`, Curator actively enhancing.
-- **#949**: "deck-imagegen: speaker-notes prompt extraction leaks human slot-notes into the dispatched prompt" — filed 2026-08-11, no labels yet, awaiting Curator pickup.
+- **#952**: "generate-anvil-agents: deck agent set missing economics (default critic, dim 10) and vision" — `loom:curating`, Curator actively enhancing. Filed 2026-08-11.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -54,7 +55,7 @@ One PR is open outside the Loom label pipeline: **#902** "chore: update Repo Ski
 
 ## Backlog state
 
-**Five open issues as of 2026-08-11, three of them a fresh `deck-imagegen` cluster filed this pass: #947 (`loom:building` + `loom:urgent`, missing pyproject extra, claimed within this triage pass), #948 (`loom:curating`, nested-thread-layout bug), #949 (unlabeled, prompt-leak bug, awaiting Curator), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** #941 (AI-authorship byline), the sole in-progress issue last pass, shipped via PR #946. One open PR outside the Loom pipeline: #902 (unlabeled, human-authored tool bump), awaiting a direct human merge decision. No orphaned `loom:building` issues (`loom-recover-orphans --verbose` reports none), no `loom:blocked` issues, no open epics. Next action: a Builder works #947 (already claimed), Curator finishes #948 and picks up #949, and a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run.
+**Five open issues as of 2026-08-11: #951, #949, and #948 (all `loom:building`, the `deck-imagegen`/figure-conventions friction cluster, all claimed and live), #952 (`loom:curating`, a fresh deck agent-set generation gap), #888 (curated + `loom:operator-only`, awaiting human/Champion design review), and #918 (`loom:operator-only` + `loom:operator-mechanical`, loom-daemon-down watchdog escalation).** #947, last pass's sole `loom:urgent` item, shipped via PR #953. One PR is in Judge review (#954, closes #948) and one is open outside the Loom pipeline (#902, unlabeled, human-authored tool bump, awaiting a direct human merge decision). No orphaned `loom:building` issues (`loom-recover-orphans --verbose` reports none — #949/#948 are simply young claims, well inside the 4h staleness threshold), no `loom:blocked` issues, no open epics, and no unclaimed `loom:issue` work — the urgent queue is empty by construction. Next action: Judge reviews #954, Builders continue #949/#951, Curator finishes #952, and a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run.
 
 ### Recurring themes the next wave of issues will likely touch
 
