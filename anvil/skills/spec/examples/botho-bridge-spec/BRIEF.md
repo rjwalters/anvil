@@ -53,7 +53,7 @@ Phase-4 pattern):
   example would teach false confidence.
 - **`code_ref` is illustrative-only.** The BRIEF declares
   `code_ref: ../../bridge/**/*.rs` (de-pathed from the original absolute
-  `/Users/rwalters/GitHub/botho/bridge/**/*.rs`), which points at botho's own
+  `/Users/you/GitHub/botho/bridge/**/*.rs`), which points at botho's own
   bridge Rust workspace — deliberately NOT vendored here (out of scope,
   large, not anvil's to maintain). The glob will **not resolve** when this
   example is copied standalone; the spec↔implementation consistency audit
