@@ -4,6 +4,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-08-11
+
+- **PR #939**: fix(memoir): let the final revision under max_iterations get a critic pass (closes #933) — `memoir-revise`'s iteration cap counted version dirs, not revisions, so the write that fixed a corpus-audit critical flag on the final affordable version could never itself be scored; predicate changed from `N + 1 > effective_max_iterations` to `N > effective_max_iterations`, plus a pre-write budget notice and an explicit "final version written and unvalidatable" BLOCKED state. Fixed `memoir` only per the issue's own scoping — the same off-by-one predicate is duplicated skill-locally across the other artifact skills, noted as a follow-up rather than promoted to lib
+- **PR #936**: fix(provenance-anchor): parse every claim table, not just the first (closes #934) — `parse_provenance_table` header/row scanning `break`-ed at the first table boundary, so a 9-table memoir provenance map only ever yielded 5 of 115 rows and `repoint_drifted_anchors` silently repointed only table 1 while reporting success for the whole file; rewritten as a single forward pass that resets (not breaks) on table boundaries, with per-table column layouts and a new `skipped_tables` surface for non-conforming tables
+
 ### 2026-08-10
 
 - **PR #931**: feat(diff): local side-by-side prose diff viewer (closes #925) — new `anvil:diff` utility skill, a local, ephemeral, read-only viewer rendering a stdlib-only word-level side-by-side HTML diff between two anvil version dirs, a deslop origin/cleaned.txt pair, or two arbitrary files; binds `127.0.0.1` only, never writes to any input path, bringing the shipped-skill count to 23
