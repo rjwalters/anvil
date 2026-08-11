@@ -42,6 +42,7 @@ The CLI executes the full §Procedure below against one explicit version directo
 - **Latest version directory**: enumerated from disk as the highest `N` with `<thread>.{N}/<thread>.md` existing. If no such version exists, exit with a notice (no work to do).
 - **Target length** (optional): read from `<thread>.{N}/_progress.json.metadata.target_length_resolved` (the field the drafter or reviser wrote when producing v{N}, per `memo-draft.md` step 5 / `memo-revise.md` step 6). The resolved `(min_words, max_words)` is converted into the `target_length` arg passed to `render_gate.gate(kind="memo")`: if the resolved range is present, pass `{"words": [min_words, max_words]}`; if absent or `source == "none"`, pass `None`. Reading the resolved field — rather than re-resolving from `<project>/BRIEF.md` — pins the render gate's page-fit anchor to the same range the drafter/reviser authored against (mirrors the `memo-review` step 4 convention).
 - **Framework substrate** (read-only): `anvil/lib/memo/template.html`, `anvil/lib/memo/styles.css`, and `anvil/lib/memo/template.tex` (the pinned render-chain config from Epic #158 Phase 1, PR #172). In an installed consumer repo (issue #230 uv-runnable layout) these resolve under `<consumer>/.anvil/anvil/lib/memo/` — the importable `anvil.lib.memo` package directory. Consumers override the relevant file at `<consumer>/.anvil/anvil/lib/memo/styles.css` etc. per `anvil/lib/memo/README.md` §"Override discipline"; this command picks them up unchanged. (Pre-#230 installs placed these files under the `memo/` subtree of the legacy `.anvil/lib/` directory; that path is no longer load-bearing for runtime invocation. The installer surfaces a one-line migration warning when the legacy directory is still on disk.)
+- **AI-authorship byline** (optional, opt-in — issue #941): `<project>/BRIEF.md`'s top-level `ai_byline:` block, resolved via `anvil/lib/project_brief.py::resolve_ai_byline(project_dir)`. Absent block, or `enabled: false` (the default), is byte-identical to a pre-#941 install. See step 4h.
 
 ## Outputs
 
@@ -78,6 +79,9 @@ The `render_gate` block is **always written** (whether the gate passed or failed
    - **Resolved entry with `missing == True`** (declared-but-missing file) → **still pass the path**: `rhetoric_rules_path=<project_dir>/<entry.declared>` (the declared path verbatim when it is absolute). Do NOT silently omit the kwarg — `lint_rhetoric`'s loader graceful-degrades to a defaults-only run **plus one warning finding naming the error**, so the broken declaration surfaces mechanically in `render_gate.findings` ("a defect to surface, not an opt-out"; zero new error machinery).
 
    When a consumer file IS passed and loads: valid rules merge over the defaults (id collision → consumer wins), `disable` ids switch off defaults, and malformed JSON graceful-degrades to a defaults-only run with one warning finding naming the parse error. Note the asymmetry with step 4-series voice consumers elsewhere: `rhetoric_rules` does not activate the voice-grounding judgment tier (`resolve_voice_docs` never returns it; a `rhetoric_rules`-only `voice:` block keeps `VoiceDocs.is_empty` True).
+4h. **Resolve the opt-in AI-authorship byline** (issue #941): call `anvil.lib.project_brief.resolve_ai_byline(project_dir)` with the same `project_dir = version_dir.parent.parent` as step 4g. **`None` returned** (no BRIEF / malformed BRIEF / no `ai_byline:` block / `enabled: false` — the default) → this step and the metadata merge below are no-ops; **byte-identical to a pre-#941 install**. When a `ResolvedAiByline` is returned:
+   - **`placement != "frontmatter-only"`**: merge `{"ai_byline": resolved.text}` into the `render_metadata` dict passed to the gate (reusing the existing #391 `-M key=value` passthrough plumbing rather than a new gate kwarg) — an operator's own `render_metadata_requested` keys are preserved; a same-named `ai_byline` key is overwritten. `anvil/lib/memo/template.html` and `anvil/lib/memo/template.tex` render `$ai_byline$` (when set) as an italicized paragraph immediately after the body — every declared `placement` other than `frontmatter-only` renders as back matter in v1 (a documented simplification; a near-title placement is a tracked follow-up).
+   - **`placement == "frontmatter-only"`**: `render_metadata` is untouched — no visible line — the resolved text is provenance-only (see step 6).
 5. **Invoke the render gate**: call
 
    ```python
@@ -106,6 +110,7 @@ The `render_gate` block is **always written** (whether the gate passed or failed
    - Write `render_gate = result.to_json()` (the full JSON shape from `GateResult.to_json()`) into the version dir's `_progress.json` as a top-level key (sibling to `phases` and `metadata`). The shape is `{gate, pdf_path, pages, page_cap, overfull_boxes, compile, placeholders, findings, pass, reasons, engine_used, template_used}` — see `render_gate.py::GateResult.to_json` for the canonical shape.
    - Set `phases.render.completed = <ISO>`.
    - **Record render provenance** (issue #391): set `phases.render.engine = result.engine_used` and `phases.render.template = result.template_used`. `engine` is the engine that actually ran (which may differ from `metadata.render_engine_requested` on PATH fallthrough); `template` is the resolved consumer template path string, or a symbolic marker (`"framework-default"`, `"theme:<name>"`, `"pandoc-default"`) when no consumer template applied. Write both keys whenever the gate ran an engine (`result.engine_used` is non-null); when the renderer was unavailable (`compile_status == "unavailable"`) both are null — omit them or write null, consumers tolerate both. This makes the "re-rendered with the wrong template/engine" regression class detectable on disk by diffing `_progress.json.phases.render` across versions.
+   - **Record AI-authorship byline provenance** (issue #941): when (and only when) step 4h resolved an active byline, also write `phases.render.ai_byline_text = "<rendered line>"` and `phases.render.ai_byline_placement = "<placement>"`. Written **independent of `result.compile_status`** — unlike `engine`/`template`, this is config-driven (resolved before the gate ran), not a render-time fact. Inactive tier → neither key is written (byte-identical to pre-#941).
    - Set `phases.render.state` based on `result.compile_status`:
      - `compile_status == "ok"` → `phases.render.state = "done"` (the artifact was produced; gate-finding failures land in `render_gate.findings` but do not flip the phase to `failed` — they are recorded for the Phase 4 reviewer to surface).
      - `compile_status == "failed"` → `phases.render.state = "failed"` (pandoc ran but produced no PDF or exited non-zero; this is recoverable on re-run after the operator addresses the renderer error).
@@ -179,7 +184,9 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
     "render": {
       "state": "done", "started": "<ISO>", "completed": "<ISO>",
       "engine": "weasyprint",
-      "template": "framework-default"
+      "template": "framework-default",
+      "ai_byline_text": "Drafted with AI assistance and reviewed by a human editor.",
+      "ai_byline_placement": "byline"
     }
   },
   "metadata": {
@@ -211,6 +218,8 @@ This command writes the version-dir shape documented in `anvil/lib/snippets/prog
   }
 }
 ```
+
+The two `ai_byline_*` fields are conditional (issue #941): present only when step 4h resolved an active byline. No `ai_byline:` block, or `enabled: false` → both fields absent, byte-identical to pre-#941.
 
 Merge rule (shallow): read existing `_progress.json` if present, update only `phases.render` and the top-level `render_gate` key, preserve all other phases (`draft`, `figures`, `revise`, etc.), all `metadata` fields, and `termination_reason` if present. Use the read-merge-write recipe in `anvil/lib/snippets/progress.md`; use ISO-8601 UTC timestamps per `anvil/lib/snippets/timestamp.md`.
 

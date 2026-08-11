@@ -318,6 +318,10 @@ import warnings
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from anvil.lib.ai_byline import DEFAULT_PLACEMENT as DEFAULT_AI_BYLINE_PLACEMENT
+from anvil.lib.ai_byline import VALID_PLACEMENTS as VALID_AI_BYLINE_PLACEMENTS
+from anvil.lib.ai_byline import render_byline as _render_ai_byline
+
 # Re-use the on-disk constants from the discovery primitive so the
 # layout contract has a single source of truth. ``BRIEF_FILENAME`` is
 # the on-disk filename; ``DOCUMENTS_FRONTMATTER_KEY`` is the YAML key
@@ -732,6 +736,17 @@ _RECOGNIZED_VOICE_KEYS = {
     "corpus",
     "rhetoric_rules",
     "subjects",
+}
+
+# Recognized sub-keys inside the optional top-level ``ai_byline:`` block
+# (issue #941 — the opt-in AI-authorship disclosure contract). Anything
+# else is preserved verbatim under ``AiByline.unknown_keys`` (the same
+# lenient-inner-block posture as ``_RECOGNIZED_VOICE_KEYS``).
+_RECOGNIZED_AI_BYLINE_KEYS = {
+    "enabled",
+    "text",
+    "placement",
+    "model_name",
 }
 
 # Recognized sub-keys when the optional ``audience:`` block is written
@@ -1865,6 +1880,87 @@ class BriefDocument(BaseModel):
     voice_corpus_exclude: Optional[List[str]] = Field(default=None)
 
 
+class AiByline(BaseModel):
+    """Parsed optional top-level ``ai_byline:`` block (issue #941).
+
+    The opt-in AI-authorship disclosure contract: a project declares this
+    block to have anvil append a short, configurable provenance line to
+    its rendered artifacts declaring AI-assisted authorship. Distinct
+    from — and unrelated to — the intrinsic token-level model-output
+    watermark: this is a detachable, discretionary, honest-actor
+    transparency mechanism entirely in the consumer's control, and it is
+    also distinct from the ``corpus:`` claim-provenance tier (#597),
+    which verifies substance, not authorship. See
+    ``anvil/lib/snippets/provenance.md`` for the boundary discussion.
+
+    On-disk shape (every sub-key optional except that ``enabled`` must be
+    a bool when present; the block itself optional)::
+
+        ai_byline:
+          enabled: true                 # default false — strictly opt-in
+          text: "Drafted with AI assistance ({model}) and edited by Robb."
+          placement: byline             # byline | footer | frontmatter-only
+          model_name: Claude            # substitutes {model} in text
+
+    **No ``ai_byline:`` block, or ``enabled: false`` (the default when the
+    key is absent) → byte-identical behavior** — no line is ever
+    rendered. See :func:`resolve_ai_byline` for the BRIEF → rendered-
+    string resolution consumed by lifecycle commands.
+
+    Unknown sub-keys are **preserved verbatim** under ``unknown_keys``
+    (the same lenient inner-block posture as :class:`VoiceDocs`) so a
+    forward-shipped sub-key can land in BRIEF.md ahead of loader support
+    without breaking existing consumers. The loader warns via
+    ``warnings.warn`` so the typo case stays visible.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Strictly opt-in (issue #941): the byline is only ever "
+            "rendered when this is explicitly true. Absent block or "
+            "absent key both default to False."
+        ),
+    )
+    text: Optional[str] = Field(
+        None,
+        description=(
+            "Custom override for the rendered line. May embed literal "
+            "`{model}` / `{date}` placeholders (see "
+            "`anvil.lib.ai_byline.render_byline`). `None`/absent falls "
+            "back to the module default text."
+        ),
+    )
+    placement: Optional[str] = Field(
+        None,
+        description=(
+            "Where the line lands in the rendered artifact: `byline` "
+            "(near the title, the default), `footer` (end of the "
+            "document / back matter), or `frontmatter-only` (metadata "
+            "only, no visible line). Validated against "
+            "`anvil.lib.ai_byline.VALID_PLACEMENTS`."
+        ),
+    )
+    model_name: Optional[str] = Field(
+        None,
+        description=(
+            "Optional model/tool name substituted for a `{model}` "
+            "placeholder in `text`. Purely descriptive metadata — never "
+            "validated against a known-model list."
+        ),
+    )
+    unknown_keys: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Forward-compat passthrough: any sub-keys the loader does "
+            "not recognize land here verbatim. Surfaced via "
+            "``warnings.warn`` at parse time."
+        ),
+    )
+
+
 class ProjectBrief(BaseModel):
     """The parsed project-level ``BRIEF.md`` frontmatter.
 
@@ -1954,6 +2050,18 @@ class ProjectBrief(BaseModel):
         docstring. Defaults to an empty list (tier inactive) →
         byte-identical behavior for every BRIEF that does not declare
         this key.
+    ai_byline
+        Optional AI-authorship disclosure block (issue #941). Strictly
+        opt-in: absent block, or a block with ``enabled: false`` (the
+        default), leaves every rendered artifact byte-identical to a
+        pre-#941 install — no line is ever rendered. When
+        ``enabled: true``, ``resolve_ai_byline`` computes the final
+        rendered line (custom ``text`` template or the module default)
+        and the artifact-class drafter/renderer commands splice it into
+        the rendered deliverable at the declared ``placement``. Distinct
+        from ``corpus`` (substance-verification provenance) and from the
+        intrinsic model-output watermark — this is a detachable,
+        editorial disclosure choice, not a tamper-resistant mechanism.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1965,6 +2073,7 @@ class ProjectBrief(BaseModel):
     theme: Optional[str] = Field(default=None)
     voice: Optional[VoiceDocs] = Field(default=None)
     corpus: Optional[List[str]] = Field(default=None)
+    ai_byline: Optional[AiByline] = Field(default=None)
     quarantine: List[str] = Field(default_factory=list)
 
     def document_for_slug(self, slug: str) -> Optional[BriefDocument]:
@@ -2298,6 +2407,105 @@ def _normalize_corpus_dirs(value: Any) -> Optional[List[str]]:
         if stripped:
             out.append(stripped)
     return out or None
+
+
+def _normalize_ai_byline(value: Any) -> Optional[AiByline]:
+    """Normalize the optional top-level ``ai_byline:`` block (issue #941).
+
+    Returns ``None`` when the key is absent or an explicit ``null`` —
+    the byte-identical inactive path (mirrors :func:`_normalize_voice`).
+    A mapping is normalized to an :class:`AiByline`:
+
+    - ``enabled`` must be a bool when present (STRICT — a fat-fingered
+      ``enabled: "true"`` string is a schema error, not a silent
+      no-op, since this is the field that gates whether anything is
+      ever rendered). Absent ``enabled`` defaults to ``False``.
+    - ``text`` / ``placement`` / ``model_name`` must be strings when
+      present; empty/whitespace-only values normalize to ``None`` (same
+      posture as the ``voice:`` sub-keys). ``placement`` is validated
+      against :data:`anvil.lib.ai_byline.VALID_PLACEMENTS` — an
+      unrecognized value raises (STRICT, catching a typo'd placement
+      before it silently falls back to the default).
+    - Unknown sub-keys are **preserved verbatim** under
+      ``unknown_keys`` with a ``warnings.warn`` breadcrumb — the same
+      lenient inner-block posture as ``rubric_overrides`` / ``voice``.
+
+    Any non-mapping value raises ``ValueError`` — the block is strictly
+    a mapping when present.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"BRIEF.ai_byline must be a mapping when set; got "
+            f"{type(value).__name__}: {value!r} — suggested fix: use "
+            f"the block shape with optional sub-keys "
+            f"{sorted(_RECOGNIZED_AI_BYLINE_KEYS)} (see "
+            f"anvil/lib/ai_byline.py), or remove the key for "
+            f"byte-identical no-byline behavior."
+        )
+
+    enabled = False
+    text: Optional[str] = None
+    placement: Optional[str] = None
+    model_name: Optional[str] = None
+    unknown_keys: Dict[str, Any] = {}
+
+    for key, raw in value.items():
+        if key not in _RECOGNIZED_AI_BYLINE_KEYS:
+            unknown_keys[key] = raw
+            warnings.warn(
+                f"BRIEF.ai_byline.{key}: unknown sub-key — preserved "
+                f"verbatim under unknown_keys (forward-compat); the "
+                f"byline renderer will not act on it. Recognized "
+                f"sub-keys: {sorted(_RECOGNIZED_AI_BYLINE_KEYS)}.",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
+        if key == "enabled":
+            if not isinstance(raw, bool):
+                raise ValueError(
+                    f"BRIEF.ai_byline.enabled must be a bool when set; "
+                    f"got {type(raw).__name__}: {raw!r} — suggested "
+                    f"fix: use `enabled: true` or `enabled: false` "
+                    f"(unquoted YAML boolean)."
+                )
+            enabled = raw
+            continue
+        if raw is None:
+            continue
+        if not isinstance(raw, str):
+            raise ValueError(
+                f"BRIEF.ai_byline.{key} must be a string when set; got "
+                f"{type(raw).__name__}: {raw!r} — suggested fix: quote "
+                f"a single string value or remove the sub-key."
+            )
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if key == "text":
+            text = stripped
+        elif key == "placement":
+            if stripped not in VALID_AI_BYLINE_PLACEMENTS:
+                raise ValueError(
+                    f"BRIEF.ai_byline.placement must be one of "
+                    f"{sorted(VALID_AI_BYLINE_PLACEMENTS)}; got "
+                    f"{stripped!r} — suggested fix: use one of the "
+                    f"recognized placements or remove the sub-key for "
+                    f"the default ({DEFAULT_AI_BYLINE_PLACEMENT!r})."
+                )
+            placement = stripped
+        elif key == "model_name":
+            model_name = stripped
+
+    return AiByline(
+        enabled=enabled,
+        text=text,
+        placement=placement,
+        model_name=model_name,
+        unknown_keys=unknown_keys,
+    )
 
 
 def _normalize_audience(value: Any) -> List[str]:
@@ -3721,9 +3929,9 @@ def _parse_brief_body(
 
     Raises ``ValueError`` on any schema violation. Recognized top-level
     keys: ``project``, ``audience``, ``hard_rules``, ``documents``,
-    ``theme``, ``voice``, ``corpus``, ``quarantine``. Other keys are
-    ignored (forward-compat surface for project-level fields that may
-    land later).
+    ``theme``, ``voice``, ``corpus``, ``ai_byline``, ``quarantine``.
+    Other keys are ignored (forward-compat surface for project-level
+    fields that may land later).
 
     The consumer artifact-type set (issue #394) is discovered ONCE per
     parse here and threaded down to the per-entry ``artifact_type``
@@ -3754,6 +3962,7 @@ def _parse_brief_body(
     theme = _normalize_theme(frontmatter.get("theme"))
     voice = _normalize_voice(frontmatter.get("voice"))
     corpus = _normalize_corpus_dirs(frontmatter.get("corpus"))
+    ai_byline = _normalize_ai_byline(frontmatter.get("ai_byline"))
     quarantine = _normalize_string_list(
         frontmatter.get("quarantine"), "quarantine"
     )
@@ -3767,6 +3976,7 @@ def _parse_brief_body(
             theme=theme,
             voice=voice,
             corpus=corpus,
+            ai_byline=ai_byline,
             quarantine=quarantine,
         )
     except ValidationError as exc:
@@ -4466,6 +4676,105 @@ def _resolve_corpus_dir(
                 source=source,
             )
     return ResolvedCorpusDir(declared=declared, missing=True)
+
+
+class ResolvedAiByline(BaseModel):
+    """The active, fully-rendered result of :func:`resolve_ai_byline`
+    (issue #941).
+
+    Unlike :class:`ResolvedCorpusDir` / :class:`ResolvedVoiceDoc`, there
+    is no filesystem resolution here — the byline tier's "resolution" is
+    purely "is it active, and if so, what is the final string". A caller
+    only ever gets an instance when the tier is active; the inactive
+    case is ``None`` (see :func:`resolve_ai_byline`), never a struct with
+    a false ``active`` flag — the same "callers branch on falsy" contract
+    :func:`resolve_corpus_dirs` uses for its empty-list inactive case.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(
+        ...,
+        description=(
+            "The fully-rendered byline line — the consumer's `text` "
+            "template (with `{model}`/`{date}` substituted) or the "
+            "module default. Ready to splice into a rendered artifact "
+            "as-is."
+        ),
+    )
+    placement: str = Field(
+        ...,
+        description=(
+            "The resolved placement — the declared `placement:` value, "
+            "or `anvil.lib.ai_byline.DEFAULT_PLACEMENT` when unset. "
+            "Always one of `anvil.lib.ai_byline.VALID_PLACEMENTS`."
+        ),
+    )
+
+
+def resolve_ai_byline(
+    project_dir: Path,
+    consumer_root: Optional[Path] = None,
+    *,
+    model_name: Optional[str] = None,
+    date: Optional[str] = None,
+) -> Optional[ResolvedAiByline]:
+    """Resolve the BRIEF's top-level ``ai_byline:`` block to a rendered
+    line (issue #941).
+
+    Reads ``<project_dir>/BRIEF.md`` leniently. Returns ``None`` — the
+    byte-identical inactive path — when: there is no BRIEF, the BRIEF is
+    structurally invalid (lenient swallow, mirroring
+    :func:`resolve_corpus_dirs` / :func:`resolve_voice_docs`), there is
+    no ``ai_byline:`` key, or the block is present but
+    ``enabled: false`` (the default). **Never raises.**
+
+    When the tier is active, delegates the pure string-rendering to
+    :func:`anvil.lib.ai_byline.render_byline` and returns a
+    :class:`ResolvedAiByline` bundling the rendered text with the
+    resolved placement (declared, or
+    :data:`anvil.lib.ai_byline.DEFAULT_PLACEMENT` when unset).
+
+    Parameters
+    ----------
+    project_dir
+        Directory containing the project BRIEF.
+    consumer_root
+        Unused by this resolver directly (there is no path resolution
+        against project/consumer roots — the byline has no filesystem
+        component). Accepted for call-site symmetry with the other
+        ``resolve_*`` helpers in this module and threaded through to
+        :func:`load_project_brief`.
+    model_name
+        Optional caller-supplied override for ``{model}`` template
+        interpolation. When ``None``, falls back to the BRIEF's declared
+        ``ai_byline.model_name``.
+    date
+        Optional caller-supplied value for ``{date}`` template
+        interpolation (callers typically pass the render timestamp; this
+        resolver does not read the clock itself, keeping it
+        deterministic and easily testable).
+
+    Returns
+    -------
+    Optional[ResolvedAiByline]
+        ``None`` when inactive; otherwise the rendered line + placement.
+    """
+    try:
+        brief = load_project_brief(project_dir, consumer_root=consumer_root)
+    except ValueError:
+        return None
+    if brief is None or brief.ai_byline is None or not brief.ai_byline.enabled:
+        return None
+
+    resolved_model_name = model_name if model_name is not None else brief.ai_byline.model_name
+    text = _render_ai_byline(
+        text=brief.ai_byline.text,
+        model_name=resolved_model_name,
+        date=date,
+    )
+    placement = brief.ai_byline.placement or DEFAULT_AI_BYLINE_PLACEMENT
+    return ResolvedAiByline(text=text, placement=placement)
 
 
 def resolve_rhetoric_rules(
@@ -5505,6 +5814,7 @@ def body_filename_for(slug: str) -> str:
 
 
 __all__ = [
+    "AiByline",
     "ArtifactType",
     "BriefDocument",
     "CONSUMER_MEMO_OVERLAYS_RELPATH",
@@ -5517,6 +5827,7 @@ __all__ = [
     "PendingSourcesTypeError",
     "ProjectBrief",
     "REGISTERED_ARTIFACT_TYPES",
+    "ResolvedAiByline",
     "ResolvedCodeRef",
     "ResolvedCorpusDir",
     "ResolvedSpecRef",
@@ -5538,6 +5849,7 @@ __all__ = [
     "load_recommendation_target",
     "load_recommendation_target_resolved",
     "load_rubric_overrides_for_slug",
+    "resolve_ai_byline",
     "resolve_code_ref",
     "resolve_corpus_dirs",
     "resolve_pending_sources",

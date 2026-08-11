@@ -160,6 +160,16 @@ class TestSkillFrontmatter(unittest.TestCase):
         self.assertIn("toaster", text)
         self.assertIn("spread failure", text)
 
+    def test_ai_byline_documented_opt_in(self):
+        """Issue #941: SKILL.md documents the opt-in ai_byline: block,
+        its default-off posture, and that it is not the model-output
+        watermark."""
+        text = _read("SKILL.md")
+        self.assertIn("AI-authorship byline", text)
+        self.assertIn("resolve_ai_byline", text)
+        self.assertIn("off by default", text)
+        self.assertIn("watermark", text.lower())
+
 
 class TestCommandFrontmatter(unittest.TestCase):
     """Every command file carries a name/description frontmatter block."""
@@ -282,6 +292,28 @@ class TestDraftAndReviseCommands(unittest.TestCase):
         self.assertIn("terminal", text.lower())
         self.assertNotIn("essay-figures", text)
         self.assertNotIn("essay-audit", text)
+
+    def test_draft_resolves_and_inserts_ai_byline(self):
+        """Issue #941: essay-draft resolves the opt-in ai_byline: block
+        and inserts the rendered line per placement."""
+        text = _read("commands/essay-draft.md")
+        self.assertIn("resolve_ai_byline", text)
+        self.assertIn("ai_byline_text", text)
+        self.assertIn("ai_byline_placement", text)
+        self.assertIn("render_byline_markdown", text)
+        for placement in ("byline", "footer", "frontmatter-only"):
+            self.assertIn(placement, text)
+        self.assertIn("Byte-identical to pre-#941 behavior", text)
+
+    def test_revise_re_resolves_ai_byline(self):
+        """Issue #941: essay-revise re-resolves the byline each pass
+        (config-driven, not carried content) and strips a disabled one."""
+        text = _read("commands/essay-revise.md")
+        self.assertIn("resolve_ai_byline", text)
+        self.assertIn("ai_byline_text", text)
+        self.assertIn("ai_byline_placement", text)
+        self.assertIn("re-resolved fresh each pass", text)
+        self.assertIn("never leave a stale disclosure line", text)
 
 
 class TestRubric(unittest.TestCase):
