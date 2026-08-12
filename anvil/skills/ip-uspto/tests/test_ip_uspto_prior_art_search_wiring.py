@@ -1,13 +1,25 @@
-"""Structural tests for the opt-in ``ip-search`` pre-search wiring (issue #958).
+"""Tests for the opt-in ``ip-search`` pre-search wiring (issue #958 / #978).
 
 Issue #958 wires the ``anvil:ip-search`` utility skill (#957) into the
 ``ip-uspto`` prior-art critic as an **opt-in, off-by-default** step that
 runs immediately before the critic's own operator-supplied-art check.
-These are structural/documentation tests — the command files are prose
-procedures for an LLM-driven agent, not executable code — mirroring the
-convention already used for the adversary (#434) and FTO (#446) opt-in
-critics in this skill (``test_ip_uspto_adversary.py`` /
-``test_ip_uspto_fto.py``).
+Issue #978 upgraded the enforcement of that step's safety properties from
+followed prose to actual code — ``anvil/skills/ip-search/lib/prior_art_step.py``
+— so this module is now two things:
+
+- **Structural/documentation tests** (``TestCommandFile`` / ``TestSkillMd`` /
+  ``TestPortfolioOrchestrator`` / ``TestReadme``) — the command files are
+  still prose procedures for an LLM-driven agent, not executable code, so
+  the *documented* contract (flag names, config keys, defaults, placement)
+  is still checked by reading the docs, mirroring the convention already
+  used for the adversary (#434) and FTO (#446) opt-in critics in this
+  skill (``test_ip_uspto_adversary.py`` / ``test_ip_uspto_fto.py``).
+- **A behavioral check** (``TestCodeDelegation``) that the doc's step 1a
+  actually names the real module the agent must delegate to, and that the
+  module it names is importable and enforces off-by-default itself — the
+  full 26-case behavioral suite for the module lives in
+  ``anvil/skills/ip-search/tests/test_ip_search_prior_art_step.py``; this
+  is just the "the doc points at real, working code" bridge.
 
 Assertions cover:
 
@@ -16,6 +28,8 @@ Assertions cover:
   off-by-default contract, the step-1a placement ahead of the step-2
   supply check, the never-``--force`` no-clobber guarantee, and the
   degraded-path non-fatal behavior.
+- Step 1a's prose names ``prior_art_step.py`` / ``run_step`` as the
+  delegation target, not just "run anvil:ip-search" freehand.
 - SKILL.md carries the ``[--search]`` dispatch-row annotation and an
   opt-in-wiring paragraph that repeats the off-by-default / no-``--force``
   / Dimension-5-null-path-preserved contract.
@@ -33,7 +47,9 @@ collection convention; this tests dir carries no ``__init__.py``
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -69,6 +85,12 @@ class TestCommandFile(unittest.TestCase):
     def test_config_passthrough_keys(self):
         for key in ("corpus", "max", "min_score"):
             self.assertIn(key, self.text)
+
+    def test_step_1a_delegates_to_the_real_module(self):
+        """Issue #978: step 1a names the code module, not just prose."""
+        self.assertIn("prior_art_step.py", self.text)
+        self.assertIn("run_step", self.text)
+        self.assertIn("#978", self.text)
 
     def test_step_1a_precedes_supply_check(self):
         self.assertIn("1a.", self.text)
@@ -149,6 +171,66 @@ class TestReadme(unittest.TestCase):
 
     def test_caveat_mentions_ip_search(self):
         self.assertIn("anvil:ip-search", self.text)
+
+
+class TestCodeDelegation(unittest.TestCase):
+    """The doc's delegation target (issue #978) is real, importable code.
+
+    The full 26-case behavioral suite for the module lives in
+    ``anvil/skills/ip-search/tests/test_ip_search_prior_art_step.py``; this
+    is just the bridge check that the doc's claim ("delegate to
+    prior_art_step.py") points at something that exists and actually
+    enforces off-by-default.
+    """
+
+    def setUp(self):
+        from anvil.lib.skill_lib_loader import import_skill_lib_module
+
+        ip_search_lib = (
+            _SKILL_ROOT.parents[0] / "ip-search" / "lib"
+        )
+        self.prior_art_step = import_skill_lib_module(
+            "ip-search", ip_search_lib, "prior_art_step"
+        )
+
+    def test_module_exposes_the_documented_api(self):
+        for name in ("KNOB_KEY", "resolve_config", "run_step", "StepConfig"):
+            self.assertTrue(hasattr(self.prior_art_step, name))
+        self.assertEqual(self.prior_art_step.KNOB_KEY, "prior_art_search")
+
+    def test_off_by_default_is_structural(self):
+        """No knob ⇒ the runner is never even called."""
+
+        def _exploding_runner(*_a, **_kw):
+            raise AssertionError("runner must not be called when the knob is off")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            thread = Path(tmp) / "acme-widget"
+            thread.mkdir()
+            result = self.prior_art_step.run_step(thread, runner=_exploding_runner)
+            self.assertEqual(result.state, self.prior_art_step.STATE_DISABLED)
+
+    def test_shipped_config_shape_resolves_enabled(self):
+        """#975's shipped `.anvil.json` shape still opts in after #978."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            thread = Path(tmp) / "acme-widget"
+            thread.mkdir()
+            (thread / ".anvil.json").write_text(
+                json.dumps(
+                    {
+                        "prior_art_search": {
+                            "auto": True,
+                            "corpus": "auto",
+                            "max": 8,
+                            "min_score": 1,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cfg = self.prior_art_step.resolve_config(thread)
+            self.assertTrue(cfg.auto)
 
 
 if __name__ == "__main__":

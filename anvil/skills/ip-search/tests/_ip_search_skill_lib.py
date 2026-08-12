@@ -30,7 +30,14 @@ _PACKAGE_NAME = "ip_search_lib"
 _lib = load_skill_lib(
     "ip-search",
     _LIB_DIR,
-    ["brief_features", "query", "corpus", "reference", "orchestrate"],
+    [
+        "brief_features",
+        "query",
+        "corpus",
+        "reference",
+        "orchestrate",
+        "prior_art_step",
+    ],
     package_name=_PACKAGE_NAME,
 )
 
@@ -39,12 +46,14 @@ query = _lib.query
 corpus = _lib.corpus
 reference = _lib.reference
 orchestrate = _lib.orchestrate
+prior_art_step = _lib.prior_art_step
 
 
 __all__ = [
     "brief_features",
     "corpus",
     "orchestrate",
+    "prior_art_step",
     "query",
     "reference",
 ]
