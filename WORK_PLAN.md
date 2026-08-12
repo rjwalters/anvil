@@ -2,14 +2,14 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-12 (Guide triage pass — `WORK_LOG.md` gained two entries above the prior #993 high-water mark: PR #1006 (closes #999) and PR #1001 (closes #998); both referenced issues were correctly closed via their PR, no orphans found. A new epic, #1000 ("Make Anvil artifact skills discoverable in Claude and Codex"), appeared with four `loom:epic-phase` children (#1002, #1003, #1004, #1005); #1002 was the only ready, non-building issue this pass and was marked `loom:urgent` as the root of the chain (#1002 → #1003 → #1004 → #1005) — it was claimed by a Builder (`loom:building`) within the same pass. #1003/#1004/#1005 correctly remain `loom:blocked` on their unresolved dependencies (no superseding block, nothing to unblock). #997 is mid-`loom:curating`. The two `loom:operator-only` issues (#888, #918) are unchanged. No open PRs, no `loom:review-requested`/`loom:pr` items, no outstanding Architect/Hermit proposals.)*
+*Last updated: 2026-08-12 (Guide triage pass — `WORK_LOG.md` gained one entry above the prior #1006 high-water mark: PR #1008 (closes #1002, the #1000 epic's research spike), correctly closing its issue with no orphans. #1002's completion advanced the epic chain: #1003 is now `loom:building` (claimed by a Builder), and #1004/#1005 remain `loom:blocked` on it (dependency #1003 still open, no superseding block, nothing to unblock). No ready/`loom:issue` work exists this pass, so no `loom:urgent` promotions were made — the urgent queue is empty. #997 remains mid-`loom:curating`. The two `loom:operator-only` issues (#888, #918) are unchanged. `loom-recover-orphans --verbose` found #1003's `loom:building` claim fresh (label age 46s, well inside the 4h staleness threshold) — not orphaned. No open PRs at all.)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-- **#1002**: "Research and verify Codex CLI skill/plugin discovery contract for the Anvil adapter" (`tier:goal-supporting`). Marked `loom:urgent` this pass as the sole ready issue and the root of the #1000 epic's dependency chain (#1002 → #1003 → #1004 → #1005); claimed by a Builder within the same pass (now also `loom:building`).
+*Empty.* No ready, non-building issue exists this pass to promote — see Backlog state below.
 
 ## Ready for Work (`loom:issue`)
 
@@ -17,7 +17,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-- **#1002**: "Research and verify Codex CLI skill/plugin discovery contract for the Anvil adapter" (`tier:goal-supporting`). Claimed by a Builder this pass; #1003/#1004/#1005 remain blocked until it lands.
+- **#1003**: "Emit Codex skill/plugin registration during install-anvil.sh install/upgrade/uninstall" (`tier:goal-supporting`, epic-phase of #1000). Claimed by a Builder; #1004/#1005 remain blocked until it lands.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -29,7 +29,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-*Empty.* #1002 (curated) is listed under In Progress above, now `loom:building`.
+*Empty.* #1003 (curated) is listed under In Progress above, now `loom:building`.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -41,9 +41,8 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Blocked (`loom:blocked`)
 
-- **#1003**: "Emit Codex skill/plugin registration during install-anvil.sh install/upgrade/uninstall" (`tier:goal-supporting`, epic-phase of #1000). Depends on #1002 (open, `loom:building`) — stays blocked until it closes.
-- **#1004**: "Generate consumer AGENTS.md entry point and update anvil:help introspection for Claude+Codex parity" (`tier:goal-supporting`, epic-phase of #1000). Depends on #1003 (open, blocked) — stays blocked.
-- **#1005**: "Add cross-runtime (Claude/Codex) parity and upgrade/uninstall ownership tests for Anvil skill registration" (`tier:goal-supporting`, epic-phase of #1000). Depends on #1003 and #1004 (both open, blocked) — stays blocked.
+- **#1004**: "Generate consumer AGENTS.md entry point and update anvil:help introspection for Claude+Codex parity" (`tier:goal-supporting`, epic-phase of #1000). Depends on #1003 (open, `loom:building`) — stays blocked until it closes.
+- **#1005**: "Add cross-runtime (Claude/Codex) parity and upgrade/uninstall ownership tests for Anvil skill registration" (`tier:goal-supporting`, epic-phase of #1000). Depends on #1003 and #1004 (both open) — stays blocked.
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
@@ -55,11 +54,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Epics (`loom:epic`)
 
-- **#1000**: "Make Anvil artifact skills discoverable in Claude and Codex" (`tier:goal-supporting`). 0/4 phases complete: #1002 (`loom:building`), #1003/#1004/#1005 (`loom:blocked`, chained on #1002 → #1003 → #1004).
+- **#1000**: "Make Anvil artifact skills discoverable in Claude and Codex" (`tier:goal-supporting`). 1/4 phases complete: #1002 closed (PR #1008), #1003 `loom:building`, #1004/#1005 `loom:blocked` (chained on #1003 → #1004).
 
 ## Backlog state
 
-**Eight open issues as of 2026-08-12: the new #1000 epic and its four phase issues (#1002 building, #1003/#1004/#1005 blocked on the chain), #997 (mid-`loom:curating`), and the two unchanged `loom:operator-only` issues (#888, #918).** No ready (`loom:issue`) issues remain — #1002 was promoted to `loom:urgent` and claimed by a Builder within this pass. No PRs in the Loom review pipeline, no open PRs at all. `loom-recover-orphans --verbose` found no orphaned `loom:building` claims. Recently-merged PRs (#1001 closes #998, #1006 closes #999) both correctly closed their linked issues — no orphaned closures found. Next action: Builder finishes #1002, which unblocks #1003; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run on the affected host.
+**Seven open issues as of 2026-08-12: the #1000 epic and its three still-open phase issues (#1003 building, #1004/#1005 blocked on the chain — #1002 closed this pass), #997 (mid-`loom:curating`), and the two unchanged `loom:operator-only` issues (#888, #918).** No ready (`loom:issue`) issues remain, so no `loom:urgent` promotions this pass. No PRs in the Loom review pipeline, no open PRs at all. `loom-recover-orphans --verbose` found #1003's `loom:building` claim fresh, not orphaned. The one recently-merged PR above the prior watermark (#1008 closes #1002) correctly closed its linked issue — no orphaned closures found. Next action: Builder finishes #1003, which unblocks #1004; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run on the affected host.
 
 ### Recurring themes the next wave of issues will likely touch
 
