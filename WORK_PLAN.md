@@ -2,27 +2,27 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-12 (Guide triage pass — the backlog fully drained during this pass: #982 and #978 both shipped (PR #987, PR #981) and closed. #985 was promoted to `loom:issue` by Curator, briefly claimed by a Builder, then released back to `loom:issue` within the same triage window; it is the only ready, non-building issue, so it was marked `loom:urgent`. #984 now carries both `loom:issue` and `loom:building` simultaneously — a dual-label state `.loom/CLAUDE.md` calls out as confusing; left alone since a Builder appears to be actively working it and `loom-recover-orphans --verbose` reports its claim as live (label age minutes, well under the 4h staleness threshold), not orphaned. `WORK_LOG.md` gained two entries (PR #987 closes #982, PR #981 closes #978); every other newly-closed issue above the prior high-water mark was already captured via an existing `(closes #N)` PR entry, so no further append was needed. All recently-merged PRs correctly closed their linked issues — no orphaned closures found. No `loom:blocked` issues, no open epics, no outstanding Architect/Hermit proposals)*
+*Last updated: 2026-08-12 (Guide triage pass — #983 and #985 both shipped (PR #988, PR #989) and closed since the prior pass; no issues carry `loom:urgent` this pass because the ready backlog is empty — the only two open issues besides the operator-only pair are already `loom:building`. A new issue, #991 (follow-up filed by PR #989's author, propagating the orchestrator guard-collision cross-reference to the two remaining docs), appeared already `loom:building` — claimed without ever carrying `loom:issue`, likely direct daemon dispatch rather than the human-approval path; not a Guide action item. #984 still carries both `loom:issue` and `loom:building` simultaneously (unchanged dual-label state, still a live claim per `loom-recover-orphans --verbose`, not orphaned) and now has an open PR, #992, addressing it. `WORK_LOG.md` gained two entries (PR #988 closes #983, PR #989 closes #985); every other newly-closed issue above the prior high-water mark was already captured via an existing `(closes #N)` PR entry. All recently-merged PRs correctly closed their linked issues — no orphaned closures found. No `loom:blocked` issues, no open epics, no outstanding Architect/Hermit proposals)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-- **#985**: "generated critic agents: findings.md sidecar writes trip report-file Write heuristics — name manifest files as expected outputs" (`tier:goal-supporting`). Only ready, non-building issue in the backlog; well-scoped mechanical fix (append one cross-reference sentence to 5 deck command docs, mirroring an already-shipped pattern) with exact line numbers and a test plan already curated.
+*Empty.* No ready, non-building issue exists this pass to promote — see Backlog state below.
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* (#985 above also carries `loom:issue` but is listed under Urgent, not duplicated here.)
+*Empty.* #984 below also carries `loom:issue` but is listed under In Progress (it is simultaneously `loom:building`), not duplicated here.
 
 ## In Progress (`loom:building`)
 
-- **#984**: "deck-design: imagery-policy gate_should_run resolver misses the thread-level BRIEF frontmatter declaration" (`tier:goal-supporting`). Claimed by a Builder; not orphaned per `loom-recover-orphans`. Note: still carries `loom:issue` alongside `loom:building` — a dual-label state, left untouched since the claim is live.
-- **#983**: "deck-review: no deterministic gate for bottom-edge caption clipping — add a PDF-text-layer completeness check" (`tier:goal-supporting`). Claimed by a Builder; not orphaned per `loom-recover-orphans`.
+- **#991**: "propagate orchestrator guard-collision cross-reference to remaining review/audit docs (datasheet-audit.md, memoir-review.md)" (`tier:maintenance`). Follow-up filed by PR #989; claimed directly as `loom:building` without ever carrying `loom:issue`. Not orphaned per `loom-recover-orphans`.
+- **#984**: "deck-design: imagery-policy gate_should_run resolver misses the thread-level BRIEF frontmatter declaration" (`tier:goal-supporting`). Claimed by a Builder; not orphaned per `loom-recover-orphans`. Still carries `loom:issue` alongside `loom:building` — an unchanged dual-label state, left untouched since the claim is live. Now has an open PR, #992 (`loom:review-requested`), addressing it.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-*Empty.*
+- **#992**: "fix(deck): resolve imagery_policy against the thread BRIEF, not the ambiguous project-level one" — addresses #984.
 
 ## Approved (Awaiting Merge) (`loom:pr`)
 
@@ -30,7 +30,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-*Empty.* #983 and #984 (both curated) have already been claimed and are listed under In Progress; #985 (also curated) is listed under Urgent.
+*Empty.* #991 and #984 (both curated) have already been claimed and are listed under In Progress.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -58,7 +58,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Five open issues as of 2026-08-12: #985 (`loom:issue` + `loom:urgent`, the sole ready item this pass), #983 and #984 (both `loom:building`, claimed by Builders), and two `loom:operator-only` issues neither eligible for `loom:issue`/`loom:urgent` — #888 (curated, awaiting human/Champion design review of the review-loop lookahead proposal) and #918 (`loom:operator-mechanical`, loom-daemon-down watchdog escalation).** No PRs are open in the Loom review pipeline (`loom:review-requested` and `loom:pr` both empty) — #987 and #981 both merged this pass, closing #982 and #978 respectively. One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans --verbose` confirms both #983's and #984's `loom:building` claims are live (well under the 4h staleness threshold) — neither is orphaned. Recently-merged PRs all correctly closed their linked issues — no orphaned closures found. Next action: Builders on #983/#984 finish and open PRs; a Builder picks up urgent #985; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run; #902 awaits a direct human merge decision.
+**Four open issues as of 2026-08-12: #991 and #984 (both `loom:building`, claimed by Builders), and two `loom:operator-only` issues neither eligible for `loom:issue`/`loom:urgent` — #888 (curated, awaiting human/Champion design review of the review-loop lookahead proposal) and #918 (`loom:operator-mechanical`, loom-daemon-down watchdog escalation).** No ready, non-building issue exists to mark `loom:urgent` this pass. One PR is open in the Loom review pipeline (#992, `loom:review-requested`, addressing #984) — #988 and #989 both merged this pass, closing #983 and #985 respectively. One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans --verbose` confirms both #991's and #984's `loom:building` claims are live (well under the 4h staleness threshold) — neither is orphaned. Recently-merged PRs all correctly closed their linked issues — no orphaned closures found. Next action: Builders on #991/#984 finish; Judge reviews #992; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run; #902 awaits a direct human merge decision.
 
 ### Recurring themes the next wave of issues will likely touch
 
