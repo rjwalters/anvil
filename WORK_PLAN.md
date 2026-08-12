@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-11 (Guide triage pass — issue #978 filed since the prior pass: a `tier:maintenance` hardening suggestion (backport #977's code-enforced `prior_art_step.py` behind #975's shipped `ip-search` pre-search knob), curated on arrival and not `loom:operator-only`. The backlog otherwise remains fully quiescent: zero issues carry `loom:issue` / `loom:urgent` / `loom:building` / `loom:blocked`, zero PRs carry `loom:review-requested` / `loom:pr`, no open epics, no outstanding Architect/Hermit proposals, and no unlabeled issues awaiting Curator. `WORK_LOG.md` is current — every closed issue above the prior high-water mark was closed via an already-recorded merged PR (#977, which looked issue-shaped, is actually a closed-unmerged PR, not a genuine issue). `loom-recover-orphans` found no orphaned `loom:building` claims (none carry the label). All recently-merged PRs correctly closed their linked issues — no orphaned closures found)*
+*Last updated: 2026-08-12 (Guide triage pass — a Builder has claimed #978 (`loom:building` added) since the prior pass; it anomalously still carries `loom:issue` and `loom:curated` alongside `loom:building` (label wasn't stripped on claim — not a Guide-fixable state, noted for awareness, not acted on). `loom-recover-orphans` confirms #978 is not an orphan: its `loom:building` claim is 16 minutes old, well under the 4h staleness threshold. No other label state changed: still zero `loom:urgent`, zero `loom:review-requested` / `loom:pr`, no open epics, no outstanding Architect/Hermit proposals, no unlabeled issues awaiting Curator, no `loom:blocked`. `WORK_LOG.md` is current — no new merged PRs since #975, and every newly-closed issue above the prior high-water mark is already captured via an existing `(closes #N)` PR entry. All recently-merged PRs correctly closed their linked issues — no orphaned closures found)*
 
 ---
 
@@ -13,11 +13,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.*
+*Empty.* #978 carries `loom:issue` but is actively `loom:building` — see "In Progress", not here (label anomaly, see note above).
 
 ## In Progress (`loom:building`)
 
-*Empty.* #958 and #965, the prior pair, both shipped this pass (PR #975, PR #973) and are closed.
+- **#978**: "Backport #977's code-enforced `prior_art_step.py` behind #975's shipped ip-search pre-search knob" (`tier:maintenance`). Claimed by a Builder since the prior pass. Still anomalously carries `loom:issue` and `loom:curated` alongside `loom:building`.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -29,9 +29,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-- **#978**: "Backport #977's code-enforced `prior_art_step.py` behind #975's shipped ip-search pre-search knob" (`tier:maintenance`, complexity: routine). #958 shipped a doc-only, prose-enforced opt-in `ip-search` pre-search knob via PR #975; a concurrent duplicate PR (#977, closed unmerged) took a more rigorous approach with a real Python module and 26 behavioral tests structurally proving the four safety properties (off by default, no network call when unset, never clobbers operator art, fail-safe config parsing). This issue suggests backporting that module as the tested implementation behind the already-shipped knob, reconciling two incompatible `.anvil.json` `prior_art_search` config shapes in the process. Explicitly not urgent — the shipped behavior is already functionally correct per its own tests; a Curator/Builder may close this if the doc-only contract is judged sufficient. Not eligible for `loom:urgent` (no `loom:issue` — awaiting approval).
-
-(#888 also carries `loom:curated` but is `loom:operator-only` — see below, not here.)
+*Empty.* #978 still carries `loom:curated` but has since been claimed (`loom:building`) by a Builder — see "In Progress" above. #888 also carries `loom:curated` but is `loom:operator-only` — see below, not here.
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -59,7 +57,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Three open issues as of 2026-08-11: #978 (`loom:curated`, `tier:maintenance`, freshly filed backport suggestion, not operator-only) and two `loom:operator-only` issues neither eligible for `loom:issue`/`loom:urgent` — #888 (curated, awaiting human/Champion design review of the review-loop lookahead proposal) and #918 (`loom:operator-mechanical`, loom-daemon-down watchdog escalation).** No PRs are open in the Loom review pipeline (`loom:review-requested` and `loom:pr` both empty). One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans` found no orphaned `loom:building` claims this pass (none carry the label at all). Recently-merged PRs all correctly closed their linked issues — no orphaned closures found. Next action: a Curator/Builder may triage or close #978 per its own suggestion; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run. No ready work exists for Builder or Judge to pick up until #978 is promoted, or #888/#918 are resolved.
+**Three open issues as of 2026-08-12: #978 (now `loom:building`, claimed by a Builder since the prior pass; still anomalously retains `loom:issue`/`loom:curated`) and two `loom:operator-only` issues neither eligible for `loom:issue`/`loom:urgent` — #888 (curated, awaiting human/Champion design review of the review-loop lookahead proposal) and #918 (`loom:operator-mechanical`, loom-daemon-down watchdog escalation).** No PRs are open in the Loom review pipeline (`loom:review-requested` and `loom:pr` both empty). One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans` confirms #978's `loom:building` claim is live (16 minutes old, well under the 4h staleness threshold) — not an orphan. Recently-merged PRs all correctly closed their linked issues — no orphaned closures found. Next action: the Builder on #978 finishes and opens a PR; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run; #902 awaits a direct human merge decision. No new ready work exists for Builder or Judge to pick up beyond #978 already in progress.
 
 ### Recurring themes the next wave of issues will likely touch
 
