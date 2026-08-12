@@ -297,6 +297,7 @@ class TestFinalizeCommand(unittest.TestCase):
 
     def setUp(self):
         self.text = _read("commands/ip-uspto-provisional-finalize.md")
+        self.lowered = self.text.lower()
 
     def test_frontmatter_role_finalizer(self):
         fm = _parse_frontmatter(self.text)
@@ -365,6 +366,30 @@ class TestFinalizeCommand(unittest.TestCase):
             "[COUNSEL-READY]",
             self.text,
         )
+
+    def test_visual_qa_check_present_and_non_blocking(self):
+        # Issue #982 AC #2: finalize checks for a vision pass on rendered
+        # (non-stub) figures and warns — non-blocking — when absent.
+        self.assertIn("Visual QA check", self.text)
+        self.assertIn(".vision/_review.json", self.text)
+        self.assertIn("warning only", self.lowered)
+        self.assertIn("NOT a gate", self.text)
+
+    def test_visual_qa_warning_language_distinguishes_numeral_drift(self):
+        # Assert on a whitespace-normalized copy so markdown line-wrapping
+        # inside the warning prose can't make an otherwise-present phrase
+        # look absent.
+        normalized = re.sub(r"\s+", " ", self.lowered)
+        self.assertIn("never visually verified", normalized)
+        self.assertIn("dimension-4 check", normalized)
+        self.assertIn("not visual verification", normalized)
+        self.assertIn("ip-uspto-provisional-vision <thread>", self.text)
+
+    def test_manifest_records_visual_verification_flag(self):
+        self.assertIn('"rendered_drawings_visually_verified"', self.text)
+
+    def test_failure_handling_notes_visual_qa_is_non_blocking(self):
+        self.assertIn("rendered drawings never visually verified", self.lowered)
 
 
 class TestPreFlightCommand(unittest.TestCase):
@@ -716,6 +741,29 @@ class TestFiguresCommand(unittest.TestCase):
         self.assertIn(
             "anvil(ip-uspto-provisional/figures): <thread>.{N}", self.text
         )
+
+    def test_numeral_drift_is_not_visual_verification(self):
+        # Issue #982: the figurer must not self-report a TikZ render as
+        # "rendered-clean" — that conflates a text/compile-level check
+        # (numeral round-trip + pdflatex success) with a pixels-side
+        # layout verification.
+        self.assertIn("NOT visual verification", self.text)
+        self.assertIn("compiles + numerals present", self.lowered)
+        self.assertIn("layout not visually verified", self.lowered)
+        self.assertIn("rendered-clean", self.lowered)
+
+    def test_visual_qa_not_run_marker(self):
+        # Issue #982 AC #2: the figurer writes an explicit visual_qa
+        # marker into _progress.json when it renders real (non-stub)
+        # TikZ figures, so a downstream reader never mistakes a
+        # numeral-drift pass for a visual pass.
+        self.assertIn('"visual_qa": "not-run"', self.text)
+        self.assertIn("visual_qa", self.text)
+        self.assertIn("metadata.rendered > 0", self.text)
+
+    def test_recommends_vision_or_manual_review_before_finalize(self):
+        self.assertIn("ip-uspto-provisional-vision <thread>", self.text)
+        self.assertIn("before finalize", self.lowered)
 
 
 class TestVisionCommand(unittest.TestCase):
