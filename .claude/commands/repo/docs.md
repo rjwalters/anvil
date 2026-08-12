@@ -76,6 +76,22 @@ skill/command wikilinks, and nested CLAUDE.md paths. Fold its findings in the
 same way. Broken CLAUDE.md paths remain **critical** — they're the primary
 navigation paths for agents.
 
+That includes [[links]]' resolution rules, not just its finding list: where the
+repo declares an install-template mapping in `.repo/link-roots.json`, fold in
+the mapping table too and keep the "resolved via install mapping" annotation on
+individual links. A consolidated report that drops it turns a wrong mapping into
+a silent zero.
+
+The same applies to [[links]]' sibling-repo base: where the repo declares
+`.repo/link-siblings.json`, fold in its table and keep the
+"resolved via sibling repo `<name>`" annotation and the
+"sibling repo not present — unverifiable" annotation on individual links,
+distinguishable at a glance from `MISSING`. Collapsing
+either sibling-repo status back into `MISSING` in the consolidated report
+reintroduces the machine-dependent false positive [[links]]' fourth base
+exists to remove — a link that is merely unverifiable on this machine would
+read as broken here even though [[links]] itself never calls it that.
+
 ## Output Format
 
 One consolidated report, grouped by layer so it's clear which are mechanical
@@ -125,9 +141,11 @@ can revert a file between the moment you fix it and the moment you report it,
 leaving this command claiming a fix that is no longer on disk.
 
 So immediately after applying each fix, and **before counting it as applied**,
-confirm the edit is still there: re-read the changed region of the file, or run
-`git diff -- <path>` / `git status --porcelain -- <path>` and check the change
-is still present.
+re-read the changed region of the file and confirm your specific edit is
+present. `git diff -- <path>` / `git status --porcelain -- <path>` is a cheap
+first pass, but only proves the path differs from HEAD — it cannot distinguish
+your edit from someone else's, so it must not be the sole check when the file
+may carry other uncommitted changes.
 
 This check is **unconditional** — run it whether or not you have any reason to
 suspect a concurrent writer. Detecting a daemon first would be racy (one can
