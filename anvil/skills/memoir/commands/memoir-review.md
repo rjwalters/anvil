@@ -59,7 +59,11 @@ interrupt of THIS critic removed by
    (write every required file into `.<thread>.{N}.review.tmp/`,
    `_progress.json` last, then `mv` as the last step; stamp `_meta.json`
    with `"atomicity_fallback": "manual-mv"`). Never write straight into
-   the final `<thread>.{N}.review/` name.
+   the final `<thread>.{N}.review/` name. (If your agent harness
+   pattern-matches and rejects filenames like `verdict.md` / `scoring.md`
+   / `comments.md` on a `Write`, a Bash-heredoc write into the staging
+   dir is an accepted fallback — see `anvil/lib/snippets/critics.md`
+   §"Orchestrator output-file guard collisions".)
 
 2. **Read inputs**: the body, the matching BRIEF `documents:` entry,
    `rubric.md`, consumer rubric overrides, `<thread>.{N}/_progress.json`
