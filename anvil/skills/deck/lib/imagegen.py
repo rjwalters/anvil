@@ -110,6 +110,7 @@ __all__ = (
     "compose_prompt",
     "enumerate_imagery_slots",
     "resolve_default_policy",
+    "resolve_effective_imagery_policy",
     "resolve_slot_prompt",
     "run_imagegen",
 )
@@ -497,6 +498,83 @@ def resolve_default_policy(config_path: Path | str | None) -> str | None:
             f"and commands/deck-brief.md § 'imagery_policy'."
         )
     return candidate
+
+
+def resolve_effective_imagery_policy(
+    thread_dir: Path | str,
+    portfolio_path: Path | str,
+    config_path: Path | str | None = None,
+) -> tuple[str, str]:
+    """Resolve the effective ``imagery_policy`` for one thread.
+
+    This is the single source of truth for the documented resolution
+    order (issue #547; see ``commands/deck-imagegen-adapter.md`` §
+    "Optional: deck.imagegen.default_policy"):
+
+    1. ``<thread_dir>/BRIEF.md`` frontmatter ``imagery_policy:``
+       (per-thread, explicit) — the **thread-level** BRIEF, NOT the
+       project-level ``BRIEF.md`` one directory up. The two files share
+       the literal name ``BRIEF.md`` but are distinct: the project-root
+       file carries a ``documents:`` list, the thread-root file carries
+       ``imagery_policy:``. Callers MUST pass the thread root
+       (``<portfolio>/<thread>/``), never the project root.
+    2. ``.anvil/config.json`` ``deck.imagegen.default_policy``
+       (consumer-level fallback) — resolved at ``config_path`` when
+       given, else ``<portfolio_path>/.anvil/config.json``.
+    3. Built-in ``deterministic-only`` default.
+
+    Extracted (issue #984) from the inline resolution block that used
+    to live only inside :func:`run_imagegen`, so every command-surface
+    resolver (``deck-design`` step 7b's additive-ness gate,
+    ``deck-audit``'s generative-imagery audit) can call one function
+    instead of re-deriving the order in prose. Prior to this extraction,
+    ``deck-design.md`` step 7b named its resolution source as bare
+    "BRIEF.md" — ambiguous at the project root, where a *project-level*
+    ``BRIEF.md`` also exists and has no ``imagery_policy`` key, causing
+    the additive-ness gate to silently fall through to
+    ``deterministic-only`` even when the thread BRIEF declared
+    ``generative-eligible``.
+
+    Args:
+        thread_dir: The **thread root** directory containing the
+            thread-level ``BRIEF.md`` (i.e. ``<portfolio>/<thread>/``).
+        portfolio_path: The project root — used only to compute the
+            default ``.anvil/config.json`` location when
+            ``config_path`` is not given.
+        config_path: Optional override for ``.anvil/config.json``.
+            Defaults to ``<portfolio_path>/.anvil/config.json``.
+
+    Returns:
+        A ``(policy, policy_source)`` tuple. ``policy`` is one of
+        ``generative-eligible | consumer-provided | deterministic-only``.
+        ``policy_source`` is a human-readable provenance string
+        (``"BRIEF.md"``, ``"<config path> deck.imagegen.default_policy"``,
+        or ``"built-in default"``) — load-bearing for an operator
+        surprised by a resolved value.
+
+    Raises:
+        ImagegenError: When ``.anvil/config.json`` is malformed, or
+            ``deck.imagegen.default_policy`` is outside the closed
+            enum (delegated to :func:`resolve_default_policy`).
+    """
+    thread_dir = Path(thread_dir)
+    portfolio_path = Path(portfolio_path)
+    brief = load_brief_frontmatter(thread_dir / "BRIEF.md")
+    raw_policy = brief.get("imagery_policy")
+    brief_has_policy = raw_policy is not None and raw_policy.strip() != ""
+    if brief_has_policy:
+        return raw_policy.strip().lower(), "BRIEF.md"
+
+    # BRIEF omitted the field. Consult the consumer-level override.
+    cfg_path_for_resolve = (
+        Path(config_path)
+        if config_path is not None
+        else portfolio_path / ".anvil" / "config.json"
+    )
+    override = resolve_default_policy(cfg_path_for_resolve)
+    if override is not None:
+        return override, f"{cfg_path_for_resolve} deck.imagegen.default_policy"
+    return _BUILTIN_DEFAULT_POLICY, "built-in default"
 
 
 # ---------------------------------------------------------------------------
@@ -1298,41 +1376,21 @@ def run_imagegen(
 
     # --- Precondition 1: imagery_policy opt-in (with default_policy resolution) ---
     #
-    # Resolution order (highest priority first; issue #547):
-    #   1. BRIEF.md frontmatter ``imagery_policy`` (per-thread, explicit).
-    #   2. ``.anvil/config.json`` ``deck.imagegen.default_policy``
-    #      (consumer-level proactive override).
-    #   3. Built-in ``deterministic-only`` (existing behavior, unchanged).
+    # Delegates to resolve_effective_imagery_policy (issue #984), the
+    # single source of truth for the BRIEF ∪ config ∪ built-in
+    # resolution order (issue #547). The ``policy_source`` field is
+    # load-bearing for an operator surprised by a ``skipped`` run: they
+    # need to see whether the BRIEF or the config-level override
+    # supplied the effective value.
     #
-    # The ``policy_source`` field is load-bearing for an operator
-    # surprised by a ``skipped`` run: they need to see whether the BRIEF
-    # or the config-level override supplied the effective value.
-    raw_policy = brief.get("imagery_policy")
-    brief_has_policy = raw_policy is not None and raw_policy.strip() != ""
-    if brief_has_policy:
-        policy = raw_policy.strip().lower()
-        policy_source = "BRIEF.md"
-    else:
-        # BRIEF omitted the field. Consult the consumer-level override.
-        # When ``adapter`` is injected (test path) AND no explicit
-        # ``config_path`` is provided, the config lookup still happens
-        # at the conventional location — this lets the
-        # default_policy-override tests inject an adapter while still
-        # validating the resolver pipeline.
-        cfg_path_for_resolve = (
-            Path(config_path)
-            if config_path is not None
-            else portfolio_path / ".anvil" / "config.json"
-        )
-        override = resolve_default_policy(cfg_path_for_resolve)
-        if override is not None:
-            policy = override
-            policy_source = (
-                f"{cfg_path_for_resolve} deck.imagegen.default_policy"
-            )
-        else:
-            policy = _BUILTIN_DEFAULT_POLICY
-            policy_source = "built-in default"
+    # Note: when ``adapter`` is injected (test path) AND no explicit
+    # ``config_path`` is provided, the config lookup still happens at
+    # the conventional location — this lets the default_policy-override
+    # tests inject an adapter while still validating the resolver
+    # pipeline.
+    policy, policy_source = resolve_effective_imagery_policy(
+        thread_dir, portfolio_path, config_path
+    )
 
     if policy != "generative-eligible":
         # Surface as a clean skip; deck-imagegen.md's failure-modes
