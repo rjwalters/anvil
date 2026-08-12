@@ -104,6 +104,36 @@ def test_deck_design_documents_non_waivable_attribution_composition() -> None:
     )
 
 
+def test_deck_design_qualifies_brief_path_for_policy_resolution() -> None:
+    """Issue #984: step 7b's additive-ness gate trigger must name the
+    thread-level ``<thread>/BRIEF.md`` explicitly, not bare "BRIEF.md" —
+    the bare form is ambiguous at the project root, where a distinct
+    project-level ``BRIEF.md`` (frontmatter ``documents:`` list) also
+    exists and never carries ``imagery_policy``. This guards against the
+    doc drift regressing."""
+    body = _read(DECK_DESIGN)
+    assert "<thread>/BRIEF.md" in body, (
+        "deck-design.md step 7b should reference '<thread>/BRIEF.md' "
+        "(thread-qualified), matching deck-audit.md, deck-draft.md, and "
+        "deck-imagegen-adapter.md — not a bare 'BRIEF.md' that could be "
+        "misread as the project-level BRIEF.md one directory up."
+    )
+
+
+def test_deck_design_references_shared_resolver_function() -> None:
+    """Issue #984: step 7b should call the extracted, reusable resolver
+    (anvil/skills/deck/lib/imagegen.py::resolve_effective_imagery_policy)
+    rather than re-deriving the BRIEF ∪ config ∪ built-in resolution
+    order in ambiguous prose."""
+    body = _read(DECK_DESIGN)
+    assert "resolve_effective_imagery_policy" in body, (
+        "deck-design.md step 7b should reference "
+        "resolve_effective_imagery_policy — the single source of truth "
+        "for the imagery_policy resolution order, shared with "
+        "deck-audit.md and run_imagegen."
+    )
+
+
 def test_deck_design_documents_tolerant_reader_for_extension_journals() -> None:
     """Issue #621: the step 7b prose must document that a consumer-extension
     journal (unknown per-entry fields, e.g. ``generated_at``) still runs the

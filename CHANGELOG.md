@@ -569,6 +569,36 @@
   untouched-since-install skill would spuriously read as
   consumer-modified on the very next run.
 
+- **`anvil:deck` — `deck-design`'s additive-ness gate resolved
+  `imagery_policy` against the wrong `BRIEF.md`** (#984). The deck
+  project-org model nests two distinct files sharing the literal name
+  `BRIEF.md`: a project-level `BRIEF.md` (frontmatter `documents:` list)
+  and a thread-level `BRIEF.md` (frontmatter `imagery_policy:`).
+  `deck-design.md` step 7b named its resolution source as bare
+  "BRIEF.md" — the one call site, among four documenting the same
+  resolution order, that omitted the `<thread>/` qualifier — so a
+  design-critic pass reasoning at the project root could read the
+  project-level file, find no `imagery_policy` key, and silently fall
+  through to the built-in `deterministic-only` default even when the
+  thread's own BRIEF declared `generative-eligible`. Extracts the inline
+  resolution block previously duplicated only inside
+  `imagegen.py::run_imagegen` into a standalone, reusable
+  `resolve_effective_imagery_policy(thread_dir, portfolio_path,
+  config_path=None) -> (policy, policy_source)` in
+  `anvil/skills/deck/lib/imagegen.py`; `run_imagegen` now delegates to
+  it (behavior-preserving), and `deck-design.md` step 7b + the
+  `deck-audit.md` "Generative-imagery audit" section are rewritten to
+  name it as the single source of truth for the `<thread>/BRIEF.md` ∪
+  `.anvil/config.json` `deck.imagegen.default_policy` ∪ built-in-default
+  resolution order (issue #547). `imagegen_additive.py::gate_should_run`'s
+  docstring cross-reference is updated to point at the new function.
+  `test_additive_gate_docs.py` gains a regression assertion that
+  `deck-design.md` names `<thread>/BRIEF.md` explicitly, and
+  `test_imagegen.py` gains direct unit coverage for the extracted
+  resolver, including a case that plants a sibling project-level
+  `BRIEF.md` alongside the thread-level one to prove the resolver reads
+  the correct file.
+
 ## [0.10.1] — 2026-07-21
 
 ### Summary

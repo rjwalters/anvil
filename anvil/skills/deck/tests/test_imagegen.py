@@ -64,6 +64,7 @@ from imagegen import (  # noqa: E402
     load_config,
     load_style_presets,
     resolve_default_policy,
+    resolve_effective_imagery_policy,
     resolve_slot_prompt,
     run_imagegen,
     DEFAULT_PRESET_KEY,
@@ -1149,6 +1150,120 @@ class TestResolveDefaultPolicy(unittest.TestCase):
             p.write_text("not json {{{", encoding="utf-8")
             with self.assertRaises(ImagegenError):
                 resolve_default_policy(p)
+
+
+class TestResolveEffectiveImageryPolicy(unittest.TestCase):
+    """``resolve_effective_imagery_policy`` (#984) — the extracted, reusable
+    resolver for the full BRIEF ∪ config ∪ built-in resolution order (#547).
+
+    ``run_imagegen`` now delegates to this function rather than
+    re-deriving the order inline; ``deck-design.md`` step 7b and
+    ``deck-audit.md`` are documented to call it too, so this is the
+    single source of truth under direct unit coverage.
+    """
+
+    def _write_config(
+        self, portfolio: Path, *, default_policy: str | None = None
+    ) -> Path:
+        cfg = portfolio / ".anvil" / "config.json"
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        imagegen: dict[str, object] = {}
+        if default_policy is not None:
+            imagegen["default_policy"] = default_policy
+        payload: dict[str, object] = {"version": 1, "deck": {"imagegen": imagegen}}
+        cfg.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return cfg
+
+    def test_thread_brief_wins(self) -> None:
+        """Thread BRIEF declares the policy; config also has an override —
+        the thread BRIEF MUST win, per the documented priority order."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(
+                portfolio, imagery_policy="generative-eligible"
+            )
+            self._write_config(portfolio, default_policy="deterministic-only")
+            policy, source = resolve_effective_imagery_policy(
+                portfolio / "acme", portfolio
+            )
+            self.assertEqual(policy, "generative-eligible")
+            self.assertEqual(source, "BRIEF.md")
+
+    def test_falls_back_to_config_default_policy(self) -> None:
+        """Thread BRIEF omits the field → the consumer-level
+        ``deck.imagegen.default_policy`` override wins."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(portfolio, imagery_policy="")
+            self._write_config(portfolio, default_policy="generative-eligible")
+            policy, source = resolve_effective_imagery_policy(
+                portfolio / "acme", portfolio
+            )
+            self.assertEqual(policy, "generative-eligible")
+            self.assertIn("deck.imagegen.default_policy", source)
+
+    def test_falls_back_to_built_in_default(self) -> None:
+        """Neither the thread BRIEF nor config supplies a value → the
+        built-in ``deterministic-only`` default, with a named source."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(portfolio, imagery_policy="")
+            policy, source = resolve_effective_imagery_policy(
+                portfolio / "acme", portfolio
+            )
+            self.assertEqual(policy, "deterministic-only")
+            self.assertEqual(source, "built-in default")
+
+    def test_ignores_sibling_project_level_brief(self) -> None:
+        """Regression test for issue #984: a *project-level* ``BRIEF.md``
+        at the portfolio root (frontmatter ``documents:`` list per the
+        post-#296 project-org model) is a DISTINCT file from the
+        thread-level ``BRIEF.md`` and must never be consulted for
+        ``imagery_policy``. Passing the correct thread root resolves the
+        thread's own declaration even though a same-named sibling file
+        one directory up carries no such field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(
+                portfolio, imagery_policy="generative-eligible"
+            )
+            # Project-level BRIEF.md — same filename, different schema,
+            # one directory up from the thread root.
+            (portfolio / "BRIEF.md").write_text(
+                "---\ndocuments:\n  - acme\n---\n\n# Project brief\n",
+                encoding="utf-8",
+            )
+            policy, source = resolve_effective_imagery_policy(
+                portfolio / "acme", portfolio
+            )
+            self.assertEqual(policy, "generative-eligible")
+            self.assertEqual(source, "BRIEF.md")
+
+    def test_explicit_config_path_override(self) -> None:
+        """An explicit ``config_path`` is honored over the conventional
+        ``<portfolio>/.anvil/config.json`` location."""
+        with tempfile.TemporaryDirectory() as tmp:
+            portfolio = Path(tmp)
+            _build_thread_fixture(portfolio, imagery_policy="")
+            custom_cfg = portfolio / "custom-config.json"
+            custom_cfg.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "deck": {
+                            "imagegen": {
+                                "default_policy": "consumer-provided"
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            policy, source = resolve_effective_imagery_policy(
+                portfolio / "acme", portfolio, config_path=custom_cfg
+            )
+            self.assertEqual(policy, "consumer-provided")
+            self.assertIn(str(custom_cfg), source)
 
 
 class TestRunImagegenDefaultPolicy(unittest.TestCase):
