@@ -4,6 +4,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-08-12
+
+- **PR #987**: fix(ip-uspto-provisional): stop conflating numeral-drift with visual verification in the figurer (closes #982) — a real provisional filing shipped a numeral that was textually present but visually collided/clipped, passing the figurer's compile+numeral-round-trip check and dimension-4's text-level check with a clean self-report; the figurer now writes `phases.figures.metadata.visual_qa = "not-run"` into `_progress.json` on any real (non-stub) TikZ render and drops "clean"/"rendered-clean" self-report language, and `ip-uspto-provisional-finalize` gains a non-blocking step 6b that warns counsel in the package README/`_manifest.json` when rendered figures exist with no `ip-uspto-provisional-vision` critic sibling
+- **PR #981**: feat(ip-search): code-enforce the opt-in prior-art pre-search step (closes #978) — #975 shipped the `--search`/`prior_art_search.auto` pre-search knob as prose only, enforced solely by an agent following the command doc; this backports #977's prototype (closed as a duplicate once #975 was found already merged) as real, tested code behind #975's exact shipped config shape (`auto`/`max`, object-form only — no bare-bool shorthand), with 29 new behavioral tests covering off-by-default, byte-identical re-runs, and malformed-config fail-safe
+
 ### 2026-08-11
 
 - **PR #975**: feat(ip-uspto, ip-uspto-provisional): wire opt-in ip-search pre-search into the priorart critic (closes #958) — the `priorart` critics in both ip skills had no way to populate Dimension 5 from a thread with zero hand-collected references short of the operator remembering to run `anvil:ip-search` separately first; a new opt-in, off-by-default trigger (`--search` CLI flag or `<thread>/.anvil.json` `prior_art_search.auto`) adds a procedure step 1a that runs `ip-search` immediately before the existing supply-check step, never passing `--force` so operator-authored `prior-art/*.md` is never clobbered — byte-identical behavior absent the knob
