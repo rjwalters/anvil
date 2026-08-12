@@ -118,7 +118,8 @@ issue** — the v0.10.0 set is intentionally frozen.
 | `daemon.drain.started`     | Drain supervisor (#4090)       | `{in_flight, timeout_secs, force_after_timeout, deadline}` |
 | `daemon.drain.completed`   | Drain supervisor (#4090)       | `{in_flight}` (always `0`) |
 | `daemon.drain.aborted`     | Daemon IPC (#4090)             | `{was_draining}` |
-| `daemon.drain.timeout`     | Drain supervisor (#4090)       | `{in_flight, forced, cancelled?}` |
+| `daemon.drain.timeout`     | Drain supervisor (#4090)       | `{in_flight, forced, cancelled?, then_exit?, roll_pending?, attempts?, elapsed_secs?}` |
+| `daemon.drain.roll_pending` | Drain supervisor (#6007)      | `{in_flight, attempt, window_secs, budget_secs}` |
 
 The four `epic.issue.{N}.*` topics were authorized by **#3873** (epic #3842
 Phase 4) and are documented in full under [Epic supervisor](#epic-supervisor-3842)
@@ -127,11 +128,16 @@ below. The `daemon.capacity.advisory` topic was authorized by **#3902** (epic
 state change** (entered/left the token-bound state), never every tick, so the
 operator gets one add-capacity advisory on the way in and one recovery on the way
 out. See [Token-capacity backpressure](#token-capacity-backpressure-3902) below.
-The four `daemon.drain.*` topics were authorized by **#4090** for the scheduled
+Four of the `daemon.drain.*` topics were authorized by **#4090** for the scheduled
 drain-and-restart primitive — `started` when a drain is accepted, `completed`
 when the last in-flight sweep finishes (right before the supervised relaunch),
 `aborted` when an operator cancels a drain, and `timeout` when the deadline is
-reached (`forced` distinguishes a refusal from a force-cancel restart). See
+reached *terminally* (`forced` distinguishes a refusal from a force-cancel
+restart). **#6007** adds a fifth, `roll_pending`: a relaunch drain whose deadline
+passed with work still in flight now **retains** the roll (dispatch stays paused,
+the restart re-arms itself at quiescence) and publishes `roll_pending` per re-arm;
+`timeout` then fires only if the whole paused-dispatch budget is spent and the roll
+is abandoned. See
 [Supervised restart primitive](#supervised-restart-primitive-4054) below.
 They ride the same in-memory bus as the sweep topics and are tailable via
 `subscribe_to_events` / `tail_event_bus`.
@@ -406,9 +412,18 @@ Inputs:
   repo root to list the sweeps tracked by that repo's registry — the way to
   observe sweeps the daemon autonomously dispatched into a non-default managed
   repo. Each returned `SweepInfo` also carries a `repo` field naming its owner,
-  so a response is self-describing even without filtering. Cross-repo
-  aggregation in a single call is deferred to phase d (#3930). `#[serde(default)]`
-  on the wire.
+  so a response is self-describing even without filtering. Ignored when
+  `all_workspaces` is `true`. `#[serde(default)]` on the wire.
+- `all_workspaces` (optional, issue #6006) — fan out across every registered
+  managed workspace (`WorkspaceRegistry::effective_roots`, the same enumeration
+  `list_quarantines`'s `None` case and `loom-daemon status`'s `per_repo` use)
+  and return the aggregated fleet-wide sweep set in one call, sorted by
+  `(repo, started_at)`. No prior knowledge of individual repo roots is needed —
+  an empty registry still yields exactly the default workspace, so a
+  single-workspace daemon's fan-out equals `workspace_root: None`. `false` (or
+  absent — `#[serde(default)]`) preserves the existing `workspace_root`-scoped
+  (or default-workspace-only) behavior byte-for-byte; `workspace_root` is
+  ignored when this is `true`.
 
 The same optional `workspace_root` input (default = default workspace, unchanged)
 is accepted by `get_sweep_status`, `tail_sweep_log`, and `cancel_sweep` — so a
@@ -1283,8 +1298,9 @@ they are *machine-level* resources, so
 they stay a single global figure, not per-repo. `resolve_registry` (the
 per-request `workspace_root` targeting used by `dispatch_sweep` / `list_sweeps` /
 etc.) is unchanged: the cross-repo aggregation is a read-only snapshot for
-`DaemonStatus` only. A merged `list_sweeps` across all repos without an explicit
-`workspace_root` remains a deferred follow-up.
+`DaemonStatus`. `list_sweeps` gained its own opt-in fleet-wide fan-out
+(`all_workspaces`, issue #6006 — see the `list_sweeps` reference above) so a
+merged view across every registered repo no longer requires one call per repo.
 
 ### Per-repo main-health gate (AC2)
 
@@ -2988,6 +3004,35 @@ bad), `classification_is_transient` keeps it retryable, and
 The pool has no per-model account state, so it must stay that way — the distinct
 name exists for the orchestrator's remedy choice and for forensics, not for a
 different pool policy.
+
+**Auth-dead (401 invalid-bearer-token) rotation, distinct from exhaustion
+(#6030).** A wave of daemon-dispatched children died within minutes ending in
+`Failed to authenticate. API Error: 401 Invalid bearer token`. This is a
+different failure class from every pattern above: an exhausted account
+recovers on its own once its quota window resets, but an auth-dead one (a
+revoked/invalid OAuth token) fails **every** dispatch forever until a human
+re-authenticates it. The phrase matched no `classify_error` category, so it
+fell through to the `RECOVERABLE` catch-all — the wrapper retried the same
+dead credential with backoff until `MAX_RETRIES`, then died without ever
+marking the account bad, so the next spawn could pick the exact same
+auth-dead account again. `classify_error` now matches `invalid bearer token`
+(alongside the existing `401 … authentication_error` / `token has expired`
+patterns) as `TOKEN_EXPIRED`, and a new `is_account_auth_dead` /
+`rotate_auth_dead_account` pair in `claude-wrapper.sh` — structurally
+parallel to `is_account_exhaustion` / `rotate_exhausted_account` — marks the
+account bad with an `"auth-dead: ..."` reason (not `"exhausted: ..."`) before
+rotating, sharing the same `rotations`/`max_rotations` cap. `bad_tokens`'s
+existing `auth_reason_regex` already classifies any reason string containing
+`auth` as `BadReasonClass::Auth` (permanent, clears only via `tokens
+unblock`), so no format change was needed there — only the wrapper-side gap
+(the account was never marked bad in the first place) needed closing. `tokens
+check`'s probe path (`discover_tokens`) also switched from a naive
+whole-line-equality `.bad_tokens` check to the same `blocking_entry_in_dir`
+parser `select.rs` uses, so a bad-marked account's real class/reason (e.g.
+`auth: auth-dead: 401 Invalid bearer token`) now surfaces in the table/JSON
+output instead of the opaque `bad_token_listed` — telling an operator whether
+an account needs `claude login` + `tokens unblock` or will simply clear on
+its own cooldown.
 
 The **effective** per-tick concurrency is then `min(dynamic_cap, backlog_depth)`:
 `tick()` iterates the ready `loom:issue` rows and stops at the cap, so
@@ -6241,15 +6286,47 @@ loom-daemon restart --abort-drain                 # cancel an in-progress drain,
   registry; `--force`/`force: true` still overrides for an operator who
   deliberately wants a dispatch to land during a drain.
 - **Fail-safe timeout:** reaching `--timeout` without `--force-after-timeout`
-  **refuses** the restart (clears the drain flag, resumes dispatch, stays up) and
-  reports the reason via `loom-daemon status` — it never silently restarts or
-  silently gives up. `--force-after-timeout` opts into cancelling the stragglers
-  via the existing `cancel_sweep` path, then restarts. The refusal note (rendered
-  as `Drain: not draining (last: …)`) names the exact local retry —
+  **refuses** the restart — it never cancels a sweep, never silently restarts, and
+  never silently gives up. `--force-after-timeout` opts into cancelling the
+  stragglers via the existing `cancel_sweep` path, then restarts. What happens to
+  *dispatch* at that refusal depends on which kind of drain it is (#6007):
+  - **A relaunch drain (the version roll)** keeps the roll **pending**: the drain
+    flag stays set, so dispatch stays paused, and the supervisor keeps polling and
+    fires the restart the instant in-flight reaches **zero** — no operator, no
+    re-run, no guessed `--timeout`. Retry windows widen geometrically from the
+    requested timeout (`base × 2ⁿ`, capped at 2h each) and the whole sequence is
+    bounded by a total paused-dispatch budget of `4 × --timeout` (capped at 4h).
+    Once that budget is spent the roll is **abandoned**: dispatch resumes exactly
+    as it did pre-#6007, so a wedged sweep can never starve the host of work
+    indefinitely, and the note then says to cancel the stuck sweep rather than
+    widen the window again. Escape hatches while pending:
+    `restart --abort-drain` (give up now, resume dispatch) and
+    `restart --drain --force-after-timeout` (cancel the stragglers and roll on the
+    next supervisor tick — on a *pending* roll this escalates the active drain in
+    place and pulls its re-armed deadline in to now; on a first-attempt drain the
+    #4521 pinning still applies).
+  - **A then-exit teardown drain** (`fleet drain`'s path) keeps the historical
+    behavior byte-for-byte: it clears the flag, resumes dispatch, and stays up —
+    `fleet drain` detects that remote refusal by observing `drain.draining: false`
+    on a still-reachable daemon and reports its documented exit code `2`.
+  Why this asymmetry: on a host that is actually working, resuming dispatch at the
+  deadline handed the admission window straight back to the work finder, which
+  admitted more sweeps, which made the *next* drain strictly harder to satisfy. In
+  the 2026-08-11 fleet roll three of four hosts never activated the new binary for
+  exactly this reason (in-flight went `1 → refused → 3`), and the only workarounds
+  were an operator-guessed `--timeout 7200` or destroying work with
+  `--force-after-timeout`. Both refusal notes (rendered by `loom-daemon status` as
+  `Drain: not draining (last: …)`, or on the line under `Drain: DRAINING …` while a
+  roll is pending) name the exact local retry —
   `loom-daemon restart --drain --force-after-timeout --timeout <secs>` — so an
   operator is never left guessing at a nonexistent bare `drain` subcommand or the
   unrelated `fleet drain <ssh_host>` remote worker-decommission command (#5340;
   see "`fleet drain`" above — same word, different command, different host).
+- **The auto-update loop cooperates rather than racing (#6007).** While any roll is
+  armed — including one retained across a refused deadline — `auto_update`'s tick
+  skips instead of rebuilding again: the binary is already provisioned and the
+  restart is already coming, and a redundant `cargo build` would compete for CPU
+  with the very in-flight sweeps the pending roll is waiting on.
 - **Supervision proof is checked up front (AC5):** on an unsupervised host the
   request is refused **before** dispatch is paused (`accepted: false`), so a caller
   can detect nothing happened and no silent outage is introduced.
@@ -6260,7 +6337,7 @@ loom-daemon restart --abort-drain                 # cancel an in-progress drain,
   of scope (it would require a role registry, #4090's stop-and-split boundary).
 - **Observability:** `loom-daemon status` renders `DRAINING (n sweep(s) remaining,
   deadline …)` while active and the last transition (timeout refusal / abort)
-  afterward; the four `daemon.drain.*` events (above) narrate the transitions on
+  afterward; the five `daemon.drain.*` events (above) narrate the transitions on
   the event bus. **Cannot be used for its own first roll** — see the rollout note
   below.
 - **Supervised stop/start vs. a full wait-for-zero drain (#5340).** These are two
@@ -6473,6 +6550,17 @@ artifact is considered — pass `--allow-stale` to skip the sync entirely and go
 straight to resolution, or fix the checkout. This is unchanged pre-existing
 behavior, not something the fetch path introduces, but it does mean "no Rust
 toolchain" is not the same as "no git checkout hygiene".
+
+**Release-cadence gap visibility (#6010).** Releases are cut deliberately
+less often than `VERSION` bumps (see
+[`release-cadence.md`](release-cadence.md) for the policy), so the newest
+release can legitimately sit behind the current source tree for a while — the
+pre-#6010 "not newer than the installed version" message alone did not make
+that distinguishable from "you're already up to date". The script now also
+compares the resolved release against the **source tree's own `VERSION`
+file** and reports it on every path that resolves a release (plain run,
+`--check`, and a forced `--fetch`'s hard-fail reason), so an operator can tell
+*before* running `--fetch` whether it can currently reach source at all.
 
 **Extra environment variables** (all optional; the first three are primarily test
 seams):
