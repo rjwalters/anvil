@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-12 (Guide triage pass — #983 and #985 both shipped (PR #988, PR #989) and closed since the prior pass; no issues carry `loom:urgent` this pass because the ready backlog is empty — the only two open issues besides the operator-only pair are already `loom:building`. A new issue, #991 (follow-up filed by PR #989's author, propagating the orchestrator guard-collision cross-reference to the two remaining docs), appeared already `loom:building` — claimed without ever carrying `loom:issue`, likely direct daemon dispatch rather than the human-approval path; not a Guide action item. #984 still carries both `loom:issue` and `loom:building` simultaneously (unchanged dual-label state, still a live claim per `loom-recover-orphans --verbose`, not orphaned) and now has an open PR, #992, addressing it. `WORK_LOG.md` gained two entries (PR #988 closes #983, PR #989 closes #985); every other newly-closed issue above the prior high-water mark was already captured via an existing `(closes #N)` PR entry. All recently-merged PRs correctly closed their linked issues — no orphaned closures found. No `loom:blocked` issues, no open epics, no outstanding Architect/Hermit proposals)*
+*Last updated: 2026-08-12 (Guide triage pass — #984 and #991 both shipped (PR #992 closes #984, PR #993 closes #991) and closed since the prior pass, leaving only the two `loom:operator-only` issues open. No issues carry `loom:urgent` or `loom:issue` this pass — the ready and in-progress backlogs are both empty. `WORK_LOG.md` gained two entries (PR #992 closes #984, PR #993 closes #991). All recently-merged PRs correctly closed their linked issues — no orphaned closures found. No `loom:blocked` issues, no open epics, no outstanding Architect/Hermit proposals, no PRs in the Loom review pipeline. One PR remains open outside the pipeline: #902, a human-authored, unlabeled tool-currency chore awaiting a direct human merge decision.)*
 
 ---
 
@@ -13,16 +13,15 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Ready for Work (`loom:issue`)
 
-*Empty.* #984 below also carries `loom:issue` but is listed under In Progress (it is simultaneously `loom:building`), not duplicated here.
+*Empty.*
 
 ## In Progress (`loom:building`)
 
-- **#991**: "propagate orchestrator guard-collision cross-reference to remaining review/audit docs (datasheet-audit.md, memoir-review.md)" (`tier:maintenance`). Follow-up filed by PR #989; claimed directly as `loom:building` without ever carrying `loom:issue`. Not orphaned per `loom-recover-orphans`.
-- **#984**: "deck-design: imagery-policy gate_should_run resolver misses the thread-level BRIEF frontmatter declaration" (`tier:goal-supporting`). Claimed by a Builder; not orphaned per `loom-recover-orphans`. Still carries `loom:issue` alongside `loom:building` — an unchanged dual-label state, left untouched since the claim is live. Now has an open PR, #992 (`loom:review-requested`), addressing it.
+*Empty.* #991 and #984 both shipped and closed this pass (PR #993, PR #992).
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-- **#992**: "fix(deck): resolve imagery_policy against the thread BRIEF, not the ambiguous project-level one" — addresses #984.
+*Empty.*
 
 ## Approved (Awaiting Merge) (`loom:pr`)
 
@@ -30,7 +29,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-*Empty.* #991 and #984 (both curated) have already been claimed and are listed under In Progress.
+*Empty.*
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -58,7 +57,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Four open issues as of 2026-08-12: #991 and #984 (both `loom:building`, claimed by Builders), and two `loom:operator-only` issues neither eligible for `loom:issue`/`loom:urgent` — #888 (curated, awaiting human/Champion design review of the review-loop lookahead proposal) and #918 (`loom:operator-mechanical`, loom-daemon-down watchdog escalation).** No ready, non-building issue exists to mark `loom:urgent` this pass. One PR is open in the Loom review pipeline (#992, `loom:review-requested`, addressing #984) — #988 and #989 both merged this pass, closing #983 and #985 respectively. One PR is open outside the pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). `loom-recover-orphans --verbose` confirms both #991's and #984's `loom:building` claims are live (well under the 4h staleness threshold) — neither is orphaned. Recently-merged PRs all correctly closed their linked issues — no orphaned closures found. Next action: Builders on #991/#984 finish; Judge reviews #992; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run; #902 awaits a direct human merge decision.
+**Two open issues as of 2026-08-12, both `loom:operator-only` and neither eligible for `loom:issue`/`loom:urgent` — #888 (curated, awaiting human/Champion design review of the review-loop lookahead proposal) and #918 (`loom:operator-mechanical`, loom-daemon-down watchdog escalation).** No ready, building, or blocked issues exist; no open epics; no outstanding Architect/Hermit proposals. #991 and #984 both shipped and closed this pass (PR #993 closes #991, PR #992 closes #984), emptying the review pipeline. One PR remains open outside the Loom pipeline (#902, "chore: update Repo Skills 0.7.0 → 0.8.1", unlabeled human-authored tool bump, awaiting a direct human merge decision per `CLAUDE.md`'s small-mechanical-change guidance). Recently-merged PRs all correctly closed their linked issues — no orphaned closures found. Next action: a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run; #902 awaits a direct human merge decision. With the queue fully empty, the next work will come from Architect/Hermit proposals, Auditor findings, or new canary-filed issues.
 
 ### Recurring themes the next wave of issues will likely touch
 
