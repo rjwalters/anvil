@@ -269,6 +269,10 @@ uv pip install -e .[auto_shrink]
 
 When the extra is not installed, `deck-review` graceful-skips the auto-shrink check (mirrors the `mmdc` preflight #65 and `pdfjam` preflight #85 pattern); the rest of the review proceeds normally and the skip is recorded as an info-level lint note in `_summary.md`. The `marp_lint` source-side check above is unaffected — it has no third-party dependencies.
 
+### Post-render text-layer-completeness gate (issue #983)
+
+A third deterministic gate (the `anvil.skills.deck.lib.text_layer_completeness` module — invoked via `uv run --project .anvil python -c "from anvil.skills.deck.lib.text_layer_completeness import check_text_layer_completeness"`) runs in `deck-review` alongside the auto-shrink detector and catches a failure mode neither `marp_lint` nor `auto_shrink_detector` sees: a caption (or other trailing content) pushed off a slide's bottom edge and absent from the rendered PDF entirely. For every slide it confirms the slide's last checkable source line is present in that slide's rendered `pdftotext` page text; unlike the peer-relative auto-shrink detector, it needs no peer class, so it works uniformly on singleton `_class:` slides too. Missing `pdftotext` (poppler-utils) or a not-yet-rendered `deck.pdf` graceful-skips at `info` severity; the escape hatch is `<!-- anvil-lint-disable: text-layer-completeness -->`.
+
 ## Asset generation — hybrid policy
 
 Pitch decks are asset-dense. Anvil ships **deterministic asset paths** by default; generative imagery is **opt-in** via `imagery_policy: generative-eligible` in `BRIEF.md` frontmatter.
