@@ -204,7 +204,7 @@ See `rubric.md` for the 9-dimension /44 scoring schema (paper-tuned weights, rig
 
 **`paper-litsearch` (optional, read-only critic).** Pure-LLM literature search is prone to hallucinating citations. This role MUST refuse to invent BibTeX entries. Instead, it produces:
 - `notes.md` — discussion of how the paper positions against the related work the author already supplied, plus a list of **gaps** (named missing topics or specific known papers the brief mentioned but did not supply BibTeX for).
-- `candidates.bib` — entries that come from author-supplied refs (re-formatted for consistency) or that the role is **explicitly told** about in the brief. Entries from "I think there's a 2023 paper about X by someone named Smith" are forbidden — the role surfaces such gaps in `notes.md` for the author to fill manually (e.g., by pasting a Semantic Scholar export into `<thread>/refs/`).
+- `candidates.bib` — entries that come from author-supplied refs (re-formatted for consistency) or that the role is **explicitly told** about in the brief. Entries from "I think there's a 2023 paper about X by someone named Smith" are forbidden — the role surfaces such gaps in `notes.md` for the author to fill manually (e.g., by pasting a Semantic Scholar export into `<thread>/refs/`). Before `litsearch.state` reaches `done`, `candidates.bib` must pass the deterministic structural gate at `anvil/skills/paper/lib/bib_lint.py::lint_bib_file` (issue #998) — catches a bare `@<word>` token left outside a real entry (e.g. inside a `%`-comment discussion — BibTeX has no comment syntax) and unbalanced entry braces, before either can propagate into a version's `refs.bib` via `paper-draft`/`paper-revise`'s merge.
 
 ### Opt-in web search (`web_search: true`) — issue #424
 
