@@ -4,6 +4,37 @@
 
 ### Added
 
+- **Sidecar `copy` — a sanctioned binary/bulk-asset channel for
+  driverless sessions** (#1017). A consumer hook that blocks every
+  Bash-channel write into the checkout (redirection, `tee`, `cp`, `mv`,
+  `sed -i` — a worktree-isolation guard) left a manual/agent session with
+  no sanctioned way to place bytes it did not itself compose: an agent's
+  editing tool is text-only, so a prior version's unchanged
+  `figures/*.pdf` carried forward between versions, a compiled
+  `main.pdf`, or the raw stdout/stderr of a `pdflatex` compile pass
+  destined for `compile-log.txt` had no code-enforced path — only ad hoc
+  escape hatches like a `shutil.copyfile` one-off or a hand-typed
+  "summary" standing in for real compiler bytes. Adds
+  `anvil.lib.sidecar.copy_bytes()` (+ CLI shim `python -m anvil.lib.sidecar
+  copy <src> <dst> [--force] [--no-verify]`), the byte-safe analog of the
+  existing `stage`/`commit` text-sidecar shim (issue #645): copies a
+  single file or a whole directory tree, staged into a same-parent
+  leading-dot sibling and landed with one atomic `Path.rename` (the same
+  stage-then-rename shape `staged_sidecar` uses for critic directories),
+  with post-copy `(size, sha256)` byte-identity verification by default
+  (`SidecarCopyVerificationError`, non-zero exit, staged copy left
+  unrenamed for forensics — never lands an unverified copy). Refuses to
+  overwrite an existing destination unless `--force`/`overwrite=True` is
+  given, matching every other write primitive in the module.
+  `commands/paper-revise.md` step 8 and `commands/paper-audit.md` step 4
+  now name this path explicitly in their non-Python-driver fallback
+  guidance for figure carry-forward and compile-log capture,
+  respectively. (Investigated and ruled out of scope: the deterministic
+  detectors' `--write-review` sidecar writes — `numeric_consistency.py`,
+  `hyperlink_resolver.py`, `figure_content.py` — already write their
+  `_review.json` via their own Python `write_review_dir()`, which itself
+  calls `staged_sidecar()`; that is already a code-enforced write, not an
+  agent-typed one, so it needed no change here.)
 - **Claim provenance — stable anchor identity for drifting corpus
   citations** (#868). `provenance.md` rows (issue #597) cited their
   supporting corpus passage by a bare `Source file` + `Line range`,

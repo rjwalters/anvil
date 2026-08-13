@@ -40,6 +40,7 @@ from anvil.lib.critics import CANONICAL_REVIEW_FILENAME, discover_critics
 from anvil.lib.review_schema import Kind, Review, Score
 from anvil.lib.sidecar import (
     STAGING_SUFFIX,
+    SidecarCopyVerificationError,
     SidecarIncompleteError,
     abort_replace,
     backup_path_for,
@@ -47,6 +48,7 @@ from anvil.lib.sidecar import (
     cleanup_stale_staging,
     commit_replace,
     commit_staged,
+    copy_bytes,
     main,
     recover_interrupted_replace,
     stage_enter,
@@ -1528,3 +1530,250 @@ def test_cli_stage_refuses_orphaned_backup_exit_three(tmp_path, capsys):
     rc = main(["stage", str(final)])
     assert rc == 3
     assert "recover-replace" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Binary/bulk-asset copy primitive — copy_bytes / CLI `copy` (issue #1017)
+# ---------------------------------------------------------------------------
+#
+# The sanctioned binary/bulk channel for a session whose editing tool is
+# text-only (and whose Bash channel may be blocked by a consumer's
+# worktree-isolation hook): figure/PDF carry-forward between versions and
+# raw compile-log capture into a sidecar, both "move existing bytes into a
+# staging dir," not "generate new bytes."
+
+
+def test_copy_bytes_file_happy_path(tmp_path):
+    src = tmp_path / "compile.log"
+    src.write_bytes(b"pdflatex output line 1\nline 2\n" * 100)
+    dst = tmp_path / "out" / "compile-log.txt"
+
+    landed = copy_bytes(src, dst)
+
+    assert landed == dst
+    assert dst.read_bytes() == src.read_bytes()
+    # No leftover staging sibling after a clean landing.
+    assert not staging_path_for(dst).exists()
+
+
+def test_copy_bytes_directory_happy_path_byte_identical_recursive(tmp_path):
+    src = tmp_path / "thread.2" / "figures"
+    (src / "src").mkdir(parents=True)
+    (src / "scaling.pdf").write_bytes(b"%PDF-1.4 fake figure bytes\n" * 50)
+    (src / "src" / "scaling.py").write_text("import matplotlib\n# render script\n")
+
+    dst = tmp_path / "thread.3" / "figures"
+
+    landed = copy_bytes(src, dst)
+
+    assert landed == dst
+    assert (dst / "scaling.pdf").read_bytes() == (src / "scaling.pdf").read_bytes()
+    assert (dst / "src" / "scaling.py").read_text() == (
+        src / "src" / "scaling.py"
+    ).read_text()
+    assert not staging_path_for(dst).exists()
+
+
+def test_copy_bytes_missing_source_raises(tmp_path):
+    src = tmp_path / "does-not-exist.pdf"
+    dst = tmp_path / "dst.pdf"
+
+    with pytest.raises(FileNotFoundError):
+        copy_bytes(src, dst)
+
+    assert not dst.exists()
+
+
+def test_copy_bytes_refuses_existing_destination_without_force(tmp_path):
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"new content")
+    dst = tmp_path / "dst.pdf"
+    dst.write_bytes(b"old content - must not be clobbered")
+
+    with pytest.raises(FileExistsError):
+        copy_bytes(src, dst)
+
+    assert dst.read_bytes() == b"old content - must not be clobbered"
+
+
+def test_copy_bytes_overwrite_replaces_existing_destination(tmp_path):
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"new content")
+    dst = tmp_path / "dst.pdf"
+    dst.write_bytes(b"stale content")
+
+    landed = copy_bytes(src, dst, overwrite=True)
+
+    assert landed == dst
+    assert dst.read_bytes() == b"new content"
+
+
+def test_copy_bytes_creates_missing_parent_dirs(tmp_path):
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"bytes")
+    dst = tmp_path / "a" / "b" / "c" / "dst.pdf"
+
+    copy_bytes(src, dst)
+
+    assert dst.read_bytes() == b"bytes"
+
+
+def test_copy_bytes_removes_stale_staging_sibling_from_prior_interrupt(tmp_path):
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"bytes")
+    dst = tmp_path / "dst.pdf"
+
+    stale_staging = staging_path_for(dst)
+    stale_staging.parent.mkdir(parents=True, exist_ok=True)
+    stale_staging.write_bytes(b"leftover from a killed prior attempt")
+
+    copy_bytes(src, dst)
+
+    assert dst.read_bytes() == b"bytes"
+
+
+def test_copy_bytes_verification_failure_leaves_staged_copy_unrenamed(
+    tmp_path, monkeypatch
+):
+    import anvil.lib.sidecar as sidecar_module
+
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"the real bytes")
+    dst = tmp_path / "dst.pdf"
+
+    def _corrupt_copy2(_src, _dst, *args, **kwargs):
+        Path(_dst).write_bytes(b"corrupted during copy")
+
+    monkeypatch.setattr(sidecar_module.shutil, "copy2", _corrupt_copy2)
+
+    with pytest.raises(SidecarCopyVerificationError):
+        copy_bytes(src, dst)
+
+    staged = staging_path_for(dst)
+    assert staged.exists()
+    assert staged.read_bytes() == b"corrupted during copy"
+    assert not dst.exists()
+
+
+def test_copy_bytes_no_verify_skips_the_check(tmp_path, monkeypatch):
+    import anvil.lib.sidecar as sidecar_module
+
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"the real bytes")
+    dst = tmp_path / "dst.pdf"
+
+    def _corrupt_copy2(_src, _dst, *args, **kwargs):
+        Path(_dst).write_bytes(b"corrupted during copy")
+
+    monkeypatch.setattr(sidecar_module.shutil, "copy2", _corrupt_copy2)
+
+    landed = copy_bytes(src, dst, verify=False)
+
+    assert landed == dst
+    assert dst.read_bytes() == b"corrupted during copy"
+
+
+# --- CLI surface: `copy` (issue #1017) ---------------------------------
+
+
+def test_cli_copy_file_prints_dst_and_exit_zero(tmp_path, capsys):
+    src = tmp_path / "compile.log"
+    src.write_bytes(b"raw pdflatex bytes\n" * 10)
+    dst = tmp_path / "thread.3.audit-staging" / "compile-log.txt"
+
+    rc = main(["copy", str(src), str(dst)])
+
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out == str(dst)
+    assert dst.read_bytes() == src.read_bytes()
+
+
+def test_cli_copy_directory_prints_dst_and_exit_zero(tmp_path, capsys):
+    src = tmp_path / "thread.2" / "figures"
+    src.mkdir(parents=True)
+    (src / "plot.pdf").write_bytes(b"%PDF fake\n" * 5)
+    dst = tmp_path / "thread.3" / "figures"
+
+    rc = main(["copy", str(src), str(dst)])
+
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out == str(dst)
+    assert (dst / "plot.pdf").read_bytes() == (src / "plot.pdf").read_bytes()
+
+
+def test_cli_copy_missing_source_exit_three(tmp_path, capsys):
+    src = tmp_path / "missing.pdf"
+    dst = tmp_path / "dst.pdf"
+
+    rc = main(["copy", str(src), str(dst)])
+
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "does not exist" in err
+    assert not dst.exists()
+
+
+def test_cli_copy_existing_destination_exit_three_without_force(tmp_path, capsys):
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"new")
+    dst = tmp_path / "dst.pdf"
+    dst.write_bytes(b"old")
+
+    rc = main(["copy", str(src), str(dst)])
+
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "refusing to overwrite" in err
+    assert dst.read_bytes() == b"old"
+
+
+def test_cli_copy_force_overwrites_existing_destination(tmp_path, capsys):
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"new")
+    dst = tmp_path / "dst.pdf"
+    dst.write_bytes(b"old")
+
+    rc = main(["copy", str(src), str(dst), "--force"])
+
+    assert rc == 0
+    assert dst.read_bytes() == b"new"
+
+
+def test_cli_copy_verification_failure_exit_one(tmp_path, capsys, monkeypatch):
+    import anvil.lib.sidecar as sidecar_module
+
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"real bytes")
+    dst = tmp_path / "dst.pdf"
+
+    def _corrupt_copy2(_src, _dst, *args, **kwargs):
+        Path(_dst).write_bytes(b"corrupted")
+
+    monkeypatch.setattr(sidecar_module.shutil, "copy2", _corrupt_copy2)
+
+    rc = main(["copy", str(src), str(dst)])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "did not match source" in err
+    assert not dst.exists()
+
+
+def test_cli_copy_no_verify_flag_skips_verification(tmp_path, capsys, monkeypatch):
+    import anvil.lib.sidecar as sidecar_module
+
+    src = tmp_path / "src.pdf"
+    src.write_bytes(b"real bytes")
+    dst = tmp_path / "dst.pdf"
+
+    def _corrupt_copy2(_src, _dst, *args, **kwargs):
+        Path(_dst).write_bytes(b"corrupted")
+
+    monkeypatch.setattr(sidecar_module.shutil, "copy2", _corrupt_copy2)
+
+    rc = main(["copy", str(src), str(dst), "--no-verify"])
+
+    assert rc == 0
+    assert dst.read_bytes() == b"corrupted"
