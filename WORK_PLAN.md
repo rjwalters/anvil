@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-13 (Guide triage pass — `WORK_LOG.md` gained one entry above the prior #1008 high-water mark: PR #1010 (closes #1003, the #1000 epic's Codex-shim implementation phase), correctly closing its issue with no orphans. #1003's completion resolved #1004's sole dependency: #1004 was never previously approved (`loom:issue` never appeared in its label history), so per the label-gate policy `loom:blocked` was removed WITHOUT restoring `loom:issue` — it re-enters the curation/approval flow (currently `loom:triage`). #1005 still depends on #1004 (open), so it stays `loom:blocked`. No ready/`loom:issue` work exists this pass, so no `loom:urgent` promotions were made — the urgent queue is empty. #997 remains mid-`loom:curating`. The one `loom:curated`+`loom:operator-only` issue (#888) and the one `loom:operator-only` infra escalation (#918) are unchanged. `loom-recover-orphans --recover` found no orphaned `loom:building` claims (queue is empty). No open PRs at all.)*
+*Last updated: 2026-08-13 (Guide triage pass — no new PRs or standalone issue closures since the prior pass: `WORK_LOG.md`'s watermark (PR #1010, issue #876) already covers everything except the self-referential docs PR #1011, and all 47 issues closed since #876 are already logged via their closing PR's `(closes #N)` entry, so `WORK_LOG.md` is unchanged this pass. #1004 moved since the last update: after being unblocked and re-curated, it was reviewed and approved (`loom:issue` restored at 00:13 UTC by Champion/human) and immediately claimed by a Builder (`loom:building` at 00:13, worktree `issue-1004` confirmed live) — moved from "Triage Queue" to "In Progress" below. #1005 stays `loom:blocked`: its dependency #1004 is open (building, not yet closed). No ready/non-building `loom:issue` work exists this pass, so the `loom:urgent` queue stays empty. #997 remains mid-`loom:curating`. The `loom:curated`+`loom:operator-only` issue (#888) and the `loom:operator-only` infra escalation (#918) are unchanged. `loom-recover-orphans` not needed — the one `loom:building` issue (#1004) has a live worktree, not orphaned. No open PRs at all.)*
 
 ---
 
@@ -17,7 +17,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.*
+- **#1004**: "Generate consumer AGENTS.md entry point and update anvil:help introspection for Claude+Codex parity" (`tier:goal-supporting`, epic-phase of #1000). Unblocked this pass's predecessor round (dependency #1003 closed via PR #1010), re-curated, approved (`loom:issue`), and claimed by a Builder — live worktree at `.loom/worktrees/issue-1004`.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -41,11 +41,10 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Blocked (`loom:blocked`)
 
-- **#1005**: "Add cross-runtime (Claude/Codex) parity and upgrade/uninstall ownership tests for Anvil skill registration" (`tier:goal-supporting`, epic-phase of #1000). Depends on #1003 (closed) and #1004 (open, `loom:triage`) — stays blocked until #1004 closes.
+- **#1005**: "Add cross-runtime (Claude/Codex) parity and upgrade/uninstall ownership tests for Anvil skill registration" (`tier:goal-supporting`, epic-phase of #1000). Depends on #1003 (closed) and #1004 (open, `loom:building`) — stays blocked until #1004 closes.
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
-- **#1004**: "Generate consumer AGENTS.md entry point and update anvil:help introspection for Claude+Codex parity" (`tier:goal-supporting`, epic-phase of #1000). Unblocked this pass (dependency #1003 closed via PR #1010); was never previously approved, so it re-enters curation rather than being promoted straight to `loom:issue`.
 - **#997**: "AI-tell lexicon: add \"load-bearing\"…" carries `loom:curating` — actively being enriched, not yet awaiting Curator pickup.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
@@ -54,11 +53,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Epics (`loom:epic`)
 
-- **#1000**: "Make Anvil artifact skills discoverable in Claude and Codex" (`tier:goal-supporting`). 2/4 phases complete: #1002 closed (PR #1008), #1003 closed (PR #1010), #1004 open (`loom:triage`, just unblocked), #1005 `loom:blocked` (chained on #1004).
+- **#1000**: "Make Anvil artifact skills discoverable in Claude and Codex" (`tier:goal-supporting`). 2/4 phases complete: #1002 closed (PR #1008), #1003 closed (PR #1010), #1004 in progress (`loom:building`), #1005 `loom:blocked` (chained on #1004).
 
 ## Backlog state
 
-**Six open issues as of 2026-08-13: the #1000 epic and its two still-open phase issues (#1004 back in curation, #1005 blocked on it — #1003 closed this pass), #997 (mid-`loom:curating`), and the two unchanged `loom:operator-only` issues (#888, #918).** No ready (`loom:issue`) issues remain, so no `loom:urgent` promotions this pass. No PRs in the Loom review pipeline, no open PRs at all. `loom-recover-orphans --recover` found no orphaned `loom:building` claims (queue is empty). The one recently-merged PR above the prior watermark (#1010 closes #1003) correctly closed its linked issue — no orphaned closures found; cross-checked all 47 issues closed since the prior #876 issue watermark against `WORK_LOG.md` and confirmed every one is already logged via its closing PR's `(closes #N)` entry. Next action: a human/Champion or Curator re-enriches #1004 back to `loom:curated`→`loom:issue`, which in turn unblocks #1005; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run on the affected host.
+**Six open issues as of 2026-08-13: the #1000 epic and its two still-open phase issues (#1004 now `loom:building`, #1005 blocked on it), #997 (mid-`loom:curating`), and the two unchanged `loom:operator-only` issues (#888, #918).** No ready (`loom:issue`, non-building) issues remain, so no `loom:urgent` promotions this pass. No PRs in the Loom review pipeline, no open PRs at all. The one `loom:building` issue (#1004) has a confirmed live worktree — not orphaned, no `loom-recover-orphans` action needed. No new merged PRs or standalone issue closures since the prior watermark (PR #1010 / issue #876) beyond the phase's own self-referential docs PRs; cross-checked all 47 issues closed since #876 against `WORK_LOG.md` and confirmed every one is already logged via its closing PR's `(closes #N)` entry. Next action: Builder finishes #1004, which unblocks #1005 for the sweep/approval flow; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run on the affected host.
 
 ### Recurring themes the next wave of issues will likely touch
 
