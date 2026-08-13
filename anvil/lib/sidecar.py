@@ -89,6 +89,47 @@ API
     # workflow (see issue #376).
     cleanup_stale_staging(Path("output"))
 
+Binary/bulk-asset copy primitive (issue #1017)
+-----------------------------------------------
+
+A consumer hook that blocks every Bash-channel write into the checkout
+(redirection, ``tee``, ``cp``, ``mv``, ``sed -i`` — a worktree-isolation
+guard) leaves a manual/agent session with **no** sanctioned way to place
+bytes it did not itself compose: a prior version's ``figures/*.pdf``
+carried forward unchanged, a compiled ``main.pdf``, or the raw stdout/
+stderr of a ``pdflatex`` compile pass destined for ``compile-log.txt``.
+The agent's own editing tool is text-only and cannot hold a binary file's
+bytes; re-typing a "summary" of a compile log or reconstructing a PDF by
+hand is a fabrication risk, not a copy.
+
+:func:`copy_bytes` is the byte-safe analog of the ``stage``/``commit`` CLI
+shim above, extended from text to arbitrary bytes: a single file OR a
+directory tree, landed via the same stage-then-atomic-rename shape
+:func:`staged_sidecar` uses (so a crash mid-copy of a multi-file
+``figures/`` tree never leaves ``dst`` partially written), with an
+optional post-copy byte-identity verification (``(size, sha256)``
+fingerprint per file, reusing :func:`_file_content_key`) rather than
+trusting the underlying ``shutil`` copy silently. CLI shim::
+
+    # Copy a single file (e.g. a scratch-captured compile log) into a
+    # sidecar's staging dir:
+    python -m anvil.lib.sidecar copy /tmp/compile.log \
+        output/.thread.3.audit.tmp/compile-log.txt
+
+    # Copy a whole directory (e.g. carrying figures/ forward unchanged
+    # between versions):
+    python -m anvil.lib.sidecar copy output/thread.2/figures \
+        output/thread.3/figures
+
+Refuses (nonzero exit) if the source is missing or the destination
+already exists (``--force`` to overwrite deliberately) — the same
+immutability-first default every other write primitive in this module
+uses. This is a general-purpose byte-copy primitive, not scoped to
+sidecar directories specifically: ``dst`` may be a version-dir path
+(``figures/``) or a path inside an open sidecar staging dir
+(``compile-log.txt``) — the caller decides, this function only guarantees
+the copy itself is atomic and byte-verified.
+
 CLI shim (issue #645)
 ---------------------
 
@@ -269,6 +310,7 @@ from typing import Iterable, Iterator, List, Sequence
 __all__ = [
     "STAGING_SUFFIX",
     "SidecarIncompleteError",
+    "SidecarCopyVerificationError",
     "staged_sidecar",
     "stage_enter",
     "commit_staged",
@@ -276,6 +318,7 @@ __all__ = [
     "commit_replace",
     "abort_replace",
     "recover_interrupted_replace",
+    "copy_bytes",
     "staging_path_for",
     "backup_path_for",
     "cleanup_one_staging",
@@ -311,6 +354,14 @@ class SidecarIncompleteError(RuntimeError):
     """The staged sidecar dir is missing one or more declared
     ``required_files`` at context exit. The staging directory is left in
     place so a forensic check can inspect what WAS produced.
+    """
+
+
+class SidecarCopyVerificationError(RuntimeError):
+    """:func:`copy_bytes` completed a copy but post-copy byte-identity
+    verification found the destination does not match the source. The
+    staged copy is left in place (unrenamed) for forensic inspection; the
+    caller must not treat the destination as landed.
     """
 
 
@@ -442,6 +493,154 @@ def _unpreserved_backup_entries(backup: Path, final_dir: Path) -> List[str]:
         if _file_content_key(path) != _file_content_key(counterpart):
             unpreserved.append(str(rel))
     return unpreserved
+
+
+# ---------------------------------------------------------------------------
+# Binary/bulk-asset copy primitive (issue #1017)
+# ---------------------------------------------------------------------------
+
+
+def _content_manifest(path: Path) -> dict:
+    """Return a ``{relative-posix-path: (size, sha256)}`` content manifest
+    for ``path`` — a single ``{"": key}`` entry when ``path`` is a file, or
+    one entry per contained file (keyed by its path relative to ``path``,
+    POSIX-separated for platform-stable comparison) when ``path`` is a
+    directory. Shared verification helper for :func:`copy_bytes`.
+    """
+    if path.is_dir():
+        return {
+            str(p.relative_to(path).as_posix()): _file_content_key(p)
+            for p in sorted(path.rglob("*"))
+            if p.is_file()
+        }
+    return {"": _file_content_key(path)}
+
+
+def copy_bytes(
+    src: Path,
+    dst: Path,
+    *,
+    overwrite: bool = False,
+    verify: bool = True,
+    parents: bool = True,
+) -> Path:
+    """Byte-safe copy of ``src`` to ``dst`` (issue #1017).
+
+    The binary/bulk-asset analog of the ``stage``/``commit`` CLI shim: a
+    manual/agent session whose editing tool is text-only (and whose Bash
+    channel may be blocked by a consumer's worktree-isolation hook) has no
+    other sanctioned way to place bytes it did not itself compose — a
+    prior version's unchanged ``figures/*.pdf``, a compiled ``main.pdf``,
+    or a raw compile-log capture destined for a sidecar's
+    ``compile-log.txt``.
+
+    Supports both a single file and a directory tree (recursively). The
+    copy is staged into a same-parent leading-dot sibling
+    (:func:`staging_path_for`) and landed with a single atomic
+    ``Path.rename`` — the same stage-then-rename shape :func:`staged_sidecar`
+    uses for critic directories — so a crash mid-copy of a large or
+    multi-file payload never leaves ``dst`` partially written.
+
+    Parameters
+    ----------
+    src:
+        The source path (file or directory). Must exist.
+    dst:
+        The destination path. Its parent is created if missing (when
+        ``parents`` is ``True``, the default).
+    overwrite:
+        When ``False`` (default), refuse (:class:`FileExistsError`) if
+        ``dst`` already exists — the same immutability-first default every
+        other write primitive in this module uses. When ``True``, the
+        existing ``dst`` is removed immediately before the staged copy is
+        renamed into place (CLI: ``--force``).
+    verify:
+        When ``True`` (default), after staging the copy, compare a
+        ``(size, sha256)`` content manifest (:func:`_content_manifest`) of
+        the staged copy against ``src``. Any mismatch or missing file
+        raises :class:`SidecarCopyVerificationError` and leaves the
+        staged (unrenamed) copy in place for forensic inspection — ``dst``
+        is never landed with unverified content. This should be
+        unreachable in practice (the underlying copy is either exact or
+        raises), but exists as defense-in-depth for the "byte-identity
+        verified" contract rather than trusting the copy silently.
+    parents:
+        Forwarded to ``dst.parent``'s :meth:`pathlib.Path.mkdir`.
+
+    Returns
+    -------
+    ``dst`` on success.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``src`` does not exist.
+    FileExistsError
+        If ``dst`` already exists and ``overwrite`` is ``False``.
+    SidecarCopyVerificationError
+        If ``verify`` is ``True`` and the post-copy manifest does not match
+        ``src``.
+    """
+    src = Path(src)
+    dst = Path(dst)
+
+    if not src.exists():
+        raise FileNotFoundError(
+            f"copy_bytes: source {src!s} does not exist; nothing to copy."
+        )
+    if dst.exists() and not overwrite:
+        raise FileExistsError(
+            f"copy_bytes: refusing to overwrite existing destination "
+            f"{dst!s}. Pass overwrite=True (CLI: `--force`) if replacing "
+            f"it is intended."
+        )
+
+    dst.parent.mkdir(parents=parents, exist_ok=True)
+
+    # Stage into a same-parent leading-dot sibling of dst, then land with a
+    # single atomic rename — mirrors staged_sidecar's contract so a crash
+    # mid-copy (e.g. a multi-file figures/ tree) never leaves dst partially
+    # written.
+    staging = staging_path_for(dst)
+    if staging.exists():
+        if staging.is_dir():
+            shutil.rmtree(staging)
+        else:
+            staging.unlink()
+
+    if src.is_dir():
+        shutil.copytree(src, staging)
+    else:
+        shutil.copy2(src, staging)
+
+    if verify:
+        src_manifest = _content_manifest(src)
+        staged_manifest = _content_manifest(staging)
+        if src_manifest != staged_manifest:
+            missing = sorted(set(src_manifest) - set(staged_manifest))
+            mismatched = sorted(
+                rel
+                for rel in set(src_manifest) & set(staged_manifest)
+                if src_manifest[rel] != staged_manifest[rel]
+            )
+            raise SidecarCopyVerificationError(
+                f"copy_bytes: post-copy verification of {dst!s} (staged at "
+                f"{staging!s}) did not match source {src!s}. "
+                f"missing={missing or 'none'} mismatched={mismatched or 'none'}. "
+                f"The staged copy is left in place, unrenamed, for forensic "
+                f"inspection."
+            )
+
+    if dst.exists():
+        # Only reachable when overwrite=True (the exists-check above already
+        # refused otherwise).
+        if dst.is_dir():
+            shutil.rmtree(dst)
+        else:
+            dst.unlink()
+
+    staging.rename(dst)
+    return dst
 
 
 # ---------------------------------------------------------------------------
@@ -1436,6 +1635,39 @@ def _build_cli_parser():
         help="The intended final sidecar path, e.g. output/thread.3.review",
     )
 
+    p_copy = sub.add_parser(
+        "copy",
+        help=(
+            "Byte-safe copy of SRC to DST (issue #1017) — a single file or "
+            "a directory tree, staged then atomically renamed into place, "
+            "with post-copy byte-identity verification by default. The "
+            "sanctioned binary/bulk-asset channel for a session whose "
+            "editing tool is text-only (compile logs, carried-forward "
+            "figures/, compiled PDFs)."
+        ),
+    )
+    p_copy.add_argument("src", help="Source path (file or directory). Must exist.")
+    p_copy.add_argument(
+        "dst",
+        help=(
+            "Destination path. Refused if it already exists unless --force "
+            "is given."
+        ),
+    )
+    p_copy.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite DST if it already exists (default: refuse).",
+    )
+    p_copy.add_argument(
+        "--no-verify",
+        action="store_true",
+        help=(
+            "Skip the post-copy byte-identity verification (default: "
+            "verify)."
+        ),
+    )
+
     return p
 
 
@@ -1470,6 +1702,13 @@ def main(argv: "Sequence[str] | None" = None) -> int:
       Restores FINAL_DIR when a prior ``replace``'s session died before
       ``commit-replace``; drops a provably-redundant backup when the swap
       already landed; leaves an ambiguous backup alone. Exit ``0`` always.
+    - ``copy SRC DST [--force] [--no-verify]`` — byte-safe copy of a file
+      or directory tree (issue #1017), staged then atomically renamed into
+      DST, with post-copy byte-identity verification by default. Exit
+      ``0`` on success (prints DST); ``3`` if SRC is missing or DST
+      already exists without ``--force``; ``1`` if ``--no-verify`` was NOT
+      passed and post-copy verification finds a mismatch (staged copy left
+      unrenamed for forensics).
 
     Exit-code contract mirrors the sibling ``anvil/lib/*.py`` CLIs: ``0``
     clean, ``1`` a contract failure the caller must act on
@@ -1480,7 +1719,8 @@ def main(argv: "Sequence[str] | None" = None) -> int:
 
     parser = _build_cli_parser()
     args = parser.parse_args(argv)
-    final_dir = Path(args.final_dir)
+    # `copy` takes src/dst, not final_dir — every other subcommand does.
+    final_dir = Path(args.final_dir) if args.subcommand != "copy" else None
 
     if args.subcommand == "stage":
         try:
@@ -1563,6 +1803,23 @@ def main(argv: "Sequence[str] | None" = None) -> int:
             )
         else:
             print(f"nothing to recover for {final_dir}")
+        return 0
+
+    if args.subcommand == "copy":
+        try:
+            landed = copy_bytes(
+                Path(args.src),
+                Path(args.dst),
+                overwrite=args.force,
+                verify=not args.no_verify,
+            )
+        except (FileNotFoundError, FileExistsError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 3
+        except SidecarCopyVerificationError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(str(landed))
         return 0
 
     # argparse's required=True on the subparser guarantees we never fall
