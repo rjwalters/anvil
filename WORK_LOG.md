@@ -4,6 +4,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-08-13
+
+- **PR #1010**: feat(install): emit Codex CLI skill registration alongside Claude shim (closes #1003) — adds `write_codex_shim()` to `scripts/install-anvil.sh`, structured in parallel to the existing `write_shim()`, emitting a thin per-skill pointer at `.agents/skills/anvil-<name>/SKILL.md` (the verified repo-root path Codex CLI scans per the #1002 research spike, not the refuted `.codex/skills/` hypothesis) back at the canonical `.anvil/skills/<name>/SKILL.md` body; wired into all three `write_shim()` call sites (happy-path install, both override-skip branches) and Stage 7.6's removed-skill reconciliation prune, so Codex shims stay 1:1 with Claude shims through install/upgrade/`--skills=`-narrowed reinstall/uninstall. #1002 and #1003 closed this pass; #1004 unblocked (dependency #1003 resolved) but not yet approved — see `WORK_PLAN.md`
+
 ### 2026-08-12
 
 - **PR #1008**: docs: add verified Codex CLI skill/plugin discovery contract for adapter (closes #1002) — research spike for the #1000 epic; verifies the actual Codex CLI skill/plugin discovery contract against official docs before #1003 (blocked on this) writes any adapter code. Corrects the epic's blog-sourced hypothesis: Codex scans `.agents/skills/<name>/SKILL.md` (not `.codex/skills/`), requires no wrapping plugin manifest for discovery, and shares Claude Code's minimal `SKILL.md` frontmatter contract; `AGENTS.md` confirmed as Codex's only always-on repo-instruction surface. Findings written to `docs/codex-skill-adapter.md`, no runtime code changes
