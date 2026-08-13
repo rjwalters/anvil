@@ -20,11 +20,14 @@ Stage 9 overwrites it::
 
     REMOVED_SKILLS = previous_installed_skills - SELECTED_SKILLS
 
-and removes all four installer-owned path families for each removed name:
+and removes all installer-owned path families for each removed name (four at
+the time of #716; a fifth -- the Codex CLI registration shim -- was added by
+#1003):
 
   * ``.anvil/skills/<name>/``
   * ``.anvil/anvil/skills/<name>/``
   * ``.claude/skills/anvil-<name>/``
+  * ``.agents/skills/anvil-<name>/`` (issue #1003)
   * ``.claude/agents/anvil-<name>-*.md``
 
 CRITICAL SAFETY: the removal signal is the prior *manifest*, NOT a bare disk
@@ -101,12 +104,17 @@ def _read_installed_skills(target: Path) -> list[str]:
 
 
 def _families(target: Path, name: str) -> dict[str, Path]:
-    """Return the four installer-owned path families for skill ``name``."""
+    """Return the installer-owned directory path families for skill ``name``.
+
+    Four at the time of #716; a fifth (the Codex CLI registration shim,
+    issue #1003) tracks the Claude shim 1:1.
+    """
 
     return {
         "anvil_skills": target / ".anvil" / "skills" / name,
         "pkg_mirror": target / ".anvil" / "anvil" / "skills" / name,
         "claude_shim": target / ".claude" / "skills" / f"anvil-{name}",
+        "codex_shim": target / ".agents" / "skills" / f"anvil-{name}",
         # agent shims are a glob; represent the dir + prefix separately below.
     }
 
