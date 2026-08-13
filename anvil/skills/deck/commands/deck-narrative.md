@@ -15,7 +15,7 @@ This critic evaluates the deck as a **single story** rather than slide-by-slide.
 
 - **1 — Narrative arc** (weight 6) — the deck flows from problem → solution → why-now → why-us → ask as a single argument.
 - **7 — Ask specificity** (weight 5) — round size, use of funds, runway-to-milestone are concrete and follow from the setup.
-- **9 — Rhetorical economy** (weight 4) — could a busy investor extract the ask in 90 seconds; are slides 18+ load-bearing; could the same arc reach the ask in fewer slides.
+- **9 — Rhetorical economy** (weight 4) — could a busy investor extract the ask in 90 seconds; do slides 18+ carry weight the deck needs; could the same arc reach the ask in fewer slides.
 
 Total ownership: 15/49 (the highest-leverage 15 points in the rubric; post-#551 the rubric pool is /49 with dim 10 *Business-model & unit-economics credibility* owned by `deck-economics` (primary, post-#551) with `deck-review` retained as fallback — see `rubric.md`).
 
@@ -77,7 +77,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    - **Critical flag — `Absent ask`**: trigger if any of round size / use of funds / runway-to-milestone is missing entirely, OR if the ask is so vague it gives the investor permission to say "interesting, keep me posted." (Structural twin: `Incoherent or absent business model` is the parallel dim-10 critical flag owned by `deck-economics` — this critic owns the ask-side disqualifier; `deck-economics` owns the model-side disqualifier. Both are standing critical flags per `rubric.md` §"Critical flags".)
 7. **Evaluate rhetorical economy** (Dim 9, weight 4):
    - Could a busy investor extract the ask in 90 seconds?
-   - Are slides 18+ load-bearing? Could the same arc reach the ask in fewer slides?
+   - Do slides 18+ carry weight the deck needs? Could the same arc reach the ask in fewer slides?
    - Decks lose to bloat hardest of any skill — a 30-slide deck is fatal regardless of per-slide quality. Score against `rubric.md` dim 9.
    - **Quoted-evidence requirement (issue #464 / #475)**: each scored dimension's `justification` string in the `_summary.md` JSON `dimensions` block (dims 1 / 7 / 9 — the dims this critic owns) MUST embed at least one **verbatim quote from `deck.md`**, wrapped in inline double quotes and followed by a location anchor — `("the quoted span" — Slide 4)` — per `anvil/lib/snippets/rubric.md` §"Dimension scoring guidance" rule 1. A dim scored at **full weight** MAY substitute the by-absence marker `no instance of <X> found` (e.g., dim 9 at 4/4 with "no instance of a padded sub-15-slide deck found") — absence of defects has no quotable span; below ceiling the quote requirement stands. The quote must be byte-verbatim from the deck body — a paraphrase presented in quote marks is fabricated evidence, the defect class the step 9b self-check exists to catch. **Elision with `...` / `…` is permitted** (issue #478): a quote may skip intervening text with an ellipsis, provided each elided fragment is itself verbatim, ≥ `MIN_QUOTE_CHARS` normalized chars, in document order, and drawn from one nearby passage (within the verifier's `ELISION_WINDOW_CHARS` proximity window) — do NOT stitch fragments from distant slides into one quote. Em/en dashes may be typed as `--` / `---` (the verifier folds dash variants symmetrically).
 8. **Identify additional findings**:
