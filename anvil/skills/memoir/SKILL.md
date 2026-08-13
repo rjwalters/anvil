@@ -374,8 +374,11 @@ weight 7, the same "owned dominant dimension" shape as primer's pedagogy
 and spec's normative correctness), and the critical-flag set: #597's five
 fabrication-class flags (`fabricated_quote`, `fabricated_fact`,
 `misattribution_of_substance`, `anachronism`, `unattributed_paraphrase` —
-reused **verbatim**, not reinvented) plus #598's `misattribution`
-voice-identity flag (conditional on >=2 subjects declared).
+reused **verbatim**, not reinvented) plus #1032's sixth fabrication-class
+flag (`scope_overreach` — a claim's quantifier/superlative/negated-
+existential scope exceeding its cited `provenance.md` row's scope) plus
+#598's `misattribution` voice-identity flag (conditional on >=2 subjects
+declared).
 
 Every critic-writing command stamps `_meta.json` with
 `scorecard_kind: "human-verdict"`, `rubric_id: "anvil-memoir-v1"`,

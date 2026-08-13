@@ -269,12 +269,16 @@ the schema validator already enforces `tool_calls` on every
 3. Open the resolved passage (the anchor's actual current location when
    Section 4a found one; otherwise the cited `Line range`) in the
    resolved corpus and **classify** it with the five-way vocabulary
-   (Section 5).
-4. Every `MISMATCH` / `NOT_FOUND` / `FABRICATED` row emits a finding with
-   a non-empty **`tool_calls`** array recording the file-read operation
-   that produced the evidence (the passage read, the lines inspected).
-5. Fabrication-class entries additionally emit **`critical_flags`**
-   (Section 6), which route through the existing verdict machinery
+   (Section 5), then run the **scope-widening check** (Section 5a)
+   against the same passage regardless of which five-way classification
+   it received.
+4. Every `MISMATCH` / `NOT_FOUND` / `FABRICATED` row, and every row that
+   fails the Section 5a scope check, emits a finding with a non-empty
+   **`tool_calls`** array recording the file-read operation that
+   produced the evidence (the passage read, the lines inspected).
+5. Fabrication-class entries — including a `scope_overreach` finding —
+   additionally emit **`critical_flags`** (Section 6), which route
+   through the existing verdict machinery
    (`anvil/lib/critics.py::_compute_verdict_impl` already short-circuits
    any `critical_flags` → `Verdict.BLOCK` — no change needed).
 
@@ -373,6 +377,53 @@ The audit critic classifies each `provenance.md` row as exactly one of:
 and `NOT_FOUND` are findings. `FABRICATED` is a finding **and** a
 critical flag.
 
+## Section 5a — the scope-widening check (issue #1032)
+
+Content support and grammatical **scope** are independent axes. A
+`provenance.md` row can genuinely support a claim's underlying fact and
+the claim can still be wrong, because the artifact clause asserts
+something *broader* than the row established. "Is this fact supported
+at all?" (Section 5's five-way vocabulary) does not ask "*is the fact
+supported at the scope the artifact claims it at?*" — this check does.
+
+Run this check on every row, **in addition to** (not instead of) the
+five-way classification, whenever the artifact clause contains any of:
+
+- a **universal quantifier** — "anyone", "everyone", "every", "all",
+  "always", "everywhere";
+- a **superlative** — "first", "only", "most", "best", "biggest",
+  "last";
+- a **negated existential** — "no other X anywhere/exists", "nothing
+  else", "nowhere else".
+
+Compare the quantifier/superlative/negation's scope in the artifact
+clause against the *same construct's scope* in the cited row's own
+language (not the row's general subject matter — its actual
+quantifying words):
+
+- **Row scope matches or is wider than the claim's scope** → the
+  quantifier/superlative/negation is supported as written; the
+  five-way classification stands unchanged.
+- **Row scope is narrower than the claim's scope** → raise
+  `scope_overreach` (Section 6), **regardless of whether the
+  underlying fact would otherwise classify `VERIFIED` or
+  `PARAPHRASE_OK`.** A row that supports a narrower claim does not
+  license a wider one — this is a finding, not a pass.
+
+**Calibration examples** (field evidence, issue #1032 / #888):
+
+| Artifact clause | Cited row | Verdict |
+|---|---|---|
+| "It is the only picture of the brothers **anyone has**" | "the first photograph of Gustav's parents **the project has**" | `scope_overreach` — "the project has" (this corpus) narrows to "anyone has" (all of humanity) |
+| "the only thing **anyone in this family holds** that Ella wrote in her own hand" | "no other document written by Ella **anywhere in this repository**" | `scope_overreach` — "in this repository" narrows to "anyone in this family holds" |
+| "the first photograph **the project has**" | "the first photograph of Gustav's parents **the project has**" | Not flagged — the claim quotes the row's own scope verbatim; row scope matches claim scope |
+
+A row cited for "the first photograph the project has" against a row
+that itself says "the project has" is correctly scoped — the check
+fires only when the claim's scope-bearing language reaches *beyond*
+what the row's own scope-bearing language covers, never merely because
+a quantifier or superlative is present.
+
 ## Section 6 — fabrication-class critical flag types
 
 These are the `CriticalFlag.type` strings the audit critic (and, at the
@@ -392,6 +443,18 @@ boundary, the reviewer) raises. They are **skill-defined vocabulary**
   corpus chronology.
 - **`unattributed_paraphrase`** — authorial invention presented as a
   subject's memory without any corpus grounding.
+- **`scope_overreach`** (issue #1032) — a claim's universal quantifier
+  ("anyone"/"every"/"all"), superlative ("first"/"only"/"most"), or
+  negated existential ("no other X anywhere/exists") asserts wider
+  scope than its cited `provenance.md` row supports, per the Section 5a
+  scope-widening check — even when the row otherwise `VERIFIED`s or
+  `PARAPHRASE_OK`s the underlying fact. `justification` MUST quote
+  **both** the offending artifact clause and the cited row's own
+  scope-bearing language (not just the row's subject matter), so the
+  narrower-vs-wider mismatch is visible without re-deriving it — e.g.
+  *"artifact: 'the only picture of the brothers anyone has'; row: 'the
+  first photograph of Gustav's parents the project has' — row scope is
+  'the project has', not 'anyone has'."*
 
 Each flag's `justification` quotes the offending artifact text and the
 corpus evidence (or its absence). The flag is *additive* — it uses the
