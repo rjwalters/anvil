@@ -4,6 +4,32 @@
 
 ### Added
 
+- **`slides-rehearse` — Cues/Script notes convention, short-slot base
+  tuning, and a saturated-estimate caveat** (#1016). A script-style notes
+  file (a deliberate verbatim leave-behind, e.g. for an async-robust
+  deck) saturated the rehearse time heuristic: `notes_words * 1.5`
+  blows past the 180s per-slide cap almost immediately, so most slides
+  pin at the cap and the aggregate estimate becomes effectively
+  `n_slides × 180s` — carrying almost no information about the deck's
+  actual spoken duration. `slides-rehearse.md` step 5 now recognizes an
+  optional `## Cues` section in a paired `notes/<NN>-*.md` file and
+  times only that section (from `## Cues` to the next `##` heading or
+  EOF), leaving a sibling `## Script` section for the verbatim
+  leave-behind text; notes files without a `## Cues` heading fall back
+  to the existing full-file word count unchanged. A new "Cues vs.
+  Script sections" note documents the convention (mirrored in
+  `SKILL.md`'s `slides-rehearse` description and "Density check" note),
+  and a "Short-slot base tuning" note flags the smaller failure mode the
+  issue also reported: the 90s base alone already exceeds a
+  sub-20-minute slot before any notes words are counted, so
+  `time_per_slide_seconds_base` (configurable per-thread via
+  `<thread>/.anvil.json`) should be lowered for short slots — with a
+  pointer comment added to `templates/BRIEF.md.example`. The
+  `timing.md` template now always reports a "Slides capped at 180s"
+  count and prepends a caveat block when more than half of slides hit
+  the cap, so a saturated run is read as low-information rather than a
+  real minute estimate.
+
 - **Claim provenance — stable anchor identity for drifting corpus
   citations** (#868). `provenance.md` rows (issue #597) cited their
   supporting corpus passage by a bare `Source file` + `Line range`,

@@ -1,5 +1,8 @@
 ---
 audience: ML researchers, PhD level, familiar with transformers but not diffusion models
+# time_slot_minutes under ~20: lower slides-rehearse's time_per_slide_seconds_base
+# (default 90s) via <thread>/.anvil.json — see slides-rehearse.md's "Short-slot
+# base tuning" note. n_slides * 90s alone can exceed a short slot.
 time_slot_minutes: 45
 venue: KDD 2026 — Research Track
 learning_goals:

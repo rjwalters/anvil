@@ -59,7 +59,9 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    - Bullet count (lines starting with `-`, `*`, or `1.`/`2.`/etc., at any nesting).
    - Word count of body (split on whitespace; exclude markdown syntax tokens like `**`, `*`, `[`, `]`, `(`, `)`).
    - Figure count (matches of `![...](figures/...)` or fenced ```mermaid blocks).
-5. **Pair each slide with its notes file**: `notes/<NN>-*.md` where `<NN>` is the zero-padded slide number. Count notes words.
+5. **Pair each slide with its notes file**: `notes/<NN>-*.md` where `<NN>` is the zero-padded slide number. Count notes words:
+   - If the notes file contains a `## Cues` heading, count words **only within that section** — from the `## Cues` line to the next `##` heading (any level-2 heading, e.g. `## Script`) or EOF, whichever comes first. This is the same heading-scoped-section parsing pattern step 4 uses for slide title/body splitting.
+   - Otherwise (no `## Cues` heading present), fall back to the existing full-file word count. This keeps the heuristic unchanged for decks written before the Cues/Script convention (see "Cues vs. Script sections" under the Heuristic calibration note below).
 6. **Density check** (deterministic):
    - For each slide, check `body_word_count > 50` OR `bullet_count > 7`.
    - For each violation, record: slide number, title, word count, bullet count, the rule violated.
@@ -103,16 +105,25 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
     | ...   | ...                | ...        | ...          |
     ```
 
-11. **Write `timing.md`**:
+11. **Write `timing.md`**. First, compute the **saturation check**: count how many slides hit the 180s cap (`slide_seconds == 180` before capping, i.e. the uncapped formula would have exceeded 180). If **more than half** of the slides are capped, the aggregate is low-information (it approaches `n_slides × 180s` regardless of actual content) — prepend a caveat block above the `## Summary` heading. Otherwise omit the caveat entirely:
 
     ```markdown
     # Time-budget check for <thread>.<N>
+
+    > **Caveat: saturated estimate.** <C> of <N> slides (<P>%) hit the 180s
+    > cap — more than half. The aggregate below is low-information: it is
+    > close to `n_slides × 180s` regardless of actual per-slide content, not a
+    > real estimate of spoken duration. This usually means notes are
+    > script-style (verbatim spoken text rather than a speaking outline) —
+    > see "Cues vs. Script sections" below. Treat the time flag as informative
+    > that the notes are dense, not as a reliable minute count.
 
     ## Summary
     - Declared slot: <M> minutes (from BRIEF.md `time_slot_minutes`)
     - Estimated talk duration: <X> minutes (<X*60> seconds)
     - Fit: <Y>% of slot (target ≤100%, hard cap 110%)
     - Time flag: <SET / NOT SET>
+    - Slides capped at 180s: <C> / <N> (<P>%)
 
     ## Per-slide time estimates
     | Slide | Title              | Base | Figures (non-trivial) | Notes words | Estimated seconds |
@@ -123,11 +134,16 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 
     ## Heuristic
     slide_seconds = base + (non_trivial_figures * 30) + (notes_words * 1.5), capped at 180s.
-    Base = 90s (overridable via .anvil.json `time_per_slide_seconds_base`).
+    Base = 90s (overridable via .anvil.json `time_per_slide_seconds_base` — see
+    "Short-slot base tuning" below for slots under ~20 minutes). Notes words
+    are counted from the `## Cues` section when present, full-file otherwise
+    (see "Cues vs. Script sections" below).
 
     ## Recommended cuts (if time flag set)
     <Bulleted list of the lowest-density / lowest-priority slides as cut candidates, by slide number and title.>
     ```
+
+    The `<C> / <N> (<P>%)` "Slides capped at 180s" line is always reported (even when not saturated) so a reader can see the trend before it tips into caveat territory.
 
 12. **Update `_progress.json`** inside the staging dir: `phases.rehearse.state = done`, `phases.rehearse.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.rehearse.tmp/` → `<thread>.{N}.rehearse/`. The final-named dir only ever exists in **complete** form.
 13. **Report**: print a one-line status (e.g., `Rehearsed kdd-2026-keynote.1 → kdd-2026-keynote.1.rehearse/ (22 slides, 47 minutes for 45-min slot, density flag SET, time flag SET)`).
@@ -137,6 +153,34 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 The 90s-base + 30s-per-figure + 1.5s-per-notes-word formula is plausible but inherently rough — actual rehearsal with the speaker is the ground truth. The skill ships this heuristic as a default and exposes `time_per_slide_seconds_base` for tuning. A speaker who runs through their decks faster or slower than average should override the base after their first real rehearsal.
 
 The heuristic is intentionally conservative on the high side (notes_words * 1.5 assumes a moderate-paced delivery; an animated speaker may run faster). Better to flag a deck as over-budget and have rehearsal show it fits, than to under-flag and have the talk overrun in front of a live audience.
+
+### Cues vs. Script sections
+
+A notes file that is a deliberate verbatim script — every word the speaker intends to say, e.g. for an async leave-behind deck read without narration — is a different document from a notes file that is a speaking outline. Timing the full script word-for-word saturates the heuristic (`notes_words * 1.5` blows past the 180s cap almost immediately) and produces an aggregate estimate that carries almost no information: with most slides pinned at the cap, the total is effectively `n_slides * 180s`, independent of what the notes actually say.
+
+The documented convention: split a script-style notes file into two `##` sections —
+
+```markdown
+## Cues
+
+- Open with the failure mode from the intro slide
+- Land on: "this is why we needed a different approach"
+
+## Script
+
+Good morning. Today I want to walk you through why our team decided to
+rebuild the core scheduler from scratch...
+<the full verbatim spoken text, as long as needed>
+```
+
+- **`## Cues`** — short, outline-style bullets: what the heuristic should time. This is the section a live speaker actually rehearses against.
+- **`## Script`** — the full verbatim leave-behind text, for readers who consume the deck without narration (the async-robustness use case). Not timed.
+
+Step 5 counts `notes_words` from the `## Cues` section when present (from the `## Cues` heading to the next `##` heading or EOF), and falls back to the full-file word count when no `## Cues` heading exists — so decks predating this convention are unaffected. This convention is worth adopting even for decks that don't hit the saturation failure mode: it keeps the rehearsed estimate meaningful whenever notes carry more than a speaking outline.
+
+### Short-slot base tuning
+
+The 90s base alone can exceed a short slot before a single notes word is counted: `n_slides * 90s` already exceeds a 15-minute slot at 11 slides, and a 20-minute slot at 14 slides. This isn't a formula bug — `time_per_slide_seconds_base` is already configurable per-thread via `<thread>/.anvil.json` (see "Inputs" above) — but nothing prompts an author to lower it for a short slot. **For `time_slot_minutes` under ~20, set a lower `time_per_slide_seconds_base`** (e.g. 30-45s, reflecting terser per-slide delivery typical of short-form talks) before rehearsing, and recalibrate against the first real run-through.
 
 ## Idempotence and resumability
 
