@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-13 (Guide triage pass — #1005's dependencies (#1003, #1004) were both already closed at the start of this pass, so #1005 (the #1000 epic's last phase, cross-runtime parity/ownership tests) was the only ready, non-building `loom:issue` in the queue; promoted to `loom:urgent`. Mid-pass, a Builder claimed #1005 for `loom:building` — leave it, work is already happening (`loom:urgent` stays; not removed on building per Guide policy). Three more issues (#1016, #1017, #1018) also moved to `loom:building` during this pass, so "In Progress" now lists four. `loom-recover-orphans --verbose` found no orphaned tasks; the sole flagged claim (#1016, 2 min old) was well inside the 4h staleness threshold. `check-duplicate.sh --include-merged-prs` on #1005 found no real duplicate (only self-match + its own already-closed epic siblings #1002-#1004). Verified all PRs merged since the last pass (#1014, #1010, #1008, #1006, #1001) correctly closed their linked issues — no orphaned closures. `WORK_LOG.md`/`WORK_PLAN.md` watermarks: no new PRs merged above PR #1014 (this pass's own `docs:` PRs excluded); all 48 issues closed above issue #876 are already covered via their closing PR's `(closes #N)` WORK_LOG entry, so `WORK_LOG.md` needed no new entries this pass — only `WORK_PLAN.md` regenerated from current label state below.)*
+*Last updated: 2026-08-13 (Guide triage pass — three issues from the previous pass's "In Progress" list landed and closed during this pass: #1018 via PR #1021, #1016 via PR #1019, #1017 via PR #1022 (all three logged in `WORK_LOG.md` this pass). #1005 (the #1000 epic's last phase) remains `loom:building` + `loom:urgent` from the prior promotion — left alone per policy — and now has an open PR (#1023, `loom:reviewing`) awaiting Judge. #997 is also `loom:building` (previously mis-recorded here as `loom:curating`; corrected). No ready (`loom:issue`, non-building) issues exist, so no new `loom:urgent` promotions were needed or made — #1005 remains the sole urgent issue. `loom-recover-orphans --verbose` found no orphaned tasks. No `loom:blocked` issues to check for unblocking. Epic #1000 is one merged PR away from closing (#1023 pending Judge review). `WORK_LOG.md` gained three new entries (PRs #1022, #1021, #1019); watermark PRs below #1014 remain unchanged from the prior pass.)*
 
 ---
 
@@ -13,18 +13,16 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Ready for Work (`loom:issue`, non-building)
 
-*Empty.* #1005 and #1016 (the two open `loom:issue` issues) are both now `loom:building` — see In Progress below.
+*Empty.* #1005 (the only open `loom:issue` issue) is `loom:building` — see In Progress below.
 
 ## In Progress (`loom:building`)
 
-- **#1018**: "evidence_drift: float-precision false positive on manually-recorded snapshots — compare mtimes with tolerance" (`tier:goal-supporting`)
-- **#1017**: "No sanctioned binary/bulk asset channel when consumer hooks block Bash writes (figure carry-forward, compile logs, detector sidecars)" (`tier:goal-supporting`)
-- **#1016**: "slides-rehearse: timing heuristic saturates on script-style notes — recognize a Cues section, and the 90s base alone fails short slots" (`tier:goal-supporting`)
-- **#1005**: "Add cross-runtime (Claude/Codex) parity and upgrade/uninstall ownership tests for Anvil skill registration" (`tier:goal-supporting`, epic-phase of #1000, `loom:urgent`)
+- **#1005**: "Add cross-runtime (Claude/Codex) parity and upgrade/uninstall ownership tests for Anvil skill registration" (`tier:goal-supporting`, epic-phase of #1000, `loom:urgent`) — PR #1023 open and under Judge review
+- **#997**: "AI-tell lexicon: add \"load-bearing\" (structural-importance announcement class) — and sweep it from anvil's own shipped prose" (`tier:goal-supporting`)
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
-*Empty.*
+- **#1023**: "test(install): add cross-runtime (Claude/Codex) parity and upgrade/uninstall ownership coverage" — implements #1005; `loom:reviewing` (Judge actively reviewing)
 
 ## Approved (Awaiting Merge) (`loom:pr`)
 
@@ -32,7 +30,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-*Empty.* All currently-`loom:curated` issues are either `loom:building` (#1005, #1016, #1017, #1018) or `loom:operator-only` (#888, listed below).
+*Empty.* All currently-`loom:curated` issues are either `loom:building` (#1005, #997) or `loom:operator-only` (#888, listed below).
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -48,7 +46,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
-- **#997**: "AI-tell lexicon: add \"load-bearing\" (structural-importance announcement class) — and sweep it from anvil's own shipped prose" carries `loom:curating` — actively being enriched, not yet awaiting Curator pickup.
+*Empty.*
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -56,11 +54,11 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Epics (`loom:epic`)
 
-- **#1000**: "Make Anvil artifact skills discoverable in Claude and Codex" (`tier:goal-supporting`). Install-side work complete (#1002 closed via PR #1008, #1003 closed via PR #1010, #1004 closed via PR #1014); the fourth and last phase, #1005 (cross-runtime parity/ownership tests), is now `loom:building` — epic closes once #1005 merges.
+- **#1000**: "Make Anvil artifact skills discoverable in Claude and Codex" (`tier:goal-supporting`). Install-side work complete (#1002 closed via PR #1008, #1003 closed via PR #1010, #1004 closed via PR #1014); the fourth and last phase, #1005 (cross-runtime parity/ownership tests), is `loom:building` with PR #1023 open under Judge review — epic closes once #1023 merges.
 
 ## Backlog state
 
-**Eight open issues as of 2026-08-13: the #1000 epic, its four `loom:building` phase/friction issues (#1005, #1016, #1017, #1018), #997 (mid-`loom:curating`), and the two unchanged `loom:operator-only` issues (#888, #918).** No ready (`loom:issue`, non-building) issues remain this pass — everything eligible is already claimed — so no further `loom:urgent` promotions were needed beyond #1005. No PRs in the Loom review pipeline, no open PRs at all. `loom-recover-orphans --verbose` confirmed no orphaned tasks. Next action: Builders land #1005/#1016/#1017/#1018; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run on the affected host.
+**Five open issues as of 2026-08-13: the #1000 epic, its two `loom:building` issues (#1005, #997), and the two unchanged `loom:operator-only` issues (#888, #918).** Three friction issues from the prior pass (#1016, #1017, #1018) landed and closed during this pass. No ready (`loom:issue`, non-building) issues remain, so no further `loom:urgent` promotions were needed or made beyond the standing #1005. One PR (#1023) is in the Judge review pipeline. `loom-recover-orphans --verbose` confirmed no orphaned tasks. Next action: Judge reviews #1023 (closing out the #1000 epic on merge); a Builder lands #997; a human or Champion reviews #888's design tradeoffs; #918 awaits a human daemon-recovery run on the affected host.
 
 ### Recurring themes the next wave of issues will likely touch
 
