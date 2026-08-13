@@ -102,9 +102,21 @@
 #                                            non-anvil agents under
 #                                            .claude/agents/ (e.g. loom-*).
 #   CLAUDE.md                          Updated with additive <!-- BEGIN ANVIL --> block.
+#   AGENTS.md                          Updated with additive <!-- BEGIN ANVIL --> block
+#                                      (issue #1004; Codex CLI's always-on
+#                                      repo-instructions entry point, the
+#                                      direct analog of CLAUDE.md for Claude
+#                                      Code). Same create / replace-in-place /
+#                                      append semantics as the CLAUDE.md
+#                                      merge -- the runtime-neutral block
+#                                      prose is shared between the two files;
+#                                      only the invocation-adapter line
+#                                      differs (`/anvil:<skill>` for Claude
+#                                      vs. the `.agents/skills/anvil-<skill>/`
+#                                      registration path for Codex).
 #
 # Anvil is forge-optional: git is not required in the target.
-# Coexists with Loom: CLAUDE.md merges are additive and marker-bounded.
+# Coexists with Loom: CLAUDE.md / AGENTS.md merges are additive and marker-bounded.
 #
 # v0 distribution model: installs from a local checkout (this script's parent dir).
 # A future "fetch from release" branch can be added when Anvil ships via package
@@ -150,10 +162,22 @@ usage() {
   exit 0
 }
 
-# ----- CLAUDE.md marker constants -------------------------------------------
+# ----- CLAUDE.md / AGENTS.md marker + adapter constants ---------------------
+# ANVIL_MARK_BEGIN/END and ANVIL_POINTER are the shared, runtime-neutral
+# content written into BOTH CLAUDE.md (Claude Code's always-on repo
+# instructions) and AGENTS.md (Codex CLI's equivalent, issue #1004) -- one
+# generated source, not two independently hand-maintained templates. The
+# only per-runtime difference is the invocation-adapter line: Claude Code
+# discovers a skill via the `/anvil:<skill>` slash command, Codex CLI via
+# the `.agents/skills/anvil-<skill>/SKILL.md` registration written by
+# write_codex_shim() (issue #1003) -- that Claude-specific slash-command
+# syntax is deliberately isolated into ANVIL_ADAPTER_CLAUDE rather than
+# leaking into the shared ANVIL_POINTER prose.
 ANVIL_MARK_BEGIN='<!-- BEGIN ANVIL -->'
 ANVIL_MARK_END='<!-- END ANVIL -->'
 ANVIL_POINTER='This repository uses [Anvil](https://github.com/rjwalters/anvil) for AI-powered artifact creation. See `.anvil/CLAUDE.md` for the full guide (skills, rubric, state machine). To upgrade Anvil, re-run `install-anvil.sh .` from the anvil checkout without `--skills=` to pick up newly-shipped skills; pass `--skills=...` only to install a strict subset.'
+ANVIL_ADAPTER_CLAUDE='In Claude Code, invoke an installed skill via `/anvil:<skill>` (e.g. `/anvil:paper-draft <slug>`) -- the per-skill registration shim lives at `.claude/skills/anvil-<skill>/`.'
+ANVIL_ADAPTER_CODEX='In Codex, an installed skill is registered at `.agents/skills/anvil-<skill>/SKILL.md` -- invoke it from the skill picker by name; the registration is a thin pointer back to the canonical body under `.anvil/skills/<skill>/`.'
 
 # ----- Argument parsing ------------------------------------------------------
 SKILLS_FILTER=""
@@ -2113,32 +2137,51 @@ else
   done
 fi
 
-# ----- Stage 8: CLAUDE.md additive merge ------------------------------------
-info "Stage 8: CLAUDE.md additive merge"
+# ----- Stage 8: CLAUDE.md + AGENTS.md additive merge -------------------------
+# Both files get the identical marker-bounded merge mechanics (create /
+# replace-in-place / append) via the shared merge_marker_block() helper --
+# only the target path and the per-runtime block content differ. See the
+# "CLAUDE.md / AGENTS.md marker + adapter constants" comment above for why
+# ANVIL_POINTER is shared and ANVIL_ADAPTER_CLAUDE / ANVIL_ADAPTER_CODEX are
+# not (issue #1004).
+info "Stage 8: CLAUDE.md + AGENTS.md additive merge"
 CLAUDE_MD="$TARGET/CLAUDE.md"
-NEW_BLOCK="$ANVIL_MARK_BEGIN
+AGENTS_MD="$TARGET/AGENTS.md"
+NEW_BLOCK_CLAUDE="$ANVIL_MARK_BEGIN
 $ANVIL_POINTER
+$ANVIL_ADAPTER_CLAUDE
+$ANVIL_MARK_END"
+NEW_BLOCK_AGENTS="$ANVIL_MARK_BEGIN
+$ANVIL_POINTER
+$ANVIL_ADAPTER_CODEX
 $ANVIL_MARK_END"
 
-merge_claude_md() {
-  if [[ ! -f "$CLAUDE_MD" ]]; then
-    # Case 1: no existing CLAUDE.md -- create it with just the marker block.
-    printf '%s\n' "$NEW_BLOCK" > "$CLAUDE_MD"
+# Generic additive marker-block merge, shared by the CLAUDE.md and AGENTS.md
+# writes below.
+#   Case 1: target file absent -- create it with just the marker block.
+#   Case 2: target has an existing Anvil marker -- replace the block in
+#           place, preserving everything else in the file byte-for-byte
+#           (including e.g. a pre-existing Loom marker block).
+#   Case 3: target exists with no Anvil marker -- append at end, separated
+#           by exactly one blank line.
+# Pure-bash line-by-line replacement is more portable than awk -v block=<multiline>
+# (BSD awk rejects newlines inside -v values).
+merge_marker_block() {
+  local target_file="$1" block="$2"
+
+  if [[ ! -f "$target_file" ]]; then
+    printf '%s\n' "$block" > "$target_file"
     return
   fi
 
-  if grep -qF "$ANVIL_MARK_BEGIN" "$CLAUDE_MD"; then
-    # Case 2: existing Anvil marker -- replace block in place.
-    # Pure-bash line-by-line replacement is more portable than awk -v block=<multiline>
-    # (BSD awk rejects newlines inside -v values). Preserves everything outside
-    # the markers, including any Loom block.
+  if grep -qF "$ANVIL_MARK_BEGIN" "$target_file"; then
     local tmp in_block=0
     tmp="$(mktemp)"
     local replaced=0
     while IFS= read -r line || [[ -n "$line" ]]; do
       if [[ "$in_block" -eq 0 ]]; then
         if [[ "$line" == *"$ANVIL_MARK_BEGIN"* ]]; then
-          printf '%s\n' "$NEW_BLOCK" >> "$tmp"
+          printf '%s\n' "$block" >> "$tmp"
           in_block=1
           replaced=1
         else
@@ -2150,34 +2193,44 @@ merge_claude_md() {
         fi
         # discard lines inside the old block
       fi
-    done < "$CLAUDE_MD"
+    done < "$target_file"
     if [[ "$replaced" -eq 0 ]]; then
       rm -f "$tmp"
       return 1
     fi
-    mv "$tmp" "$CLAUDE_MD"
+    mv "$tmp" "$target_file"
     return
   fi
 
-  # Case 3: existing CLAUDE.md, no Anvil markers -- append at end, separated by blank line.
+  # Case 3: existing file, no Anvil markers -- append at end, separated by blank line.
   # Trim trailing newlines from the existing file, then append "\n\n<block>\n".
   local existing
-  existing="$(cat "$CLAUDE_MD")"
+  existing="$(cat "$target_file")"
   # Remove trailing whitespace/newlines, then add exactly one blank line before block.
-  printf '%s\n\n%s\n' "${existing%$'\n'}" "$NEW_BLOCK" > "$CLAUDE_MD"
+  printf '%s\n\n%s\n' "${existing%$'\n'}" "$block" > "$target_file"
+}
+
+# Print the planned Stage 8 action for one target file under --dry-run,
+# without writing anything.
+report_marker_merge_dry_run() {
+  local target_file="$1" label="$2"
+  if [[ ! -f "$target_file" ]]; then
+    echo "  [dry-run] create $label with Anvil marker block"
+  elif grep -qF "$ANVIL_MARK_BEGIN" "$target_file"; then
+    echo "  [dry-run] replace existing Anvil block in $label (in place)"
+  else
+    echo "  [dry-run] append Anvil marker block to $label (preserves all existing content)"
+  fi
 }
 
 if [[ "$DRY_RUN" == true ]]; then
-  if [[ ! -f "$CLAUDE_MD" ]]; then
-    echo "  [dry-run] create CLAUDE.md with Anvil marker block"
-  elif grep -qF "$ANVIL_MARK_BEGIN" "$CLAUDE_MD"; then
-    echo "  [dry-run] replace existing Anvil block in CLAUDE.md (in place)"
-  else
-    echo "  [dry-run] append Anvil marker block to CLAUDE.md (preserves all existing content)"
-  fi
+  report_marker_merge_dry_run "$CLAUDE_MD" "CLAUDE.md"
+  report_marker_merge_dry_run "$AGENTS_MD" "AGENTS.md"
 else
-  merge_claude_md
+  merge_marker_block "$CLAUDE_MD" "$NEW_BLOCK_CLAUDE"
   ok "CLAUDE.md updated"
+  merge_marker_block "$AGENTS_MD" "$NEW_BLOCK_AGENTS"
+  ok "AGENTS.md updated"
 fi
 
 # Write the full Anvil guide to <target>/.anvil/CLAUDE.md (with version + date
