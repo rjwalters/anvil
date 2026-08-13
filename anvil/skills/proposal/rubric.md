@@ -16,7 +16,7 @@ A proposal must score BOTH "is this technically sound" AND "should the approver 
 | 6 | **Cost credibility** | 5 | BOM + labor are priced, sourceable, and competitive. Figures have a basis (planning range, vendor list price, quote), not arbitrary numbers; the arithmetic holds. |
 | 7 | **Persuasiveness / value proposition** | 4 | Why the approver should say yes — the pitch element. For `customer_kind: external`, read as "wins the client". For `customer_kind: internal`, read as "justifies the budget allocation" (same weight, reframed prompt). |
 | 8 | **Open decisions** | 4 | Unresolved engineering choices are tracked honestly (the `anvil:memo` "assumptions to validate" analogue). A proposal that pretends every decision is settled scores low. |
-| 9 | **Rhetorical economy** | 4 | Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds? |
+| 9 | **Rhetorical economy** | 4 | Does every paragraph carry weight the argument needs? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds? |
 | | **Total** | **44** | Advance threshold: ≥35 |
 
 ## `customer_kind` and dimension 7
@@ -223,7 +223,7 @@ The contract is: the only path through this section is `recommendation_target ==
 
 ## Dim 9 — rhetorical economy
 
-**Rhetorical economy** (weight: 4) — Is every paragraph load-bearing? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds?
+**Rhetorical economy** (weight: 4) — Does every paragraph carry weight the argument needs? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reader extract the recommendation in 90 seconds?
 
 The dim exists because every other dimension in this rubric rewards *more*: more constraint-threading prose (dim 3), more enumerated BOM lines (dim 4), more sourced footnotes (dim 6), more open-decisions entries (dim 8). A reviser optimizing against the legacy 8-dim rubric is incentivized to add — but for strategic-positioning artifacts (program-design memos, internal sponsor pitches, executive briefs) force comes from compression and surprise, not enumeration. Dim 9 is the countervailing pressure: a paragraph that does not earn its weight costs the same score as a missing one.
 

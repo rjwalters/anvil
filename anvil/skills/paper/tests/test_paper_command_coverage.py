@@ -44,12 +44,17 @@ import unittest
 from pathlib import Path
 
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
+_REPO_ROOT = _SKILL_ROOT.parent.parent.parent
 
 RUBRIC_ID = "anvil-pub-v2"
 
 
 def _read(rel: str) -> str:
     return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+
+
+def _read_repo(rel: str) -> str:
+    return (_REPO_ROOT / rel).read_text(encoding="utf-8")
 
 
 class TestPubDraftSubjectTier(unittest.TestCase):
@@ -198,6 +203,48 @@ class TestPubDefaultAiTellCheck(unittest.TestCase):
         self.assertIn("Advance threshold: ≥35", self.rubric)
         self.assertIn("| 7 | **Prose & structural quality** | 4 |", self.rubric)
         self.assertIn("| 9 | **Rhetorical economy** | 4 |", self.rubric)
+
+
+class TestStructuralImportanceAnnouncementTellClass(unittest.TestCase):
+    """The "load-bearing" AI-tell class (issue #997): STYLE_GUIDE §3 names
+    it, and paper/rubric.md + paper-review.md's D7/D9 guidance extend the
+    default AI-tell check to cover it, mirroring the self-flattering /
+    virtue-signaling adjective class wired for issue #732."""
+
+    def setUp(self):
+        self.style_guide = _read_repo("anvil/templates/voice/STYLE_GUIDE.template.md")
+        self.rubric = _read("rubric.md")
+        self.review = _read("commands/paper-review.md")
+
+    def test_style_guide_names_the_class_with_marker_terms(self):
+        self.assertIn("structural-importance announcement", self.style_guide.lower())
+        self.assertIn("load-bearing", self.style_guide)
+        self.assertIn("load bearing", self.style_guide)
+        # Semantic-work / engineering-referent exception carried over.
+        self.assertIn("exempt", self.style_guide)
+
+    def test_rubric_dim7_and_dim9_name_the_class(self):
+        self.assertIn("structural-importance announcement", self.rubric.lower())
+        self.assertIn("| 7 | **Prose & structural quality** | 4 |", self.rubric)
+        self.assertIn("| 9 | **Rhetorical economy** | 4 |", self.rubric)
+
+    def test_rubric_dim9_boilerplate_question_no_longer_says_load_bearing(self):
+        # The literal "Is every paragraph load-bearing?" boilerplate is gone;
+        # "load-bearing" only survives elsewhere in dim 9's prose (naming the
+        # tell class itself and the pre-existing semantic-work exception).
+        self.assertNotIn("Is every paragraph load-bearing?", self.rubric)
+
+    def test_review_d7_and_d9_name_the_class(self):
+        self.assertIn("structural-importance announcement", self.review.lower())
+        self.assertIn("default AI-tell check", self.review)
+        self.assertIn("D9 economy failure", self.review)
+
+    def test_replacement_avoids_reserved_leak_words(self):
+        # "earns its place" / "doing real work" are reserved for a future
+        # corpus check (per issue #997) — the replacement boilerplate must
+        # not reintroduce either as the new AI-tell.
+        self.assertNotIn("earns its place", self.rubric)
+        self.assertNotIn("doing real work", self.rubric)
 
 
 class TestPaperVisionRecommendation(unittest.TestCase):

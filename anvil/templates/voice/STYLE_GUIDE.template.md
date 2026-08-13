@@ -80,6 +80,7 @@ This guide is for long-form writing, not code documentation.
 - Redundant pairs like *complex and nuanced.*
 - Empty adjectives like *remarkable* or *truly.*
 - Self-flattering adjectives that announce integrity, courage, or intellectual virtue rather than demonstrate it: *honest reversal, honest accounting, honest reading, honest position, candid take, frank assessment, uncomfortable answer, painful truth, humbling admission.* If the move is honest or uncomfortable, the reader will feel that from the move itself. Labeling it is the prose equivalent of "to be honest": a tell that signals AI authorship. Exception: an adjective stays when it does real semantic work (*the hard question* contrasting an easier one; *the actual problem* contrasting a claimed one; *the deeper issue* contrasting a surface one).
+- **Structural-importance announcements** that assert a passage matters instead of letting it matter: *load-bearing, load bearing* (e.g. "this paragraph is load-bearing," "a load-bearing footnote"). If a sentence, paragraph, or claim is essential, cutting it will show that; say what the passage does (*this sets up the counterexample in §4*) rather than asserting its importance. Exception: a genuine engineering or architecture referent (an actual wall, an actual truss) stays exempt.
 
 **Instead of**
 > <!-- replace me: an inflated, abstraction-stacked phrase in your domain -->
