@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from anvil.lib.evidence_drift import (
+    DRIFT_TOLERANCE_SECONDS,
     STATUS_CLEAN,
     STATUS_DRIFT,
     STATUS_NO_SNAPSHOT,
@@ -186,6 +187,47 @@ class TestCheckEvidenceDrift:
         assert result.drifted is False
         assert result.brief_drifted is False
         assert result.refs_drifted is False
+
+    def test_sub_tolerance_delta_is_clean_not_drift(self, tmp_path: Path) -> None:
+        """Issue #1018: a float-precision delta far below the tolerance
+        (e.g. a hand-transcribed mtime truncated by 2e-7s) must not be
+        reported as EVIDENCE-DRIFT."""
+        brief = tmp_path / "BRIEF.md"
+        _touch(brief, mtime=1000.0)
+        snapshot = compute_evidence_snapshot(tmp_path)
+
+        _bump(brief, ahead_seconds=2e-7)
+
+        result = check_evidence_drift(tmp_path, snapshot)
+
+        assert result.status == STATUS_CLEAN
+        assert result.drifted is False
+        assert result.brief_drifted is False
+
+    def test_boundary_just_below_tolerance_is_clean(self, tmp_path: Path) -> None:
+        brief = tmp_path / "BRIEF.md"
+        _touch(brief, mtime=1000.0)
+        snapshot = compute_evidence_snapshot(tmp_path)
+
+        _bump(brief, ahead_seconds=DRIFT_TOLERANCE_SECONDS * 0.5)
+
+        result = check_evidence_drift(tmp_path, snapshot)
+
+        assert result.status == STATUS_CLEAN
+        assert result.drifted is False
+
+    def test_boundary_just_above_tolerance_is_drift(self, tmp_path: Path) -> None:
+        brief = tmp_path / "BRIEF.md"
+        _touch(brief, mtime=1000.0)
+        snapshot = compute_evidence_snapshot(tmp_path)
+
+        _bump(brief, ahead_seconds=DRIFT_TOLERANCE_SECONDS * 2)
+
+        result = check_evidence_drift(tmp_path, snapshot)
+
+        assert result.status == STATUS_DRIFT
+        assert result.drifted is True
+        assert result.brief_drifted is True
 
     def test_drift_when_brief_touched_after_snapshot(self, tmp_path: Path) -> None:
         brief = tmp_path / "BRIEF.md"
