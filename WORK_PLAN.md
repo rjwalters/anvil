@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-13 (Guide triage pass — the #1005/#997 `loom:building` pair from the previous pass both landed and closed: #1005 via PR #1023 (which also closed out the #1000 epic — all four phases complete), #997 via PR #1026 (which also filed a follow-up gap, #1027, now in the triage queue). No `loom:issue`, `loom:building`, `loom:blocked`, or `loom:epic` issues remain open. #888 and #918 are unchanged `loom:operator-only` items. One open PR, #1025, is a Judge-flagged duplicate of already-merged PR #1019 awaiting a human/Champion close decision — not eligible for any Guide label action. `WORK_LOG.md` gained three new entries this pass (PRs #1026, #1023, and a standalone closed-issue entry for the #1000 epic, #1000). Merged-PR/closed-issue pairing checked clean, no orphans.)*
+*Last updated: 2026-08-13 (Guide triage pass — the follow-up gap #1027 (filed against PR #1026's #997 sweep) landed via PR #1030 and is now closed, emptying the Triage Queue. No `loom:issue`, `loom:building`, `loom:blocked`, `loom:curated`-unclaimed, or `loom:epic` issues remain open. #888 and #918 are unchanged `loom:operator-only` items — the only two issues open repo-wide. One open PR, #1025, is unchanged: a Judge-flagged duplicate of already-merged PR #1019 awaiting a human/Champion close decision — not eligible for any Guide label action. `WORK_LOG.md` gained one new entry this pass (PR #1030). Merged-PR/closed-issue pairing checked clean, no orphans.)*
 
 ---
 
@@ -49,7 +49,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
-- **#1027**: "AI-tell lexicon: 'load-bearing' boilerplate also present in deck/rubric.md dim 9 (missed by #997's file enumeration)" (`loom:triage`, marked `<!-- loom:complexity=trivial -->` by the filer). Follow-up gap found during review of PR #1026: `deck/rubric.md` uses a different 10-dim /49 rubric shape and was not in #997's curated Affected Files list, so its dim-9 "Are slides 18+ load-bearing?" boilerplate wasn't swept. Awaiting Curator enhancement.
+*Empty.* #1027 (the deck/rubric.md follow-up gap) landed via PR #1030 and is now closed.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
@@ -61,7 +61,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Three open issues as of 2026-08-13: #1027 (fresh, awaiting Curator), #888 (curated, operator-only, awaiting human design judgment), and #918 (operator-only infrastructure escalation).** The #1000 epic and its last two phases (#1005, #997) all closed this pass. No `loom:issue` issues are open, so nothing was eligible for `loom:urgent` this cycle. One open PR (#1025) is a judgment-call duplicate awaiting human/Champion closure — see "Needs Human Disposition" above. Merged-PR/closed-issue pairing checked clean this pass, no orphans found. Next action: Curator enriches #1027; a human or Champion reviews #888's design tradeoffs and decides on closing #1025 as superseded; #918 awaits a human daemon-recovery run on the affected host.
+**Two open issues as of 2026-08-13: #888 (curated, operator-only, awaiting human design judgment) and #918 (operator-only infrastructure escalation).** #1027 (the deck/rubric.md follow-up gap) closed this pass via PR #1030. No `loom:issue` issues are open, so nothing was eligible for `loom:urgent` this cycle. One open PR (#1025) is a judgment-call duplicate awaiting human/Champion closure — see "Needs Human Disposition" above. Merged-PR/closed-issue pairing checked clean this pass, no orphans found. Next action: a human or Champion reviews #888's design tradeoffs and decides on closing #1025 as superseded; #918 awaits a human daemon-recovery run on the affected host.
 
 ### Recurring themes the next wave of issues will likely touch
 
