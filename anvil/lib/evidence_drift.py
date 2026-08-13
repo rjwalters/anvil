@@ -125,6 +125,19 @@ STATUS_NO_SNAPSHOT = "NO-SNAPSHOT"
 """Bootstrap case: no prior snapshot recorded. Reported as clean/not-
 drifted — never a false-positive drift signal (see module docstring)."""
 
+DRIFT_TOLERANCE_SECONDS = 1e-3
+"""Minimum mtime delta (seconds) treated as real drift, not float-precision
+noise (issue #1018). A hand-recorded snapshot (a `record` invocation typed
+by hand rather than run through the tool, e.g. under a Bash-write-blocking
+hook) can lose sub-microsecond precision when the mtime float is
+transcribed, which previously surfaced as a false-positive `EVIDENCE-DRIFT`
+on a delta as small as 2e-7 seconds. 1ms is comfortably above that noise
+floor and above common filesystem mtime granularity (e.g. 1-second
+resolution on some filesystems truncated by intermediate tooling), while
+staying far below the elapsed time of any real edit — the same "false
+positive costs a sentence, not a blocked pipeline" tradeoff already
+accepted for mtime-vs-content-hash above."""
+
 
 # ---------------------------------------------------------------------------
 # Snapshot computation
@@ -339,10 +352,12 @@ def check_evidence_drift(
     prior_refs = snapshot.get("refs_mtime")
 
     brief_drifted = current["brief_mtime"] is not None and (
-        prior_brief is None or current["brief_mtime"] > prior_brief
+        prior_brief is None
+        or current["brief_mtime"] - prior_brief > DRIFT_TOLERANCE_SECONDS
     )
     refs_drifted = current["refs_mtime"] is not None and (
-        prior_refs is None or current["refs_mtime"] > prior_refs
+        prior_refs is None
+        or current["refs_mtime"] - prior_refs > DRIFT_TOLERANCE_SECONDS
     )
 
     if not brief_drifted and not refs_drifted:
@@ -469,6 +484,7 @@ __all__ = [
     "STATUS_CLEAN",
     "STATUS_DRIFT",
     "STATUS_NO_SNAPSHOT",
+    "DRIFT_TOLERANCE_SECONDS",
     "EvidenceDriftResult",
     "compute_evidence_snapshot",
     "record_evidence_snapshot",
