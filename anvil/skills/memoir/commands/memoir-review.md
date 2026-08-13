@@ -174,8 +174,9 @@ interrupt of THIS critic removed by
      fewer than 2 subjects declared, this flag cannot fire.
    - (The fabrication-class flags — `fabricated_quote`,
      `fabricated_fact`, `misattribution_of_substance`, `anachronism`,
-     `unattributed_paraphrase` — are `memoir-audit`'s `corpus-audit`
-     sibling's job; the reviewer does not raise them.)
+     `unattributed_paraphrase`, `scope_overreach` (#1032) — are
+     `memoir-audit`'s `corpus-audit` sibling's job; the reviewer does
+     not raise them.)
 
    If none: "Critical flags: none."
 8. **Verdict** into `verdict.md`: total /44, review-critical-flag count,

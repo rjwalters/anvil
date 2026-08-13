@@ -169,13 +169,17 @@ combined verdict pre-check passes.
    from ANY critic MUST be addressed:
    - **Fabrication-class flags** (`fabricated_quote`,
      `fabricated_fact`, `misattribution_of_substance`, `anachronism`,
-     `unattributed_paraphrase` — corpus-audit-side): cut or correct the
-     offending claim so it is either removed, or replaced with a claim
-     the corpus actually supports (with an updated `provenance.md` row).
-     **Never invent a new source-line mapping to paper over the
-     finding** — a MISMATCH/NOT_FOUND/FABRICATED classification is
-     resolved by changing the CLAIM to match the evidence, never by
-     changing the CITATION to match the claim.
+     `unattributed_paraphrase`, `scope_overreach` (#1032) —
+     corpus-audit-side): cut or correct the offending claim so it is
+     either removed, or replaced with a claim the corpus actually
+     supports (with an updated `provenance.md` row). **Never invent a
+     new source-line mapping to paper over the finding** — a
+     MISMATCH/NOT_FOUND/FABRICATED classification is resolved by
+     changing the CLAIM to match the evidence, never by changing the
+     CITATION to match the claim. A `scope_overreach` finding is
+     resolved by **narrowing the claim's wording** to match the row's
+     own scope (e.g. "anyone has" → "the project has") — never by
+     widening the cited row or fabricating a broader source.
    - **`misattribution`** (voice-identity, review-side): rewrite the
      dialogue line in the correctly-attributed speaker's own cadence, or
      re-attribute it to the speaker whose corpus actually supports it.
