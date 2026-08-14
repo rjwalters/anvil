@@ -176,7 +176,7 @@ case "${1:-show}" in
       # (#638). `if` form so an absent file can't trip `set -e`.
       if [ -f "CHANGELOG.md" ]; then git add CHANGELOG.md; fi
       git commit -m "chore: bump version to $new"
-      git tag "v$new"
+      git tag -a "v$new" -m "v$new"
       echo "Committed and tagged v$new"
     fi
     ;;
@@ -192,7 +192,7 @@ case "${1:-show}" in
       # (#638). `if` form so an absent file can't trip `set -e`.
       if [ -f "CHANGELOG.md" ]; then git add CHANGELOG.md; fi
       git commit -m "chore: release v$new"
-      git tag "v$new"
+      git tag -a "v$new" -m "v$new"
       echo "Committed and tagged v$new"
     fi
     ;;
