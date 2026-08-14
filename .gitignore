@@ -13,6 +13,9 @@ build/
 dist/
 .venv/
 venv/
+# Anvil is a library consumed via flexible version ranges (pyproject.toml's
+# pydantic>=2.0 base dep), not a pinned deployment — no committed lockfile
+# to keep in sync across contributors/CI. Decision recorded per #1035.
 uv.lock
 
 # Env
@@ -40,9 +43,14 @@ uv.lock
 # — `.loom-local/local.json` is the "Local" tier and outranks .loom/config.json.
 .loom-local/
 
-# Worktree-local marker written by .loom/scripts/worktree.sh; per-worktree
-# bookkeeping, never repo content — must never be committed.
-.loom-managed
+# Exception: the config-resolver conformance fixture needs a real
+# .loom-local/ directory to exercise the "Local" config tier by name (see
+# .loom/scripts/tests/fixtures/config_resolver/README.md). Without this,
+# the .loom-local/ rule above silently un-adds any file placed under a test
+# fixture's .loom-local/ subdirectory. Decision recorded per #1035.
+!**/tests/fixtures/**/.loom-local/
+!**/tests/fixtures/**/.loom-local/**
+
 # >>> loom-managed (do not edit) >>>
 # Loom runtime state (don't commit these)
 .loom-in-use
