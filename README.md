@@ -227,6 +227,9 @@ tests/
                  --skills= validation).
   agents/        Agent-registry generation tests.
   skills/        Per-skill test packages (fixtures + regression tests).
+
+docs/          Working notes and research spikes not tied to a shipped
+               skill (see docs/README.md for the indexed list).
 ```
 
 ## Working with Anvil (overview)
