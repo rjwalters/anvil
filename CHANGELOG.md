@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.11.0] — 2026-08-13
 
 ### Added
 
@@ -341,6 +341,53 @@
   resolved `max_iterations` + `iteration_cap_rationale` into every version
   dir's `_progress.json`.
 
+- **`anvil:ip-search` — prior-art search skill** (#969; opt-in
+  pre-search step code-enforced in #981; wired into the ip skills'
+  positioning critic in #975). Derives queries from a thread's
+  `BRIEF.md` §3 inventive-feature inventory, queries PatentsView /
+  USPTO Open Data via stdlib `urllib`, and writes one
+  `<thread>/prior-art/<slug>.md` per reference in the frontmatter shape
+  the ip skills already parse. A drafting aid, never an attorney
+  clearance search.
+
+- **`anvil:diff` — local side-by-side prose diff viewer** (#925, PR
+  #931). A stdlib-only (`http.server` + `difflib`), word-level,
+  read-only HTML diff between two anvil version dirs, a deslop
+  origin/`cleaned.txt` pair, or two arbitrary files, with optional
+  `.review/` + rhetoric-lint overlays. Binds `127.0.0.1` only; never
+  writes to any input path.
+
+- **Codex CLI parity for the installer** (#1010, #1014; cross-runtime
+  parity + upgrade/uninstall ownership tests in #1023). The installer
+  now emits Codex CLI skill registration alongside the Claude shim,
+  generates a consumer `AGENTS.md` entry point, and extends
+  `anvil:help`'s degraded-mode fallback to cover Codex consumers.
+
+- **Rhetoric-lint / deslop growth**: 18 AI-humanizer-corpus default
+  rules (bucket a of #920, PR #927), a `sentence_variance`
+  rhythm-uniformity rule kind (#928), a deterministic no-fabrication
+  diff gate in the deslop revise loop (#929), a long-sentence-density
+  default rule (#771), and emphasis-density / no-meta-commentary /
+  no-warning-emoji default rules (#760).
+
+- **`anvil:memo` additions**: cold-reader comprehension critic (#753,
+  PR #770), resolution modes + net-delta reporting for `memo-revise`
+  (#748, PR #766), an evidence-grade rendering rule keeping grade tags
+  out of reader prose (#751, PR #773), and a self-derived calibration
+  mode for `memo-redteam` when no strongman exists (#915).
+
+- **`anvil:paper` — deterministic `candidates.bib` syntax lint in
+  litsearch** (#1001).
+
+- **`anvil:deck` additions**: pdftotext-based text-layer-completeness
+  gate (#983, PR #988); `parity` now reframes BRIEF-quarantined figures
+  instead of promoting them to `only_in_memo_economic` (#917).
+
+- **`anvil:project-share` additions**: `export.cover` / `cover_as`
+  durable cover-note knob (#776), a report-only dangling-citation lint
+  (#758, PR #775), and a runnable `lib/cli.py` argparse entry point
+  (#768).
+
 ### Fixed
 
 - **`anvil:memoir` — the final revision under `max_iterations` can now
@@ -647,6 +694,43 @@
   resolver, including a case that plants a sibling project-level
   `BRIEF.md` alongside the thread-level one to prove the resolver reads
   the correct file.
+
+- **Installer fixes**: version now reads from a root `VERSION` file,
+  with machine-local install fields split into a gitignored sidecar
+  (#896); `*.egg-info/` appended to `.anvil/.gitignore`, covering `uv
+  sync`'s editable install (#880); `__pycache__`/`*.pyc`/`.DS_Store`
+  cruft stripped from every tree-copy site (#818, PR #821); the
+  `deck_imagegen` extra mirrored into the generated consumer
+  `pyproject` (#953).
+
+- **`anvil:deck` imagegen/lint fixes**: speaker-notes imagery-prompt
+  extraction stops at the first blank line (#955); the imagegen
+  field-block terminator accepts multi-word bold markers (#966);
+  figure-legibility glyph height scales by actual render DPI (#908);
+  `marp_lint` standalone-image detection keys on line structure, not
+  length (#907).
+
+- **`anvil:ip-uspto-provisional`** — the figurer no longer conflates
+  numeral-drift with visual verification (#987).
+
+- **Lib fixes**: `render_gate` attributes overfull boxes to their
+  `\input`'d source file (#967); `provenance_anchor` parses every claim
+  table, not just the first (#934, PR #936); hyperlink/rhetoric-lint
+  scans cover the whole body, not per line (#892); memo scoring tables
+  tolerate markdown emphasis and error on zero-row scorecards (#916);
+  the evidence-drift advisory's mtime comparison is tolerance-aware and
+  its hand-recording fallback is dropped (#1021); the four vision
+  critics gitignore their regenerable per-page PNGs (#738, PR #739).
+
+### Security
+
+- **Pillow floor bumped to `>=12.3.0`**, resolving 13 Dependabot alerts
+  (#765).
+
+- **Identifier scrub**: real client/project identifiers in example
+  files replaced with synthetic ones; the token-filename example now
+  uses a placeholder address; operator home paths in spec example files
+  genericized (#942, PR #943).
 
 ## [0.10.1] — 2026-07-21
 
