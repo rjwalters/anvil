@@ -8,6 +8,7 @@ Operational scripts for anvil maintenance and installation.
 |---|---|---|
 | `version.sh` | working | Show / check / set the anvil version across all version-bearing files |
 | `install-anvil.sh` | working | Install anvil into a consumer repo (`./install-anvil.sh /path/to/repo`, or the root `install.sh` shim) |
+| `check-changelog-entry.sh` | working | Deterministic pre-flight: does a `feat`/`fix`/`security` PR carry a `CHANGELOG.md` entry, or a stated exemption? (`<pr-number>` live, or `--title/--body-file/--files-file` offline; exit 0/1/2 — issue #1037, contract in `CLAUDE.md` § "Changelog discipline") |
 | `resync-installed.sh` | working | Ships into a consumer at `.anvil/scripts/resync-installed.sh`; refreshes an existing install from its recorded source, non-destructively (issue #894) |
 | `new-skill.sh` | planned | Scaffold a new skill from `anvil/templates/` |
 

@@ -333,6 +333,7 @@ Every 15 minutes: Review issue backlog, update priorities and organization
 3. **Test thoroughly** - Run full test suite before creating PR
 4. **Write clear commits** - Explain what and why
 5. **Link issues** - Use "Closes #N" in PR descriptions
+6. **Record the changelog entry** - A `feat`/`fix`/`security` PR adds its own `CHANGELOG.md` `[Unreleased]` entry and states a `CHANGELOG:` line in the PR body; the Judge verifies the claim against the diff (`./scripts/check-changelog-entry.sh <pr>`). See `CLAUDE.md` § "Changelog discipline". Reconstructing a release's changelog by hand at cut time is the failure this prevents (#1037).
 
 ### For Humans
 
