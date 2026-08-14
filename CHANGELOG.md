@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Per-PR changelog discipline, enforced in the Builder → Judge cycle**
+  (#1037). The v0.11.0 cut found `[Unreleased]` covering ~28 items while
+  the cycle had merged ~50 more `feat`/`fix`/`security` PRs with no entry
+  — two whole new skills among them — all reconstructed by hand at
+  release time. `CLAUDE.md` § "Changelog discipline" now states the
+  contract: a `feat`/`fix`/`security` PR adds its own `[Unreleased]`
+  entry and carries a `CHANGELOG:` line in the PR body (every other
+  conventional-commit type is exempt), and the Judge verifies a
+  `CHANGELOG: yes` claim against the diff — a false `yes` is a blocking
+  finding, the same contradiction tier as a false `TDD: yes`. New
+  `scripts/check-changelog-entry.sh` is the cheap deterministic
+  pre-flight (exit 0 = entry or exemption, 1 = missing, 2 = could not
+  check), usable live against a PR number or offline from a title +
+  body + changed-files list. `/repo:release`'s merged-work coverage
+  check is explicitly retained as the backstop, not the mechanism.
+
 ## [0.11.0] — 2026-08-13
 
 ### Added

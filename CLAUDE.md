@@ -116,9 +116,49 @@ When adding to this repo:
 - **Add Python deps only when subprocess won't do.** The optional-extras philosophy (`pyproject.toml` top comment) is the contract. The `check_*_available()` family in `anvil/lib/render.py` is the precedent for graceful-degradation preflight.
 - **Test discipline**: per-skill tests use distinct filenames per the #58 packaging convention; the cross-skill pytest filename collision is solved by `__init__.py` chains in every test directory.
 - **Loom orchestrates Anvil-the-framework's development.** This repo uses `loom:issue` / `loom:building` / `loom:review-requested` / `loom:pr` labels and the curate → build → judge → merge cycle. See `AGENTS.md` for the agent-archetype reference.
+- **Changelog discipline is part of the PR, not part of the release.** Every `feat` / `fix` / `security` PR records its own `CHANGELOG.md` `[Unreleased]` entry and states a `CHANGELOG:` line in its body. See "Changelog discipline" below for the full contract — this is a real Judge check, not a nicety.
 - **The Loom cycle is for substantive work, not every change.** It exists so framework changes get curated, reviewed, and traced to a canary signal — that value is real for a skill, a lib primitive, or a contract shift, and absent for a typo, a stale doc line, a gitignore rule, or a tool-version bump. Small mechanical changes may be committed directly to `main` with a descriptive message; no issue, no branch, no PR. Loom itself does not require the ceremony (its only blocking rules are `gh pr merge` → `.loom/scripts/merge-pr.sh` and no editable installs inside worktrees), so routing trivia through it is a choice, and usually the wrong one. When in doubt about which side a change falls on, ask rather than defaulting to either.
 
 When implementing or modifying a skill: follow its documented lifecycle commands, use the standard state machine, and produce a `{thread}.{N}/` version dir with sibling `.review/` (and optional `.audit/`, `.<critic>/`) per the framework. Note in the commit message what design decisions were made and any trade-offs considered.
+
+### Changelog discipline (the `CHANGELOG:` line)
+
+**The problem this closes** (#1037): at the v0.11.0 cut, a merged-work coverage check found `[Unreleased]` covering ~28 items while the cycle had merged ~50 more `feat`/`fix`/`security` PRs with no entry at all — including two entire new skills (`anvil:ip-search` #969, `anvil:diff` #931) and the Codex CLI parity install path (#1010/#1014). All were reconstructed by hand at release time, which is exactly the expensive archaeology a changelog convention exists to prevent. The convention was real; nothing in the Builder → Judge cycle ever looked, so it degraded silently over one release cycle.
+
+**This lives here, in `CLAUDE.md`, on purpose.** The natural homes for it — `.claude/commands/loom/builder-pr.md`, `.claude/commands/loom/judge.md`, `.claude/commands/repo/release.md` — are *vendored copies* of upstream Loom / Repo-Skills defaults, refreshed wholesale by `.loom/scripts/resync-installed.sh` and `install.sh`. An edit there survives until the next resync and then vanishes. `CLAUDE.md` is anvil-owned, read by every agent session, and outranks role guidance for repo-specific conventions. (A generic version of this rule may be worth proposing upstream to Loom; that would be an issue in `rjwalters/loom`, not a local patch to a synced file.)
+
+**Builder — when your PR title is a `feat`, `fix`, or `security` conventional commit:**
+
+1. Add the entry to `CHANGELOG.md` under `## [Unreleased]`, in the same PR as the change (create the `## [Unreleased]` heading directly under `# Changelog` if the last release consumed it — the release flow promotes that heading to `## [X.Y.Z] — DATE` and does not leave a fresh one behind).
+2. State the claim in the PR body's `## Test Plan` section, next to the `TDD:` line:
+
+```
+CHANGELOG: yes — <category + one-line summary of the entry you added>
+CHANGELOG: no — <reason, e.g. "internal refactor with no user-visible behavior change">
+```
+
+Every other conventional-commit type (`docs`, `chore`, `test`, `refactor`, `ci`, `build`, `style`, `perf`) is **exempt**: omit the line, or write `CHANGELOG: no — <reason>`. Do not invent an entry to satisfy the checkpoint; a changelog padded with `chore` noise is worse than a short one.
+
+Write the entry for the *reader of the release notes*, not for the diff: what changed for someone using anvil, with the issue/PR number. Match the surrounding style in `CHANGELOG.md` (Keep-a-Changelog categories: `### Added`, `### Changed`, `### Fixed`, `### Removed`, `### Deprecated`, `### Security`).
+
+**Judge — verify the claim against the diff**, exactly as you already do for `TDD: yes` (`judge.md` § "Test-First (TDD) Claim Verification"):
+
+```bash
+./scripts/check-changelog-entry.sh <pr-number>     # 0 = entry or exemption, 1 = missing, 2 = could not check
+```
+
+| `CHANGELOG:` line | Diff evidence | Judge action |
+|---|---|---|
+| `yes` | `CHANGELOG.md` in the diff | pass (skim that the entry actually landed under `[Unreleased]` and is legible) |
+| `yes` | no `CHANGELOG.md` in the diff | **blocking finding** — a false `yes` is the same contradiction tier as a false `TDD: yes` |
+| `no — <reason>` | — | advisory; weigh the reason, block only if the change is plainly user-facing |
+| absent, `feat`/`fix`/`security` title | no `CHANGELOG.md` in the diff | request the entry — this is the silent skip that produced #1037 |
+| absent, exempt title | — | pass, no comment |
+| any, non-conventional title | — | exit 2 — the check declines to guess; classify by hand and fix the title (`builder-pr.md` § "PR Titles" already requires the format) |
+
+The check is a deterministic pre-flight in the sense of "Pattern overview" above: run it *before* the expensive content review, and treat it as a reporter, not a merge gate. It renders no quality verdict on the entry's prose.
+
+**The release-time coverage check is the backstop, not the mechanism.** `/repo:release` Phase 5 still cross-references merged PRs since the last tag against the drafted entry (`.claude/commands/repo/release.md` § "Merged-work coverage check (advisory)"), and it stays — but it is a *last* line of defense that costs a human release-time reconstruction every time it fires. If it reports a non-trivial gap at the next cut, the fix belongs upstream in this per-PR discipline, not in a better reconstruction script.
 
 ## Status of work<!-- BEGIN LOOM ORCHESTRATION -->
 This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration — see the Loom repository for the full guide (roles, labels, worktrees, configuration). When installed, Loom also writes a locally-substituted copy of that guide to `.loom/CLAUDE.md`.
