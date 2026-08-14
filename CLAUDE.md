@@ -80,7 +80,7 @@ tests/
   skills/        Per-skill test packages (one dir per skill).
 
 docs/          Working notes and adapter docs (codex-skill-adapter,
-               research/).
+               research/). See docs/README.md for an indexed list.
 
 pyproject.toml   Anvil's Python deps (uv-shaped): base dep pydantic;
                  optional extras (e.g. [auto_shrink] for the Marp

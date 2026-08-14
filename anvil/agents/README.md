@@ -9,8 +9,9 @@ consumer's `.claude/agents/anvil-*.md` so the harness's
 
 Issue #377 — v0 of the subagent pattern. Per-skill-phase vocabulary
 (`anvil-<skill>-<phase>`); the per-skill specialist exceptions are the
-three deck critics that own specific rubric-dim groups
-(`anvil-deck-narrative`, `anvil-deck-market`, `anvil-deck-design`).
+deck critics that own specific rubric-dim groups (`anvil-deck-narrative`,
+`anvil-deck-market`, `anvil-deck-design` shipped in v0; `anvil-deck-economics`
+and `anvil-deck-vision` added later by #952).
 
 ## Why a sibling directory instead of `anvil/skills/<skill>/agent.md`?
 
@@ -83,20 +84,26 @@ in sync with the generator.
 
 ## Deferred scope
 
-Per the curator enrichment on #377, the v0 registry excludes:
+Per the curator enrichment on #377, the v0 registry excluded:
 
-- Specialty / non-lifecycle agents (`*-vision`, `*-perspective`,
-  `*-imagegen`, `*-imagegen-adapter`, ip-uspto §101 / §112 / claims /
-  intake / inventorship / prior-art / pre-flight / finalize, memo
-  citations / hyperlinks / image-accessibility / figure-content /
-  render / migrate / migrate-refs, report claim-figure-grounding /
-  figure-content, paper-litsearch, slides-outline / handout / rehearse,
-  deck-brief / imagegen / imagegen-adapter, proposal-synthesize /
-  proposal-perspective).
+- Specialty / non-lifecycle agents (`*-perspective`, `*-imagegen`,
+  `*-imagegen-adapter`, ip-uspto §101 / §112 / claims / intake /
+  inventorship / prior-art / pre-flight / finalize, memo citations /
+  hyperlinks / image-accessibility / figure-content / render / migrate /
+  migrate-refs, report claim-figure-grounding / figure-content,
+  paper-litsearch, slides-outline / handout / rehearse, deck-brief /
+  imagegen / imagegen-adapter, proposal-synthesize / proposal-perspective)
+  — still unshipped. The `*-vision` slice of this category has since
+  shipped for deck (`anvil-deck-vision`, alongside `anvil-deck-economics`
+  — #952); other skills' vision/specialist agents remain deferred.
 - Bridge tool agents (`anvil-project-migrate`,
   `anvil-rubric-rebackport`) — one-shot human-invocable; no fan-out
-  benefit.
+  benefit. Still unshipped.
 - The daemon analog of `loom-daemon` and the tmux + multi-account
-  orchestration cross-pollination.
+  orchestration cross-pollination. Still unshipped.
 
-Three follow-up issues are planned for these (see PR #377 description).
+The PR that shipped this registry (#384, "feat(agents): ship
+per-skill-phase subagent registry (v0 of #377)") proposed three follow-up
+issue titles in its description, but none were filed as tracked GitHub
+issues — treat the bullets above as the current source of truth for
+remaining scope rather than chasing an issue number.
