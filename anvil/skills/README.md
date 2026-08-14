@@ -32,10 +32,6 @@ user-invocable: false  # true for one-shot escape hatches
 ---
 ```
 
-## Planned v0 skills
-
-See repository `README.md` for the v0 skill catalog.
-
 ## Shipped skills
 
 The current skill index:
@@ -108,6 +104,24 @@ The current skill index:
   installed skill set and prints a two-tier view (overview, or one
   skill's real command set + rubric threshold + thread layout). Describes
   only what is installed; writes nothing. See `help/SKILL.md`.
+- `anvil:deslop` — prose-cleanup utility: iterates arbitrary AI-drafted
+  prose living outside any anvil-authored project clean of AI-tell
+  rhetoric and voice mismatch via a deterministic-lint + LLM-critique
+  loop (`anvil/lib/rhetoric_lint.py` + the convergence/critics
+  primitives unmodified). Never auto-edits the source — emits cleaned
+  text + rationale + a ready-to-apply diff. See `deslop/SKILL.md`.
+- `anvil:diff` — local, ephemeral, read-only diff viewer: renders a
+  stdlib-only, word-level side-by-side HTML diff between two anvil
+  version dirs, a deslop origin/`cleaned.txt` pair, or two arbitrary
+  files, with optional `.review/` + rhetoric-lint overlays. Binds
+  `127.0.0.1` only; never writes to any input path. See
+  `diff/SKILL.md`.
+- `anvil:ip-search` — prior-art-search utility: derives queries from a
+  thread's `BRIEF.md` §3 inventive-feature inventory, queries
+  PatentsView / USPTO Open Data via stdlib `urllib`, and writes one
+  `<thread>/prior-art/<slug>.md` per reference in the frontmatter shape
+  the ip skills already parse. A drafting aid, never an attorney
+  clearance search. See `ip-search/SKILL.md`.
 
 ## Subagent dispatch (`anvil-<skill>-<phase>`)
 

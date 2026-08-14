@@ -17,7 +17,7 @@ This command exists because aesthetic-craft venture categories (consumer product
 
 - **Thread slug** (positional argument).
 - **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
-- **`<thread>/BRIEF.md`**: read frontmatter for `imagery_policy` (REQUIRED gate) and `imagery_style` (optional style preset key; see `commands/imagery-style-presets.md` when shipped per Epic #130 Phase 1C / issue #133).
+- **`<thread>/BRIEF.md`**: read frontmatter for `imagery_policy` (REQUIRED gate) and `imagery_style` (optional style preset key; see `assets/imagery-style-presets.md`).
 - **`.anvil/config.json`**: read `deck.imagegen.backend` to discover the consumer-registered adapter. See `commands/deck-imagegen-adapter.md` for the adapter contract and registration mechanics.
 - **`deck.md` imagery markers**: the drafter MAY annotate a slide that needs a generative asset with an HTML comment of the form `<!-- anvil-imagegen: <slot> [style=<preset>] [steps=<N>] -->` immediately above the `![alt](assets/generated/<slot>.png)` reference. `<slot>` is the asset's stable filename stem; `<style>` (optional) overrides the brief-level style preset for this single slide; `<steps>` (optional) overrides the adapter's default step count. The `assets/generated/` namespace is the canonical generative-asset location per Phase 1B (see `commands/deck-draft.md` §"Respecting imagery_policy" and issue #132).
 
@@ -130,7 +130,7 @@ The command never retries on `BackendError`. Retry/backoff is the consumer's res
 
 - `commands/deck-imagegen-adapter.md` — adapter contract (minimal `generate()` signature, consumer registration via `.anvil/config.json`, explicit non-goals).
 - `SKILL.md` § "Asset generation" — the opt-in framing and the `imagery_policy` contract.
-- `commands/imagery-style-presets.md` (Epic #130 Phase 1C / issue #133) — the style-preset library (keys + prompt-prefix definitions).
+- `assets/imagery-style-presets.md` — the style-preset library (keys + prompt-prefix definitions).
 - Epic #130 — the multi-phase plan that ships `deck-imagegen`, the prompt-journal primitive, the fabrication-contract drafter prompts, and the `deck-audit` extension.
 - `commands/deck-figures.md` — the deterministic figure pipeline; `deck-imagegen` is a *parallel* asset path, not a replacement.
 - `commands/deck-audit.md` — Phase 3 (Epic #130 / issue G) extends the auditor with three new findings: `unattributed-generative-imagery`, `prompt-claim-divergence`, `style-incoherence`.

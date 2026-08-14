@@ -176,7 +176,8 @@ anvil/
     snippets/    Pure-markdown conventions every skill reads (progress,
                  timestamp, version_layout, thread_state, state_machine,
                  rubric, critics, scorecard_kind, audit, cite,
-                 perspective).
+                 perspective, git_sync, provenance, voice_grounding,
+                 pending_marker, directed_revision, brand-theme-porting).
     review_schema.py   Typed _review.json contract (kind: judgment |
                        tool_evidence | vision) + JSON Schema export.
     critics.py         Sibling-critic discovery, aggregation, verdict
@@ -194,10 +195,18 @@ anvil/
                        LaTeX-skill analog of marp_lint.
     vision.py          VisionCritic + VisionRubric (vision-model review
                        of rendered artifacts).
+    sidecar.py         staged_sidecar context manager + atomic rename for
+                       crash-safe critic-sibling writes.
     figures/           Shared figure-theming primitive (matplotlib
                        mplstyle, palette tokens, mermaid theme).
     marp/              Pinned Marp config (MathJax + html, mmdc-required
                        diagram path).
+    memo/              Memo PDF render-chain substrate (pinned styles +
+                       pandoc/xelatex templates).
+    latex/             Shared LaTeX substrate (anvil-doc.cls + .tex.j2).
+    examples/          Worked _review.json examples.
+    (…plus ~25 further single-purpose gate/critic modules — see
+     anvil/lib/README.md for the full annotated layout.)
   templates/     SKILL.md scaffolds.
   roles/         Generic role definitions (planned).
   agents/        Checked-in per-(skill, phase) agent definitions
@@ -207,12 +216,17 @@ anvil/
 scripts/
   install-anvil.sh   Install anvil into a target repo.
   version.sh         Version management.
+  generate-anvil-agents.py   Regenerate the checked-in anvil/agents/ files.
+  resync-installed.sh        Resync an installed consumer copy against this
+                             source checkout.
 
 tests/
   lib/           Framework-level tests (review_schema, critics, cite,
                  convergence, rubric, render, vision, render_gate, figures).
   scripts/       Install-script tests (quoting, dry-run honesty,
                  --skills= validation).
+  agents/        Agent-registry generation tests.
+  skills/        Per-skill test packages (fixtures + regression tests).
 ```
 
 ## Working with Anvil (overview)
@@ -235,7 +249,7 @@ Anvil commands never touch git by default. If you run anvil under an external or
 
 ## Project status
 
-Anvil is past the bootstrap phase. The eight v0 skills are merged and used in production by the [studio canary consumer](https://2amlogic.com). Active work is on follow-up polish surfaced by real authoring use — see [open issues](https://github.com/rjwalters/anvil/issues) for the live punch list. Issues labeled `tier:goal-supporting` are higher-value canary friction; `tier:maintenance` is technical debt and editorial cleanup.
+Anvil is past the bootstrap phase. The shipped skills (24 as of v0.10.1) are merged and used in production by the [studio canary consumer](https://2amlogic.com). Active work is on follow-up polish surfaced by real authoring use — see [open issues](https://github.com/rjwalters/anvil/issues) for the live punch list. Issues labeled `tier:goal-supporting` are higher-value canary friction; `tier:maintenance` is technical debt and editorial cleanup.
 
 ## License
 

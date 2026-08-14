@@ -4,6 +4,24 @@
 
 ### Added
 
+- **Corpus-provenance scope-widening check** (#1033, Phase 1 of #888). A
+  claim's cited `provenance.md` row must have matching-or-wider
+  grammatical scope wherever the claim carries a universal quantifier, a
+  superlative, or a negated existential; a narrower row is now a finding
+  even when the underlying fact would otherwise classify
+  VERIFIED/PARAPHRASE_OK. Adds the `scope_overreach` critical-flag type
+  (§6) with calibration examples from #888's field evidence, and syncs
+  memoir's rubric/SKILL/command restatements of the flag-type list (five
+  flags → six). No schema change.
+- **Structural-importance-announcement AI-tell class** (#1026). Adds
+  "load-bearing" as a new AI-tell word class alongside the existing
+  self-flattering-adjective class in `STYLE_GUIDE.template.md` §3, wires
+  it into `anvil:paper`'s dim 7/dim 9 default AI-tell check, and rewords
+  the literal "Is every paragraph load-bearing?" dim-9 boilerplate across
+  datasheet, essay, installation, memo, paper, proposal, report, and
+  slides rubrics so drafting agents no longer read the tell word
+  immediately before writing.
+
 - **Sidecar `copy` — a sanctioned binary/bulk-asset channel for
   driverless sessions** (#1017). A consumer hook that blocks every
   Bash-channel write into the checkout (redirection, `tee`, `cp`, `mv`,

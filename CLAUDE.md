@@ -69,11 +69,18 @@ scripts/
   version.sh         Version management across CLAUDE.md + pyproject.toml.
   generate-anvil-agents.py   Regenerate the checked-in anvil/agents/ files
                      from each skill's command list.
+  resync-installed.sh   Refresh installed Anvil surfaces in a consumer repo
+                     from the recorded source checkout (#894 — C7).
 
 tests/
   lib/           Framework-level tests (schema, critics, cite, convergence,
                  rubric, render, vision, render_gate, figures, imports).
   scripts/       Install-script + version-drift regression tests.
+  agents/        Agent-registry generation + frontmatter-schema tests.
+  skills/        Per-skill test packages (one dir per skill).
+
+docs/          Working notes and adapter docs (codex-skill-adapter,
+               research/).
 
 pyproject.toml   Anvil's Python deps (uv-shaped): base dep pydantic;
                  optional extras (e.g. [auto_shrink] for the Marp
