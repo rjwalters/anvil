@@ -61,8 +61,18 @@
 #   marker on full success); a PARTIAL refresh leaves the marker in place
 #   (recording the real target version + a timestamp/pid) until a later
 #   successful retry clears it.
+# Output-dir staging mode (#6106):
+#   --output <dir> resyncs into a disposable, DETACHED `git worktree` instead
+#   of the invoking repo's own checkout: the invoking repo (main OR a linked
+#   worktree) is left completely unwritten, <dir> is a real independent git
+#   checkout that actually received the resync (including files the invoking
+#   repo never had), --output is permitted from a linked worktree (unlike a
+#   bare run, #4563), an already-existing <dir> is refused, --dry-run +
+#   --output leaves no staging worktree or dangling worktree registration
+#   behind, LOOM_RESYNC_OUTPUT=<dir> is equivalent to the flag, and --output
+#   with no value exits 1.
 # Plus contract checks:
-#   - --help prints usage (documenting --allow-worktree), exit 0
+#   - --help prints usage (documenting --allow-worktree and --output), exit 0
 #   - unknown arg exits 1
 #   - not-a-git-repo exits 1
 #
@@ -1168,7 +1178,7 @@ fi
 echo "Test group 14: canonical guard present + tracked vendored guard is preserved (#4403)"
 REPO="$(make_fixture)"
 mkdir -p "$REPO/.claude/skills/repo/hooks"
-printf '#!/usr/bin/env bash\n# rjwalters/repo#29 canonical guard\n# implements worktree-write-confinement\n# masks --comment|--search and --arg|--argjson\necho canonical\n' \
+printf '#!/usr/bin/env bash\n# rjwalters/repo#29 canonical guard\n# implements worktree-write-confinement\n# masks --comment|--search and --arg|--argjson\n# denies gh-comment-body-literal-at\necho canonical\n' \
     > "$REPO/.claude/skills/repo/hooks/guard-destructive.sh"
 printf '#!/usr/bin/env bash\necho vendored\n' \
     > "$REPO/defaults/hooks/guard-destructive-generic.sh"
@@ -1224,7 +1234,7 @@ fi
 echo "Test group 15: canonical guard present + UNTRACKED vendored guard is still removed (#4403)"
 REPO="$(make_fixture)"
 mkdir -p "$REPO/.claude/skills/repo/hooks"
-printf '#!/usr/bin/env bash\n# rjwalters/repo#29 canonical guard\n# implements worktree-write-confinement\n# masks --comment|--search and --arg|--argjson\necho canonical\n' \
+printf '#!/usr/bin/env bash\n# rjwalters/repo#29 canonical guard\n# implements worktree-write-confinement\n# masks --comment|--search and --arg|--argjson\n# denies gh-comment-body-literal-at\necho canonical\n' \
     > "$REPO/.claude/skills/repo/hooks/guard-destructive.sh"
 printf '#!/usr/bin/env bash\necho vendored\n' \
     > "$REPO/defaults/hooks/guard-destructive-generic.sh"
@@ -1856,6 +1866,223 @@ else
     fi
 fi
 
+# --- (#6106) --output stages a complete resync without touching REPO_ROOT ---
+#
+# --output <dir> must: (1) never write anything under the invoking repo's own
+# checkout, (2) still be permitted from a LINKED worktree (the #4563 refusal
+# is the whole reason this mode exists), (3) produce a real, independent git
+# worktree at <dir> that actually received the resync, (4) refuse a <dir>
+# that already exists, and (5) leave no residue when combined with --dry-run.
+echo "Test group 24: --output stages a complete resync in an isolated worktree (#6106)"
+REPO="$(make_fixture)"
+STAGE="$WORKDIR/output-stage"
+rm -rf "$STAGE"
+OUT="$(cd "$REPO" && bash "$SCRIPT" --output "$STAGE" 2>&1)"
+RC=$?
+if [[ $RC -eq 0 ]]; then
+    pass "(#6106) --output apply exits 0"
+else
+    fail "(#6106) --output apply exits 0 (got $RC)"
+fi
+if [[ "$(cat "$REPO/.loom/hooks/guard.sh")" == "OLD" ]]; then
+    pass "(#6106) --output leaves the invoking repo's drifted hooks/guard.sh UNCHANGED"
+else
+    fail "(#6106) --output wrote into the invoking repo's own checkout"
+fi
+if [[ ! -f "$REPO/.loom/scripts/lib/bar.sh" ]]; then
+    pass "(#6106) --output did not create the missing file in the invoking repo"
+else
+    fail "(#6106) --output created a file in the invoking repo's own checkout"
+fi
+if [[ -e "$STAGE/.git" ]]; then
+    pass "(#6106) --output <dir> is a real, independent git checkout"
+else
+    fail "(#6106) --output <dir> is not a git checkout"
+fi
+if [[ "$(cat "$STAGE/.loom/hooks/guard.sh" 2>/dev/null)" == "A" ]]; then
+    pass "(#6106) --output <dir> received the resynced (drift-fixed) file"
+else
+    fail "(#6106) --output <dir> did not receive the resync"
+fi
+if [[ -f "$STAGE/.loom/scripts/lib/bar.sh" && "$(cat "$STAGE/.loom/scripts/lib/bar.sh")" == "L" ]]; then
+    pass "(#6106) --output <dir> received a file missing from the invoking repo"
+else
+    fail "(#6106) --output <dir> did not receive the missing file"
+fi
+if grep -q '"loom_version": *"9.9.9"' "$STAGE/.loom/install-metadata.json" 2>/dev/null; then
+    pass "(#6106) --output <dir>'s install-metadata.json was re-stamped (not the invoking repo's)"
+else
+    fail "(#6106) --output <dir>'s install-metadata.json was not re-stamped"
+fi
+if grep -q '"loom_version": *"0.0.0"' "$REPO/.loom/install-metadata.json"; then
+    pass "(#6106) the invoking repo's own install-metadata.json was NOT re-stamped"
+else
+    fail "(#6106) the invoking repo's own install-metadata.json was unexpectedly re-stamped"
+fi
+if grep -qi "primary checkout" <<<"$OUT" || grep -qi "never touched" <<<"$OUT"; then
+    pass "(#6106) apply prints a 'primary checkout untouched' confirmation"
+else
+    fail "(#6106) apply did not confirm the primary checkout was untouched"
+fi
+if grep -q "git add -A" <<<"$OUT" && grep -q "git commit" <<<"$OUT" && grep -q "worktree remove" <<<"$OUT"; then
+    pass "(#6106) apply prints the commit + cleanup next-steps"
+else
+    fail "(#6106) apply did not print the expected next-steps"
+fi
+git -C "$REPO" worktree remove --force "$STAGE" >/dev/null 2>&1 || true
+
+# --output from a LINKED worktree is the whole point of this mode: allowed,
+# even though a bare (no --output) run from the same worktree is refused.
+LINKED_OUT_WT="$WORKDIR/linked-output-wt"
+rm -rf "$LINKED_OUT_WT"
+if git -C "$REPO" worktree add -q -b wt-6106 "$LINKED_OUT_WT" >/dev/null 2>&1; then
+    STAGE2="$WORKDIR/output-stage-from-linked"
+    rm -rf "$STAGE2"
+    RC=0; OUT="$(cd "$LINKED_OUT_WT" && bash "$SCRIPT" --output "$STAGE2" 2>&1)" || RC=$?
+    if [[ $RC -eq 0 ]]; then
+        pass "(#6106) --output is permitted from a linked worktree (exit 0)"
+    else
+        fail "(#6106) --output was refused from a linked worktree (got $RC)"
+    fi
+    if [[ "$(cat "$STAGE2/.loom/hooks/guard.sh" 2>/dev/null)" == "A" ]]; then
+        pass "(#6106) --output from a linked worktree still produces a correct resync"
+    else
+        fail "(#6106) --output from a linked worktree did not resync correctly"
+    fi
+    if [[ "$(cat "$REPO/.loom/hooks/guard.sh")" == "OLD" ]]; then
+        pass "(#6106) --output from a linked worktree still leaves the MAIN checkout untouched"
+    else
+        fail "(#6106) --output from a linked worktree wrote into the main checkout"
+    fi
+    git -C "$REPO" worktree remove --force "$STAGE2" >/dev/null 2>&1 || true
+    git -C "$REPO" worktree remove --force "$LINKED_OUT_WT" >/dev/null 2>&1 || true
+else
+    skip "(#6106) git worktree add unavailable in this environment"
+fi
+
+# --output refuses a directory that already exists.
+STAGE3="$WORKDIR/output-stage-exists"
+mkdir -p "$STAGE3"
+RC=0; OUT="$(cd "$REPO" && bash "$SCRIPT" --output "$STAGE3" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+    pass "(#6106) --output refuses an already-existing directory (exit 1)"
+else
+    fail "(#6106) --output did not refuse an already-existing directory (got $RC)"
+fi
+if grep -qi "already exists" <<<"$OUT"; then
+    pass "(#6106) the already-exists refusal explains why"
+else
+    fail "(#6106) the already-exists refusal does not explain why"
+fi
+rmdir "$STAGE3" 2>/dev/null || true
+
+# --dry-run + --output creates the staging worktree only as the preview's
+# target, then removes it before exiting -- a preview must leave no residue.
+STAGE4="$WORKDIR/output-stage-dryrun"
+rm -rf "$STAGE4"
+RC=0; OUT="$(cd "$REPO" && bash "$SCRIPT" --dry-run --output "$STAGE4" 2>&1)" || RC=$?
+if [[ $RC -eq 2 ]]; then
+    pass "(#6106) --dry-run --output exits 2 (drift detected)"
+else
+    fail "(#6106) --dry-run --output did not exit 2 (got $RC)"
+fi
+if [[ ! -e "$STAGE4" ]]; then
+    pass "(#6106) --dry-run --output leaves no staging worktree behind"
+else
+    fail "(#6106) --dry-run --output left the staging directory behind"
+    git -C "$REPO" worktree remove --force "$STAGE4" >/dev/null 2>&1 || rm -rf "$STAGE4"
+fi
+if ! git -C "$REPO" worktree list | grep -q "$STAGE4"; then
+    pass "(#6106) --dry-run --output leaves no dangling worktree registration"
+else
+    fail "(#6106) --dry-run --output left a dangling worktree registration"
+fi
+
+# LOOM_RESYNC_OUTPUT env var is equivalent to --output.
+STAGE5="$WORKDIR/output-stage-env"
+rm -rf "$STAGE5"
+RC=0; (cd "$REPO" && LOOM_RESYNC_OUTPUT="$STAGE5" bash "$SCRIPT" >/dev/null 2>&1) || RC=$?
+if [[ $RC -eq 0 && "$(cat "$STAGE5/.loom/hooks/guard.sh" 2>/dev/null)" == "A" ]]; then
+    pass "(#6106) LOOM_RESYNC_OUTPUT=<dir> is equivalent to --output <dir>"
+else
+    fail "(#6106) LOOM_RESYNC_OUTPUT=<dir> did not behave like --output <dir> (rc=$RC)"
+fi
+git -C "$REPO" worktree remove --force "$STAGE5" >/dev/null 2>&1 || true
+
+# --output requires a value.
+RC=0; OUT="$(cd "$REPO" && bash "$SCRIPT" --output 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+    pass "(#6106) --output with no value exits 1"
+else
+    fail "(#6106) --output with no value did not exit 1 (got $RC)"
+fi
+
+# --- (#6138) resolve_defaults() failure with --output must not leak the
+# staging git worktree it already created -------------------------------------
+echo "Test group 25: --output cleans up the staging worktree when defaults/ source resolution fails (#6138)"
+REPO="$(make_fixture)"
+rm -rf "$REPO/defaults"                             # no dogfood defaults/ tree
+rm -f "$REPO/.loom/loom-source-path"                # no source sidecar
+printf '{}\n' > "$REPO/.loom/install-metadata.json" # no usable loom_source
+STAGE6="$WORKDIR/output-stage-no-source"
+rm -rf "$STAGE6"
+RC=0; OUT="$(cd "$REPO" && bash "$SCRIPT" --output "$STAGE6" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+    pass "(#6138) --output exits 1 when resolve_defaults() fails"
+else
+    fail "(#6138) --output did not exit 1 when resolve_defaults() fails (got $RC)"
+fi
+if [[ ! -e "$STAGE6" ]]; then
+    pass "(#6138) --output leaves no staging directory behind after a resolve_defaults() failure"
+else
+    fail "(#6138) --output left the staging directory behind after a resolve_defaults() failure"
+    git -C "$REPO" worktree remove --force "$STAGE6" >/dev/null 2>&1 || rm -rf "$STAGE6"
+fi
+if ! git -C "$REPO" worktree list | grep -q "$STAGE6"; then
+    pass "(#6138) --output leaves no dangling worktree registration after a resolve_defaults() failure"
+else
+    fail "(#6138) --output left a dangling worktree registration after a resolve_defaults() failure"
+fi
+
+# A retry with the SAME --output <dir> after the failure must succeed WITHOUT
+# requiring manual `git worktree remove` / `rm -rf` + `git worktree prune` --
+# confirms the leaked registration doesn't wedge the retry path. Uses a fresh,
+# fully-resolvable fixture repo (rather than patching the broken $REPO) so
+# only the --output <dir> reuse itself is under test.
+REPO_RETRY="$(make_fixture)"
+RC=0; OUT="$(cd "$REPO_RETRY" && bash "$SCRIPT" --output "$STAGE6" 2>&1)" || RC=$?
+if [[ $RC -eq 0 ]]; then
+    pass "(#6138) a retry with the same --output <dir> succeeds without manual cleanup"
+else
+    fail "(#6138) a retry with the same --output <dir> did not succeed (got $RC)"
+fi
+git -C "$REPO_RETRY" worktree remove --force "$STAGE6" >/dev/null 2>&1 || true
+
+# --dry-run --output must also leave no residue on a resolve_defaults() failure.
+REPO="$(make_fixture)"
+rm -rf "$REPO/defaults"
+rm -f "$REPO/.loom/loom-source-path"
+printf '{}\n' > "$REPO/.loom/install-metadata.json"
+STAGE7="$WORKDIR/output-stage-no-source-dryrun"
+rm -rf "$STAGE7"
+RC=0; OUT="$(cd "$REPO" && bash "$SCRIPT" --dry-run --output "$STAGE7" 2>&1)" || RC=$?
+if [[ $RC -eq 1 ]]; then
+    pass "(#6138) --dry-run --output exits 1 when resolve_defaults() fails"
+else
+    fail "(#6138) --dry-run --output did not exit 1 when resolve_defaults() fails (got $RC)"
+fi
+if [[ ! -e "$STAGE7" ]]; then
+    pass "(#6138) --dry-run --output leaves no staging directory behind after a resolve_defaults() failure"
+else
+    fail "(#6138) --dry-run --output left the staging directory behind after a resolve_defaults() failure"
+    git -C "$REPO" worktree remove --force "$STAGE7" >/dev/null 2>&1 || rm -rf "$STAGE7"
+fi
+if ! git -C "$REPO" worktree list | grep -q "$STAGE7"; then
+    pass "(#6138) --dry-run --output leaves no dangling worktree registration after a resolve_defaults() failure"
+else
+    fail "(#6138) --dry-run --output left a dangling worktree registration after a resolve_defaults() failure"
+fi
+
 # --- contract checks ---------------------------------------------------------
 echo "Test group 13: flag/contract checks"
 if bash "$SCRIPT" --help 2>&1 | grep -q "resync-installed.sh"; then
@@ -1869,6 +2096,11 @@ if grep -q -- "--allow-worktree" <<<"$HELP_OUT" && grep -qi "linked worktree" <<
     pass "(#4563) --help documents --allow-worktree and the refusal behavior"
 else
     fail "(#4563) --help does not document --allow-worktree / the refusal behavior"
+fi
+if grep -q -- "--output" <<<"$HELP_OUT" && grep -qi "staging" <<<"$HELP_OUT"; then
+    pass "(#6106) --help documents --output staging mode"
+else
+    fail "(#6106) --help does not document --output staging mode"
 fi
 
 REPO="$(make_fixture)"

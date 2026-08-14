@@ -304,7 +304,7 @@ PR LIFECYCLE (Builder only creates, Judge/Champion manage):
 - **Check dependencies**: Verify all task list items are checked before claiming
 - **Claim issue**: `gh issue edit <number> --remove-label "loom:issue" --add-label "loom:building"`
 - **Do the work**: Implement, test, commit, create PR
-- **Mark PR for review**: `gh pr create --label "loom:review-requested"` (MUST use the structured body template — canonical in builder-pr.md § "Creating the PR")
+- **Mark PR for review**: `./.loom/scripts/create-pr.sh --label "loom:review-requested"` — never a bare `gh pr create` (#6074). MUST use the structured body template — canonical in builder-pr.md § "Creating the PR"
 - **Complete**: Issue auto-closes when PR merges, or mark `loom:blocked` if stuck
 
 ## Exception: Explicit User Instructions
@@ -552,6 +552,11 @@ The script now refuses to run from a linked worktree (exit `1`, `--dry-run`
 included). If you see that refusal, the fix is to **stop**, not to re-run with
 `--allow-worktree` — that override exists for a human operator deliberately
 rewriting the main checkout's installed copies, not for a Builder mid-issue.
+(A separate `--output <dir>` staging mode, #6106, exists for an operator who
+needs a complete resync generated safely while the fleet is live — it is also
+not for a Builder mid-issue: see
+[`.loom/docs/troubleshooting.md`](.loom/docs/troubleshooting.md) if you land
+here as the human operator rather than a Builder subagent.)
 
 ### Working with gh CLI from a Worktree
 
@@ -1105,7 +1110,11 @@ here; follow it there.
 
 ### Creating the PR
 
-The canonical `gh pr create` body template (Summary / Changes / Acceptance
+**Open the PR with `./.loom/scripts/create-pr.sh`, never a bare `gh pr create`
+(#6074)** — it adopts an already-open PR for your branch and rides through the
+GitHub App permission window that otherwise 403s the create *after* your push
+has landed (the failure that made re-dispatched Builders rebuild identical
+work). The canonical body template (Summary / Changes / Acceptance
 Criteria Verification / Test Plan + the `Closes #N` reference) lives in
 **builder-pr.md § "Creating the PR"** — use it verbatim. Do NOT create PRs with
 just `Closes #N`; the body must include the structured sections. Add the

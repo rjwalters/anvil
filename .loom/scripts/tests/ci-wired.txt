@@ -26,6 +26,7 @@
 # date flags), so they were confirmed hermetic and ubuntu-portable the same
 # way as the tests/hooks/ suites above before being wired in here.
 
+test-app-permission-fallback.sh
 test-archive-transcripts.sh
 test-blame-issue.sh
 test-bounded-run.sh
@@ -66,9 +67,14 @@ test-github-app-token.sh
 test-gitignore-guard.sh
 test-guard-codex-bridge.sh
 test-guard-hook-schema.sh
+test-guide-docs-telemetry.sh
 test-guide-operator-attention-fold.sh
+test-guide-pool-pressure-defer.sh
+test-guide-work-log-debounce.sh
 test-guide-work-log-issue-out-of-order.sh
+test-guide-work-log-issue-pagination.sh
 test-guide-work-log-out-of-order-merge.sh
+test-guide-work-log-pr-pagination.sh
 test-guide-work-log-self-loop.sh
 test-guide-work-plan-debounce.sh
 test-install-active-session.sh
@@ -83,6 +89,7 @@ test-judge-fanout-experiment.sh
 test-live-state-sandbox.sh
 test-locate-daemon-bin.sh
 test-loom-daemon-launchd-plist.sh
+test-loom-daemon-quiesce.sh
 test-loom-daemon-start.sh
 test-loom-daemon-stop.sh
 test-loom-daemon-update.sh
@@ -101,6 +108,7 @@ test-merge-pr-partial-increment.sh
 test-merge-pr-primary-checkout-advice.sh
 test-merge-pr-primary-worktree-guard.sh
 test-merge-pr-rate-limit-fallback.sh
+test-merge-pr-stale-mergeable.sh
 test-merge-pr-unstable-fallback.sh
 test-merge-pr-worktree-awk.sh
 test-merge-pr-worktree-path.sh
@@ -134,6 +142,7 @@ test-worktree-base-override.sh
 test-worktree-concurrency.sh
 test-worktree-hookspath.sh
 test-worktree-json-purity.sh
+test-worktree-local-branch-upstream-tracking.sh
 test-worktree-nested-symlinks.sh
 test-worktree-remote-branch-tracking.sh
 test-worktree-remove-squash-merge.sh
@@ -174,7 +183,7 @@ tests/install/test-lint-ignore-configs.sh
 tests/install/test-manifest-freshness-after-hook-wiring.sh
 tests/install/test-pnpm-runnable-check.sh
 tests/install/test-provision-daemon.sh
-tests/install/test-uninstall-clean-hooks-ownership.sh
+tests/install/test-uninstall-clean-preserves-unmanaged-hooks.sh
 tests/install/test-uninstall-labels-block.sh
 tests/install/test-uninstall-preserve-siblings.sh
 tests/install/test-uninstall-shim-cleanup.sh
