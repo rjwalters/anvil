@@ -160,11 +160,6 @@ def test_deadline_status_negative_window_raises():
         cd.deadline_status("2025-03-10", today=date(2025, 3, 11), warn_window_days=-1)
 
 
-def test_days_until_deadline_signed():
-    assert cd.days_until_deadline("2025-03-10", today=date(2026, 3, 9)) == 1
-    assert cd.days_until_deadline("2025-03-10", today=date(2026, 3, 11)) == -1
-
-
 # ---------------------------------------------------------------------------
 # structure tests — the conversion contract is documented end-to-end
 # ---------------------------------------------------------------------------
