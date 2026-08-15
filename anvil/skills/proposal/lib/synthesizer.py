@@ -116,7 +116,6 @@ DEFAULT_MODEL = "claude-opus-4-7-20251022"
 # additional ``<thread>.{N}.<critic>/`` siblings via the glob path in
 # ``discover_siblings`` — this list is just the documented v0 set.
 REQUIRED_SIBLINGS: Sequence[str] = ("review", "audit")
-KNOWN_OPTIONAL_SIBLINGS: Sequence[str] = ("perspective",)
 
 
 @dataclass(frozen=True)
@@ -790,7 +789,6 @@ class Synthesizer:
 __all__ = [
     "DEFAULT_MODEL",
     "REQUIRED_SIBLINGS",
-    "KNOWN_OPTIONAL_SIBLINGS",
     "AUDIT_FINDINGS_ALIASES",
     "SiblingPaths",
     "RawFinding",
