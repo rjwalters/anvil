@@ -4,6 +4,29 @@
 
 ### Added
 
+- **`.loom/scripts/gh-since.sh` — read-only "new merged PRs / new closed
+  issues since watermark N" helper** (#1060). The Auditor's Guard-Decision
+  Telemetry Review standing policy and ad-hoc WORK_LOG/changelog
+  cross-referencing both need this exact query shape; composed by hand as a
+  multi-line `gh-cached` + `jq` + shell-loop script, it always fell to the
+  guard's slow structural path and was denied outright at the catastrophic
+  `worktree-write-confinement` tier despite being 100% read-only (10 logged
+  incidents 2026-08-06..2026-08-13). The new script consolidates every
+  numeric comparison and jq filter inside the file itself (never on the
+  Bash-tool command line), so its own invocation (`.loom/scripts/gh-since.sh
+  <last-pr> <last-issue>`) has no guard-sensitive shell metacharacter and is
+  registered under `guards.readOnlyFastPathExtra` in `.loom/config.json` —
+  admitted at the guard's read-only fast path instead of ever reaching the
+  buggy slow-path masking logic. `.loom/scripts/tests/test-gh-since.sh`
+  covers both the script's own argument validation (no silent default
+  watermark, rejects non-numeric/injection-shaped arguments) and a direct
+  `.loom/hooks/guard-destructive-generic.sh` replay confirming the typical
+  invocation is fast-path admitted while a deliberately dangerous chained
+  variant still denies. `CLAUDE.md` documents the workaround (the vendored
+  `.loom/roles/auditor.md` and `.loom/docs/guard-hooks.md` were left
+  untouched — both are resynced wholesale and any local edit would not
+  survive the next `resync-installed.sh` run).
+
 - **`anvil:paper` ships regression fixtures for the underclaiming vs.
   bold-synthesis scoring split** (#1048, Phase 2 of the #1046 decomposition).
   A new `anvil/skills/paper/examples/` directory (paper's first) carries two
