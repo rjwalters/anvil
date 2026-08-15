@@ -61,7 +61,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -74,6 +73,7 @@ from typing import Any, Mapping
 # ``anvil/skills/deck/lib/marp_lint.py`` (both re-export from
 # ``anvil.lib.*`` at import time). See ``_latest_version_dir`` below for
 # how it composes with the pre-#382 flat-layout fallback.
+from anvil.lib.atomic_write import atomic_write_json
 from anvil.lib.latest_resolution import resolve_latest
 
 # Import the prompt-journal primitive from the sibling module. The
@@ -1101,7 +1101,8 @@ def _write_progress_phase(
 
     The recipe is in ``anvil/lib/snippets/progress.md`` § "Read-merge-write
     recipe": preserve all other phases and top-level fields the caller
-    does not own.
+    does not own. Atomic write via the shared
+    :func:`anvil.lib.atomic_write.atomic_write_json` helper.
     """
     progress = _read_progress(path)
     if "version" not in progress:
@@ -1111,13 +1112,7 @@ def _write_progress_phase(
     progress.setdefault("metadata", {})
     existing = progress["phases"].get(phase, {})
     progress["phases"][phase] = {**existing, **fields}
-    text = json.dumps(progress, indent=2, sort_keys=False)
-    if not text.endswith("\n"):
-        text += "\n"
-    # Atomic write via a temp file in the same dir then rename.
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_json(path, progress)
 
 
 # ---------------------------------------------------------------------------

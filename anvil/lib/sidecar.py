@@ -12,13 +12,15 @@ slip through: e.g., a directory with ``_review.json`` only (no
 ``_progress.json``, no ``_meta.json``) IS discovered and IS aggregated,
 silently producing under-specified sidecars.
 
-The file-level ``tmp + os.replace`` precedent (see
-:func:`anvil.lib.cite._cache_write`,
+The file-level ``tmp + os.replace`` precedent — now consolidated in
+:mod:`anvil.lib.atomic_write` (issue #1104; previously reimplemented
+independently across :func:`anvil.lib.cite._cache_write`,
 :mod:`anvil.skills.proposal.lib.synthesizer`,
 :mod:`anvil.skills.project-migrate.lib.apply`,
-:mod:`anvil.skills.deck.lib.imagegen`) gives correctness at the **file**
-boundary; the studio failure mode is at the **directory** boundary,
-where a fan-in of N file writes can be interrupted after K files.
+:mod:`anvil.skills.deck.lib.imagegen`, and others) — gives correctness
+at the **file** boundary; the studio failure mode is at the
+**directory** boundary, where a fan-in of N file writes can be
+interrupted after K files.
 
 This module provides the directory-level analog:
 
