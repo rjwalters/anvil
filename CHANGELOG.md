@@ -4,6 +4,30 @@
 
 ### Added
 
+- **`anvil:paper` names underclaiming/buried-contribution as an explicit
+  failure mode** (#1047, Phase 1 of the #1046 decomposition — guidance-layer
+  only). `rubric.md` dims 3 (Clarity of contribution) and 9 (Rhetorical
+  economy) gain a new §"Dim 3 / Dim 9 — overclaiming and underclaiming are
+  symmetric failure modes": a technically correct, fully-sourced,
+  heavily-qualified paper that buries its central idea after background and
+  qualification now has a named failure mode symmetric to overclaiming, plus
+  an "Ambition is not novelty inflation" carve-out so a labeled bold
+  synthesis/framing/research-program claim ("we propose/organize/build/
+  argue/conjecture/test") is not penalized as overclaiming. `paper-draft.md`
+  requires the brief to answer six strongest-claim questions (a new
+  `## Strongest claim` section, `# TODO(operator)`-marked when skipped) and
+  requires the drafted opening to state that claim before the defensive
+  literature apparatus. `paper-review.md` adds a named
+  underclaiming/buried-lede finding evaluated via an inline cold-reader
+  check modeled on (not delegated to) `memo-comprehension.md`'s blind-read
+  pattern — no new critic infrastructure. `paper-litsearch.md` gains
+  "Component-novelty calibration" guidance so positioning against prior art
+  calibrates ingredient-level novelty rather than collapsing a broader
+  synthesis claim to its least-novel component. `assets/example-brief.md`
+  gains a fully worked `## Strongest claim` example. Prose/guidance-only;
+  the sibling regression-fixture issue exercises these criteria against
+  real content.
+
 - **Plain-language-first writing framework, lib foundation** (#1043, Phase 1
   of 3 for epic #1042). New `anvil/lib/snippets/plain_language.md` codifies
   the 7-point framework ("the purpose of writing is to help a reader learn

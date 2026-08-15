@@ -64,8 +64,8 @@ For a new thread, `N+1 == 1` so the output is `<thread>.1/`. (Note: a `<thread>.
    - If the paper uses **numeric `[7]`-style citations** and anvil-paper is otherwise suitable, append the `numeric` option: `\documentclass[numeric]{anvil-paper}` (composes with `anonymous`: `\documentclass[numeric,anonymous]{anvil-paper}`). This is preferable to a full keep-original-class migration when citation style is the only blocker.
 6. **Build `main.tex`**: instantiate `templates/main.tex.j2` with the brief's frontmatter, then write the paper body — applying the plain-language-first framework throughout: state an idea in ordinary language before naming it formally, introduce a technical term only when it adds precision or connects to prior work, and keep the plain restatement alongside the term once introduced, per `anvil/lib/snippets/plain_language.md` §"The 7-point framework" (points 1–4). This composes with, and does not relax, the "Citation-command choice" and reproducibility discipline below — precise method/notation vocabulary earns its place under point 3's exception (b) (the reader needs a compact handle to reason later in the document):
    - `\title{}`, `\author{}` (or `Author Name(s) Withheld`), `\date{}`.
-   - `\begin{abstract} ... \end{abstract}` — 100–200 words; restates the claim, the method in one sentence, the key result, the contribution.
-   - `\section{Introduction}` — motivates the problem, states the contribution explicitly (bullet list of named contributions is preferred over a single muddled paragraph), forward-references the experimental setup.
+   - `\begin{abstract} ... \end{abstract}` — 100–200 words; restates the claim, the method in one sentence, the key result, the contribution. Lead with the strongest honest claim from the brief's `## Strongest claim` section, not the narrowest easily-defended sub-claim.
+   - `\section{Introduction}` — **states the strongest honest claim from the brief's `## Strongest claim` section in the opening paragraph, before the defensive literature apparatus** (a survey of prior constraints, a wall of qualifications, or an extended related-work-style preamble). Motivate the problem briefly, then lead with the claim; only after the claim is stated does the introduction unpack scope, method, and caveats. States the contribution explicitly (bullet list of named contributions is preferred over a single muddled paragraph), forward-references the experimental setup. When the brief's strongest-claim inventory labels a synthesis/framing/research-program claim (verbs like "we propose," "we organize," "we build," "we argue," "we conjecture," "we test" — see `rubric.md` §"Ambition is not novelty inflation"), state it at that scope and label which ingredients are inherited vs. new rather than narrowing it down to the easiest-to-defend sub-claim — a bold, properly labeled claim is not overclaiming.
    - `\section{Related Work}` — positions against prior work as informed by the litsearch sibling's `notes.md`. Cites only entries that are in `refs.bib`. Honest engagement with the closest 1–3 papers per cluster; do not pad with weakly related work. When you name an author in the prose here (common in related work), pick the cite command per the "Citation-command choice under natbib author-year" rule below — do NOT write `Name~\cite{key}`, which doubles the author name under the default class.
    - `\section{Method}` (or domain-appropriate equivalent: `\section{Approach}`, `\section{Theory}`, etc.) — describes the method with enough detail for an independent group to replicate (reproducibility dimension). Algorithms in `algorithm` environment where appropriate.
    - `\section{Experiments}` (or `\section{Results}`) — describes the experimental setup, then the results. Tables and figures are referenced from the body; the actual rendering is handled by `paper-figures` (figurer creates `figures/*.pdf` from `figures/src/*.py` or TikZ).
@@ -107,17 +107,35 @@ Conduct the interview as AskUserQuestion-style prose prompts, one topic at a tim
 |---|----------|-------------------|-----------|
 | 1 | **Target venue** (and any venue style file the consumer has dropped into `.anvil/skills/paper/templates/`) | `venue` frontmatter (+ `documentclass` if a venue style is named) | Yes |
 | 2 | **Thesis** — one-sentence statement of the main contribution | `claim` frontmatter + `## Claim` prose section | Yes |
-| 3 | **Evidence inventory** — what results/data/figures exist, where source material lives | `## Method (sketch)` + `## Experiments` prose; pointers to `refs/`, `refs.bib`, `figures/src/` | Yes (answer may be "none yet" → `# TODO(operator)` markers) |
-| 4 | **Scope** — audience, rough page bound, double-blind?, keywords | `anonymous`, `keywords` frontmatter + prose framing | Yes |
-| 5 | **Title / authors / affiliation** | `title`, `author`, `affiliation` frontmatter | Optional (`# TODO(operator)` markers if skipped) |
-| 6 | **Web-search appetite** for litsearch (default **no** — anti-hallucination posture) | `web_search: true` emitted ONLY on explicit opt-in; the key is omitted otherwise | Optional |
+| 3 | **Strongest-claim inventory** — the six questions in "Strongest-claim inventory (required before drafting)" below | `## Strongest claim` prose section | Yes — see that section for the no-fabrication fallback when an answer is skipped |
+| 4 | **Evidence inventory** — what results/data/figures exist, where source material lives | `## Method (sketch)` + `## Experiments` prose; pointers to `refs/`, `refs.bib`, `figures/src/` | Yes (answer may be "none yet" → `# TODO(operator)` markers) |
+| 5 | **Scope** — audience, rough page bound, double-blind?, keywords | `anonymous`, `keywords` frontmatter + prose framing | Yes |
+| 6 | **Title / authors / affiliation** | `title`, `author`, `affiliation` frontmatter | Optional (`# TODO(operator)` markers if skipped) |
+| 7 | **Web-search appetite** for litsearch (default **no** — anti-hallucination posture) | `web_search: true` emitted ONLY on explicit opt-in; the key is omitted otherwise | Optional |
+
+### Strongest-claim inventory (required before drafting — issue #1046/#1047)
+
+Whether `BRIEF.md` comes from this interview or is hand-authored, it MUST answer the following six questions before drafting proceeds to step 6 — these are the same questions that motivate the underclaiming/buried-lede finding the reviewer checks for in `paper-review.md`:
+
+1. What is the strongest honest statement this work lets the authors make?
+2. Why might a thoughtful reader find it surprising or generative?
+3. What new experiments, arguments, or systems could that statement inspire?
+4. Which part is demonstrated, which part is derived, which part is synthesis, and which part is conjecture?
+5. Is the paper's opening organized around that statement, or around the easiest claim to defend?
+6. If the paper succeeds, what intellectual territory will readers associate with the authors?
+
+The brief's `## Strongest claim` section additionally states a one-paragraph **"reader should remember"** statement and a list of interesting ideas **deliberately excluded for focus** — selectivity should sharpen the central claim, not replace it with a smaller one. See `assets/example-brief.md` for a fully worked example of this section.
+
+**Hand-authored brief, section absent**: the drafter does NOT fabricate answers on the author's behalf (same no-fabrication rule as below). It adds a `## Strongest claim` section with `# TODO(operator)` markers under each of the six questions, drafts using the `claim` frontmatter / `## Claim` prose as the interim best-available signal of the strongest claim, and notes in its step 10 report that the strongest-claim inventory was skipped and should be filled in before the next revision.
+
+**Interactive bootstrap path**: this inventory is asked as part of the interview (question 3 in the table above); the synthesized `## Strongest claim` section is written from the author's answers, `# TODO(operator)`-marking anything skipped, per the same no-fabrication rule.
 
 ### Synthesized BRIEF shape
 
 Model the output on `assets/example-brief.md`. The synthesized brief MUST contain:
 
 - **Frontmatter** with at least `venue` + `claim` — the two inputs this command's step 3 declares mandatory. Other recognized keys (`title`, `author`, `affiliation`, `anonymous`, `keywords`, `documentclass`, `web_search`) appear only when the author supplied them.
-- **Prose body** with the example-brief section shape: `## Motivation`, `## Claim`, `## Method (sketch)`, `## Experiments` (the evidence inventory), and `## Related work` hooks.
+- **Prose body** with the example-brief section shape: `## Motivation`, `## Claim`, `## Strongest claim` (the six-question inventory above), `## Method (sketch)`, `## Experiments` (the evidence inventory), and `## Related work` hooks.
 - **`# TODO(operator)` markers** for anything the author deferred or skipped (the #408 `project-migrate` starter-synthesis precedent) — deferred answers are marked, **never fabricated**.
 
 Note the per-thread `<thread>/BRIEF.md` is freeform prose + optional YAML frontmatter with **no strict parser** — the strict parser (`anvil/lib/project_brief.py`) governs the project-level BRIEF only. Mirroring the example-brief shape is a convention, not a schema gate.
