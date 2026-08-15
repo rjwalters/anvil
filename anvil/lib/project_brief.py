@@ -315,12 +315,12 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import warnings
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from anvil.lib.ai_byline import DEFAULT_PLACEMENT as DEFAULT_AI_BYLINE_PLACEMENT
 from anvil.lib.ai_byline import VALID_PLACEMENTS as VALID_AI_BYLINE_PLACEMENTS
 from anvil.lib.ai_byline import render_byline as _render_ai_byline
+from anvil.lib.frontmatter import extract_frontmatter as _extract_frontmatter
 
 # Re-use the on-disk constants from the discovery primitive so the
 # layout contract has a single source of truth. ``BRIEF_FILENAME`` is
@@ -672,12 +672,6 @@ def discover_consumer_artifact_types(
         return frozenset()
     return frozenset(p.stem for p in overlay_dir.glob("*.json"))
 
-
-# Frontmatter delimiter — three hyphens on their own line, per the
-# standard YAML frontmatter convention (Jekyll / Hugo / pandoc / Marp).
-# Mirrors the literal used inside ``project_discovery._extract_frontmatter``
-# so the two parsers accept exactly the same on-disk shape.
-_FRONTMATTER_DELIM = "---"
 
 # Words-per-page conversion factor. Mirrors the 600 wpm proxy
 # documented in ``anvil/skills/memo/SKILL.md`` §"Length targets".
@@ -2093,49 +2087,11 @@ class ProjectBrief(BaseModel):
 # ---------------------------------------------------------------------------
 # YAML frontmatter extraction
 # ---------------------------------------------------------------------------
-
-
-def _extract_frontmatter(text: str) -> Optional[dict]:
-    """Extract the YAML frontmatter from ``text`` and return it as a dict.
-
-    Returns ``None`` when the text has no frontmatter or the frontmatter
-    is malformed (not a dict, unparseable YAML, no closing delimiter).
-    Mirrors ``project_discovery._extract_frontmatter`` byte-for-byte so
-    the two parsers stay in sync on the on-disk delimiter convention.
-    """
-    lines = text.splitlines()
-    # Strip a leading UTF-8 BOM if present on the first line.
-    if lines and lines[0].startswith("﻿"):
-        lines[0] = lines[0][1:]
-
-    # Find first non-empty line; must be the delimiter.
-    first_idx = 0
-    while first_idx < len(lines) and lines[first_idx].strip() == "":
-        first_idx += 1
-    if first_idx >= len(lines):
-        return None
-    if lines[first_idx].strip() != _FRONTMATTER_DELIM:
-        return None
-
-    # Find the closing delimiter starting from the line after the opener.
-    body_start = first_idx + 1
-    close_idx = None
-    for i in range(body_start, len(lines)):
-        if lines[i].strip() == _FRONTMATTER_DELIM:
-            close_idx = i
-            break
-    if close_idx is None:
-        return None
-
-    yaml_text = "\n".join(lines[body_start:close_idx])
-    try:
-        parsed = yaml.safe_load(yaml_text)
-    except yaml.YAMLError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    return parsed
-
+#
+# ``_extract_frontmatter`` used to be defined here; it is now the shared
+# ``anvil/lib/frontmatter.py::extract_frontmatter`` primitive (issue #1075),
+# imported above and aliased to the historical private name so every call
+# site in this module is unchanged.
 
 # ---------------------------------------------------------------------------
 # Field normalizers
