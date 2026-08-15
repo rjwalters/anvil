@@ -184,7 +184,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -198,7 +197,7 @@ from anvil.lib.review_schema import (
     Review,
     Score,
 )
-from anvil.lib.sidecar import cleanup_one_staging, staged_sidecar
+from anvil.lib.sidecar import write_critic_review_dir
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -703,11 +702,12 @@ def write_review_dir(
 ) -> Path:
     """Write ``<version_dir>.pending/_review.json`` for auto-discovery.
 
-    Uses ``staged_sidecar`` (issue #350) so the sidecar only ever exists
-    in complete form. Because this detector is deterministic and cheaply
-    re-runnable, an existing ``<version_dir>.pending/`` from a prior run
-    is removed and regenerated (the same deterministic-regeneration
-    carve-out ``numeric_consistency.write_review_dir`` documents) — a
+    Delegates to the shared :func:`anvil.lib.sidecar.write_critic_review_dir`
+    (issue #1086), which uses ``staged_sidecar`` (issue #350) so the
+    sidecar only ever exists in complete form. Because this detector is
+    deterministic and cheaply re-runnable, an existing
+    ``<version_dir>.pending/`` from a prior run is removed and
+    regenerated (``regenerate=True``, the shared helper's default) — a
     later pass supersedes an earlier one. Returns the path to the written
     ``_review.json``.
 
@@ -718,17 +718,8 @@ def write_review_dir(
     outstanding dependency) and the terminal-state gate.
     """
     version_dir = Path(version_dir)
-    final = version_dir.parent / f"{version_dir.name}.{PENDING_SUFFIX}"
-    cleanup_one_staging(final)
-    if final.exists():
-        shutil.rmtree(final)
     review = result.to_review(version_dir=version_dir.name, critic_id=critic_id)
-    with staged_sidecar(final, required_files=["_review.json"]) as staging:
-        (staging / "_review.json").write_text(
-            json.dumps(review.model_dump(mode="json"), indent=2) + "\n",
-            encoding="utf-8",
-        )
-    return final / "_review.json"
+    return write_critic_review_dir(version_dir, PENDING_SUFFIX, review)
 
 
 # ---------------------------------------------------------------------------
