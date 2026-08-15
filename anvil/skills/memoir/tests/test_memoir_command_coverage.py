@@ -295,9 +295,9 @@ class TestDualCorpusWiring(unittest.TestCase):
                 self.assertIn(classification, text)
 
     def test_revise_never_fabricates_mapping(self):
-        text = _read("commands/memoir-revise.md")
-        self.assertIn("provenance.md", text)
-        self.assertIn("Never invent a new source-line mapping", text)
+        flat = _flat("commands/memoir-revise.md")
+        self.assertIn("provenance.md", flat)
+        self.assertIn("Never invent a new source-line mapping", flat)
 
     def test_byte_identical_when_absent_documented(self):
         for rel in (

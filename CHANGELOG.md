@@ -67,6 +67,20 @@
   body + changed-files list. `/repo:release`'s merged-work coverage
   check is explicitly retained as the backstop, not the mechanism.
 
+### Fixed
+
+- **`anvil:memoir` test suite: `test_revise_never_fabricates_mapping`
+  no longer breaks on prose reflow** (#1054). PR #1033 reworded the
+  fabrication prohibition in `memoir-revise.md`; the wording survived
+  intact but a hard line-wrap split the asserted phrase across two
+  lines, so the test's raw-text `assertIn` failed even though the
+  documented behavior was unchanged. The test now reads the doc through
+  the file's existing whitespace-collapsing `_flat()` helper (already
+  used at six other call sites against the same file) instead of raw
+  `_read()`, matching the convention used elsewhere in this test module
+  for phrase assertions against hard-wrapped command docs. No change to
+  `memoir-revise.md` itself.
+
 ## [0.11.0] — 2026-08-13
 
 ### Added
