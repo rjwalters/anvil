@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-15 (Guide triage pass — four new Auditor guard-telemetry escalations landed since the last pass (#1069, #1070, #1072, #1073, all `loom:operator-only`/`loom:operator-decision`), and #1061 (curated, `loom:issue`) picked up `loom:blocked` pending a time-gated re-check due 2026-08-16 — see its own acceptance criteria. #1075 is now `loom:building`. #888 and #918 are unchanged. No issue is eligible for `loom:urgent` this pass (the only `loom:issue` issue, #1061, is currently blocked). No open PRs. `WORK_LOG.md` gained 4 entries this pass (3 merged PRs — #1074, #1068, #1067 — plus #1062, manually closed with the concrete fix filed upstream at rjwalters/loom#6277). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none.)*
+*Last updated: 2026-08-15 (Guide triage pass — #1075 (`loom:building`, "consolidate `_extract_frontmatter()`") merged via PR #1077 and closed; a fifth Auditor guard-telemetry escalation, #1081 (`stash-scope:create-redirect` denies a self-contained stash/lint-check/pop sequence — the sibling deny-branch to #1061's ask-branch), landed since the last pass. #888, #918, #1061, #1069, #1070, #1072, #1073 are otherwise unchanged. No issue is eligible for `loom:urgent` this pass (the only `loom:issue` issue, #1061, remains `loom:blocked`). No open PRs, nothing `loom:building`. `WORK_LOG.md` is current — all merged PRs since the last pass (#1079, #1077, #1074, #1068, #1067, #1064, #1059) are already recorded, no new entries needed. Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none.)*
 
 ---
 
@@ -17,7 +17,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-- **#1075**: "Consolidate duplicated `_extract_frontmatter()` across 5 modules into one shared lib helper" (`tier:maintenance`). Claimed this pass; worktree active.
+*Empty.* #1075 (the `_extract_frontmatter()` consolidation) merged via PR #1077 and closed. Nothing currently claimed.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -46,6 +46,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 - **#1070**: "Guard telemetry: stash-scope:main-checkout asks on self-contained stash/pull/pop sequence" (`loom:auditor`/`loom:operator-decision`). 1 `ask`-tier hit on a `git stash && git pull --ff-only && git stash pop` sequence run in the main checkout; an unanswered `ask` blocks headless runs the same as a deny. Needs a human ruling on narrowing this ask.
 - **#1072**: "Guard telemetry: worktree-write-confinement-unresolved-var denies cross-repo gh-config token write (keep flagged)" (`loom:auditor`/`loom:operator-decision`). 1 `catastrophic`-tier deny on a cross-repo `gh-config/hosts.yml` token write; the issue's own title recommends keeping this one flagged rather than loosening the guard — a human ruling documents/confirms that stance.
 - **#1073**: "Guard telemetry: catastrophic:rm pattern fires on heredoc prose mentioning 'rm -rf /' as an example text, not an executed command" (`loom:auditor`/`loom:operator-decision`). A denied heredoc write (a Curator-style draft comment for #1060) was flagged only because its markdown prose *mentions* `rm -rf /` as an example, not because anything executed it. Needs a human ruling on whether the catastrophic-`rm` regex should exempt heredoc/quoted prose content.
+- **#1081**: "Guard telemetry: stash-scope:create-redirect denies self-contained stash/lint-check/pop sequence" (`loom:auditor`/`loom:operator-decision`). Sibling of #1061: the same self-contained `git stash && <read-only lint check>; git stash pop` shape, but here it trips the sibling `deny`-tier `stash-scope:create-redirect` branch (raw `git stash` with other managed worktrees active) instead of the `ask`-tier `worktree-collision` branch. Per #1061's own Champion-reviewed correction, the shared cross-worktree `refs/stash` stack means this is not provably safe either — proposed outcome is keep flagged pending upstream review, mirroring #1061's disposition.
 
 ## Blocked (`loom:blocked`)
 
@@ -65,7 +66,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Eight open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), four new Auditor guard-telemetry escalations (#1069, #1070, #1072, #1073, all `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above), and #1075 (`loom:building`, worktree active).** No open PRs. Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --verbose` also reports none). Next action: a human reviews the four new operator-decision guard-tuning escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check.
+**Eight open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), and five Auditor guard-telemetry escalations (#1069, #1070, #1072, #1073, #1081, all `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above).** No open PRs, nothing `loom:building`. Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --verbose` also reports none). Next action: a human reviews the five operator-decision guard-tuning escalations (#1081 new this pass, mirrors #1061's disposition) and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check.
 
 ### Recurring themes the next wave of issues will likely touch
 
