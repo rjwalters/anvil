@@ -26,11 +26,17 @@ the same shape).
 from __future__ import annotations
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 _IP_USPTO_ROOT = _SKILL_ROOT.parent / "ip-uspto"
+_REPO_ROOT = _SKILL_ROOT.parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from anvil.lib.frontmatter import extract_frontmatter  # noqa: E402
 
 RUBRIC_ID = "anvil-ip-provisional-v1"
 
@@ -42,34 +48,11 @@ def _read(rel: str) -> str:
 def _parse_frontmatter(text: str) -> dict:
     """Parse a leading ``---``-delimited YAML frontmatter block.
 
-    Uses PyYAML when available; falls back to a minimal ``key: value``
-    parser so the test does not hard-depend on PyYAML being installed.
+    Thin ``dict``-returning adapter over the shared
+    ``anvil.lib.frontmatter.extract_frontmatter`` primitive (issue
+    #1083), which returns ``None`` where these call sites want ``{}``.
     """
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}
-    end = None
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            end = i
-            break
-    if end is None:
-        return {}
-    block = "\n".join(lines[1:end])
-    try:
-        import yaml  # type: ignore
-
-        data = yaml.safe_load(block)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        result: dict = {}
-        for line in block.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or ":" not in line:
-                continue
-            key, _, value = line.partition(":")
-            result[key.strip()] = value.strip().strip('"').strip("'")
-        return result
+    return extract_frontmatter(text) or {}
 
 
 class TestFilesExist(unittest.TestCase):

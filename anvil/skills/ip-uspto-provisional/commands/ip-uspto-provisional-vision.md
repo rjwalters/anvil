@@ -1,6 +1,6 @@
 ---
 name: ip-uspto-provisional-vision
-description: Vision-model critic for the ip-uspto-provisional skill. Enumerates the rendered provisional DRAWINGS and uses a vision-language model to score the pixels-side half of rubric Dim 4 (drawings sufficiency & drawing-text correspondence) — reference-numeral legibility, label/lead-line placement, and cross-reference accuracy. Provisional-shaped: informal drawings are an accepted posture, so 1.84 pure-formality dims are dropped. Degrades gracefully on stub-only threads (no rendered drawings → skipped, no _review.json, no Dim-4 deduction).
+description: "Vision-model critic for the ip-uspto-provisional skill. Enumerates the rendered provisional DRAWINGS and uses a vision-language model to score the pixels-side half of rubric Dim 4 (drawings sufficiency & drawing-text correspondence) — reference-numeral legibility, label/lead-line placement, and cross-reference accuracy. Provisional-shaped: informal drawings are an accepted posture, so 1.84 pure-formality dims are dropped. Degrades gracefully on stub-only threads (no rendered drawings → skipped, no _review.json, no Dim-4 deduction)."
 ---
 
 # ip-uspto-provisional-vision — Vision-language-model critic (DRAWINGS ONLY)
