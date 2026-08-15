@@ -291,21 +291,62 @@ Subprocess-only by default
 --------------------------
 
 This module uses only :mod:`os`, :mod:`pathlib`, :mod:`shutil`,
-:mod:`contextlib`, and :mod:`logging` from the standard library. No new
-``pyproject.toml`` dependency is introduced — the
+:mod:`contextlib`, :mod:`json`, and :mod:`logging` from the standard
+library. :func:`write_critic_review_dir` (issue #1086) accepts an
+already-built ``Review`` duck-typed on ``model_dump(mode="json")`` rather
+than importing :class:`anvil.lib.review_schema.Review` at runtime — the
+type is referenced only under ``TYPE_CHECKING`` — so this module still
+introduces no new ``pyproject.toml`` dependency and the
 "subprocess-only-by-default" contract documented at the top of
 ``CLAUDE.md`` is preserved.
+
+Critic-sidecar writer consolidation (issue #1086)
+--------------------------------------------------
+
+Seven near-duplicate ``write_review_dir()`` / ``_write_review_dir()``
+copies (``anvil/lib/pending_marker.py``, ``anvil/lib/numeric_consistency.py``,
+``anvil/lib/hyperlink_resolver.py``, ``anvil/lib/figure_content.py``,
+``anvil/skills/memo/lib/image_accessibility.py``,
+``anvil/skills/memo/lib/citation_coverage.py``,
+``anvil/skills/report/lib/claim_figure_grounding.py``) did the same three
+steps in the same order — compute the sibling dir, build a typed
+``Review`` via that critic's own ``to_review(...)``, write it (and, for
+three of the seven, a ``_findings.json`` companion) into the sibling dir
+— but had drifted into two behavioral camps: two used
+:func:`staged_sidecar` (crash-safe), five used a plain
+``mkdir(parents=True, exist_ok=True)`` + ``write_text`` (not crash-safe).
+:func:`write_critic_review_dir` is the single canonical implementation
+both camps now call: it takes the already-built ``Review`` (and optional
+findings payload) rather than a critic-specific ``result`` object, so it
+stays decoupled from each critic's ``to_review()``/``to_json()`` call
+shape, and it defaults to the atomic (``staged_sidecar``) path — the five
+previously-non-atomic writers gain crash-safety as a deliberate,
+called-out side effect of the consolidation rather than a silent
+behavior change.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import shutil
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable, Iterator, List, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+)
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime import
+    from anvil.lib.review_schema import Review
 
 __all__ = [
     "STAGING_SUFFIX",
@@ -323,6 +364,7 @@ __all__ = [
     "backup_path_for",
     "cleanup_one_staging",
     "cleanup_stale_staging",
+    "write_critic_review_dir",
     "main",
 ]
 
@@ -1486,6 +1528,144 @@ def recover_interrupted_replace(final_dir: Path) -> bool:
         final_dir,
     )
     return True
+
+
+# ---------------------------------------------------------------------------
+# Critic-sidecar writer consolidation (issue #1086)
+# ---------------------------------------------------------------------------
+
+
+def write_critic_review_dir(
+    version_dir: Path,
+    suffix: str,
+    review: "Review",
+    *,
+    findings_json: Optional[Dict[str, Any]] = None,
+    atomic: bool = True,
+    regenerate: bool = True,
+) -> Path:
+    """Write a critic's ``<version_dir>.<suffix>/_review.json`` (+ optional
+    ``_findings.json``) sidecar — the single canonical implementation the
+    seven pre-#1086 ``write_review_dir()``/``_write_review_dir()`` copies
+    now share (``pending_marker``, ``numeric_consistency``,
+    ``hyperlink_resolver``, ``figure_content``, ``image_accessibility``,
+    ``citation_coverage``, ``claim_figure_grounding``).
+
+    Every one of the seven did the same three things in the same order:
+    compute the sibling dir name, build a typed ``Review`` via that
+    critic's own ``to_review(...)`` call (whose keyword arguments differ
+    slightly per critic — e.g. ``figure_content`` passes ``model=``,
+    ``numeric_consistency`` passes ``blocking=``), then write it (and, for
+    three of the seven, a ``_findings.json`` companion built from that
+    critic's own ``result.to_json()``) into the sibling dir. This function
+    takes the already-built ``review`` (and, optionally, an already-built
+    ``findings_json`` payload) rather than a critic-specific ``result``
+    object, so it stays decoupled from each critic's
+    ``to_review()``/``to_json()`` call shape — every call site keeps its
+    own ``to_review(...)``/``to_json()`` call locally and passes the
+    outputs in here.
+
+    Parameters
+    ----------
+    version_dir:
+        The version directory being reviewed, e.g.
+        ``Path("output/acme-seed.1")``. The sibling dir is computed as
+        ``version_dir.parent / f"{version_dir.name}.{suffix}"`` — the
+        same ``<version_dir>.<tag>/`` shape
+        :func:`anvil.lib.critics.discover_critics` recognizes without
+        code changes.
+    suffix:
+        The critic's sibling-dir tag, e.g. ``"hyperlinks"``,
+        ``"citations"``, ``"claim-figure-grounding"`` — matches each
+        critic's own ``*_SUFFIX`` / ``CRITIC_ID`` constant.
+    review:
+        An already-built :class:`anvil.lib.review_schema.Review` instance
+        — or any duck-typed object exposing ``model_dump(mode="json")``,
+        so this module does not need to import ``review_schema`` (and
+        transitively ``pydantic``) at runtime. Dumped via
+        ``json.dumps(review.model_dump(mode="json"), indent=2) + "\\n"``
+        — byte-identical to every pre-#1086 copy's own dump: five of the
+        seven already used exactly this call; the other two
+        (``citation_coverage``, ``claim_figure_grounding``) used
+        ``review.model_dump_json(indent=2)`` instead, which is
+        byte-identical to ``json.dumps(model_dump(mode="json"), ...)``
+        for the ASCII-only content this schema ever carries (verified by
+        round-trip diff in the #1086 PR body — pydantic's own JSON
+        encoder and stdlib ``json.dumps`` agree on key order, separators,
+        and escaping for this payload shape).
+    findings_json:
+        Optional structured findings payload (a plain ``dict``,
+        typically the critic's own ``result.to_json()``). When given, an
+        additional ``_findings.json`` companion is written alongside
+        ``_review.json`` — the three-of-seven companion-file convention
+        (``image_accessibility``, ``citation_coverage``,
+        ``claim_figure_grounding``). When omitted (the default), only
+        ``_review.json`` is written — the four-of-seven single-file
+        convention (``pending_marker``, ``numeric_consistency``,
+        ``hyperlink_resolver``, ``figure_content``).
+    atomic:
+        When ``True`` (the default), stages every file into a leading-dot
+        sibling via :func:`staged_sidecar` and lands the complete set with
+        a single atomic ``Path.rename`` (issue #350) — crash-safe: a
+        mid-write interrupt never leaves a partially-written sidecar at
+        the final name. Two of the seven pre-#1086 copies
+        (``pending_marker``, ``numeric_consistency``) already used this
+        path; the other five (``hyperlink_resolver``, ``figure_content``,
+        ``image_accessibility``, ``citation_coverage``,
+        ``claim_figure_grounding``) gain crash-safety as a deliberate,
+        called-out side effect of the #1086 consolidation — every
+        consuming command's own markdown doc already mandates
+        ``staged_sidecar`` for these critics, so this closes a doc/code
+        drift, not just a dedup. ``atomic=False`` reproduces the old
+        plain ``mkdir(parents=True, exist_ok=...)`` + ``write_text``
+        shape; no call site in this repo passes it as of #1086.
+    regenerate:
+        When ``True`` (the default), an existing sibling dir from a prior
+        run of THIS critic on THIS version is replaced by the fresh
+        write — the deterministic-critic-rerun carve-out to the
+        sidecar-immutability convention that ``pending_marker`` and
+        ``numeric_consistency`` already documented pre-#1086 (a later
+        deterministic pass supersedes an earlier one; the five
+        previously-non-atomic writers had the same effective behavior via
+        their ``exist_ok=True`` overwrite-in-place). Under
+        ``atomic=True`` this also sweeps any leftover staging dir from a
+        prior interrupted run (:func:`cleanup_one_staging`, issue #376)
+        before staging fresh. When ``False``, a pre-existing sibling dir
+        is left alone under ``atomic=False`` (mirroring
+        ``exist_ok=False``) or raises :class:`FileExistsError` under
+        ``atomic=True`` (:func:`staged_sidecar`'s own immutability
+        default) — one-shot semantics for a caller that wants a rerun to
+        be a hard error rather than a silent overwrite.
+
+    Returns
+    -------
+    The path to the written ``_review.json`` (NOT the sibling dir itself)
+    — matches every pre-#1086 copy's return contract.
+    """
+    version_dir = Path(version_dir)
+    final = version_dir.parent / f"{version_dir.name}.{suffix}"
+
+    files: Dict[str, str] = {
+        "_review.json": json.dumps(review.model_dump(mode="json"), indent=2)
+        + "\n"
+    }
+    if findings_json is not None:
+        files["_findings.json"] = json.dumps(findings_json, indent=2) + "\n"
+
+    if atomic:
+        # Per-critic entry-step sweep (parallel-safe; issue #376).
+        cleanup_one_staging(final)
+        if regenerate and final.exists():
+            shutil.rmtree(final)
+        with staged_sidecar(final, required_files=list(files.keys())) as staging:
+            for name, text in files.items():
+                (staging / name).write_text(text, encoding="utf-8")
+    else:
+        final.mkdir(parents=True, exist_ok=regenerate)
+        for name, text in files.items():
+            (final / name).write_text(text, encoding="utf-8")
+
+    return final / "_review.json"
 
 
 # ---------------------------------------------------------------------------

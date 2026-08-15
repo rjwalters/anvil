@@ -150,7 +150,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -163,7 +162,7 @@ from anvil.lib.review_schema import (
     Review,
     Score,
 )
-from anvil.lib.sidecar import cleanup_one_staging, staged_sidecar
+from anvil.lib.sidecar import write_critic_review_dir
 
 
 # ---------------------------------------------------------------------------
@@ -1296,29 +1295,20 @@ def write_review_dir(
 ) -> Path:
     """Write ``<version_dir>.numeric/_review.json`` for auto-discovery.
 
-    Uses ``staged_sidecar`` (issue #350) so the sidecar only ever exists
-    in complete form. Because this detector is deterministic and cheaply
-    re-runnable, an existing ``<version_dir>.numeric/`` from a prior run
-    is removed and regenerated (the deterministic-regeneration carve-out
-    to the sidecar-immutability convention — same posture as
-    ``hyperlink_resolver.write_review_dir`` overwriting in place).
-    Returns the path to the written ``_review.json``.
+    Delegates to the shared :func:`anvil.lib.sidecar.write_critic_review_dir`
+    (issue #1086), which uses ``staged_sidecar`` (issue #350) so the
+    sidecar only ever exists in complete form. Because this detector is
+    deterministic and cheaply re-runnable, an existing
+    ``<version_dir>.numeric/`` from a prior run is removed and
+    regenerated (``regenerate=True``, the shared helper's default) — the
+    deterministic-regeneration carve-out to the sidecar-immutability
+    convention. Returns the path to the written ``_review.json``.
     """
     version_dir = Path(version_dir)
-    final = version_dir.parent / f"{version_dir.name}.{NUMERIC_SUFFIX}"
-    # Per-critic entry-step sweep (parallel-safe; issue #376).
-    cleanup_one_staging(final)
-    if final.exists():
-        shutil.rmtree(final)
     review = result.to_review(
         version_dir=version_dir.name, critic_id=critic_id, blocking=blocking
     )
-    with staged_sidecar(final, required_files=["_review.json"]) as staging:
-        (staging / "_review.json").write_text(
-            json.dumps(review.model_dump(mode="json"), indent=2) + "\n",
-            encoding="utf-8",
-        )
-    return final / "_review.json"
+    return write_critic_review_dir(version_dir, NUMERIC_SUFFIX, review)
 
 
 # ---------------------------------------------------------------------------

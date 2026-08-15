@@ -55,6 +55,7 @@ from anvil.lib.sidecar import (
     stage_replace,
     staged_sidecar,
     staging_path_for,
+    write_critic_review_dir,
 )
 
 
@@ -1777,3 +1778,190 @@ def test_cli_copy_no_verify_flag_skips_verification(tmp_path, capsys, monkeypatc
 
     assert rc == 0
     assert dst.read_bytes() == b"corrupted"
+
+
+# ---------------------------------------------------------------------------
+# write_critic_review_dir — critic-sidecar writer consolidation (issue #1086)
+# ---------------------------------------------------------------------------
+
+
+def _make_review(version_dir_name: str = "acme-seed.1") -> Review:
+    return Review(
+        schema_version="1",
+        kind=Kind.TOOL_EVIDENCE,
+        version_dir=version_dir_name,
+        critic_id="fake-critic",
+        scores=[Score(dimension="d1", score=None, max=1, critical=False)],
+        findings=[],
+        critical_flags=[],
+    )
+
+
+class TestWriteCriticReviewDir:
+    def test_atomic_default_writes_review_only(self, tmp_path: Path) -> None:
+        """Default call (no ``findings_json``) writes only ``_review.json``,
+        atomically, via ``staged_sidecar`` — the four-of-seven single-file
+        convention."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+        review = _make_review()
+
+        out = write_critic_review_dir(version_dir, "fake", review)
+
+        final = tmp_path / "acme-seed.1.fake"
+        assert out == final / "_review.json"
+        assert out.is_file()
+        assert sorted(p.name for p in final.iterdir()) == ["_review.json"]
+        # No leftover staging dir.
+        assert not (tmp_path / ".acme-seed.1.fake.tmp").exists()
+
+        loaded = Review.model_validate_json(out.read_text(encoding="utf-8"))
+        assert loaded.critic_id == "fake-critic"
+
+    def test_atomic_with_findings_json_writes_both_files(
+        self, tmp_path: Path
+    ) -> None:
+        """``findings_json`` given writes a ``_findings.json`` companion —
+        the three-of-seven companion-file convention."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+        review = _make_review()
+
+        out = write_critic_review_dir(
+            version_dir,
+            "fake",
+            review,
+            findings_json={"critic": "fake-critic", "total_findings": 0},
+        )
+
+        final = tmp_path / "acme-seed.1.fake"
+        assert out == final / "_review.json"
+        assert sorted(p.name for p in final.iterdir()) == [
+            "_findings.json",
+            "_review.json",
+        ]
+        findings = json.loads((final / "_findings.json").read_text())
+        assert findings == {"critic": "fake-critic", "total_findings": 0}
+
+    def test_atomic_regenerate_true_replaces_prior_run(
+        self, tmp_path: Path
+    ) -> None:
+        """A second call with ``regenerate=True`` (the default) replaces an
+        existing sibling dir from a prior deterministic run — no
+        ``FileExistsError``, no leftover staging dir."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+
+        first = write_critic_review_dir(version_dir, "fake", _make_review())
+        second = write_critic_review_dir(version_dir, "fake", _make_review())
+
+        assert first == second
+        assert second.is_file()
+        leftovers = [
+            p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")
+        ]
+        assert leftovers == []
+
+    def test_atomic_regenerate_false_raises_on_existing_final_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """``regenerate=False`` reproduces ``staged_sidecar``'s own
+        one-shot immutability default: a rerun is a hard error, not a
+        silent overwrite."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+
+        write_critic_review_dir(
+            version_dir, "fake", _make_review(), regenerate=False
+        )
+        with pytest.raises(FileExistsError):
+            write_critic_review_dir(
+                version_dir, "fake", _make_review(), regenerate=False
+            )
+
+    def test_atomic_sweeps_leftover_staging_from_prior_interrupt(
+        self, tmp_path: Path
+    ) -> None:
+        """A leftover ``.tmp`` staging dir from a prior interrupted run of
+        THIS critic on THIS version is swept before staging fresh (issue
+        #376's per-critic entry-step sweep, exercised through the shared
+        helper)."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+        stale_staging = tmp_path / ".acme-seed.1.fake.tmp"
+        stale_staging.mkdir()
+        (stale_staging / "partial.txt").write_text("orphaned")
+
+        out = write_critic_review_dir(version_dir, "fake", _make_review())
+
+        assert out.is_file()
+        assert not stale_staging.exists()
+
+    def test_atomic_leaves_staging_dir_on_body_exception(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A crash mid-write (simulated via a corrupt manifest) leaves the
+        staging dir in place for forensics, matching
+        :func:`staged_sidecar`'s own contract — the crash-safety
+        ``atomic=True`` is meant to buy."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+
+        class _ExplodingReview:
+            def model_dump(self, mode: str = "json") -> dict:
+                raise RuntimeError("boom mid-serialize")
+
+        with pytest.raises(RuntimeError, match="boom mid-serialize"):
+            write_critic_review_dir(version_dir, "fake", _ExplodingReview())
+
+        final = tmp_path / "acme-seed.1.fake"
+        assert not final.exists()
+
+    def test_non_atomic_mkdir_write_text_shape(self, tmp_path: Path) -> None:
+        """``atomic=False`` reproduces the pre-#1086 plain
+        ``mkdir(parents=True, exist_ok=...)`` + ``write_text`` shape — no
+        staging dir involved at all."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+
+        out = write_critic_review_dir(
+            version_dir, "fake", _make_review(), atomic=False
+        )
+
+        final = tmp_path / "acme-seed.1.fake"
+        assert out == final / "_review.json"
+        assert out.is_file()
+        assert not (tmp_path / ".acme-seed.1.fake.tmp").exists()
+
+    def test_non_atomic_regenerate_false_raises_on_rerun(
+        self, tmp_path: Path
+    ) -> None:
+        """``atomic=False, regenerate=False`` mirrors ``exist_ok=False``:
+        a rerun over an existing sibling dir is a hard error."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+
+        write_critic_review_dir(
+            version_dir, "fake", _make_review(), atomic=False, regenerate=False
+        )
+        with pytest.raises(FileExistsError):
+            write_critic_review_dir(
+                version_dir,
+                "fake",
+                _make_review(),
+                atomic=False,
+                regenerate=False,
+            )
+
+    def test_return_value_matches_seven_pre_1086_copies_contract(
+        self, tmp_path: Path
+    ) -> None:
+        """Returns the ``_review.json`` path, NOT the sibling dir itself —
+        matches every pre-#1086 copy's own return contract."""
+        version_dir = tmp_path / "acme-seed.1"
+        version_dir.mkdir()
+
+        out = write_critic_review_dir(version_dir, "fake", _make_review())
+
+        assert out.name == "_review.json"
+        assert out.parent.name == "acme-seed.1.fake"
