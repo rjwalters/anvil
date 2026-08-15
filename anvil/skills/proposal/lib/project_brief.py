@@ -1,11 +1,17 @@
-"""Thread-level ``BRIEF.md`` reader for the proposal skill (issue #356, #840).
+"""Thread-level ``BRIEF.md`` reader for the proposal skill (issue #356, #840, #1092).
 
 This module ships two load-bearing helpers:
 
-- :func:`load_recommendation_target` — reads the informal-but-now-
-  documented ``recommendation_target`` frontmatter key from a proposal
-  thread's ``<thread>/BRIEF.md`` and resolves it to a typed signal the
-  reviewer can dispatch on at dim 8 (Open decisions) scoring time.
+- :func:`load_recommendation_target` — re-exported from
+  ``anvil.lib.project_brief`` (issue #1092; see "Consolidation history"
+  below). Reads the informal-but-now-documented ``recommendation_target``
+  frontmatter key from a thread's ``<thread>/BRIEF.md`` and resolves it
+  to a typed signal the reviewer can dispatch on. Proposal calibrates
+  the resolved value at dim 8 (Open decisions) scoring time — see
+  ``anvil/skills/proposal/rubric.md`` §"Dim 8 —
+  `recommendation_target: undecided` calibration" for the rationale
+  and the calibration prose (that calibration logic is NOT part of the
+  helper itself; it lives in the skill's rubric/review command).
 - :func:`load_cost_basis` (issue #840) — reads the ``cost_basis``
   frontmatter key (``quoted`` / ``estimated`` / ``none``) and resolves
   it to a typed signal the drafter, reviewer, and auditor dispatch on
@@ -14,63 +20,67 @@ This module ships two load-bearing helpers:
   lines (e.g. a partnership/integration proposal) — ``cost_basis``
   makes that axis explicit and orthogonal to ``customer_kind`` (an
   ``internal`` build spec still answers to a budget with priced lines
-  that may or may not be vendor-sourced).
+  that may or may not be vendor-sourced). This helper remains
+  proposal-only and is NOT part of the #1092 consolidation.
 
-Both helpers share the same lenient, never-raises, closed-set contract
-documented below for :func:`load_recommendation_target`; the same
-contract applies verbatim to :func:`load_cost_basis`.
+Consolidation history (issue #1092)
+------------------------------------
 
-Why this lives skill-local
---------------------------
-
-Per ``CLAUDE.md`` §"Working on this repo" — *"Skill-local first, lib
+Issue #356 originally shipped ``load_recommendation_target`` skill-local
+per ``CLAUDE.md`` §"Working on this repo" — *"Skill-local first, lib
 promotion later. New primitives ship under ``anvil/skills/<skill>/lib/``
-until duplication is observed across skills."*
+until duplication is observed across skills."* At the time, memo's copy
+(PR #351) was also skill-local, so proposal mirroring it locally was the
+right call per that rule.
 
-Issue #356 IS the second consumer of the ``load_recommendation_target``
-contract (memo's PR #351 is the first). But the helper signature is
-skill-specific in a way that makes promotion premature today:
+Commit ``dba8ba1`` (#382, same day as #356/#364) then promoted memo's
+*entire* ``project_brief.py`` — including ``load_recommendation_target``
+— wholesale into ``anvil/lib/project_brief.py`` (memo's skill-local file
+became a ``from anvil.lib.project_brief import *`` shim). That move
+never touched proposal's already-diverged copy, so proposal kept
+carrying a byte-identical duplicate of a helper that was no longer
+skill-local anywhere. Issue #1092 closes that gap: the reader function
+is now imported from the shared module (mirroring memo's shim pattern),
+re-exported here via ``__all__`` so every existing proposal call site
+(``from project_brief import load_recommendation_target``) keeps
+resolving unchanged. ``load_cost_basis`` and ``BRIEF_FILENAME`` are
+untouched — ``load_cost_basis`` is genuinely proposal-only, and
+``BRIEF_FILENAME`` remains mirrored locally (see below) since it backs
+that proposal-only helper.
 
-- Memo and proposal both read a thread-level BRIEF.md frontmatter key
-  with a closed-set membership check + lenient-on-absence contract —
-  the mechanical body is identical.
-- The dimension and rubric calibrated when ``undecided`` fires
-  differs: memo calibrates **dim 1 (Recommendation clarity)**;
-  proposal calibrates **dim 8 (Open decisions)** because proposal
-  dim 1 is *Intent / requirements clarity* (about the customer's
-  requirement, not the proposer's recommendation) — a verbatim
-  mirror would land on the wrong dim.
-- The calibration prose (the verbatim suffix appended to the affected
-  dim's ``scoring.md`` justification) is therefore skill-specific —
-  the byte-for-byte payload of the calibration is documented in the
-  skill's ``rubric.md``, not in the helper.
+Why ``BRIEF_FILENAME`` stays mirrored, not imported
+-----------------------------------------------------
 
-The helper itself reads only ``recommendation_target``; the closed set
-is byte-identical to memo's (``invest`` / ``pass`` / ``conditional`` /
-``undecided``) so a future lib promotion is a mechanical move. The
-curator's recommendation (issue #356 body): promote when a third skill
-adopts the pattern, not before.
+``BRIEF_FILENAME`` is kept verbatim from
+``anvil/skills/memo/lib/project_discovery.BRIEF_FILENAME`` so a future
+change to that constant is a pure, deliberate move rather than a silent
+cross-skill coupling. It backs :func:`load_cost_basis` — the one helper
+in this module that remains skill-local — so importing it from
+``anvil.lib.project_brief`` alongside ``load_recommendation_target``
+would not shrink the file further; it is kept as a local constant.
 
 Lenient contract
 ----------------
 
-The helper **never raises**. Every absence / malformed path resolves to
-``None``, mirroring :func:`anvil.skills.memo.lib.project_brief.load_recommendation_target`'s
-contract exactly. This preserves byte-identical pre-#356 behavior for
-every thread that does not declare ``recommendation_target`` — the
-reviewer's dim 8 scoring falls through to the standard "open decisions
-tracked honestly" calibration documented in the ``rubric.md`` table.
+Both :func:`load_recommendation_target` and :func:`load_cost_basis`
+**never raise**. Every absence / malformed path resolves to ``None``.
+This preserves byte-identical pre-#356 / pre-#840 behavior for every
+thread that does not declare the respective frontmatter key — the
+reviewer's dim 8 / dim 6 scoring falls through to the standard
+calibration documented in the ``rubric.md`` table.
 
 The closed set
 --------------
 
-``invest`` / ``pass`` / ``conditional`` / ``undecided`` — kept byte-
-identical to memo's so the eventual lib promotion is a pure move.
-Typos like ``Undecided`` (capitalized), ``tbd``, ``?``, ``maybe`` are
-NOT recognized and resolve to ``None`` (the reviewer falls back to the
-legacy dim 8 calibration — same behavior as a thread with no BRIEF).
-This prevents the structured-field surface from silently accepting
-noise.
+``load_recommendation_target``'s closed set (``invest`` / ``pass`` /
+``conditional`` / ``undecided``) is documented and enforced in
+``anvil/lib/project_brief.py``; this module no longer duplicates the
+membership list. ``load_cost_basis``'s closed set (``quoted`` /
+``estimated`` / ``none``) is proposal-local (see
+``_RECOGNIZED_COST_BASES`` below). Typos and out-of-set values are NOT
+recognized and resolve to ``None`` (the reviewer falls back to the
+legacy calibration — same behavior as a thread with no BRIEF). This
+prevents the structured-field surface from silently accepting noise.
 """
 
 from __future__ import annotations
@@ -79,6 +89,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from anvil.lib.frontmatter import extract_frontmatter as _extract_frontmatter
+from anvil.lib.project_brief import load_recommendation_target
 
 
 # On-disk BRIEF filename. Kept verbatim from
@@ -88,16 +99,9 @@ from anvil.lib.frontmatter import extract_frontmatter as _extract_frontmatter
 # the two skills coexist as siblings. (``_extract_frontmatter`` above is
 # a framework-lib primitive, not a memo-skill internal, so importing it
 # from ``anvil.lib.frontmatter`` per issue #1075 does not violate this.)
+# Backs :func:`load_cost_basis` below — the one reader that remains
+# skill-local post-#1092.
 BRIEF_FILENAME = "BRIEF.md"
-
-# The closed set is the contract: typos like ``Undecided`` (capitalized),
-# ``tbd``, ``?``, ``maybe`` are NOT recognized and resolve to ``None``
-# (the reviewer falls back to the legacy dim 8 calibration — same
-# behavior as a thread with no BRIEF). This prevents the structured-
-# field surface from silently accepting noise. Kept byte-identical to
-# memo's ``_RECOGNIZED_RECOMMENDATION_TARGETS`` so the eventual lib
-# promotion is a pure move.
-_RECOGNIZED_RECOMMENDATION_TARGETS = ("invest", "pass", "conditional", "undecided")
 
 # The closed set for `cost_basis` (issue #840). `quoted` is the default and
 # is byte-identical to pre-#840 behavior (vendor-sourced priced BOM);
@@ -118,90 +122,12 @@ __all__ = [
 # primitive (issue #1075), imported above and aliased to the historical
 # private name so every call site in this module is unchanged.
 
-
-def load_recommendation_target(
-    thread_dir: Path,
-) -> Optional[Literal["invest", "pass", "conditional", "undecided"]]:
-    """Read ``recommendation_target`` from a thread-level ``BRIEF.md``.
-
-    Issue #356 promotes the informal ``recommendation_target`` frontmatter
-    key on a proposal thread's ``<thread>/BRIEF.md`` into a typed signal
-    the reviewer can calibrate **dim 8 (Open decisions)** against. NOTE:
-    proposal calibrates dim 8, NOT dim 1 — the memo precedent (PR #351)
-    calibrates memo dim 1 (Recommendation clarity), but proposal dim 1 is
-    *Intent / requirements clarity* (about the customer's requirement,
-    not the proposer's recommendation) and would be the wrong dim to
-    re-scope. See ``anvil/skills/proposal/rubric.md`` §"Dim 8 —
-    `recommendation_target: undecided` calibration" for the rationale
-    and the calibration prose.
-
-    Parameters
-    ----------
-    thread_dir
-        The thread root directory (the directory holding ``BRIEF.md`` for
-        the thread, e.g., ``<project>/<slug>/``). NOT a version directory.
-
-    Returns
-    -------
-    Optional[Literal["invest", "pass", "conditional", "undecided"]]
-        The verbatim ``recommendation_target`` value when present and in
-        the closed set. ``None`` for every absence / malformed path:
-
-        - ``<thread_dir>/BRIEF.md`` does not exist.
-        - The file exists but has no YAML frontmatter (no opening ``---``
-          delimiter, missing closing delimiter, malformed YAML).
-        - The frontmatter is a parseable dict but contains no
-          ``recommendation_target`` key.
-        - The frontmatter value is not in the closed set
-          (``invest`` / ``pass`` / ``conditional`` / ``undecided``) —
-          e.g., ``Undecided`` (capitalized), ``tbd``, ``maybe``, ``?``,
-          an integer, a list, a null. The reviewer falls back to byte-
-          identical pre-#356 behavior for these noise values.
-
-    Notes
-    -----
-    Lenient by design — never raises. The contract mirrors memo's
-    :func:`load_recommendation_target` lenient form so the reviewer's
-    zero-impact backwards-compat is preserved exactly for any thread
-    that pre-dates this helper or that chose not to set the field.
-
-    The thread-level BRIEF for proposal is a freeform-prose surface
-    with optional informal YAML frontmatter (``title``, ``subtitle``,
-    ``studio``, ``date``, ``stage``, ``signature_color``, ``hero``,
-    ``customer_kind``, ``orientation``, and now ``recommendation_target``
-    per this issue). This helper extracts only the one structured field;
-    everything else is passed through to the drafter as informational
-    context per ``proposal-draft.md`` step 3.
-    """
-    if not isinstance(thread_dir, Path):
-        # Defensive: callers may inadvertently pass a string. The helper is
-        # documented to take a Path; convert rather than raise to preserve
-        # the lenient contract.
-        try:
-            thread_dir = Path(thread_dir)
-        except Exception:
-            return None
-
-    brief_path = thread_dir / BRIEF_FILENAME
-    if not brief_path.is_file():
-        return None
-
-    try:
-        text = brief_path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-
-    fm = _extract_frontmatter(text)
-    if fm is None:
-        return None
-
-    value = fm.get("recommendation_target")
-    # Closed-set membership check. Anything not on the recognized list —
-    # including booleans, ints, lists, dicts, None, and string typos —
-    # falls through to None per the lenient contract.
-    if isinstance(value, str) and value in _RECOGNIZED_RECOMMENDATION_TARGETS:
-        return value  # type: ignore[return-value]
-    return None
+# ``load_recommendation_target`` used to be defined here (a local copy
+# mirroring memo's, which was itself promoted under #382); it is now the
+# shared ``anvil/lib/project_brief.py::load_recommendation_target``
+# primitive (issue #1092), imported above and re-exported via ``__all__``
+# so every existing proposal call site is unchanged. See the module
+# docstring's "Consolidation history" section for the full rationale.
 
 
 def load_cost_basis(

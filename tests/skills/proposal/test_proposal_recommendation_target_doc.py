@@ -19,8 +19,10 @@ early:
    the dim 8 sub-step in step 5 that applies the calibration, and the
    `_summary.md.recommendation_target_resolved` block in step 9b that
    records the audit trail.
-3. The helper `load_recommendation_target` is exported from
-   `anvil/skills/proposal/lib/project_brief.py`.
+3. The helper `load_recommendation_target` is re-exported from
+   `anvil/skills/proposal/lib/project_brief.py` (imported from the
+   shared `anvil/lib/project_brief.py` primitive per issue #1092 —
+   see that module's "Consolidation history" docstring section).
 4. The shipped `anvil/skills/proposal/templates/BRIEF.md.example`
    demonstrates `recommendation_target: undecided` as the documented
    default.
@@ -234,45 +236,92 @@ def test_proposal_draft_documents_recommendation_target_key() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Helper export — project_brief.py exposes load_recommendation_target
+# Helper export — project_brief.py re-exports load_recommendation_target
+# from the shared anvil/lib/project_brief.py primitive (issue #1092)
 # ---------------------------------------------------------------------------
 
 
 def test_project_brief_exports_load_recommendation_target() -> None:
-    """The helper MUST be exported from project_brief.py via __all__."""
+    """The helper MUST be re-exported from project_brief.py via __all__.
+
+    Issue #1092 consolidated the proposal-local function *body* into
+    `anvil/lib/project_brief.py` (mirroring memo's shim pattern); the
+    proposal-local module now imports the name and re-exports it via
+    `__all__` so every existing `from project_brief import
+    load_recommendation_target` call site keeps resolving unchanged.
+    """
     body = _read(PROJECT_BRIEF)
-    assert "def load_recommendation_target" in body, (
-        "project_brief.py MUST define `load_recommendation_target` (issue #356)"
+    assert (
+        "from anvil.lib.project_brief import load_recommendation_target" in body
+    ), (
+        "project_brief.py MUST import `load_recommendation_target` from "
+        "the shared `anvil.lib.project_brief` module (issue #1092)"
     )
     assert '"load_recommendation_target"' in body, (
         "project_brief.py's `__all__` MUST include "
-        "`load_recommendation_target` (issue #356)"
+        "`load_recommendation_target` (issue #356, re-export shape per #1092)"
+    )
+    # The function body itself MUST NOT be re-defined locally — that would
+    # reintroduce the duplicate #1092 consolidated away.
+    assert "def load_recommendation_target" not in body, (
+        "project_brief.py MUST NOT define `load_recommendation_target` "
+        "locally post-#1092 — it MUST be imported from "
+        "`anvil.lib.project_brief` instead (the duplicate this issue removed)"
     )
 
 
 def test_project_brief_documents_closed_set() -> None:
-    """The helper MUST document the closed set of recognized values."""
-    body = _read(PROJECT_BRIEF)
-    # All four values appear in the helper's recognized-set tuple.
-    for value in ("invest", "pass", "conditional", "undecided"):
-        assert value in body, (
+    """The closed set MUST be documented — locally for `load_cost_basis`,
+    and in the shared lib module for `load_recommendation_target`."""
+    # `load_cost_basis` (proposal-only, not part of #1092) still documents
+    # its own closed set locally.
+    local_body = _read(PROJECT_BRIEF)
+    for value in ("quoted", "estimated", "none"):
+        assert value in local_body, (
             f"project_brief.py MUST recognize {value!r} as one of the "
-            f"closed-set values for recommendation_target (issue #356)"
+            f"closed-set values for cost_basis (issue #840)"
+        )
+    # `load_recommendation_target`'s closed set now lives in the shared
+    # `anvil/lib/project_brief.py` module post-#1092 — the proposal-local
+    # module no longer duplicates the membership list, so the guard checks
+    # the shared module instead.
+    # PROJECT_BRIEF is <repo>/anvil/skills/proposal/lib/project_brief.py;
+    # parents[3] of that path is <repo>/anvil.
+    lib_root = PROJECT_BRIEF.resolve().parents[3] / "lib" / "project_brief.py"
+    lib_body = _read(lib_root)
+    for value in ("invest", "pass", "conditional", "undecided"):
+        assert value in lib_body, (
+            f"anvil/lib/project_brief.py MUST recognize {value!r} as one of "
+            f"the closed-set values for recommendation_target (issue #356, "
+            f"consolidated to lib per #1092)"
         )
 
 
-def test_project_brief_stays_skill_local() -> None:
-    """The helper MUST stay skill-local; promotion to anvil/lib/ is deferred."""
-    # Skill-local-first per CLAUDE.md "wait for the second consumer before
-    # generalizing"; proposal is the second consumer but the helper signature
-    # is skill-specific (different dim calibrated, different rubric prose) so
-    # promotion is premature. This test is a forward-looking guard: if a
-    # future change promotes the helper to anvil/lib/project_brief.py the
-    # test catches the move and forces the author to update the doc-
-    # coverage guards accordingly.
+def test_project_brief_reexports_from_shared_lib() -> None:
+    """`load_recommendation_target` MUST be sourced from anvil/lib/project_brief.py.
+
+    Supersedes the pre-#1092 `test_project_brief_stays_skill_local` guard,
+    which was an intentional forward-looking check whose own docstring
+    anticipated exactly this move: "if a future change promotes the
+    helper to `anvil/lib/project_brief.py` the test catches the move and
+    forces the author to update the doc-coverage guards accordingly."
+    Issue #1092 is that move — proposal's copy was byte-identical to the
+    already-lib-promoted memo copy (promoted under #382), so proposal's
+    "wait for a third consumer" premise was moot. This test now asserts
+    the *new* shape: the proposal-local module imports the reader
+    function object rather than re-defining it, so proposal and memo
+    share exactly one implementation.
+    """
     assert PROJECT_BRIEF.exists(), (
-        "the proposal-local project_brief.py MUST live at "
-        f"{PROJECT_BRIEF} (issue #356 — skill-local-first per CLAUDE.md)"
+        "the proposal-local project_brief.py MUST still live at "
+        f"{PROJECT_BRIEF} (issue #1092 — only the reader function moved; "
+        "load_cost_basis and BRIEF_FILENAME stay skill-local)"
+    )
+    body = _read(PROJECT_BRIEF)
+    assert "from anvil.lib.project_brief import load_recommendation_target" in body, (
+        "project_brief.py MUST import `load_recommendation_target` from "
+        "`anvil.lib.project_brief` — the shared module both memo and "
+        "proposal now source it from (issue #1092)"
     )
 
 
