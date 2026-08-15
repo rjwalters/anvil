@@ -88,15 +88,8 @@ MANIFEST_VERSION = 1
 
 # Claim-level verdict vocabulary — identical strings to the datasheet
 # skill's refs back-check (datasheet/rubric.md §"Refs back-check").
-VERDICT_VERIFIED = "VERIFIED"
-VERDICT_UNVERIFIED = "UNVERIFIED"
 VERDICT_CONTRADICTED = "CONTRADICTED"
 VERDICT_NOT_IN_REFS = "NOT-IN-REFS"
-
-#: The findings-row spelling for the escalated NOT-IN-REFS case under
-#: an active contract. Keeps the datasheet vocabulary canonical while
-#: keeping sphere's term greppable.
-VERDICT_NOT_IN_REFS_FABRICATED = "NOT-IN-REFS (FABRICATED)"
 
 # Entry-level freshness statuses (NOT claim verdicts).
 FRESHNESS_FRESH = "FRESH"
