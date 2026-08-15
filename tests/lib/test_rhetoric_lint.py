@@ -56,6 +56,9 @@ from anvil.lib.rhetoric_lint import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = REPO_ROOT / "anvil" / "lib" / "rhetoric_lint.py"
 CLEAN_FIXTURE = Path(__file__).parent / "fixtures" / "rhetoric_clean_memo.md"
+JARGON_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "jargon_dense_unexplained.md"
+)
 
 
 def _active(result: RhetoricLintResult):
@@ -1177,6 +1180,33 @@ def test_zero_findings_on_clean_memo_fixture():
     result = lint_rhetoric(CLEAN_FIXTURE.read_text(encoding="utf-8"))
     assert result.findings == [], [f.to_dict() for f in result.findings]
     assert result.words > 300  # the fixture is a real memo body, not a stub
+
+
+def test_zero_findings_on_jargon_dense_unexplained_fixture():
+    """Issue #1043: the mechanical lint cannot see "term earns its place".
+
+    ``jargon_dense_unexplained.md`` is polished, well-formed, varied-
+    rhythm prose (no AI-tell phrase/regex hits, no em-dash/emphasis/
+    curly-quote/hyphen-pair density, no long-sentence or flattened-
+    rhythm tail) that nonetheless fails the plain-language-first
+    framework in ``anvil/lib/snippets/plain_language.md``: it leans on
+    invented compressed jargon ("control-identification frontier",
+    "audit allocation manifold", "hypothesis-conditioned resampling",
+    "epistemic throughput ceiling") as load-bearing protagonists without
+    ever explaining, in ordinary language, what any of them mean or why
+    they matter — a reader could not restate the memo's actual
+    recommendation without repeating its own vocabulary back at it. This
+    is FULL defaults zero findings by construction: it documents the
+    boundary this framework exists to fill, not a lint defect. Whether a
+    term "earns its place" (plain_language.md point 3) is a semantic
+    judgment call for an LLM critic, not something a regex scanner can
+    or should decide — see the module docstring's "This adds a
+    deterministic rhetoric lint" framing and plain_language.md's
+    "judgment-side guidance" note.
+    """
+    result = lint_rhetoric(JARGON_FIXTURE.read_text(encoding="utf-8"))
+    assert result.findings == [], [f.to_dict() for f in result.findings]
+    assert result.words > 300  # a real memo body, not a stub
 
 
 def test_zero_phrase_regex_findings_on_repo_memo_corpus():

@@ -4,6 +4,29 @@
 
 ### Added
 
+- **Plain-language-first writing framework, lib foundation** (#1043, Phase 1
+  of 3 for epic #1042). New `anvil/lib/snippets/plain_language.md` codifies
+  the 7-point framework ("the purpose of writing is to help a reader learn
+  or decide, not to display expertise") — explain in ordinary language
+  before naming a technical term, introduce jargon only when it earns its
+  place, keep the plain explanation even after naming the term, allow more
+  words when they teach, and use a cold-reader restatement test in review
+  (worked example: `anvil/skills/memo/commands/memo-comprehension.md`).
+  States legal/patent/spec terminology exceptions explicitly (claim
+  language, normative keywords, venue-required vocabulary are exempt from
+  the "prefer plain words" rule, not from the framework as a whole).
+  `anvil/lib/snippets/rubric.md` gains a new §"Dim 9 — teaching-oriented
+  length is not padding" clarifying that rhetorical economy penalizes
+  padding and repetition, never patient explanation. New regression fixture
+  `tests/lib/fixtures/jargon_dense_unexplained.md` plus
+  `test_zero_findings_on_jargon_dense_unexplained_fixture` in
+  `tests/lib/test_rhetoric_lint.py` document the boundary this snippet
+  fills: the deterministic lint returns zero findings on polished,
+  jargon-dense prose that nonetheless fails the plain-language test — that
+  judgment is semantic, not something a regex scanner can make. Purely
+  additive lib-level work; no skill's draft/review commands are wired to
+  the new snippet yet (that rollout is #1044 and #1045).
+
 - **Per-PR changelog discipline, enforced in the Builder → Judge cycle**
   (#1037). The v0.11.0 cut found `[Unreleased]` covering ~28 items while
   the cycle had merged ~50 more `feat`/`fix`/`security` PRs with no entry
