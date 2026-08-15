@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-13 (Guide triage pass — the follow-up gap #1027 (filed against PR #1026's #997 sweep) landed via PR #1030 and is now closed, emptying the Triage Queue. No `loom:issue`, `loom:building`, `loom:blocked`, `loom:curated`-unclaimed, or `loom:epic` issues remain open. #888 and #918 are unchanged `loom:operator-only` items — the only two issues open repo-wide. One open PR, #1025, is unchanged: a Judge-flagged duplicate of already-merged PR #1019 awaiting a human/Champion close decision — not eligible for any Guide label action. `WORK_LOG.md` gained one new entry this pass (PR #1030). Merged-PR/closed-issue pairing checked clean, no orphans.)*
+*Last updated: 2026-08-15 (Guide triage pass — PR #1025 (the "Needs Human Disposition" duplicate) is now CLOSED, emptying that section; no other backlog state changed. #888 and #918 remain the only two open issues repo-wide, both unchanged `loom:operator-only` items. No `loom:issue`, `loom:building`, `loom:blocked`, `loom:curated`-unclaimed, `loom:review-requested`, `loom:pr`, or `loom:epic` issues/PRs are open — the queue is fully empty of Guide-actionable work. `WORK_LOG.md` gained 13 entries this pass (11 merged PRs, 2 manually-closed issues — #1046 and its epic sibling #1042 — spanning 2026-08-13 through 2026-08-15). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none.)*
 
 ---
 
@@ -29,7 +29,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Needs Human Disposition (open PR, blocked on a judgment call)
 
-- **PR #1025**: "feat(slides): recognize a Cues section for rehearse timing + saturation caveat" — duplicate of already-merged **PR #1019**, which closed the same issue (#1016) with equivalent content just ~14 minutes before #1025 opened. Judge flagged this as `loom:changes-requested` + `loom:merge-conflict` with real (non-mechanical) content conflicts in `CHANGELOG.md`, `slides/SKILL.md`, and `slides-rehearse.md`, and recommended closing #1025 as superseded rather than reconciling two independently-drafted versions of the same prose. Doctor's `loom:treating` claim stood down without reclaiming (already at the recommended terminal state). Awaiting a human or Champion decision to close.
+*Empty.* PR #1025 (the duplicate-of-#1019 slides fix) is now CLOSED — resolved without a Guide action.
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
@@ -61,7 +61,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Two open issues as of 2026-08-13: #888 (curated, operator-only, awaiting human design judgment) and #918 (operator-only infrastructure escalation).** #1027 (the deck/rubric.md follow-up gap) closed this pass via PR #1030. No `loom:issue` issues are open, so nothing was eligible for `loom:urgent` this cycle. One open PR (#1025) is a judgment-call duplicate awaiting human/Champion closure — see "Needs Human Disposition" above. Merged-PR/closed-issue pairing checked clean this pass, no orphans found. Next action: a human or Champion reviews #888's design tradeoffs and decides on closing #1025 as superseded; #918 awaits a human daemon-recovery run on the affected host.
+**Two open issues as of 2026-08-15: #888 (curated, operator-only, awaiting human design judgment) and #918 (operator-only infrastructure escalation) — unchanged since 2026-08-13.** No open PRs remain: #1025 (the judgment-call duplicate) is now CLOSED, so "Needs Human Disposition" is empty. No `loom:issue` issues are open, so nothing was eligible for `loom:urgent` this cycle. Merged-PR/closed-issue pairing checked clean this pass, no orphans found. Next action: a human or Champion reviews #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host.
 
 ### Recurring themes the next wave of issues will likely touch
 
