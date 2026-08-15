@@ -2,22 +2,22 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-15 (Guide triage pass — PR #1025 (the "Needs Human Disposition" duplicate) is now CLOSED, emptying that section; no other backlog state changed. #888 and #918 remain the only two open issues repo-wide, both unchanged `loom:operator-only` items. No `loom:issue`, `loom:building`, `loom:blocked`, `loom:curated`-unclaimed, `loom:review-requested`, `loom:pr`, or `loom:epic` issues/PRs are open — the queue is fully empty of Guide-actionable work. `WORK_LOG.md` gained 13 entries this pass (11 merged PRs, 2 manually-closed issues — #1046 and its epic sibling #1042 — spanning 2026-08-13 through 2026-08-15). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none.)*
+*Last updated: 2026-08-15 (Guide triage pass — four new Auditor guard-telemetry escalations landed since the last pass (#1069, #1070, #1072, #1073, all `loom:operator-only`/`loom:operator-decision`), and #1061 (curated, `loom:issue`) picked up `loom:blocked` pending a time-gated re-check due 2026-08-16 — see its own acceptance criteria. #1075 is now `loom:building`. #888 and #918 are unchanged. No issue is eligible for `loom:urgent` this pass (the only `loom:issue` issue, #1061, is currently blocked). No open PRs. `WORK_LOG.md` gained 4 entries this pass (3 merged PRs — #1074, #1068, #1067 — plus #1062, manually closed with the concrete fix filed upstream at rjwalters/loom#6277). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none.)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* No `loom:issue` issues are open this pass, so there is nothing eligible to promote — see Ready for Work below.
+*Empty.* #1061 is the only `loom:issue` issue open, and it is also `loom:blocked` — not eligible for promotion until its time-gated re-check (due 2026-08-16) clears. Nothing else to promote.
 
 ## Ready for Work (`loom:issue`, non-building)
 
-*Empty.* No open issues currently carry `loom:issue`.
+*Empty of actionable work.* #1061 carries `loom:issue` but is also `loom:blocked` (its acceptance criteria call for a re-check of guard telemetry on/after 2026-08-16, seven days after the #5754 create-side redirect landed) — see Blocked below.
 
 ## In Progress (`loom:building`)
 
-*Empty.* #1005 and #997 (both `loom:building` last pass) landed via PR #1023 and PR #1026 respectively and are now closed.
+- **#1075**: "Consolidate duplicated `_extract_frontmatter()` across 5 modules into one shared lib helper" (`tier:maintenance`). Claimed this pass; worktree active.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -33,19 +33,23 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-*Empty.* The only currently-`loom:curated` issue is `loom:operator-only` (#888, listed below).
+*Empty.* #1061 also carries `loom:curated` but is already promoted (`loom:issue`, currently `loom:blocked` — see Blocked below), so it is not "awaiting promotion." The only unpromoted `loom:curated` issue is `loom:operator-only` (#888, listed below).
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
 - **#888**: "review loop has no lookahead and no cross-version claim ledger — each round's fix creates the next round's defect" (`tier:goal-supporting`). Canary-surfaced structural critique of the review/revise loop across all artifact-class skills, not a single-skill bug — a `wave-one-bandgaps` essay thread took ~23 agent runs to converge, with three distinct failure modes documented (each round's fix creates the next round's defect; inherited text is never systematically re-checked; findings trickle instead of batching). Suggested acceptance criteria include a persistent cross-version claim ledger and findings that carry predicted downstream effects. Flagged `loom:operator-only` — this shapes the core review/revise primitive shared by all 14 artifact-class skills, so it needs human/Champion design judgment before promotion to `loom:issue`, not routine Guide triage.
 
-## Operator Escalations (`loom:operator-only`, infrastructure)
+## Operator Escalations (`loom:operator-only`, infrastructure / guard-tuning judgment)
 
 - **#918**: "loom-daemon is DOWN on ip-172-31-74-176 and watchdog recovery is exhausted" (`loom:operator-mechanical`). Automated watchdog escalation of last resort, filed 2026-08-08: the systemd unit is loaded but not running, and the bounded auto-recovery circuit breaker tripped after 5 attempts. Requires a human to run `.loom/scripts/cli/loom-daemon-start.sh` on the affected host and inspect `loom-daemon status`; the watchdog resumes automatic recovery once a tick observes a healthy daemon. Host/credential access, not judgment work — not eligible for `loom:issue` or `loom:urgent`.
+- **#1069**: "Guard telemetry: rm-scope-unresolved-var denies self-contained mktemp scratch-dir cleanup" (`loom:auditor`/`loom:operator-decision`). Auditor-filed under the #3898 Guard-Decision Telemetry Review standing policy: 2 independent `deny`/`catastrophic`-tier hits where a `mktemp -d && ... && rm -rf "$tmpdir"` scratch-dir cleanup was denied. Needs a human ruling on whether the guard pattern should recognize a self-contained mktemp-scoped `rm -rf` as safe.
+- **#1070**: "Guard telemetry: stash-scope:main-checkout asks on self-contained stash/pull/pop sequence" (`loom:auditor`/`loom:operator-decision`). 1 `ask`-tier hit on a `git stash && git pull --ff-only && git stash pop` sequence run in the main checkout; an unanswered `ask` blocks headless runs the same as a deny. Needs a human ruling on narrowing this ask.
+- **#1072**: "Guard telemetry: worktree-write-confinement-unresolved-var denies cross-repo gh-config token write (keep flagged)" (`loom:auditor`/`loom:operator-decision`). 1 `catastrophic`-tier deny on a cross-repo `gh-config/hosts.yml` token write; the issue's own title recommends keeping this one flagged rather than loosening the guard — a human ruling documents/confirms that stance.
+- **#1073**: "Guard telemetry: catastrophic:rm pattern fires on heredoc prose mentioning 'rm -rf /' as an example text, not an executed command" (`loom:auditor`/`loom:operator-decision`). A denied heredoc write (a Curator-style draft comment for #1060) was flagged only because its markdown prose *mentions* `rm -rf /` as an example, not because anything executed it. Needs a human ruling on whether the catastrophic-`rm` regex should exempt heredoc/quoted prose content.
 
 ## Blocked (`loom:blocked`)
 
-*Empty.*
+- **#1061**: "Guard telemetry: stash-scope:worktree-collision blocks self-contained stash/pop pairs inside a worktree" (`loom:issue`, `loom:curated`, `tier:maintenance`). Champion reviewed the issue's original narrowing proposal and found it technically unsound (the shared `refs/stash` stack across worktrees means a same-worktree, same-chain `stash && check && stash pop` is not actually race-free). Revised outcome: do not narrow the guard; re-check `stash-scope` telemetry on/after 2026-08-16 (7+ days after the #5754 create-side redirect landed) and only file an upstream `rjwalters/loom` issue if hits persist. No action for Guide until that date.
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
@@ -61,7 +65,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Two open issues as of 2026-08-15: #888 (curated, operator-only, awaiting human design judgment) and #918 (operator-only infrastructure escalation) — unchanged since 2026-08-13.** No open PRs remain: #1025 (the judgment-call duplicate) is now CLOSED, so "Needs Human Disposition" is empty. No `loom:issue` issues are open, so nothing was eligible for `loom:urgent` this cycle. Merged-PR/closed-issue pairing checked clean this pass, no orphans found. Next action: a human or Champion reviews #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host.
+**Eight open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), four new Auditor guard-telemetry escalations (#1069, #1070, #1072, #1073, all `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above), and #1075 (`loom:building`, worktree active).** No open PRs. Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --verbose` also reports none). Next action: a human reviews the four new operator-decision guard-tuning escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check.
 
 ### Recurring themes the next wave of issues will likely touch
 
