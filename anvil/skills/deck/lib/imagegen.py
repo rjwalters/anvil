@@ -1143,10 +1143,6 @@ def _write_progress_phase(
 _PNG_SIGNATURE: bytes = b"\x89PNG\r\n\x1a\n"
 
 
-def _is_png(data: bytes) -> bool:
-    return data[: len(_PNG_SIGNATURE)] == _PNG_SIGNATURE
-
-
 def _sniff_image_format(data: bytes) -> str | None:
     """Return ``'png'`` / ``'jpeg'`` / ``'webp'`` for known headers, else None.
 
