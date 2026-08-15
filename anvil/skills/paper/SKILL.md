@@ -241,6 +241,7 @@ The auditor (`paper-audit`) may re-run scripts in `figures/src/` to verify rende
 - **Entry-point template**: `templates/main.tex.j2` — Jinja2-style placeholder document with frontmatter hooks (`{{title}}`, `{{author}}`, `{{abstract}}`) and section skeletons (`\section{Introduction}`, etc.). The drafter substitutes from the brief and elaborates.
 - **Starter bibliography**: `templates/refs.bib.j2` — empty `.bib` with a comment header explaining that entries come from either author-supplied `<thread>/refs.bib` or the litsearch sibling's `candidates.bib`.
 - **Smoke test brief**: `assets/example-brief.md` — a one-page paper brief the drafter can turn into a compilable 2–4 page paper with one figure and a handful of citations. Used by the acceptance test.
+- **Worked fixtures**: `examples/` — two hand-authored projects (`underclaiming-buried-lede/`, `bold-synthesis-labeled/`) reporting the *same synthetic study with the same evidence and the same bibliography, framed two ways*, plus their recorded `paper-review` siblings (33/44 `advance: false` with a named `underclaiming_buried_lede` finding; 43/44 `advance: true` with no overclaiming deduction). They are the regression fixtures for the dim 3 / dim 9 symmetry in `rubric.md` (issue #1046/#1047/#1048) and double as a reviewer-calibration reference — read the two verdicts' cold-reader and ambition-versus-inflation tables side by side. Everything in them is synthetic; see `examples/README.md`.
 
 ## Project BRIEF artifact type
 

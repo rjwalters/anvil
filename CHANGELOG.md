@@ -4,6 +4,30 @@
 
 ### Added
 
+- **`anvil:paper` ships regression fixtures for the underclaiming vs.
+  bold-synthesis scoring split** (#1048, Phase 2 of the #1046 decomposition).
+  A new `anvil/skills/paper/examples/` directory (paper's first) carries two
+  hand-authored projects that report **the same synthetic study, with the
+  same evidence and the same bibliography, framed two ways**:
+  `underclaiming-buried-lede/` is rigorous, fully sourced, and heavily
+  qualified with its organizing idea demoted to the last paragraph of the
+  Discussion — recorded review **33/44, `advance: false`**, with a named
+  `underclaiming_buried_lede` finding at `blocker` severity *and full weight
+  on rigor, evidence sufficiency, reproducibility, and citation hygiene*;
+  `bold-synthesis-labeled/` stakes the synthesis claim in the title and first
+  sentence with each contribution labeled demonstrated / derived / synthesis /
+  conjecture — recorded review **43/44, `advance: true`**, with **no**
+  overclaiming deduction. The two bodies share a byte-identical
+  Method-through-Experiments span, a byte-identical `refs.bib`, and a
+  byte-identical `## Strongest claim` brief section, so all ten points of
+  separation sit in the framing dims (3, 4, 7, 9) that #1047 made symmetric.
+  `tests/test_paper_underclaiming_fixtures.py` pins the recorded verdicts, the
+  scorecard arithmetic, the evidence-dim parity, and the quoted-evidence
+  verbatimness (via `anvil/lib/evidence_check.py`), so a future rubric edit
+  that makes caution cheap or ambition costly fails a test instead of passing
+  silently. Every organization, trace, measurement, and bibliography entry in
+  the fixtures is synthetic — do not cite them.
+
 - **`anvil:paper` names underclaiming/buried-contribution as an explicit
   failure mode** (#1047, Phase 1 of the #1046 decomposition — guidance-layer
   only). `rubric.md` dims 3 (Clarity of contribution) and 9 (Rhetorical
