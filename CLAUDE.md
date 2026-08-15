@@ -160,6 +160,22 @@ The check is a deterministic pre-flight in the sense of "Pattern overview" above
 
 **The release-time coverage check is the backstop, not the mechanism.** `/repo:release` Phase 5 still cross-references merged PRs since the last tag against the drafted entry (`.claude/commands/repo/release.md` § "Merged-work coverage check (advisory)"), and it stays — but it is a *last* line of defense that costs a human release-time reconstruction every time it fires. If it reports a non-trivial gap at the next cut, the fix belongs upstream in this per-PR discipline, not in a better reconstruction script.
 
+### Guard-decision cross-reference queries (`gh-since.sh`)
+
+**The problem this closes** (#1060): the Auditor's "Guard-Decision Telemetry Review" standing policy (`.loom/roles/auditor.md` § "Guard-Decision Telemetry Review (Standing Policy, #3898)") and ad-hoc WORK_LOG/changelog cross-referencing both periodically need "which PRs merged / issues closed since watermark N?" The natural way to ask that — `GH_READ=".loom/scripts/gh-cached"` assigned on one line, then a `"$GH_READ" pr list ... --jq "[.[] | select(.number > N) | ...]"` call, often inside a loop — is exactly the multi-line, `>`-containing shape `.loom/hooks/guard-destructive-generic.sh`'s `fastpath_structural_ok()` always routes to the slow path, and the slow path's write-target masking denied it outright at the catastrophic `worktree-write-confinement` tier despite being 100% read-only (10 independent incidents logged 2026-08-06..2026-08-13).
+
+**This lives here, in `CLAUDE.md`, for the same reason the Changelog discipline section above does.** The natural homes for this guidance — `.loom/roles/auditor.md` (the standing-policy doc) and `.loom/docs/guard-hooks.md` (the fast-path mechanism's own reference doc) — are both *vendored copies*, refreshed wholesale by `.loom/scripts/resync-installed.sh`; a direct edit to either survives only until the next resync. `.loom/hooks/guard-destructive-generic.sh` itself is vendored too and was **not** edited — the underlying slow-path masking bug is real but belongs upstream (`rjwalters/repo`/`rjwalters/loom`), not as a local patch to a synced file.
+
+**The fix**: `.loom/scripts/gh-since.sh <last-pr> <last-issue>` (anvil-owned, not vendored) consolidates the query — every numeric comparison and jq filter lives inside the script file, never on the Bash-tool command line — so its own invocation has no guard-sensitive shell metacharacter at all. `.loom/config.json` registers its path under `guards.readOnlyFastPathExtra` (the guard's own documented escape hatch, `.loom/docs/guard-hooks.md` § "Read-Only Fast-Path Guard Toggle"), so it is admitted at the fast path instead of ever reaching the buggy slow-path masking logic.
+
+**Use it instead of the ad-hoc pattern**: whenever a session (Auditor tick, WORK_LOG/changelog cross-reference, or otherwise) needs "new merged PRs / new closed issues since #N", run
+
+```bash
+.loom/scripts/gh-since.sh <last-pr> <last-issue> [--exclude-guide-docs] [--json]
+```
+
+rather than composing a fresh multi-line `gh-cached` + `jq` + shell-loop script — that shape is the one that trips the guard. `--exclude-guide-docs` drops the Guide role's automated `docs/guide-update-*` doc-sync PRs, matching the exclusion variant seen in several of the logged incidents.
+
 ## Status of work<!-- BEGIN LOOM ORCHESTRATION -->
 This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration — see the Loom repository for the full guide (roles, labels, worktrees, configuration). When installed, Loom also writes a locally-substituted copy of that guide to `.loom/CLAUDE.md`.
 <!-- END LOOM ORCHESTRATION -->

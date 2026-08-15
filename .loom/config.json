@@ -1,4 +1,7 @@
 {
+  "guards": {
+    "readOnlyFastPathExtra": [".loom/scripts/gh-since.sh"]
+  },
   "autonomous": {
     "roleRunner": {
       "enabled": true,
