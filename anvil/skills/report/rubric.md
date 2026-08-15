@@ -69,6 +69,25 @@ For a customer-facing report, the ≥39 threshold means the report has at most ~
 
 **Backwards-compat**: when the BRIEF declares no `voice:` block (or an empty one), the calibration does NOT fire — no suffix, no corpus-quote requirement, no `_summary.md.voice_grounding` block. Dim 8 scores against its standard recipient-calibration **byte-identically** to pre-#578 behavior (the #428/#452 contract). The audit trail of an active calibration is the `scoring.md` suffix plus the `_summary.md.voice_grounding` block (`commands/report-review.md`).
 
+## Dim 9 — plain-language framing (issue #1042/#1044)
+
+Dim 9's "could the same findings + recommendations land in fewer pages?"
+test does not penalize a passage for teaching a non-specialist recipient.
+Per `anvil/lib/snippets/plain_language.md` (the plain-language-first
+framework — issue #1042/#1043) and `anvil/lib/snippets/rubric.md`
+§"Dim 9 — teaching-oriented length is not padding", a finding stated in
+ordinary language before its technical name is introduced, or a plain
+restatement kept alongside a newly-introduced term, is doing the
+report's job — a reviewer scoring dim 9 should not cite it as bloat.
+The test remains: **would deleting this passage remove information the
+recipient needs, or only remove words?** This composes with, and does
+not replace, dim 8's recipient-jargon calibration (§"Dim 8 —
+voice-grounding calibration" above) — dim 8 tunes *how much* specialist
+vocabulary a given recipient can absorb; dim 9 governs whether a passage
+that explains a term is padding or teaching. See
+`commands/report-review.md` step 5's D9 bullet for the reviewer-side
+application.
+
 **Pending-measurement markers do not incur a dimension penalty (issue #841).** A well-formed `[PENDING <source>]` placeholder (see `anvil/lib/snippets/pending_marker.md`) is an honest disclosure that a specific number is not yet available (a client-supplied figure not yet returned, an analysis still running) — it is NOT a defect and MUST NOT be scored down on any dimension. Score the surrounding argument's soundness *assuming* the pending value resolves as described. The gap is tracked separately as an **outstanding dependency** (see "Outstanding dependencies (not critical flags)" below), which holds only the `AUDITED`/`CUSTOMER-READY` terminal transitions.
 
 ## Advance threshold

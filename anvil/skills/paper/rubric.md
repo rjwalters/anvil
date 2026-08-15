@@ -19,6 +19,20 @@ The rubric is tuned so that **rigor + evidence + citation hygiene (6 + 6 + 5 = 1
 | 9 | **Rhetorical economy** | 4 | Does every paragraph carry weight the argument needs? Could the same argument land in fewer words? Are the most important claims surfaced early? Is hedging proportional to genuine uncertainty, not used as a cushion? Could a busy reviewer extract the contribution in 90 seconds? The **self-flattering virtue-signaling adjective** class and the **structural-importance announcement** class (see dim 7's default AI-tell check — *honest/candid/frank/uncomfortable X* that labels a move instead of making it, and *load-bearing* / *load bearing* that asserts a passage matters instead of demonstrating it) are also rhetorical-economy failures: the label is words the argument does not need. Preserve the same semantic-work exception (a contrastive adjective that does real work is load-bearing, not a tell). |
 | | **Total** | **44** | Advance threshold: ≥35 |
 
+## Dim 9 — plain-language framing (issue #1042/#1044)
+
+Dim 9's "could the same argument land in fewer words?" test does not
+penalize a passage for teaching. Per `anvil/lib/snippets/plain_language.md`
+(the plain-language-first framework — issue #1042/#1043) and
+`anvil/lib/snippets/rubric.md` §"Dim 9 — teaching-oriented length is
+not padding", a passage that states an idea in ordinary language before
+introducing its formal name, or that keeps a plain restatement alongside
+a newly-introduced technical term, is doing the paper's job — a reviewer
+scoring dim 9 should not cite it as bloat. The test remains: **would
+deleting this passage remove information the reader needs, or only
+remove words?** See `commands/paper-review.md` step 5's D9 bullet for
+the reviewer-side application.
+
 ## Perspective substrate (dim 4)
 
 Per `anvil/lib/snippets/rubric.md` §"Rubric–perspective interaction",
