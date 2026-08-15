@@ -1,6 +1,6 @@
 ---
 name: deck-imagegen
-description: Generative-imagery command for the deck skill. Opt-in via `imagery_policy: generative-eligible` in BRIEF.md. Dispatches to a consumer-registered backend adapter, writes rendered PNGs into `<thread>.{N}/assets/`, and records every prompt + parameters into a prompt journal at `assets/_prompts.json`.
+description: "Generative-imagery command for the deck skill. Opt-in via `imagery_policy: generative-eligible` in BRIEF.md. Dispatches to a consumer-registered backend adapter, writes rendered PNGs into `<thread>.{N}/assets/`, and records every prompt + parameters into a prompt journal at `assets/_prompts.json`."
 ---
 
 # deck-imagegen — Generative-imagery command (opt-in)
