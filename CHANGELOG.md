@@ -114,6 +114,26 @@
   body + changed-files list. `/repo:release`'s merged-work coverage
   check is explicitly retained as the backstop, not the mechanism.
 
+### Changed
+
+- **`anvil:report`'s `report-promote` step 6 now invokes `ack.py`'s CLI
+  shim instead of re-deriving the ack-file validation algorithm in
+  prose** (#1098). `anvil/skills/report/lib/ack.py` (the nine
+  `AckError.mode`-value executable specification of the structured
+  `--ack-file` acknowledgment contract) shipped fully tested but was
+  never wired into `report-promote.md` — the command doc hand-described
+  the identical YAML/hash checks for an agent to re-implement inline on
+  every promotion, leaving two independent copies of a security-relevant
+  release-gate contract free to drift. `ack.py` gains a
+  `python -m anvil.skills.report.lib.ack` CLI entrypoint (the same
+  `uv run --project .anvil` shim precedent `anvil.lib.sidecar` already
+  uses in this same doc); step 6 now shells out to it as the primary
+  path, with the nine failure modes preserved verbatim as a documented
+  last-resort manual fallback for a session with no `python`/`uv`. No
+  change to the acknowledgment contract itself (schema, validation
+  rules, and operator-facing messages are unchanged) — only to which
+  code path enforces it.
+
 ### Fixed
 
 - **`anvil:memoir` test suite: `test_revise_never_fabricates_mapping`
