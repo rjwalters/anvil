@@ -6,7 +6,6 @@ Covers the framework-level pieces of the theme system:
   ``extra="allow"`` for per-skill nested blocks).
 - :func:`load_theme` — absence-tolerant theme.yml reader.
 - :func:`find_consumer_root` — walks up to find ``<root>/.anvil/``.
-- :func:`resolve_theme_for_path` — convenience combiner.
 
 The per-skill *asset resolver* (memo only in Phase A) is tested
 separately under ``anvil/skills/memo/tests/test_theme_resolution.py``.
@@ -30,7 +29,6 @@ from anvil.lib.theme import (
     Theme,
     find_consumer_root,
     load_theme,
-    resolve_theme_for_path,
 )
 
 
@@ -306,39 +304,3 @@ def test_load_theme_tolerates_wrong_type_for_typed_field(tmp_path):
     assert theme.accent_color is None
     # studio was correct → present.
     assert theme.studio == "Real Studio"
-
-
-# ---------------------------------------------------------------------------
-# resolve_theme_for_path (convenience combiner)
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_theme_for_path_happy_path(tmp_path):
-    """Convenience combiner walks up + loads theme in one call."""
-    consumer = _seed_consumer(tmp_path)
-    _write_theme_yml(
-        consumer,
-        "2am-logic",
-        "accent_color: '#E94560'\nstudio: '2AM Logic'\n",
-    )
-    nested = consumer / "projects" / "demo" / "thread.1"
-    nested.mkdir(parents=True)
-    theme = resolve_theme_for_path(nested, "2am-logic")
-    assert theme is not None
-    assert theme.studio == "2AM Logic"
-
-
-def test_resolve_theme_for_path_returns_none_when_no_consumer_root(tmp_path):
-    """No ``.anvil/`` upstream → ``None`` (theme can't apply)."""
-    # No _seed_consumer — no .anvil/ marker.
-    nested = tmp_path / "nested"
-    nested.mkdir()
-    assert resolve_theme_for_path(nested, "acme-semi") is None
-
-
-def test_resolve_theme_for_path_returns_none_when_theme_missing(tmp_path):
-    """Consumer found but theme name unknown → ``None``."""
-    consumer = _seed_consumer(tmp_path)
-    nested = consumer / "nested"
-    nested.mkdir()
-    assert resolve_theme_for_path(nested, "no-such-theme") is None
