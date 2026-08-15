@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-15 (Guide triage pass — two new issues are now `loom:building`: #1084 (bug: `deck-imagegen.md` frontmatter is not valid YAML) and #1086 (consolidate 7 duplicate `write_review_dir()` critic-sidecar writers into `anvil/lib/sidecar.py`). #888, #918, #1061, #1069, #1070, #1072, #1073, #1081 are otherwise unchanged — #1061 remains the only `loom:issue` issue and remains `loom:blocked` pending its 2026-08-16 re-check, so nothing was eligible for `loom:urgent` this pass. No open PRs. `WORK_LOG.md` has one pending entry (PR #1085, closes #1083) batched below the 5-entry write threshold — not written this pass. Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none (one claim, #1086, watched but not yet stale-eligible).)*
+*Last updated: 2026-08-15 (Guide triage pass — #1084 and #1086 (both `loom:building` last pass) merged via PR #1088 and PR #1091 respectively and closed; five more maintenance PRs landed since (#1074, #1077, #1079, #1085, #1093, #1097), leaving nothing `loom:building`. A new Hermit proposal, #1098 ("Wire or remove orphaned ack.py: report-promote's executable spec is never invoked"), was filed this pass. #888, #918, #1061, #1069, #1070, #1072, #1073, #1081 are otherwise unchanged — #1061 remains the only `loom:issue` issue and remains `loom:blocked` pending its 2026-08-16 re-check, so nothing was eligible for `loom:urgent` this pass (urgent set is empty; no eligible candidate to fill it). No open PRs. `WORK_LOG.md` updated with PR #1097 this pass (debounce window elapsed, single pending entry written). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --recover` also reports none.)*
 
 ---
 
@@ -17,8 +17,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-- **#1084**: "bug: deck-imagegen.md frontmatter is not valid YAML (unquoted description contains a colon)" (`tier:maintenance`, `loom:curated`). Claimed this pass; worktree active.
-- **#1086**: "Consolidate 7 duplicate write_review_dir() critic-sidecar writers into anvil/lib/sidecar.py" (`tier:maintenance`). Claimed this pass; worktree active.
+*Empty.* #1084 and #1086 (both claimed as of the previous pass) merged via PR #1088 and PR #1091 respectively and are now closed. Nothing currently claimed.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -59,7 +58,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
-*None outstanding.*
+- **#1098**: "Wire or remove orphaned ack.py: report-promote's executable spec is never invoked" (`loom:hermit`, `tier:maintenance`). `anvil/skills/report/lib/ack.py` (258 lines) is a complete, tested implementation of `report-promote.md` step 6's eight ack-file failure modes, but nothing outside its own test file ever calls it — the command's step 6 instead re-describes the identical algorithm in prose for an agent to hand-implement inline each run, so the tested code path sits inert while the prose path is what's actually load-bearing on this customer-facing release gate. Lays out both remediation options (wire in vs. delete) without prescribing one; awaiting human/Champion evaluation before promotion to `loom:issue`.
 
 ## Epics (`loom:epic`)
 
@@ -67,7 +66,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Ten open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), five Auditor guard-telemetry escalations (#1069, #1070, #1072, #1073, #1081, all `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above), and two issues newly claimed this pass (#1084, #1086, both `loom:building`).** No open PRs. Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --verbose` also reports none — #1086's claim is watched but not yet stale-eligible). Next action: a human reviews the five operator-decision guard-tuning escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check.
+**Nine open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), five Auditor guard-telemetry escalations (#1069, #1070, #1072, #1073, #1081, all `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above), and one fresh Hermit proposal (#1098, not yet `loom:issue`).** No open PRs, nothing `loom:building`. Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked, and it is the only `loom:issue` candidate in the backlog, so the urgent set stays empty rather than being filled with an ineligible/blocked holder. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --recover` also reports none). Next action: a human reviews the five operator-decision guard-tuning escalations, #888's design tradeoffs, and #1098's wire-in-vs-delete judgment call; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check due 2026-08-16.
 
 ### Recurring themes the next wave of issues will likely touch
 
