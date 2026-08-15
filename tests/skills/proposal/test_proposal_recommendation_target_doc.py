@@ -20,7 +20,12 @@ early:
    `_summary.md.recommendation_target_resolved` block in step 9b that
    records the audit trail.
 3. The helper `load_recommendation_target` is exported from
-   `anvil/skills/proposal/lib/project_brief.py`.
+   `anvil/lib/project_brief.py` — the canonical module since issue
+   #1092 consolidated the proposal-local copy (byte-identical body) into
+   the shared lib, mirroring memo's existing shim convention. The
+   proposal-local `anvil/skills/proposal/lib/project_brief.py` now
+   imports (not redefines) the helper, while keeping `load_cost_basis`
+   (issue #840, genuinely proposal-only) skill-local.
 4. The shipped `anvil/skills/proposal/templates/BRIEF.md.example`
    demonstrates `recommendation_target: undecided` as the documented
    default.
@@ -41,7 +46,16 @@ SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "proposa
 RUBRIC = SKILL_ROOT / "rubric.md"
 REVIEW_COMMAND = SKILL_ROOT / "commands" / "proposal-review.md"
 DRAFT_COMMAND = SKILL_ROOT / "commands" / "proposal-draft.md"
-PROJECT_BRIEF = SKILL_ROOT / "lib" / "project_brief.py"
+# Canonical module location post-#1092 (promoted from the proposal skill's
+# lib/ to anvil/lib/, mirroring memo's existing shim; #382/#382-era
+# doc-coverage precedent: tests/skills/memo/test_memo_recommendation_target_doc.py).
+PROJECT_BRIEF = (
+    Path(__file__).resolve().parents[3] / "anvil" / "lib" / "project_brief.py"
+)
+# The proposal-local shim/re-export file — still holds `load_cost_basis`
+# (skill-local) and imports `load_recommendation_target` from PROJECT_BRIEF
+# above rather than redefining it.
+PROPOSAL_PROJECT_BRIEF = SKILL_ROOT / "lib" / "project_brief.py"
 BRIEF_TEMPLATE = SKILL_ROOT / "templates" / "BRIEF.md.example"
 
 
@@ -239,14 +253,23 @@ def test_proposal_draft_documents_recommendation_target_key() -> None:
 
 
 def test_project_brief_exports_load_recommendation_target() -> None:
-    """The helper MUST be exported from project_brief.py via __all__."""
+    """The helper MUST be exported from anvil/lib/project_brief.py via __all__.
+
+    Issue #1092 promoted `load_recommendation_target` from the proposal-local
+    `anvil/skills/proposal/lib/project_brief.py` into the shared
+    `anvil/lib/project_brief.py` (the same module memo's copy was already
+    promoted into via #382) — the reader function's body was verified
+    byte-identical, so this is a pure dedup, not a behavior change.
+    """
     body = _read(PROJECT_BRIEF)
     assert "def load_recommendation_target" in body, (
-        "project_brief.py MUST define `load_recommendation_target` (issue #356)"
+        "anvil/lib/project_brief.py MUST define `load_recommendation_target` "
+        "(issue #356, promoted to the shared lib in #1092)"
     )
     assert '"load_recommendation_target"' in body, (
-        "project_brief.py's `__all__` MUST include "
-        "`load_recommendation_target` (issue #356)"
+        "anvil/lib/project_brief.py's `__all__` MUST include "
+        "`load_recommendation_target` (issue #356, promoted to the shared "
+        "lib in #1092)"
     )
 
 
@@ -256,23 +279,46 @@ def test_project_brief_documents_closed_set() -> None:
     # All four values appear in the helper's recognized-set tuple.
     for value in ("invest", "pass", "conditional", "undecided"):
         assert value in body, (
-            f"project_brief.py MUST recognize {value!r} as one of the "
-            f"closed-set values for recommendation_target (issue #356)"
+            f"anvil/lib/project_brief.py MUST recognize {value!r} as one of "
+            f"the closed-set values for recommendation_target (issue #356, "
+            f"promoted to the shared lib in #1092)"
         )
 
 
 def test_project_brief_stays_skill_local() -> None:
-    """The helper MUST stay skill-local; promotion to anvil/lib/ is deferred."""
-    # Skill-local-first per CLAUDE.md "wait for the second consumer before
-    # generalizing"; proposal is the second consumer but the helper signature
-    # is skill-specific (different dim calibrated, different rubric prose) so
-    # promotion is premature. This test is a forward-looking guard: if a
-    # future change promotes the helper to anvil/lib/project_brief.py the
-    # test catches the move and forces the author to update the doc-
-    # coverage guards accordingly.
-    assert PROJECT_BRIEF.exists(), (
-        "the proposal-local project_brief.py MUST live at "
-        f"{PROJECT_BRIEF} (issue #356 — skill-local-first per CLAUDE.md)"
+    """`load_recommendation_target` now re-exports from anvil/lib/ (issue #1092).
+
+    This test's original name/docstring ("The helper MUST stay skill-local;
+    promotion to anvil/lib/ is deferred") explicitly anticipated this move —
+    "if a future change promotes the helper to anvil/lib/project_brief.py
+    the test catches the move and forces the author to update the doc-
+    coverage guards accordingly." Issue #1092 is that future change: the
+    reader function's body was verified byte-identical to memo's
+    already-promoted `anvil/lib/project_brief.py` version, so proposal now
+    imports it rather than redefining it (mirroring memo's own shim). This
+    test is kept under its original name (rather than renamed) so git blame
+    stays attached to the same test identity across the move; it now pins
+    the OPPOSITE contract — that the proposal-local module imports
+    (does not redefine) `load_recommendation_target`, while `load_cost_basis`
+    (issue #840, genuinely proposal-only) stays skill-local and untouched.
+    """
+    body = _read(PROPOSAL_PROJECT_BRIEF)
+    assert (
+        "from anvil.lib.project_brief import load_recommendation_target" in body
+    ), (
+        "the proposal-local project_brief.py MUST import "
+        "`load_recommendation_target` from `anvil.lib.project_brief` rather "
+        "than redefining it (issue #1092 consolidation)"
+    )
+    assert "def load_recommendation_target" not in body, (
+        "the proposal-local project_brief.py MUST NOT redefine "
+        "`load_recommendation_target` now that it is promoted to "
+        "anvil/lib/project_brief.py (issue #1092)"
+    )
+    assert "def load_cost_basis" in body, (
+        "the proposal-local project_brief.py MUST keep `load_cost_basis` "
+        "skill-local — it is genuinely proposal-only and out of scope for "
+        "the #1092 consolidation (issue #840)"
     )
 
 
