@@ -128,6 +128,17 @@
   for phrase assertions against hard-wrapped command docs. No change to
   `memoir-revise.md` itself.
 
+- **`anvil/skills/deck/commands/deck-imagegen.md` frontmatter now parses
+  as valid YAML** (#1084). The unquoted `description:` value contained a
+  second `: ` sequence (`` `imagery_policy: generative-eligible` ``),
+  which `yaml.safe_load` misparsed as a nested mapping and raised
+  `ScannerError` — the same class of bug fixed incidentally in
+  `ip-uspto-provisional-vision.md` by PR #1085. New
+  `tests/lib/test_skill_doc_frontmatter_parses.py` sweeps every
+  `anvil/skills/*/commands/*.md` and `anvil/skills/*/SKILL.md` frontmatter
+  block through `yaml.safe_load`, asserting each parses to a `dict`, so
+  this class of bug can't ship silently again.
+
 ## [0.11.0] — 2026-08-13
 
 ### Added
