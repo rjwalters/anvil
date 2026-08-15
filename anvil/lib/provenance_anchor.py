@@ -72,21 +72,20 @@ CLI entry-point
     Mechanically rewrites the ``Line range`` cell of every
     :data:`STATUS_DRIFTED` row to the anchor's resolved current location.
     Leaves every other cell, and every non-drifted row, byte-identical.
-    Prints a summary of what was repointed as JSON. Atomic via
-    tmp-then-``os.replace`` (the same primitive as
-    ``anvil/lib/cite.py::_cache_write`` /
-    ``anvil/lib/evidence_drift.py::_atomic_write_json``).
+    Prints a summary of what was repointed as JSON. Atomic via the
+    shared :func:`anvil.lib.atomic_write.atomic_write_text` helper.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from anvil.lib.atomic_write import atomic_write_text
 
 # ---------------------------------------------------------------------------
 # Status vocabulary
@@ -780,7 +779,7 @@ def repoint_drifted_anchors(
         )
 
     if repointed:
-        _atomic_write_text(
+        atomic_write_text(
             Path(provenance_path), "\n".join(new_lines) + "\n"
         )
 
@@ -805,12 +804,6 @@ def repoint_drifted_anchors(
         "skipped_tables": skipped_tables_json,
         "detail": detail,
     }
-
-
-def _atomic_write_text(path: Path, content: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    os.replace(tmp, path)
 
 
 # ---------------------------------------------------------------------------

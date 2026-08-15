@@ -86,12 +86,12 @@ Design notes
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from anvil.lib.atomic_write import atomic_write_json
 from anvil.skills.proposal.lib.synthesis_schema import (
     SCHEMA_VERSION,
     ContributingFinding,
@@ -777,12 +777,7 @@ class Synthesizer:
             target.mkdir(parents=True, exist_ok=True)
             out = target / "gaps.json"
 
-        tmp = out.with_suffix(out.suffix + ".tmp")
-        tmp.write_text(
-            json.dumps(gaps.model_dump(mode="json"), indent=2) + "\n",
-            encoding="utf-8",
-        )
-        tmp.replace(out)
+        atomic_write_json(out, gaps.model_dump(mode="json"))
         return out
 
 
