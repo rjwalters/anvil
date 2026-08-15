@@ -16,7 +16,7 @@ The rubric is tuned so that **pedagogy dominates**: dim 1 (*Pedagogical scaffold
 | 6 | **Audience calibration** | 4 | Pitched at the stated non-specialist reader; jargon is introduced, not assumed; standard primitives with external literature may be cited out rather than re-taught. Assumed jargon, or a passage pitched above/below the stated reader, deducts. |
 | 7 | **Structure & navigation** | 4 | Long-form wayfinding: sections, progressive disclosure, "putting it together" synthesis. A reader who can't locate where they are, or who reaches the end without a synthesis pass, is the failure mode. |
 | 8 | **Prose clarity** | 4 | Sentence/paragraph craft for comprehension: the reader is never re-reading a sentence to parse it. |
-| 9 | **Rhetorical economy** | 4 | Earns its length; no padding. **Residual here** (unlike `essay`, where it is load-bearing) — length is expected of a long-form explainer, so this is guarded but not dominant. Wandering repetition, throat-clearing, and non-load-bearing digressions deduct. |
+| 9 | **Rhetorical economy** | 4 | Earns its length; no padding. **Residual here** (unlike `essay`, where it is load-bearing) — length is expected of a long-form explainer, so this is guarded but not dominant. Wandering repetition, throat-clearing, and non-load-bearing digressions deduct. See `anvil/lib/snippets/plain_language.md` (issue #1042) — its point 6 ("allow more words when those words teach") is exactly why this dimension is residual rather than load-bearing for a pedagogical artifact class; the primer's dim 2 *Intuition before formalism* is where the plain-language-first framework does its main work here. |
 | | **Total** | **44** | Advance threshold: ≥35 |
 
 ## Scoring guidance

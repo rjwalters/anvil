@@ -114,6 +114,7 @@ Merge rule (shallow): read existing `_progress.json` if present, update only `ph
 
 - **Honor the outline.** If `<thread>.0.outline/outline.md` exists, treat its beat structure as the spine of the deck. Do not invent new beats; do not collapse existing ones without recording the decision.
 - **One idea per slide.** This is the highest-leverage discipline for Dimension 2 (Pedagogical clarity). When in doubt, split.
+- **Explain before you name.** Per `anvil/lib/snippets/plain_language.md` §"The 7-point framework" (issue #1042), a slide or its notes should state what a term *does* in ordinary language before leaning on the term itself — a bullet that only names a concept without a plain-language anchor is a Dimension 2 finding waiting to happen. This composes with, not against, the density discipline above (dim 9): explaining plainly and staying terse are the same discipline applied to different failure modes.
 - **Notes are not optional.** A slide without notes is a slide the talk has not earned. Write notes as you draft, not in a separate pass.
 - **Never invent data.** Figures and statistics come from the brief, refs, or outline. If a number is needed and not provided, request it in `figures/_specs.md` rather than guessing.
 
