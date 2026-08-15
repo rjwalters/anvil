@@ -78,21 +78,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, Optional
 
-import yaml
+from anvil.lib.frontmatter import extract_frontmatter as _extract_frontmatter
 
 
 # On-disk BRIEF filename. Kept verbatim from
 # ``anvil/skills/memo/lib/project_discovery.BRIEF_FILENAME`` so a future
 # lib promotion is a pure move. Mirrored here (not imported) because the
 # proposal skill MUST NOT take an import dependency on memo internals —
-# the two skills coexist as siblings.
+# the two skills coexist as siblings. (``_extract_frontmatter`` above is
+# a framework-lib primitive, not a memo-skill internal, so importing it
+# from ``anvil.lib.frontmatter`` per issue #1075 does not violate this.)
 BRIEF_FILENAME = "BRIEF.md"
-
-# Frontmatter delimiter — three hyphens on their own line, per the
-# standard YAML frontmatter convention (Jekyll / Hugo / pandoc / Marp).
-# Mirrors the literal used inside memo's ``_extract_frontmatter`` so the
-# two parsers accept exactly the same on-disk shape.
-_FRONTMATTER_DELIM = "---"
 
 # The closed set is the contract: typos like ``Undecided`` (capitalized),
 # ``tbd``, ``?``, ``maybe`` are NOT recognized and resolve to ``None``
@@ -117,46 +113,10 @@ __all__ = [
 ]
 
 
-def _extract_frontmatter(text: str) -> Optional[dict]:
-    """Extract the YAML frontmatter from ``text`` and return it as a dict.
-
-    Returns ``None`` when the text has no frontmatter or the frontmatter
-    is malformed (not a dict, unparseable YAML, no closing delimiter).
-    Mirrors memo's ``_extract_frontmatter`` byte-for-byte so the two
-    parsers stay in sync on the on-disk delimiter convention.
-    """
-    lines = text.splitlines()
-    # Strip a leading UTF-8 BOM if present on the first line.
-    if lines and lines[0].startswith("﻿"):
-        lines[0] = lines[0][1:]
-
-    # Find first non-empty line; must be the delimiter.
-    first_idx = 0
-    while first_idx < len(lines) and lines[first_idx].strip() == "":
-        first_idx += 1
-    if first_idx >= len(lines):
-        return None
-    if lines[first_idx].strip() != _FRONTMATTER_DELIM:
-        return None
-
-    # Find the closing delimiter starting from the line after the opener.
-    body_start = first_idx + 1
-    close_idx = None
-    for i in range(body_start, len(lines)):
-        if lines[i].strip() == _FRONTMATTER_DELIM:
-            close_idx = i
-            break
-    if close_idx is None:
-        return None
-
-    yaml_text = "\n".join(lines[body_start:close_idx])
-    try:
-        parsed = yaml.safe_load(yaml_text)
-    except yaml.YAMLError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    return parsed
+# ``_extract_frontmatter`` used to be defined here (a local copy mirroring
+# memo's); it is now the shared ``anvil/lib/frontmatter.py::extract_frontmatter``
+# primitive (issue #1075), imported above and aliased to the historical
+# private name so every call site in this module is unchanged.
 
 
 def load_recommendation_target(
