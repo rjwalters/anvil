@@ -84,8 +84,8 @@ def _make_tiny_png(seed: int = 0) -> bytes:
     """Construct a valid 1x1 PNG with a single pixel.
 
     Used by the mock adapter to return PNG bytes that pass the
-    ``_is_png`` signature check without depending on Pillow. The pixel
-    color encodes ``seed`` so the bytes differ across calls (useful for
+    ``_sniff_image_format`` signature check without depending on Pillow. The
+    pixel color encodes ``seed`` so the bytes differ across calls (useful for
     asserting that a re-dispatched slot writes new bytes vs. idempotent
     skip leaving the prior bytes in place).
     """
