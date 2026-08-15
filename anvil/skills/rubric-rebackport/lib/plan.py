@@ -46,7 +46,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .detect import (
-    REQUIRED_STAMP_FIELDS,
     ProjectInventory,
     ReviewSnapshot,
 )

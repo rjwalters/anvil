@@ -140,7 +140,6 @@ if str(_HERE) not in sys.path:
 from memo_image_refs import (  # noqa: E402
     LintResult,
     _URL_SCHEMES,
-    lint_memo_image_refs,
     lint_source,
 )
 

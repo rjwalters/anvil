@@ -46,7 +46,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 # Import the prompt-journal primitive from the sibling module. The
 # fallback path mirrors the test-import convention in

@@ -35,10 +35,8 @@ from typing import Dict, List, Optional, Tuple
 from .detect import Shape
 from .plan import (
     BriefMergeOp,
-    ContentRewrite,
     DocumentPlan,
     Plan,
-    Rename,
 )
 
 

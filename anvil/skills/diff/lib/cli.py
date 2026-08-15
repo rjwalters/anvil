@@ -28,7 +28,6 @@ only when that flag is passed. The default behavior (serve, or
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
