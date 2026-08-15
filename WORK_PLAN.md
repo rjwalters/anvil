@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-15 (Guide triage pass — #1075 (`loom:building`, "consolidate `_extract_frontmatter()`") merged via PR #1077 and closed; a fifth Auditor guard-telemetry escalation, #1081 (`stash-scope:create-redirect` denies a self-contained stash/lint-check/pop sequence — the sibling deny-branch to #1061's ask-branch), landed since the last pass. #888, #918, #1061, #1069, #1070, #1072, #1073 are otherwise unchanged. No issue is eligible for `loom:urgent` this pass (the only `loom:issue` issue, #1061, remains `loom:blocked`). No open PRs, nothing `loom:building`. `WORK_LOG.md` is current — all merged PRs since the last pass (#1079, #1077, #1074, #1068, #1067, #1064, #1059) are already recorded, no new entries needed. Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none.)*
+*Last updated: 2026-08-15 (Guide triage pass — two new issues are now `loom:building`: #1084 (bug: `deck-imagegen.md` frontmatter is not valid YAML) and #1086 (consolidate 7 duplicate `write_review_dir()` critic-sidecar writers into `anvil/lib/sidecar.py`). #888, #918, #1061, #1069, #1070, #1072, #1073, #1081 are otherwise unchanged — #1061 remains the only `loom:issue` issue and remains `loom:blocked` pending its 2026-08-16 re-check, so nothing was eligible for `loom:urgent` this pass. No open PRs. `WORK_LOG.md` has one pending entry (PR #1085, closes #1083) batched below the 5-entry write threshold — not written this pass. Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --verbose` also reports none (one claim, #1086, watched but not yet stale-eligible).)*
 
 ---
 
@@ -17,7 +17,8 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.* #1075 (the `_extract_frontmatter()` consolidation) merged via PR #1077 and closed. Nothing currently claimed.
+- **#1084**: "bug: deck-imagegen.md frontmatter is not valid YAML (unquoted description contains a colon)" (`tier:maintenance`, `loom:curated`). Claimed this pass; worktree active.
+- **#1086**: "Consolidate 7 duplicate write_review_dir() critic-sidecar writers into anvil/lib/sidecar.py" (`tier:maintenance`). Claimed this pass; worktree active.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -66,7 +67,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Eight open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), and five Auditor guard-telemetry escalations (#1069, #1070, #1072, #1073, #1081, all `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above).** No open PRs, nothing `loom:building`. Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --verbose` also reports none). Next action: a human reviews the five operator-decision guard-tuning escalations (#1081 new this pass, mirrors #1061's disposition) and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check.
+**Ten open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), five Auditor guard-telemetry escalations (#1069, #1070, #1072, #1073, #1081, all `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above), and two issues newly claimed this pass (#1084, #1086, both `loom:building`).** No open PRs. Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --verbose` also reports none — #1086's claim is watched but not yet stale-eligible). Next action: a human reviews the five operator-decision guard-tuning escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check.
 
 ### Recurring themes the next wave of issues will likely touch
 
