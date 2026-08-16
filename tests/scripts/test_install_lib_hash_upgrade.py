@@ -52,7 +52,11 @@ OVERRIDE_ASSET = Path(".anvil") / "anvil" / "lib" / "memo" / "styles.css"
 # The shared mermaid theme override target (issue #634).
 MERMAID_THEME = Path(".anvil") / "anvil" / "lib" / "figures" / "mermaid-theme.json"
 # A non-override framework lib file: must ALWAYS upgrade (the carve-out).
-FRAMEWORK_LIB_FILE = Path(".anvil") / "anvil" / "lib" / "render_gate.py"
+# ``render_gate.py`` became the ``render_gate/`` package (issue #1128); its
+# ``__init__.py`` is an equally valid "ordinary framework file" example.
+FRAMEWORK_LIB_FILE = (
+    Path(".anvil") / "anvil" / "lib" / "render_gate" / "__init__.py"
+)
 # The import anchor: must ALWAYS upgrade.
 ANVIL_INIT = Path(".anvil") / "anvil" / "__init__.py"
 
@@ -335,7 +339,7 @@ def test_legacy_manifest_falls_back_to_skip(tmp_path: Path) -> None:
     fake_anvil = _copy_anvil_checkout(tmp_path / "fake-anvil")
     src_asset = fake_anvil / "anvil" / "lib" / "memo" / "styles.css"
     src_asset.write_text(src_asset.read_text() + "\n/* upstream tweak */\n")
-    src_fw = fake_anvil / "anvil" / "lib" / "render_gate.py"
+    src_fw = fake_anvil / "anvil" / "lib" / "render_gate" / "__init__.py"
     src_fw.write_text(src_fw.read_text() + "\n# upstream framework change\n")
 
     second = _run_from_fake_anvil(fake_anvil, "-y", "--skills=memo", str(target))
@@ -389,7 +393,7 @@ def test_framework_code_always_upgrades_carveout(tmp_path: Path) -> None:
 
     # Source moves forward: framework lib code AND the import anchor change.
     fake_anvil = _copy_anvil_checkout(tmp_path / "fake-anvil")
-    src_fw = fake_anvil / "anvil" / "lib" / "render_gate.py"
+    src_fw = fake_anvil / "anvil" / "lib" / "render_gate" / "__init__.py"
     src_fw.write_text(src_fw.read_text() + "\n# upstream framework change\n")
     src_init = fake_anvil / "anvil" / "__init__.py"
     src_init.write_text(src_init.read_text() + "\n# upstream init change\n")
@@ -471,7 +475,7 @@ def test_consumer_modified_mermaid_theme_skips_with_warning(tmp_path: Path) -> N
     fake_anvil = _copy_anvil_checkout(tmp_path / "fake-anvil")
     src_theme = fake_anvil / "anvil" / "lib" / "figures" / "mermaid-theme.json"
     src_theme.write_text(src_theme.read_text() + "\n")
-    src_fw = fake_anvil / "anvil" / "lib" / "render_gate.py"
+    src_fw = fake_anvil / "anvil" / "lib" / "render_gate" / "__init__.py"
     src_fw.write_text(src_fw.read_text() + "\n# upstream framework change\n")
 
     second = _run_from_fake_anvil(fake_anvil, "-y", "--skills=deck", str(target))

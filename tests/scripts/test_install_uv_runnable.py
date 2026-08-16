@@ -128,8 +128,12 @@ def test_install_produces_importable_anvil_package_mirror(tmp_path: Path) -> Non
     assert (target / ".anvil" / "anvil" / "__init__.py").is_file(), (
         "missing .anvil/anvil/__init__.py — `import anvil` would fail"
     )
-    # Framework lib (the canary-reproducer module lives here).
-    assert (target / ".anvil" / "anvil" / "lib" / "render_gate.py").is_file()
+    # Framework lib (the canary-reproducer module lives here). ``render_gate``
+    # became a package (issue #1128); assert its own import anchor instead of
+    # a bare ``.py`` file.
+    assert (
+        target / ".anvil" / "anvil" / "lib" / "render_gate" / "__init__.py"
+    ).is_file()
     assert (target / ".anvil" / "anvil" / "lib" / "__init__.py").is_file()
     # Skills sub-package + memo skill lib.
     assert (target / ".anvil" / "anvil" / "skills" / "__init__.py").is_file()
