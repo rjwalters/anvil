@@ -1,19 +1,23 @@
-"""Tests for the shared test-support tree-hashing primitive (issue #1125).
+"""Tests for the shared test-support helpers (issues #1125, #1133).
 
 ``anvil/lib/testing.py::tree_hash`` consolidates 11 distinct drifted
 variants of a directory-snapshot-hashing helper (``_tree_hash`` /
 ``_tree_digest`` / ``_tree_hashes``) that had accumulated across 28 test
-files in 10 skills. This module tests the shared primitive directly; the
-28 call sites already have their own behavioral coverage (each skill's
-zero-mutation / dry-run / idempotency test suite), which continues to
-pass unmodified against the now-imported function.
+files in 10 skills. ``anvil/lib/testing.py::parse_frontmatter``
+consolidates 10 byte-identical ``dict``-returning adapters over
+``anvil.lib.frontmatter.extract_frontmatter`` that had accumulated across
+10 more skills' test suites. This module tests the shared primitives
+directly; the call sites already have their own behavioral coverage
+(each skill's zero-mutation / dry-run / idempotency or frontmatter-
+parsing test suite), which continues to pass unmodified against the
+now-imported functions.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from anvil.lib.testing import tree_hash
+from anvil.lib.testing import parse_frontmatter, tree_hash
 
 
 def test_empty_dir_hashes_to_empty_dict(tmp_path: Path) -> None:
@@ -117,3 +121,22 @@ def test_directory_and_file_entries_cannot_collide(tmp_path: Path) -> None:
 
     assert snapshot["a.txt"] != snapshot["sub"]
     assert snapshot["sub"] == "<dir>"
+
+
+def test_parse_frontmatter_returns_dict() -> None:
+    text = "---\ntitle: Example\nstage: DRAFT\n---\nbody text\n"
+    assert parse_frontmatter(text) == {"title": "Example", "stage": "DRAFT"}
+
+
+def test_parse_frontmatter_returns_empty_dict_when_absent() -> None:
+    """The adapter's whole reason to exist (issue #1083 / #1133).
+
+    ``extract_frontmatter`` returns ``None`` for text with no parseable
+    frontmatter block; every consolidated call site wants ``{}`` instead
+    so callers can unconditionally ``.get()`` off the result.
+    """
+    assert parse_frontmatter("no frontmatter here\n") == {}
+
+
+def test_parse_frontmatter_returns_empty_dict_for_malformed_block() -> None:
+    assert parse_frontmatter("---\ntitle: [unterminated\n---\n") == {}

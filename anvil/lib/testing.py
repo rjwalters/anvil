@@ -12,6 +12,21 @@ write) -- so a single canonical implementation is a safe drop-in as long as
 it preserves "same input tree -> equal snapshots, different tree -> unequal
 snapshots" for existing ``==`` / ``!=`` assertions.
 
+Also consolidates 10 byte-identical ``_parse_frontmatter(text) -> dict``
+test helpers (issue #1133) that had been copy-pasted at module scope
+across 10 skills' test suites (``memoir``, ``proposal``, ``installation``,
+``essay``, ``spec``, ``primer``, ``ip-uspto-provisional``, ``ip-uspto``
+(x2), ``datasheet``). Each copy was already a thin ``dict``-returning
+adapter over the shared ``anvil.lib.frontmatter.extract_frontmatter``
+primitive (issue #1083), which returns ``None`` where these call sites
+want ``{}`` -- so, like ``tree_hash`` above, the wrapping itself should
+have been shared too. Not absorbed: ``anvil/skills/deck/tests/
+test_marp_smoke.py``'s same-named helper, which has a different signature
+(``path: Path``), a hand-rolled stdlib-only parser (deliberately avoids
+pyyaml per that suite's own dependency discipline), and a different
+purpose (Marp-file ``key: value`` frontmatter, not general YAML) -- a
+genuine lookalike, not a duplicate.
+
 This module is test-support only -- it is imported by
 ``tests/`` and ``anvil/skills/*/tests/`` files, never by shipped skill code
 (unlike the rest of ``anvil/lib/``, which is production-shared).
@@ -22,7 +37,9 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-__all__ = ["tree_hash"]
+from anvil.lib.frontmatter import extract_frontmatter
+
+__all__ = ["parse_frontmatter", "tree_hash"]
 
 # Sentinel value recorded for directory entries. Distinct from any valid
 # sha256 hex digest (which is exactly 64 lowercase hex characters), so a
@@ -74,3 +91,13 @@ def tree_hash(root: Path, *, exclude: str | None = None) -> dict[str, str]:
         elif path.is_dir():
             out[rel] = _DIR_MARKER
     return out
+
+
+def parse_frontmatter(text: str) -> dict:
+    """Parse a leading ``---``-delimited YAML frontmatter block.
+
+    Thin ``dict``-returning adapter over the shared
+    ``anvil.lib.frontmatter.extract_frontmatter`` primitive (issue
+    #1083), which returns ``None`` where these call sites want ``{}``.
+    """
+    return extract_frontmatter(text) or {}
