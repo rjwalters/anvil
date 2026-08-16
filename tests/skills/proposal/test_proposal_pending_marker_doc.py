@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
+
 # tests/skills/proposal → anvil/skills/proposal
 SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "proposal"
 RUBRIC = SKILL_ROOT / "rubric.md"
@@ -31,10 +33,6 @@ REVIEW_COMMAND = SKILL_ROOT / "commands" / "proposal-review.md"
 AUDIT_COMMAND = SKILL_ROOT / "commands" / "proposal-audit.md"
 REVISE_COMMAND = SKILL_ROOT / "commands" / "proposal-revise.md"
 ORCHESTRATOR = SKILL_ROOT / "commands" / "proposal.md"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

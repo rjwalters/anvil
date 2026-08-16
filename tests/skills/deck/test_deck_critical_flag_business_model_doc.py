@@ -45,6 +45,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "deck"
 
@@ -58,10 +59,6 @@ AUDIT_MD = SKILL_ROOT / "commands" / "deck-audit.md"
 
 WIRE_KEY = "incoherent_or_absent_business_model"
 DISPLAY_NAME = "Incoherent or absent business model"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

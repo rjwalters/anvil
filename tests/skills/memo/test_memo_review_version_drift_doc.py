@@ -32,16 +32,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MEMO_REVIEW_DOC = (
     REPO_ROOT / "anvil" / "skills" / "memo" / "commands" / "memo-review.md"
 )
 RUBRIC_DOC = REPO_ROOT / "anvil" / "skills" / "memo" / "rubric.md"
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def test_memo_review_doc_has_step_4m_version_drift_check():

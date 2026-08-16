@@ -15,16 +15,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SNIPPET = REPO_ROOT / "anvil" / "lib" / "snippets" / "git_sync.md"
 LIB_README = REPO_ROOT / "anvil" / "lib" / "README.md"
 SKILL_TEMPLATE = REPO_ROOT / "anvil" / "templates" / "SKILL.md"
 CONSUMER_README = REPO_ROOT / "README.md"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILL_ROOT = REPO_ROOT / "anvil" / "skills" / "installation"
@@ -28,10 +29,6 @@ FIXTURES = Path(__file__).parent / "fixtures" / "rubric_version_transition"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

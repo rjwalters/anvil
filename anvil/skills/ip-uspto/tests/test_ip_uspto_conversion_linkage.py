@@ -44,6 +44,8 @@ from pathlib import Path
 
 import pytest
 
+from anvil.lib.testing import read_text as _read
+
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent
 _LIB_FILE = _SKILL_ROOT / "lib" / "conversion_deadline.py"
@@ -163,10 +165,6 @@ def test_deadline_status_negative_window_raises():
 # ---------------------------------------------------------------------------
 # structure tests — the conversion contract is documented end-to-end
 # ---------------------------------------------------------------------------
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def test_intake_documents_converts_provisional_block():

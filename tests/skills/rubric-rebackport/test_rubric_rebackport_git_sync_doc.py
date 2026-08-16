@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COMMAND = (
@@ -26,10 +27,6 @@ COMMAND = (
     / "rubric-rebackport.md"
 )
 SKILL_MD = REPO_ROOT / "anvil" / "skills" / "rubric-rebackport" / "SKILL.md"
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def _git_sync_section() -> str:

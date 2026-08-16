@@ -20,14 +20,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "proposal"
 REVISE_MD = SKILL_ROOT / "commands" / "proposal-revise.md"
 AUDIT_MD = SKILL_ROOT / "commands" / "proposal-audit.md"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 def test_revise_documents_findings_are_leads_not_evidence():

@@ -23,16 +23,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "deck"
 SKILL_MD = SKILL_ROOT / "SKILL.md"
 IMAGEGEN_MD = SKILL_ROOT / "commands" / "deck-imagegen.md"
 ADAPTER_MD = SKILL_ROOT / "commands" / "deck-imagegen-adapter.md"
 FIGURES_MD = SKILL_ROOT / "commands" / "deck-figures.md"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

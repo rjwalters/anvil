@@ -35,6 +35,7 @@ from pathlib import Path
 
 import pytest
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COMMANDS = REPO_ROOT / "anvil" / "skills" / "paper" / "commands"
@@ -83,10 +84,6 @@ FABRICATION_FLAG_TYPES = [
     "anachronism",
     "unattributed_paraphrase",
 ]
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def test_snippet_exists():

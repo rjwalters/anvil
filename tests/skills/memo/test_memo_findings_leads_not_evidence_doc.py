@@ -41,14 +41,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "memo"
 REVISE_MD = SKILL_ROOT / "commands" / "memo-revise.md"
 REVIEW_MD = SKILL_ROOT / "commands" / "memo-review.md"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

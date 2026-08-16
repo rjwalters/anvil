@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 SKILL_MD = SKILL_ROOT / "SKILL.md"
@@ -38,10 +39,6 @@ DIRECTED_REVISION_SNIPPET = (
     / "snippets"
     / "directed_revision.md"
 )
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

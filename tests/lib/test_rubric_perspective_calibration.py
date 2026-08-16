@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SNIPPETS = REPO_ROOT / "anvil" / "lib" / "snippets"
@@ -37,10 +38,6 @@ DECK_RUBRIC = SKILLS / "deck" / "rubric.md"
 MEMO_RUBRIC = SKILLS / "memo" / "rubric.md"
 PROPOSAL_RUBRIC = SKILLS / "proposal" / "rubric.md"
 PAPER_RUBRIC = SKILLS / "paper" / "rubric.md"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

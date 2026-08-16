@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILL_ROOT = REPO_ROOT / "anvil" / "skills" / "report"
 RUBRIC = SKILL_ROOT / "rubric.md"
@@ -45,10 +47,6 @@ VOICE_SUFFIX = (
     "<resolved values/style_guide paths>; voice deductions must quote "
     "corpus exemplars"
 )
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 def _norm(p: Path) -> str:

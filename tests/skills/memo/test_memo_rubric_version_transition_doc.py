@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILL_ROOT = REPO_ROOT / "anvil" / "skills" / "memo"
@@ -59,10 +60,6 @@ FIXTURES = Path(__file__).parent / "fixtures" / "rubric_version_transition"
 # Doc-coverage: memo-review step 3 stamps `rubric_id` + `rubric_total` +
 # `advance_threshold` on `_meta.json` (issue #346)
 # ---------------------------------------------------------------------------
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def test_memo_review_step3_stamps_rubric_id():

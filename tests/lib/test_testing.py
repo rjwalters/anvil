@@ -1,4 +1,4 @@
-"""Tests for the shared test-support helpers (issues #1125, #1133).
+"""Tests for the shared test-support helpers (issues #1125, #1133, #1136).
 
 ``anvil/lib/testing.py::tree_hash`` consolidates 11 distinct drifted
 variants of a directory-snapshot-hashing helper (``_tree_hash`` /
@@ -6,18 +6,20 @@ variants of a directory-snapshot-hashing helper (``_tree_hash`` /
 files in 10 skills. ``anvil/lib/testing.py::parse_frontmatter``
 consolidates 10 byte-identical ``dict``-returning adapters over
 ``anvil.lib.frontmatter.extract_frontmatter`` that had accumulated across
-10 more skills' test suites. This module tests the shared primitives
-directly; the call sites already have their own behavioral coverage
-(each skill's zero-mutation / dry-run / idempotency or frontmatter-
-parsing test suite), which continues to pass unmodified against the
-now-imported functions.
+10 more skills' test suites. ``anvil/lib/testing.py::read_text``
+consolidates 99 byte-identical ``_read(p_or_path: Path) -> str`` helpers
+that had accumulated across the repo's test suites. This module tests
+the shared primitives directly; the call sites already have their own
+behavioral coverage (each skill's zero-mutation / dry-run / idempotency,
+frontmatter-parsing, or doc-content test suite), which continues to pass
+unmodified against the now-imported functions.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from anvil.lib.testing import parse_frontmatter, tree_hash
+from anvil.lib.testing import parse_frontmatter, read_text, tree_hash
 
 
 def test_empty_dir_hashes_to_empty_dict(tmp_path: Path) -> None:
@@ -140,3 +142,17 @@ def test_parse_frontmatter_returns_empty_dict_when_absent() -> None:
 
 def test_parse_frontmatter_returns_empty_dict_for_malformed_block() -> None:
     assert parse_frontmatter("---\ntitle: [unterminated\n---\n") == {}
+
+
+def test_read_text_returns_file_contents(tmp_path: Path) -> None:
+    target = tmp_path / "doc.md"
+    target.write_text("hello world", encoding="utf-8")
+
+    assert read_text(target) == "hello world"
+
+
+def test_read_text_decodes_utf8(tmp_path: Path) -> None:
+    target = tmp_path / "doc.md"
+    target.write_text("café", encoding="utf-8")
+
+    assert read_text(target) == "café"

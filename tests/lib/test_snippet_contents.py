@@ -12,16 +12,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 SNIPPETS = Path(__file__).resolve().parents[2] / "anvil" / "lib" / "snippets"
 LIB_README = Path(__file__).resolve().parents[2] / "anvil" / "lib" / "README.md"
 SKILL_TEMPLATE = (
     Path(__file__).resolve().parents[2] / "anvil" / "templates" / "SKILL.md"
 )
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

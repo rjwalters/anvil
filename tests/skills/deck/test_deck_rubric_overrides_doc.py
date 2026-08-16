@@ -19,16 +19,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILL_ROOT = REPO_ROOT / "anvil" / "skills" / "deck"
 
 DECK_REVIEW_MD = SKILL_ROOT / "commands" / "deck-review.md"
 DECK_RUBRIC_MD = SKILL_ROOT / "rubric.md"
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
