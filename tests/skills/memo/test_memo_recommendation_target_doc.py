@@ -34,14 +34,23 @@ SKILL_ROOT = Path(__file__).resolve().parents[3] / "anvil" / "skills" / "memo"
 RUBRIC = SKILL_ROOT / "rubric.md"
 REVIEW_COMMAND = SKILL_ROOT / "commands" / "memo-review.md"
 # Canonical module location post-#382 (promoted from the memo skill's
-# lib/ to anvil/lib/; the memo-side path is now a back-compat shim).
+# lib/ to anvil/lib/; the memo-side path is now a back-compat shim). Issue
+# #1121 further split the single `project_brief.py` file into a
+# `project_brief/` package (re-export-only, no behavior change) — read the
+# concatenation of every submodule so this doc-coverage grep still finds
+# content regardless of which submodule it landed in.
 PROJECT_BRIEF = (
-    Path(__file__).resolve().parents[3] / "anvil" / "lib" / "project_brief.py"
+    Path(__file__).resolve().parents[3] / "anvil" / "lib" / "project_brief"
 )
 FRESH_TEMPLATE = SKILL_ROOT / "templates" / "BRIEF.fresh.md.example"
 
 
 def _read(p: Path) -> str:
+    if p.is_dir():
+        return "\n".join(
+            sorted_child.read_text(encoding="utf-8")
+            for sorted_child in sorted(p.glob("*.py"))
+        )
     return p.read_text(encoding="utf-8")
 
 

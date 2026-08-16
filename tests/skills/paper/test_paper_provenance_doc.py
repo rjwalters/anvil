@@ -349,7 +349,17 @@ def test_no_lib_changes_scope_guard():
         "cite.py",
         "project_brief.py",
     ):
-        lib_text = _read(REPO_ROOT / "anvil" / "lib" / lib_name)
+        lib_path = REPO_ROOT / "anvil" / "lib" / lib_name
+        if not lib_path.exists():
+            # Issue #1121 split `project_brief.py` into a `project_brief/`
+            # package (re-export-only, no behavior change) — scan every
+            # submodule instead of the single file it used to be.
+            pkg_path = REPO_ROOT / "anvil" / "lib" / lib_name[: -len(".py")]
+            lib_text = "\n".join(
+                _read(p) for p in sorted(pkg_path.glob("*.py"))
+            )
+        else:
+            lib_text = _read(lib_path)
         for token in ("corpus_dirs_resolved", "provenance_back_check"):
             assert token not in lib_text, (
                 f"anvil/lib/{lib_name} MUST NOT reference {token} — issue "
