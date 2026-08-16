@@ -51,7 +51,7 @@ _REPO_ROOT = _HERE.parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from anvil.lib.frontmatter import extract_frontmatter  # noqa: E402
+from anvil.lib.testing import parse_frontmatter as _parse_frontmatter  # noqa: E402
 
 RUBRIC_ID = "anvil-ip-uspto-v2"
 
@@ -67,16 +67,6 @@ BOILERPLATE = (
 
 def _read(rel: str) -> str:
     return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
-
-
-def _parse_frontmatter(text: str) -> dict:
-    """Parse a leading ``---``-delimited YAML frontmatter block.
-
-    Thin ``dict``-returning adapter over the shared
-    ``anvil.lib.frontmatter.extract_frontmatter`` primitive (issue
-    #1083), which returns ``None`` where these call sites want ``{}``.
-    """
-    return extract_frontmatter(text) or {}
 
 
 class TestCommandFile(unittest.TestCase):

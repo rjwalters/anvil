@@ -36,7 +36,7 @@ _REPO_ROOT = _SKILL_ROOT.parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from anvil.lib.frontmatter import extract_frontmatter  # noqa: E402
+from anvil.lib.testing import parse_frontmatter as _parse_frontmatter  # noqa: E402
 
 RUBRIC_ID = "anvil-memoir-v1"
 
@@ -65,16 +65,6 @@ def _flat(rel: str) -> str:
     flattened text lets a phrase assertion span a line break.
     """
     return re.sub(r"\s+", " ", _read(rel))
-
-
-def _parse_frontmatter(text: str) -> dict:
-    """Parse a leading ``---``-delimited YAML frontmatter block.
-
-    Thin ``dict``-returning adapter over the shared
-    ``anvil.lib.frontmatter.extract_frontmatter`` primitive (issue
-    #1083), which returns ``None`` where these call sites want ``{}``.
-    """
-    return extract_frontmatter(text) or {}
 
 
 class TestFilesExist(unittest.TestCase):
