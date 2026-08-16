@@ -155,6 +155,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from anvil.lib.body_resolution import record_body_path, resolve_body_path
 from anvil.lib.review_schema import (
     CriticalFlag,
     Finding,
@@ -1192,70 +1193,6 @@ def check_text(text: str, *, latex: bool = False) -> Tuple[List[NumericFinding],
 # ---------------------------------------------------------------------------
 
 
-def _body_path(version_dir: Path, *, body: Optional[Path] = None) -> Path:
-    """Locate the body file inside a version directory.
-
-    Detection order: ``<slug>.md`` (the #295 slug-echo memo shape —
-    the slug is the parent dir name), then ``main.tex`` (the paper
-    shape). Raises ``FileNotFoundError`` when neither exists.
-
-    When ``body`` is supplied (the adopted-in-place legacy-thread
-    override — e.g. a ``paper.tex`` entry point that matches neither
-    canonical name), the discovery chain is skipped entirely: a
-    relative override resolves against ``version_dir``, an absolute one
-    is used as-is, and the resolved path must exist (``FileNotFoundError``
-    naming the override, not the discovery chain, otherwise).
-    """
-    if body is not None:
-        override = Path(body)
-        if not override.is_absolute():
-            override = version_dir / override
-        if not override.is_file():
-            raise FileNotFoundError(
-                f"numeric_consistency: --body override {override!s} does "
-                f"not exist or is not a file."
-            )
-        return override
-    slug_md = version_dir / f"{version_dir.parent.name}.md"
-    if slug_md.is_file():
-        return slug_md
-    main_tex = version_dir / "main.tex"
-    if main_tex.is_file():
-        return main_tex
-    raise FileNotFoundError(
-        f"numeric_consistency: no body file found in {version_dir!s} "
-        f"(looked for {slug_md.name!r} per the #295 slug-echo convention, "
-        f"then 'main.tex')."
-    )
-
-
-def _record_body_path(version_dir: Path, body: Path) -> str:
-    """Portfolio-relative body-path string for the result / sidecar.
-
-    For the common case (body lives inside ``version_dir``) this is the
-    bare filename (``body.name``), byte-identical to the pre-#670
-    contract. For an override that points outside ``version_dir`` (the
-    adopted-in-place / scratch-staging case), records the path relative
-    to the portfolio root (``version_dir.parent.parent`` under the
-    post-#295/#296 canonical model — the same convention
-    ``hyperlink_resolver`` / ``render_gate`` use), falling back to the
-    absolute path when the body lives outside the portfolio tree
-    entirely.
-    """
-    body = body.resolve()
-    version_dir = version_dir.resolve()
-    try:
-        body.relative_to(version_dir)
-        return body.name
-    except ValueError:
-        pass
-    portfolio_root = version_dir.parent.parent
-    try:
-        return str(body.relative_to(portfolio_root))
-    except ValueError:
-        return str(body)
-
-
 def check_numeric_consistency(
     version_dir: Path, *, body: Optional[Path] = None
 ) -> NumericConsistencyResult:
@@ -1274,12 +1211,14 @@ def check_numeric_consistency(
             f"numeric_consistency: version_dir {version_dir!s} does not "
             f"exist or is not a directory."
         )
-    body_file = _body_path(version_dir, body=body)
+    body_file = resolve_body_path(
+        version_dir, body=body, caller_name="numeric_consistency"
+    )
     text = body_file.read_text(encoding="utf-8")
     findings, numbers, claims = check_text(text, latex=body_file.suffix == ".tex")
     return NumericConsistencyResult(
         version_dir=version_dir.name,
-        body_path=_record_body_path(version_dir, body_file),
+        body_path=record_body_path(version_dir, body_file),
         numbers_extracted=numbers,
         claims_checked=claims,
         findings=findings,
