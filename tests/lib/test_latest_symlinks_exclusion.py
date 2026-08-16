@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pytest
 
+from anvil.lib.testing import read_text as _read
 
 # ---------------------------------------------------------------------------
 # Snippet-level guarantees (cheap grep-the-doc assertions)
@@ -38,10 +39,6 @@ import pytest
 
 SNIPPETS = Path(__file__).resolve().parents[2] / "anvil" / "lib" / "snippets"
 SKILLS = Path(__file__).resolve().parents[2] / "anvil" / "skills"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 def test_version_layout_documents_latest_symlink_convention():

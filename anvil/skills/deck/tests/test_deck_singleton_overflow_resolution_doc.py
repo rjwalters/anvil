@@ -51,6 +51,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
+
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent  # anvil/skills/deck/
 _REPO_ROOT = _HERE.parents[3]
@@ -59,10 +61,6 @@ DECK_REVIEW = _SKILL_ROOT / "commands" / "deck-review.md"
 DECK_REVISE = _SKILL_ROOT / "commands" / "deck-revise.md"
 DECK_VISION = _SKILL_ROOT / "commands" / "deck-vision.md"
 MARP_LINT = _REPO_ROOT / "anvil" / "lib" / "marp_lint.py"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # --- deck-review.md — step 5c carve-out -------------------------------------

@@ -30,6 +30,18 @@ genuine lookalike, not a duplicate.
 This module is test-support only -- it is imported by
 ``tests/`` and ``anvil/skills/*/tests/`` files, never by shipped skill code
 (unlike the rest of ``anvil/lib/``, which is production-shared).
+
+Also consolidates 99 byte-identical ``_read(p_or_path: Path) -> str``
+test helpers (issue #1136) that had been copy-pasted at module scope
+across the repo's test suites -- both a ``p: Path`` and a ``path: Path``
+parameter-name variant of the exact same one-line
+``return <param>.read_text(encoding="utf-8")`` body. A further ~80 files
+use a ``DOC``/``_SKILL_ROOT``-closure variant (a no-arg or relative-path
+wrapper closing over a module-level constant) or have a genuinely
+different body (an extra ``assert path.exists()``/``is_dir()`` branch,
+or a directory-vs-file dispatch) -- those are left for a follow-up
+(tracked in #1136's discussion) rather than forced into this shared
+signature.
 """
 
 from __future__ import annotations
@@ -39,7 +51,7 @@ from pathlib import Path
 
 from anvil.lib.frontmatter import extract_frontmatter
 
-__all__ = ["parse_frontmatter", "tree_hash"]
+__all__ = ["parse_frontmatter", "read_text", "tree_hash"]
 
 # Sentinel value recorded for directory entries. Distinct from any valid
 # sha256 hex digest (which is exactly 64 lowercase hex characters), so a
@@ -91,6 +103,20 @@ def tree_hash(root: Path, *, exclude: str | None = None) -> dict[str, str]:
         elif path.is_dir():
             out[rel] = _DIR_MARKER
     return out
+
+
+def read_text(path: Path) -> str:
+    """Read a file as UTF-8 text.
+
+    Thin wrapper over ``Path.read_text(encoding="utf-8")`` -- the exact
+    one-line body copy-pasted as a module-scope ``_read`` helper across
+    99 test files (issue #1136). Callers that closed over a module-level
+    constant (``DOC``, ``_SKILL_ROOT``) instead of taking an explicit
+    path argument should bind it locally, e.g. via
+    ``functools.partial(read_text, DOC)``, rather than baking a
+    file-local default into this shared helper.
+    """
+    return path.read_text(encoding="utf-8")
 
 
 def parse_frontmatter(text: str) -> dict:

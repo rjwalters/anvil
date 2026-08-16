@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 INSTALLATION_REVIEW_DOC = (
@@ -33,10 +34,6 @@ INSTALLATION_REVIEW_DOC = (
     / "commands"
     / "installation-review.md"
 )
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def test_installation_review_doc_references_rescore_mode_flag():

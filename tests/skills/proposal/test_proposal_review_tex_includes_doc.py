@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REVIEW_DOC = (
@@ -35,10 +36,6 @@ REVIEW_DOC = (
     / "commands"
     / "proposal-review.md"
 )
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 def test_step4_names_the_resolver() -> None:

@@ -51,6 +51,7 @@ import re
 import unittest
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent
@@ -58,10 +59,6 @@ _REVISE_MD = _SKILL_ROOT / "commands" / "memo-revise.md"
 _SKILL_MD = _SKILL_ROOT / "SKILL.md"
 _PLAN_TEMPLATE = _SKILL_ROOT / "templates" / "plan.md.template"
 _FIXTURES = _HERE / "fixtures" / "memo_revise_plan"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

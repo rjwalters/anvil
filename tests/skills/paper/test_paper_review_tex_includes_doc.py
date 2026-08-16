@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PUB_REVIEW_DOC = (
@@ -34,10 +35,6 @@ PUB_AUDIT_DOC = (
     REPO_ROOT / "anvil" / "skills" / "paper" / "commands" / "paper-audit.md"
 )
 RESOLVER_MODULE = REPO_ROOT / "anvil" / "lib" / "tex_includes.py"
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

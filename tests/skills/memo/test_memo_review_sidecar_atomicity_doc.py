@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MEMO_REVIEW_DOC = (
@@ -34,10 +35,6 @@ MEMO_REVIEW_DOC = (
 )
 PROGRESS_SNIPPET = REPO_ROOT / "anvil" / "lib" / "snippets" / "progress.md"
 SIDECAR_LIB = REPO_ROOT / "anvil" / "lib" / "sidecar.py"
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

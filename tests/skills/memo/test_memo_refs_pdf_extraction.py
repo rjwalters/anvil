@@ -54,13 +54,13 @@ _REPO_ROOT = _HERE.parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from anvil.lib.testing import read_text as _read  # noqa: E402
 from anvil.skills.memo.lib.refs_pdf import (  # noqa: E402
     PDFTOTEXT_REMEDIATION,
     RenderError,
     check_pdftotext_available,
     extract_pdf_text,
 )
-
 
 SKILL_ROOT = _REPO_ROOT / "anvil" / "skills" / "memo"
 SKILL_MD = SKILL_ROOT / "SKILL.md"
@@ -324,10 +324,6 @@ class TestRemediationMessage(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Doc-coverage smoke tests — the four touched files reference pdftotext
 # ---------------------------------------------------------------------------
-
-
-def _read(p: Path) -> str:
-    return p.read_text(encoding="utf-8")
 
 
 class TestDocCoverage(unittest.TestCase):

@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from anvil.lib.testing import read_text as _read
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COMMANDS = REPO_ROOT / "anvil" / "skills" / "ip-uspto" / "commands"
@@ -74,10 +75,6 @@ SIDECAR_COMMANDS = [
     "ip-uspto-vision.md",
     "ip-uspto-finalize.md",
 ]
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
 
 
 def _git_sync_section(command: str) -> str:
