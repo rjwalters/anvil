@@ -125,26 +125,8 @@ debug() {
 get_matching_files() {
     cd "$WORKSPACE_ROOT"
 
-    # Build the find command
-    local include_args=""
-    if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 ]]; then
-        # Build include patterns for find
-        for pattern in "${INCLUDE_PATTERNS[@]}"; do
-            # Convert glob to find pattern
-            if [[ "$pattern" == *"**"* ]]; then
-                # Pattern with ** - use path matching
-                local converted="${pattern//\*\*/\*}"
-                include_args+=" -path './$converted' -o"
-            else
-                include_args+=" -path './$pattern' -o"
-            fi
-        done
-        include_args="${include_args% -o}"
-    fi
-
-    debug "Include args: $include_args"
-
-    # Use fd if available (faster), otherwise fall back to find + grep
+    # Use fd if available (faster), otherwise fall back to `git ls-files`
+    # (or plain find outside a git repo)
     if command -v fd &>/dev/null; then
         get_files_with_fd
     else
@@ -152,9 +134,11 @@ get_matching_files() {
     fi
 }
 
-# Use fd for fast file finding (if available)
+# Use fd for fast file finding (if available). fd honors .gitignore
+# natively when --no-ignore-vcs is NOT passed, so no manual gitignore
+# post-filtering is needed here.
 get_files_with_fd() {
-    local fd_args=("--type" "f" "--hidden" "--no-ignore-vcs")
+    local fd_args=("--type" "f" "--hidden")
 
     # Add include patterns
     if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 ]]; then
@@ -175,198 +159,94 @@ get_files_with_fd() {
 
     debug "Running: fd ${fd_args[*]}"
 
-    # Get files and filter by gitignore
-    local files
-    files=$(fd "${fd_args[@]}" . 2>/dev/null | filter_by_gitignore)
-    echo "$files"
+    fd "${fd_args[@]}" . 2>/dev/null
 }
 
-# Use find as fallback
+# Fallback file listing when fd is unavailable.
+#
+# Uses `git ls-files --cached --others --exclude-standard`, which respects
+# .gitignore, .git/info/exclude, and core.excludesFile natively (git's own
+# ignore-matching, not a hand-rolled gitignore-pattern-to-regex conversion),
+# when the workspace is a git repo; falls back to plain `find` otherwise.
+# DEFAULT_EXCLUDES / --exclude / --include are then applied with bash's
+# native glob matching (see path_excluded() / filter_by_include()) -- no
+# regex conversion, no eval.
 get_files_with_find() {
-    local files=""
+    local files
 
-    # If we have include patterns, search for those specifically
-    if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 ]]; then
-        for pattern in "${INCLUDE_PATTERNS[@]}"; do
-            # Use bash globbing for patterns
-            local found
-            found=$(find_with_glob "$pattern")
-            if [[ -n "$found" ]]; then
-                files+="$found"$'\n'
-            fi
-        done
+    if git -C "$WORKSPACE_ROOT" rev-parse --is-inside-work-tree &>/dev/null; then
+        debug "Listing files via: git ls-files --cached --others --exclude-standard"
+        files=$(git -C "$WORKSPACE_ROOT" ls-files --cached --others --exclude-standard -- . 2>/dev/null)
     else
-        # Find all files
+        debug "Not a git repo; listing files via: find . -type f"
         files=$(find . -type f 2>/dev/null | sed 's|^\./||')
     fi
 
-    # Apply exclusions
-    files=$(echo "$files" | apply_exclusions | filter_by_gitignore)
-    echo "$files"
-}
-
-# Find files matching a glob pattern
-find_with_glob() {
-    local pattern="$1"
-
-    # Enable extended globbing
-    shopt -s globstar nullglob 2>/dev/null || true
-
-    # Try to match the pattern
-    local matches=()
-    # shellcheck disable=SC2086
-    if [[ "$pattern" == *"**"* ]]; then
-        # Pattern uses ** for recursive matching
-        eval "matches=($pattern)" 2>/dev/null || true
-    else
-        eval "matches=($pattern)" 2>/dev/null || true
+    if [[ ${#INCLUDE_PATTERNS[@]} -gt 0 ]]; then
+        files=$(printf '%s\n' "$files" | filter_by_include)
     fi
 
-    # Print matches that are files
-    for match in "${matches[@]}"; do
-        if [[ -f "$match" ]]; then
-            echo "${match#./}"
-        fi
-    done
+    printf '%s\n' "$files" | apply_exclusions
 }
 
-# Apply exclusion patterns
+# Keep only lines matching at least one --include pattern. Uses bash's
+# native `[[ path == pattern ]]` glob matching, where "*" matches any run
+# of characters including "/" (so "**" behaves the same as a single "*").
+filter_by_include() {
+    local path pattern matched
+    while IFS= read -r path; do
+        [[ -z "$path" ]] && continue
+        matched=false
+        for pattern in "${INCLUDE_PATTERNS[@]}"; do
+            # shellcheck disable=SC2053
+            if [[ "$path" == $pattern ]]; then
+                matched=true
+                break
+            fi
+        done
+        [[ "$matched" == true ]] && printf '%s\n' "$path"
+    done
+    # Always succeed: under `set -eo pipefail`, letting this function's exit
+    # status depend on whether the LAST input line happened to match would
+    # abort the enclosing subshell (the left side of `get_matching_files |
+    # pick_random` in main()) whenever the last candidate path didn't match,
+    # silently truncating output before apply_exclusions ever runs.
+    return 0
+}
+
+# Drop lines matching any DEFAULT_EXCLUDES or --exclude pattern.
 apply_exclusions() {
-    local input
-    input=$(cat)
+    local path
+    while IFS= read -r path; do
+        [[ -z "$path" ]] && continue
+        path_excluded "$path" || printf '%s\n' "$path"
+    done
+    # See the comment in filter_by_include() above -- same reasoning applies.
+    return 0
+}
 
-    # Build grep exclusion pattern
-    local exclude_regex=""
-
-    for pattern in "${DEFAULT_EXCLUDES[@]}"; do
-        # Handle different pattern types
-        if [[ "$pattern" == *.* ]]; then
-            # File extension or specific file
-            local escaped
-            escaped=$(printf '%s' "$pattern" | sed 's/[.[\*^$()+?{|]/\\&/g')
-            escaped="${escaped//\\\*/.*}"  # Convert \* back to .*
-            exclude_regex+="|$escaped$"
-        else
-            # Directory name
-            exclude_regex+="|/$pattern/|^$pattern/"
+# True (exit 0) if $1 matches any exclude pattern (DEFAULT_EXCLUDES plus
+# --exclude), false (exit 1) otherwise.
+#
+# A pattern matches a path if the path equals the pattern, ends with
+# "/<pattern>", starts with "<pattern>/", or contains "/<pattern>/" (all as
+# bash glob comparisons, so wildcards in the pattern still work). This one
+# set of checks handles "extension/filename" patterns (e.g. "*.log",
+# "package-lock.json", matched as a suffix anywhere) and "directory name"
+# patterns (e.g. "node_modules", ".git", ".loom/worktrees", matched as a
+# path segment anywhere) uniformly -- there is no separate branch keyed on
+# whether the pattern contains a literal "." (the root cause of the
+# previous bug, which misrouted dotted directory patterns like ".git" and
+# ".loom/worktrees" into the wrong branch).
+path_excluded() {
+    local path="$1" pattern
+    for pattern in "${DEFAULT_EXCLUDES[@]}" "${EXCLUDE_PATTERNS[@]}"; do
+        # shellcheck disable=SC2053
+        if [[ "$path" == $pattern || "$path" == */$pattern || "$path" == $pattern/* || "$path" == */$pattern/* ]]; then
+            return 0
         fi
     done
-
-    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
-        # Convert glob to regex
-        local regex
-        regex=$(glob_to_regex "$pattern")
-        exclude_regex+="|$regex"
-    done
-
-    # Remove leading |
-    exclude_regex="${exclude_regex#|}"
-
-    if [[ -n "$exclude_regex" ]]; then
-        debug "Exclude regex: $exclude_regex"
-        echo "$input" | grep -v -E "$exclude_regex" || true
-    else
-        echo "$input"
-    fi
-}
-
-# Convert glob pattern to regex
-glob_to_regex() {
-    local pattern="$1"
-    # Escape special regex characters except * and ?
-    local regex
-    regex=$(printf '%s' "$pattern" | sed 's/[.[\^$()+{|]/\\&/g')
-    # Convert glob wildcards to regex
-    regex="${regex//\*\*/.*}"      # ** -> .* (any path)
-    regex="${regex//\*/[^/]*}"     # * -> [^/]* (any chars except /)
-    regex="${regex//\?/.}"         # ? -> . (any single char)
-    echo "$regex"
-}
-
-# Filter files by .gitignore
-filter_by_gitignore() {
-    local input
-    input=$(cat)
-
-    local gitignore="$WORKSPACE_ROOT/.gitignore"
-
-    if [[ ! -f "$gitignore" ]]; then
-        echo "$input"
-        return
-    fi
-
-    # Read gitignore patterns (skip comments and empty lines)
-    local patterns=()
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        # Skip empty lines and comments
-        [[ -z "$line" || "$line" == \#* ]] && continue
-        # Trim whitespace
-        line="${line#"${line%%[![:space:]]*}"}"
-        line="${line%"${line##*[![:space:]]}"}"
-        [[ -n "$line" ]] && patterns+=("$line")
-    done < "$gitignore"
-
-    if [[ ${#patterns[@]} -eq 0 ]]; then
-        echo "$input"
-        return
-    fi
-
-    # Build regex from gitignore patterns
-    local exclude_regex=""
-    for pattern in "${patterns[@]}"; do
-        # Handle negation patterns (!)
-        [[ "$pattern" == !* ]] && continue
-
-        # Convert gitignore pattern to regex
-        local regex
-        regex=$(gitignore_to_regex "$pattern")
-        [[ -n "$regex" ]] && exclude_regex+="|$regex"
-    done
-
-    exclude_regex="${exclude_regex#|}"
-
-    if [[ -n "$exclude_regex" ]]; then
-        debug "Gitignore regex: $exclude_regex"
-        echo "$input" | grep -v -E "$exclude_regex" || true
-    else
-        echo "$input"
-    fi
-}
-
-# Convert gitignore pattern to regex
-gitignore_to_regex() {
-    local pattern="$1"
-
-    # Handle directory-only patterns (ending with /)
-    if [[ "$pattern" == */ ]]; then
-        pattern="${pattern%/}"
-        local regex
-        regex=$(glob_to_regex "$pattern")
-        echo "/$regex(/|$)"
-        return
-    fi
-
-    # Handle patterns starting with /
-    if [[ "$pattern" == /* ]]; then
-        pattern="${pattern#/}"
-        local regex
-        regex=$(glob_to_regex "$pattern")
-        echo "^$regex"
-        return
-    fi
-
-    # Handle patterns containing /
-    if [[ "$pattern" == */* ]]; then
-        local regex
-        regex=$(glob_to_regex "$pattern")
-        echo "(^|/)$regex"
-        return
-    fi
-
-    # Simple pattern - match anywhere
-    local regex
-    regex=$(glob_to_regex "$pattern")
-    echo "(^|/)$regex(/|$)"
+    return 1
 }
 
 # Pick a random file from the list
