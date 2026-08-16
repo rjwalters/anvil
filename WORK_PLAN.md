@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-16 (Guide triage pass — #1061 (the sole `loom:issue` issue, `loom:blocked` pending its own 2026-08-16 re-check) resolved and closed via PR #1109, which recorded the re-check finding directly in `WORK_LOG.md` with no code change; the backlog now has zero `loom:issue` issues, so both "Ready for Work" and "Urgent" are empty with nothing eligible to promote. #1107 (previously in the Triage Queue) has since been Curator-triaged to `loom:operator-only`/`loom:operator-decision` and moves to Operator Escalations. A new Hermit proposal, #1110 ("Consolidate duplicate `_body_path()` / `_record_body_path()` helpers across `anvil/lib`"), was filed this pass. #888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103 are otherwise unchanged. No open PRs, nothing `loom:building`. `WORK_LOG.md` updated with PR #1109 this pass (debounce window elapsed, single pending entry written). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --recover` also reports none.)*
+*Last updated: 2026-08-16 (Guide triage pass — #1110 (the Hermit proposal to consolidate `_body_path()`/`_record_body_path()` helpers, listed under Proposals last pass) closed via merged PR #1114. A new Hermit proposal, #1121 ("Split anvil/lib/project_brief.py into a package"), ran the full pipeline within this tick's window — filed, promoted to `loom:issue`, and claimed by a Builder 25 seconds later — so it lands directly in "In Progress" rather than Proposals; it is the only open issue with no `loom:operator-only` label. No `loom:issue` candidates remain in the backlog (zero eligible, so `loom:urgent` stays empty rather than being filled with an ineligible holder — the incumbent set was already empty and stayed empty). #888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107 are otherwise unchanged. No open PRs. `WORK_LOG.md` update deferred this pass: only 2 pending entries (PRs #1120, #1118, both already covered by their own "(closes #N)" text for issues #1119/#1116 once written — below the 5-entry batch threshold) and only ~20 minutes since the last write (below the 30-minute debounce window). Merged-PR/closed-issue pairing checked clean this pass — every recently-merged PR's closing reference resolved to a CLOSED issue, no orphans found (`loom-recover-orphans --recover` also reports none). README checked for architectural drift: none found, left untouched. No token-pool pressure signal (`.loom/tokens/.ranking` absent) — proceeded normally.)*
 
 ---
 
@@ -17,7 +17,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.* Nothing currently claimed.
+- **#1121**: "Split anvil/lib/project_brief.py into a package: 5816 lines, 9 clearly-bounded sections" (`tier:maintenance`). Reorganization proposal (not a removal) for the largest source file in the repo — the shared `BRIEF.md` schema + parser + resolver consumed by all 14 artifact-class skills. Proposed as a pure re-export split (`project_brief.py` → `project_brief/` package with modules along existing section boundaries) so no call-site churn. Filed and claimed by a Builder within the same window this pass — no Guide action needed.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -61,7 +61,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
-- **#1110**: "Consolidate duplicate `_body_path()` / `_record_body_path()` helpers across `anvil/lib`" (`loom:hermit`, `tier:maintenance`). Two private helpers — `_body_path()` and the byte-for-byte-identical `_record_body_path()` — are duplicated three times each across `anvil/lib/pending_marker.py`, `anvil/lib/numeric_consistency.py`, and `anvil/lib/evidence_check.py`, each with self-referential "mirrors X" docstrings acknowledging the drift risk. Same shape as the recently-merged #1104/#1102/#1083/#1075 consolidations; all three call sites already import freely from other `anvil.lib` modules, so nothing blocks pointing them at one shared implementation.
+*Empty.* #1110 (the `_body_path()`/`_record_body_path()` consolidation) closed via PR #1114 this pass. #1121 (new this pass) skipped this state entirely — promoted and claimed within the same window — see "In Progress" above.
 
 ## Epics (`loom:epic`)
 
@@ -69,7 +69,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Eleven open issues as of 2026-08-16, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), eight Auditor/Curator operator-mechanical or operator-decision escalations (#1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107, all `loom:operator-only` — see Operator Escalations above), and one Hermit simplification proposal awaiting human approval (#1110, see Proposals above).** No open PRs, nothing `loom:building`, zero `loom:issue` issues open at all — #1061 (the sole one) closed this pass via PR #1109. Nothing was eligible for `loom:urgent` this cycle: with zero `loom:issue` candidates in the backlog, the urgent set stays empty rather than being filled with an ineligible holder. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --recover` also reports none). Next action: a human reviews the eight operator escalations, #888's design tradeoffs, and #1110's Hermit proposal; #918 still awaits a human daemon-recovery run on the affected host.
+**Eleven open issues as of 2026-08-16, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), eight Auditor/Curator operator-mechanical or operator-decision escalations (#1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107, all `loom:operator-only` — see Operator Escalations above), and #1121 (a Hermit proposal already claimed by a Builder, see In Progress above).** No open PRs, zero `loom:issue` issues open at all — the backlog's one live candidate this pass (#1121) was promoted and claimed within the same window before Guide's tick, so there was nothing to promote to `loom:urgent`; the empty incumbent urgent set stayed empty. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --recover` also reports none). `WORK_LOG.md` write deferred (batching a 2-entry delta below the 5-entry/30-minute threshold). Next action: a human reviews the eight operator escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host.
 
 ### Recurring themes the next wave of issues will likely touch
 
