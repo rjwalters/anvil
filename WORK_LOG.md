@@ -4,6 +4,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-08-16
+
+- **Issue #1061** (closed via this PR, resolved by #5754's rollout): Guard telemetry: stash-scope:worktree-collision blocks self-contained stash/pop pairs inside a worktree — the issue's own acceptance criteria called for a 2026-08-16 re-check of `.loom/logs/guard-decisions.log` (7+ days after the 2026-08-09 `stash-scope:create-redirect` create-side redirect landed, #5754). The re-check found the same 5 `worktree-collision` ask-tier hits originally reported (2026-08-11..2026-08-13) but zero additional hits since, coinciding with `create-redirect` actively denying 3 raw stash-creates on 2026-08-15 — consistent with the create-side redirect now catching stash operations before they reach a pop-time ask. No code change: `.loom/hooks/guard-destructive-generic.sh` is vendored from upstream `rjwalters/loom` and Champion had already found the issue's original narrowing proposal technically unsound (`refs/stash` is one stack shared across every linked worktree, so the collision risk is real regardless of worktree-locality). No upstream issue filed — the "if hits persist" condition for doing so was not met.
+
 ### 2026-08-15
 
 - **PR #1106**: refactor(lib): consolidate 8 duplicate tmp+os.replace atomic-write helpers (closes #1104) — adds `anvil/lib/atomic_write.py` as the single canonical "write to a `.tmp` sibling, then `os.replace()`" primitive (`atomic_write_text`/`_bytes`/`_json` + a bare `atomic_replace` for subprocess-populated tmp files) and points all 8 in-scope duplicate reimplementations at it, preserving each call site's exact on-disk behavior; `latest_resolution.py`'s symlink-swap stays untouched (out of scope)
