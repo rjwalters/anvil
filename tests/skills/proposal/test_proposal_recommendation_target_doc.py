@@ -49,8 +49,12 @@ DRAFT_COMMAND = SKILL_ROOT / "commands" / "proposal-draft.md"
 # Canonical module location post-#1092 (promoted from the proposal skill's
 # lib/ to anvil/lib/, mirroring memo's existing shim; #382/#382-era
 # doc-coverage precedent: tests/skills/memo/test_memo_recommendation_target_doc.py).
+# Issue #1121 further split the single `project_brief.py` file into a
+# `project_brief/` package (re-export-only, no behavior change) — read the
+# concatenation of every submodule so this doc-coverage grep still finds
+# content regardless of which submodule it landed in.
 PROJECT_BRIEF = (
-    Path(__file__).resolve().parents[3] / "anvil" / "lib" / "project_brief.py"
+    Path(__file__).resolve().parents[3] / "anvil" / "lib" / "project_brief"
 )
 # The proposal-local shim/re-export file — still holds `load_cost_basis`
 # (skill-local) and imports `load_recommendation_target` from PROJECT_BRIEF
@@ -60,6 +64,11 @@ BRIEF_TEMPLATE = SKILL_ROOT / "templates" / "BRIEF.md.example"
 
 
 def _read(p: Path) -> str:
+    if p.is_dir():
+        return "\n".join(
+            sorted_child.read_text(encoding="utf-8")
+            for sorted_child in sorted(p.glob("*.py"))
+        )
     return p.read_text(encoding="utf-8")
 
 
