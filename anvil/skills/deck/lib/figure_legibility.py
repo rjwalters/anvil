@@ -19,7 +19,7 @@ Design
 For each ``![alt](figures/<name>.png)`` reference in ``deck.md``:
 
 1. Resolve the intrinsic PNG dimensions from the IHDR chunk (stdlib
-   ``struct.unpack`` — no Pillow). Mirrors the precedent in
+   ``struct.unpack`` — no Pillow), via
    ``anvil/lib/render_gate.py::_read_png_dimensions``. The PNG's
    physical density (``pHYs`` chunk, when present) is read the same
    way — see "DPI awareness" below.
@@ -176,6 +176,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from anvil.lib.marp_lint import Finding, LintResult
+from anvil.lib.render_gate import _read_png_dimensions
 
 
 # Module-level metadata --------------------------------------------------------
@@ -338,25 +339,14 @@ _DEFAULT_GEOMETRY = Geometry()
 
 # PNG header parsing -----------------------------------------------------------
 #
-# Bytes 16-24 of a signature-verified PNG carry big-endian u32
-# width/height (the IHDR chunk is mandated first by the PNG spec).
-# Mirrors ``anvil/lib/render_gate.py::_read_png_dimensions``; promotion
-# to a shared helper waits for the second consumer per #58 / #318
-# convention.
+# ``_read_png_dimensions`` (bytes 16-24 of a signature-verified PNG carry
+# big-endian u32 width/height; the IHDR chunk is mandated first by the PNG
+# spec) is promoted to ``anvil/lib/render_gate.py`` and imported above —
+# see that module for the implementation. ``_PNG_SIGNATURE`` stays local:
+# ``_read_png_dpi`` below (a related-but-not-identical ``pHYs``-chunk
+# parser, not promoted) still needs it.
 
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-
-
-def _read_png_dimensions(data: bytes) -> tuple[int, int] | None:
-    """Return ``(width, height)`` from a PNG IHDR, or ``None``."""
-    if len(data) < 24 or not data.startswith(_PNG_SIGNATURE):
-        return None
-    if data[12:16] != b"IHDR":
-        return None
-    width, height = struct.unpack(">II", data[16:24])
-    if width <= 0 or height <= 0:
-        return None
-    return (int(width), int(height))
 
 
 def _read_png_dpi(data: bytes) -> float | None:
