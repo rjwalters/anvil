@@ -72,7 +72,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from anvil.skills.report.lib.audit_flags import CriticalFlag
+from anvil.skills.report.lib.audit_flags import AuditCriticalFlag
 
 
 # --------------------------------------------------------------------------
@@ -942,7 +942,7 @@ def detect_disclosure_topic_violations(
     rows: Iterable[TopicViolationRow],
     *,
     context_active: bool,
-) -> Optional[CriticalFlag]:
+) -> Optional[AuditCriticalFlag]:
     """Detect ``audit_disclosure_topic_violation`` (aggregated).
 
     Fires iff the customer-context tier is **active** (the project
@@ -976,7 +976,7 @@ def detect_disclosure_topic_violations(
         "the topic restriction no longer applies, the OPERATOR (not "
         "the agent) must update the customer's context.yaml."
     )
-    return CriticalFlag(
+    return AuditCriticalFlag(
         type=CRITICAL_FLAG_AUDIT_DISCLOSURE_TOPIC_VIOLATION,
         justification=justification,
         originating_rows=tuple(r.row_number for r in offending),
