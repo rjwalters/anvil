@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-16 (Guide triage pass — label state unchanged from the prior pass: still zero issues carrying `loom:issue`/`loom:building`/`loom:blocked`/`loom:epic`, and the same ten open issues (#888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107), all `loom:operator-only`. No open PRs. Incumbent `loom:urgent` set stayed empty (zero eligible candidates to fill it with) — a genuinely quiet tick. `WORK_LOG.md` updated this pass: appended an entry for merged PR #1129 (closes #1128, the `render_gate.py` package split), which had merged since the prior write but gone unrecorded (presence-check against the committed file, not a number watermark — #5516/#5539 pattern); PR #1127 (the prior pass's own docs-maintenance PR) correctly excluded. Merged-PR/closed-issue pairing checked clean this pass — #1129's closing reference resolved to CLOSED issue #1128, no orphans found. README checked for architectural drift: none found (the merged PR is an internal `anvil/lib/` refactor, not an architecture-file change), left untouched. No token-pool pressure signal (`.loom/tokens/.ranking` absent) — proceeded normally.)*
+*Last updated: 2026-08-16 (Guide triage pass — a Builder claimed #1133 ("Consolidate 10 duplicate `_parse_frontmatter` test helpers into `anvil/lib/testing.py`", `loom:curated`/`tier:maintenance`) since the prior pass, moving it `loom:issue` → `loom:building`; `loom-recover-orphans` confirms it is legitimately in progress (freshly claimed, well under the 4h stale-building threshold), not orphaned. Otherwise the operator-only backlog is unchanged: the same ten `loom:operator-only` issues (#888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107) remain open, none newly eligible for `loom:urgent`. No open PRs. Incumbent `loom:urgent` set stayed empty (zero eligible candidates) — another quiet tick on that front. `WORK_LOG.md` updated this pass: appended entries for two Auditor-filed guard-telemetry issues closed as not-planned duplicates since the prior write — #1132 (duplicate of #1103's read-only-heredoc sub-pattern) and #1131 (duplicate of #1069's mktemp/rm-scope pattern) — both folded their additional telemetry into a comment on the surviving issue rather than staying open as separate escalations; no new merged PR needed recording (PR #1129 was already captured, and PR #1130 is this role's own prior docs-maintenance PR, correctly excluded). README checked for architectural drift: none found, left untouched. No token-pool pressure signal (`.loom/tokens/.ranking` absent) — proceeded normally.)*
 
 ---
 
@@ -17,7 +17,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## In Progress (`loom:building`)
 
-*Empty.* #1121 (the `project_brief.py` package split, listed here last pass) closed via merged PR #1124.
+- **#1133**: "Consolidate 10 duplicate `_parse_frontmatter` test helpers into `anvil/lib/testing.py`" (`tier:maintenance`). Claimed by a Builder this pass (`loom:issue` → `loom:building`). Mirrors the same-shaped consolidations already merged this cycle (#1085's `frontmatter.py` extraction, #1126's `_tree_hash`/`_tree_digest` cleanup). Confirmed not orphaned via `loom-recover-orphans` (freshly claimed, well under the 4h stale-building threshold).
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -33,7 +33,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-*Empty.* The only `loom:curated` issue open is `loom:operator-only` (#888, listed below).
+*Empty.* Two `loom:curated` issues are open: #1133 is already claimed (`loom:building`, see In Progress above) and #888 is `loom:operator-only` (listed below).
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -69,7 +69,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Ten open issues as of 2026-08-16, all `loom:operator-only`, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), eight Auditor/Curator operator-mechanical or operator-decision escalations (#1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107 — see Operator Escalations above).** No open PRs, zero `loom:issue` issues open at all — nothing changed since the prior pass; the empty incumbent urgent set stayed empty. Merged-PR/closed-issue pairing checked clean this pass, no orphans found. `WORK_LOG.md` updated this pass with the one merged PR (#1129, closes #1128) that had gone unrecorded past the prior write. Next action: a human reviews the eight operator escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host.
+**Eleven open issues as of 2026-08-16: #1133 (`loom:building`, a Builder actively working the `_parse_frontmatter` consolidation) plus the same ten `loom:operator-only` issues as the prior pass — #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), eight Auditor/Curator operator-mechanical or operator-decision escalations (#1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107 — see Operator Escalations above).** No open PRs; the empty incumbent urgent set stayed empty (nothing `loom:issue`-eligible exists to promote). Two Auditor-filed guard-telemetry issues closed as not-planned duplicates this pass (#1132 → #1103, #1131 → #1069) — their contributions were folded into comments on the surviving issues rather than left as separate open escalations, so the Operator Escalations list itself is unchanged. `WORK_LOG.md` updated this pass with those two closures. Next action: a human reviews the eight operator escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1133 needs no Guide action while a Builder has it claimed.
 
 ### Recurring themes the next wave of issues will likely touch
 
