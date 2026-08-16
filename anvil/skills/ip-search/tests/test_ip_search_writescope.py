@@ -10,11 +10,12 @@ run, the same zero-mutation discipline ``project-scout`` /
 
 from __future__ import annotations
 
-import hashlib
+from functools import partial
 from pathlib import Path
 
 import pytest
 
+from anvil.lib.testing import tree_hash
 from _ip_search_fixtures import (
     cassette_opener,
     fixed_clock,
@@ -27,19 +28,12 @@ from _ip_search_skill_lib import orchestrate, reference
 
 ENV = {"PATENTSVIEW_API_KEY": "test-key"}
 
-
-def _tree_hash(root: Path, exclude: str = "prior-art") -> str:
-    """SHA-256 over every file under ``root`` except the ``exclude`` dir."""
-
-    h = hashlib.sha256()
-    for path in sorted(root.rglob("*")):
-        if exclude in path.relative_to(root).parts:
-            continue
-        rel = str(path.relative_to(root)).encode("utf-8")
-        h.update(rel)
-        if path.is_file():
-            h.update(path.read_bytes())
-    return h.hexdigest()
+# This suite's write-scope contract is "everything outside prior-art/ is
+# untouched", so prior-art is the file-under-test's expected write target
+# and stays excluded by default here (call sites override with
+# exclude="__never__" when they need to prove NOTHING was written,
+# including into prior-art/ itself).
+_tree_hash = partial(tree_hash, exclude="prior-art")
 
 
 # ---------------------------------------------------------------------------

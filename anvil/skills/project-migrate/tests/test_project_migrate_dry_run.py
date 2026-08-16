@@ -11,11 +11,11 @@ Acceptance criterion: dry-run never mutates (verified by snapshot-and-diff).
 
 from __future__ import annotations
 
-import hashlib
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from anvil.lib.testing import tree_hash as _tree_hash
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
@@ -29,16 +29,6 @@ from _fixtures import (  # noqa: E402
 )
 
 run = orchestrate.run
-
-
-def _tree_hash(project: Path) -> dict:
-    """Return ``{relative_path: sha256_hex}`` for every file in ``project``."""
-    out: dict = {}
-    for path in sorted(project.rglob("*")):
-        if path.is_file():
-            rel = str(path.relative_to(project))
-            out[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return out
 
 
 class TestDryRunNoMutations(unittest.TestCase):

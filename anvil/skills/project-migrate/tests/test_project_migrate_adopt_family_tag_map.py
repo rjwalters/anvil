@@ -13,7 +13,6 @@ nothing is mutated.
 
 from __future__ import annotations
 
-import hashlib
 import json
 
 import pytest
@@ -24,21 +23,13 @@ from _fixtures import (
     write_tag_map,
 )
 from _project_migrate_skill_lib import adopt_family
+from anvil.lib.testing import tree_hash as _tree_digest
 
 build_adopt_family_plan = adopt_family.build_adopt_family_plan
 load_tag_map = adopt_family.load_tag_map
 AdoptFamilyError = adopt_family.AdoptFamilyError
 
 ARTIFACT_TYPE = "ip-uspto-provisional"
-
-
-def _tree_digest(root) -> str:
-    h = hashlib.sha256()
-    for path in sorted(root.rglob("*")):
-        h.update(str(path.relative_to(root)).encode("utf-8"))
-        if path.is_file():
-            h.update(path.read_bytes())
-    return h.hexdigest()
 
 
 class TestFileShape:

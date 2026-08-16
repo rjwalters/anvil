@@ -12,6 +12,7 @@ import json
 
 import pytest
 
+from anvil.lib.testing import tree_hash as _tree_digest
 from _fixtures import FOREIGN_REVIEW_PROSE, build_adopted_review_threads
 from _project_migrate_skill_lib import adopt_review, orchestrate
 
@@ -20,15 +21,6 @@ run_adopt_review = orchestrate.run_adopt_review
 
 def _digest(path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _tree_digest(root) -> str:
-    h = hashlib.sha256()
-    for p in sorted(root.rglob("*")):
-        h.update(str(p.relative_to(root)).encode("utf-8"))
-        if p.is_file():
-            h.update(p.read_bytes())
-    return h.hexdigest()
 
 
 class TestApply:

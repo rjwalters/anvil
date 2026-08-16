@@ -28,11 +28,11 @@ here touches the live network.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
 import pytest
+from anvil.lib.testing import tree_hash as _tree_hash
 from _ip_search_fixtures import (
     cassette_opener,
     fixed_clock,
@@ -92,14 +92,6 @@ def _exploding_runner(*_args, **_kwargs):
     raise AssertionError(
         "the search runner must not be called when the knob is off"
     )
-
-
-def _tree_hash(root: Path) -> str:
-    digest = hashlib.sha256()
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
-        digest.update(str(path.relative_to(root)).encode("utf-8"))
-        digest.update(path.read_bytes())
-    return digest.hexdigest()
 
 
 # ---------------------------------------------------------------------------
