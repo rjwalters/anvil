@@ -2,22 +2,22 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-15 (Guide triage pass — #1084 and #1086 (both `loom:building` last pass) merged via PR #1088 and PR #1091 respectively and closed; six more maintenance PRs landed since (#1074, #1077, #1079, #1085, #1093, #1097), leaving nothing `loom:building`. A new Hermit proposal, #1098 ("Wire or remove orphaned ack.py: report-promote's executable spec is never invoked"), was filed this pass. #888, #918, #1061, #1069, #1070, #1072, #1073, #1081 are otherwise unchanged — #1061 remains the only `loom:issue` issue and remains `loom:blocked` pending its 2026-08-16 re-check, so nothing was eligible for `loom:urgent` this pass (urgent set is empty; no eligible candidate to fill it). No open PRs. `WORK_LOG.md` updated with PR #1097 this pass (debounce window elapsed, single pending entry written). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --recover` also reports none.)*
+*Last updated: 2026-08-16 (Guide triage pass — #1061 (the sole `loom:issue` issue, `loom:blocked` pending its own 2026-08-16 re-check) resolved and closed via PR #1109, which recorded the re-check finding directly in `WORK_LOG.md` with no code change; the backlog now has zero `loom:issue` issues, so both "Ready for Work" and "Urgent" are empty with nothing eligible to promote. #1107 (previously in the Triage Queue) has since been Curator-triaged to `loom:operator-only`/`loom:operator-decision` and moves to Operator Escalations. A new Hermit proposal, #1110 ("Consolidate duplicate `_body_path()` / `_record_body_path()` helpers across `anvil/lib`"), was filed this pass. #888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103 are otherwise unchanged. No open PRs, nothing `loom:building`. `WORK_LOG.md` updated with PR #1109 this pass (debounce window elapsed, single pending entry written). Merged-PR/closed-issue pairing checked clean, no orphans; `loom-recover-orphans --recover` also reports none.)*
 
 ---
 
 <!-- guide:plan-body:start -->
 ## Urgent (Top Priority)
 
-*Empty.* #1061 is the only `loom:issue` issue open, and it is also `loom:blocked` — not eligible for promotion until its time-gated re-check (due 2026-08-16) clears. Nothing else to promote.
+*Empty.* No `loom:issue` issues are open at all — #1061 (the only one) closed this pass via PR #1109. Nothing to promote.
 
 ## Ready for Work (`loom:issue`, non-building)
 
-*Empty of actionable work.* #1061 carries `loom:issue` but is also `loom:blocked` (its acceptance criteria call for a re-check of guard telemetry on/after 2026-08-16, seven days after the #5754 create-side redirect landed) — see Blocked below.
+*Empty.* No open issues currently carry `loom:issue`.
 
 ## In Progress (`loom:building`)
 
-*Empty.* #1084 and #1086 (both claimed as of the previous pass) merged via PR #1088 and PR #1091 respectively and are now closed. Nothing currently claimed.
+*Empty.* Nothing currently claimed.
 
 ## PRs Awaiting Review (`loom:review-requested`)
 
@@ -33,7 +33,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Curated, Not Yet Claimed (`loom:curated`)
 
-*Empty.* #1061 also carries `loom:curated` but is already promoted (`loom:issue`, currently `loom:blocked` — see Blocked below), so it is not "awaiting promotion." The only unpromoted `loom:curated` issue is `loom:operator-only` (#888, listed below).
+*Empty.* The only `loom:curated` issue open is `loom:operator-only` (#888, listed below).
 
 ## Curated, Awaiting Operator Review (`loom:curated` + `loom:operator-only`)
 
@@ -49,18 +49,19 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 - **#1081**: "Guard telemetry: stash-scope:create-redirect denies self-contained stash/lint-check/pop sequence" (`loom:auditor`/`loom:operator-decision`). Sibling of #1061: the same self-contained `git stash && <read-only lint check>; git stash pop` shape, but here it trips the sibling `deny`-tier `stash-scope:create-redirect` branch (raw `git stash` with other managed worktrees active) instead of the `ask`-tier `worktree-collision` branch. Per #1061's own Champion-reviewed correction, the shared cross-worktree `refs/stash` stack means this is not provably safe either — proposed outcome is keep flagged pending upstream review, mirroring #1061's disposition.
 - **#1090**: "Guide role's automated PR body template references nonexistent issue #1784" (`loom:operator-mechanical`). Every automated "docs: Guide document maintenance update" PR body carries a dead `See issue #1784 for the feature specification.` line — root-caused to a vendored `.loom/roles/guide.md`/`.claude/commands/loom/guide.md` template that hardcodes an unqualified `#1784` reference resolving only inside `rjwalters/loom`'s own tracker. Cosmetic only (no repo content affected); curated acceptance criteria call for filing the fix upstream in `rjwalters/loom` rather than patching the vendored copy locally (would revert on next resync).
 - **#1103**: "Guard telemetry: worktree-write-confinement denies read-only multi-line heredoc scripts (gh-since.sh pattern persists, plus non-gh heredocs)" (`loom:auditor`/`loom:operator-decision`). `worktree-write-confinement` is the single most frequent guard trigger in the log (11 of 27 entries, 2026-08-06..2026-08-15) — two read-only shapes still deny at the catastrophic tier: the exact `GH_READ`+`jq` anti-pattern `CLAUDE.md`'s `gh-since.sh` section already documents a fix for, plus non-`gh` heredocs. Needs a human ruling distinct from #1072's cross-repo-token case.
+- **#1107**: "Guard telemetry: worktree-write-confinement-unresolved-var denies backgrounded pytest run redirecting to /tmp scratch log" (`loom:auditor`/`loom:operator-decision`). Now Curator-triaged (was in the Triage Queue last pass). One instance distinct in shape from #1072 (cross-repo token write): a backgrounded `pytest` run inside a worktree redirecting to a locally-assigned `/tmp` scratch path, denied at the catastrophic tier. Needs a human ruling.
 
 ## Blocked (`loom:blocked`)
 
-- **#1061**: "Guard telemetry: stash-scope:worktree-collision blocks self-contained stash/pop pairs inside a worktree" (`loom:issue`, `loom:curated`, `tier:maintenance`). Champion reviewed the issue's original narrowing proposal and found it technically unsound (the shared `refs/stash` stack across worktrees means a same-worktree, same-chain `stash && check && stash pop` is not actually race-free). Revised outcome: do not narrow the guard; re-check `stash-scope` telemetry on/after 2026-08-16 (7+ days after the #5754 create-side redirect landed) and only file an upstream `rjwalters/loom` issue if hits persist. No action for Guide until that date.
+*Empty.* #1061 (the only blocked issue) resolved its own re-check and closed this pass via PR #1109.
 
 ## Triage Queue (unlabeled / awaiting Curator)
 
-- **#1107**: "Guard telemetry: worktree-write-confinement-unresolved-var denies backgrounded pytest run redirecting to /tmp scratch log" (`loom:auditor` only — not yet `loom:operator-only` or `loom:curated`). One instance distinct in shape from #1072 (cross-repo token write): a backgrounded `pytest` run inside a worktree redirecting to a locally-assigned `/tmp` scratch path, denied at the catastrophic tier. Awaiting Curator triage.
+*Empty.* #1107 (previously here) has been Curator-triaged to `loom:operator-only`/`loom:operator-decision` — see Operator Escalations above.
 
 ## Proposals Awaiting Human Approval (`loom:architect` / `loom:hermit`)
 
-*Empty.* #1098 (the ack.py wire-in-vs-delete Hermit proposal) resolved via PR #1101 (wired in, closes #1098) and is now closed.
+- **#1110**: "Consolidate duplicate `_body_path()` / `_record_body_path()` helpers across `anvil/lib`" (`loom:hermit`, `tier:maintenance`). Two private helpers — `_body_path()` and the byte-for-byte-identical `_record_body_path()` — are duplicated three times each across `anvil/lib/pending_marker.py`, `anvil/lib/numeric_consistency.py`, and `anvil/lib/evidence_check.py`, each with self-referential "mirrors X" docstrings acknowledging the drift risk. Same shape as the recently-merged #1104/#1102/#1083/#1075 consolidations; all three call sites already import freely from other `anvil.lib` modules, so nothing blocks pointing them at one shared implementation.
 
 ## Epics (`loom:epic`)
 
@@ -68,7 +69,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 ## Backlog state
 
-**Eleven open issues as of 2026-08-15, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), #1061 (approved but `loom:blocked` until its 2026-08-16 re-check), seven Auditor/Curator operator-mechanical or operator-decision escalations (#1069, #1070, #1072, #1073, #1081, #1090, #1103, all `loom:operator-only` — see Operator Escalations above), and one freshly-filed Auditor issue not yet triaged (#1107, see Triage Queue above).** No open PRs, nothing `loom:building`, no Architect/Hermit proposals awaiting approval (#1098 resolved via PR #1101 this cycle). Nothing was eligible for `loom:urgent` this cycle — the sole `loom:issue` issue (#1061) is blocked, and it is the only `loom:issue` candidate in the backlog, so the urgent set stays empty rather than being filled with an ineligible/blocked holder. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --recover` also reports none). Next action: a human reviews the seven operator escalations and #888's design tradeoffs; #918 still awaits a human daemon-recovery run on the affected host; #1061 waits on its own time-gated re-check due 2026-08-16; #1107 awaits Curator triage.
+**Eleven open issues as of 2026-08-16, none `loom:urgent`-eligible: #888 (curated, operator-only, awaiting human design judgment), #918 (operator-only infrastructure escalation), eight Auditor/Curator operator-mechanical or operator-decision escalations (#1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107, all `loom:operator-only` — see Operator Escalations above), and one Hermit simplification proposal awaiting human approval (#1110, see Proposals above).** No open PRs, nothing `loom:building`, zero `loom:issue` issues open at all — #1061 (the sole one) closed this pass via PR #1109. Nothing was eligible for `loom:urgent` this cycle: with zero `loom:issue` candidates in the backlog, the urgent set stays empty rather than being filled with an ineligible holder. Merged-PR/closed-issue pairing checked clean this pass, no orphans found (`loom-recover-orphans --recover` also reports none). Next action: a human reviews the eight operator escalations, #888's design tradeoffs, and #1110's Hermit proposal; #918 still awaits a human daemon-recovery run on the affected host.
 
 ### Recurring themes the next wave of issues will likely touch
 
