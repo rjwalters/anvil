@@ -11,7 +11,6 @@ succeeded subset — the enroll contract).
 
 from __future__ import annotations
 
-import hashlib
 import subprocess
 
 import pytest
@@ -23,6 +22,7 @@ from _fixtures import (
     write_tag_map,
 )
 from _project_migrate_skill_lib import apply_mod, orchestrate
+from anvil.lib.testing import tree_hash as _tree_digest
 
 run_adopt_family = orchestrate.run_adopt_family
 
@@ -31,15 +31,6 @@ ARTIFACT_TYPE = "ip-uspto-provisional"
 
 def _tag_map(tmp_path):
     return write_tag_map(tmp_path / "tag-map.json", DEFAULT_TAG_MAP)
-
-
-def _tree_digest(root) -> str:
-    h = hashlib.sha256()
-    for path in sorted(root.rglob("*")):
-        h.update(str(path.relative_to(root)).encode("utf-8"))
-        if path.is_file():
-            h.update(path.read_bytes())
-    return h.hexdigest()
 
 
 class TestAdoptNoBrief:

@@ -12,11 +12,11 @@ Per the #58 packaging convention this filename is unique across the
 
 from __future__ import annotations
 
-import hashlib
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from anvil.lib.testing import tree_hash as _tree_digest
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
@@ -28,17 +28,6 @@ from _fixtures import (  # noqa: E402
 )
 
 run = orchestrate.run
-
-
-def _tree_digest(root: Path) -> str:
-    """Stable digest of a tree: sorted relpaths + per-file content hashes."""
-    digest = hashlib.sha256()
-    for path in sorted(root.rglob("*")):
-        rel = path.relative_to(root)
-        digest.update(str(rel).encode("utf-8"))
-        if path.is_file():
-            digest.update(path.read_bytes())
-    return digest.hexdigest()
 
 
 class TestMixedIdempotence(unittest.TestCase):

@@ -1,0 +1,76 @@
+"""Shared test-support helpers used across per-skill test suites (#1125).
+
+Consolidates 11 distinct drifted variants of a directory-snapshot-hashing
+helper (``_tree_hash`` / ``_tree_digest`` / ``_tree_hashes``) that had been
+copy-pasted at module scope into 28 test files across 10 skills (``help``,
+``ip-search``, ``project-book``, ``project-migrate``, ``project-photos``,
+``project-scout``, ``project-share``, ``rubric-rebackport``). Every call
+site uses the helper identically -- snapshot a tree before an operation,
+run it, snapshot again, assert the two snapshots are equal (zero-mutation /
+dry-run / idempotency guarantees) or unequal (an operation is expected to
+write) -- so a single canonical implementation is a safe drop-in as long as
+it preserves "same input tree -> equal snapshots, different tree -> unequal
+snapshots" for existing ``==`` / ``!=`` assertions.
+
+This module is test-support only -- it is imported by
+``tests/`` and ``anvil/skills/*/tests/`` files, never by shipped skill code
+(unlike the rest of ``anvil/lib/``, which is production-shared).
+"""
+
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+__all__ = ["tree_hash"]
+
+# Sentinel value recorded for directory entries. Distinct from any valid
+# sha256 hex digest (which is exactly 64 lowercase hex characters), so a
+# directory can never collide with a same-named file's hash.
+_DIR_MARKER = "<dir>"
+
+
+def tree_hash(root: Path, *, exclude: str | None = None) -> dict[str, str]:
+    """Snapshot a directory tree as ``{relative_posix_path: content_hash}``.
+
+    Walks every entry under ``root`` (files *and* directories, discovered
+    via a sorted ``root.rglob("*")`` for determinism) and returns one dict
+    entry per path:
+
+    - Files map to the sha256 hex digest of their contents.
+    - Directories map to a fixed marker (``"<dir>"``), so a directory-only
+      structural change -- e.g. an empty subdirectory appearing or
+      disappearing -- is visible in the returned mapping even though an
+      empty directory has no content of its own to hash. (At least one of
+      the pre-consolidation variants this helper replaces omitted
+      directories entirely, so that class of change could go undetected --
+      see issue #1125.)
+
+    Two snapshots taken before/after an operation compare equal (``==``)
+    iff the tree is byte-identical: same paths present, same file
+    contents, same directory structure. This is the standard idiom used
+    across the skill test suites to assert a command is read-only, a
+    dry-run made no changes, or a re-run is idempotent.
+
+    Args:
+        root: directory to snapshot.
+        exclude: optional path-component name to skip -- any entry whose
+            relative path contains this component anywhere (e.g. a named
+            subdirectory that the operation under test is *expected* to
+            write into) is omitted from the snapshot. Matches the
+            ``ip-search`` write-scope test's original ``exclude="prior-art"``
+            usage: prove everything *outside* the one sanctioned write
+            target is untouched.
+    """
+
+    out: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        rel_path = path.relative_to(root)
+        if exclude is not None and exclude in rel_path.parts:
+            continue
+        rel = rel_path.as_posix()
+        if path.is_file():
+            out[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+        elif path.is_dir():
+            out[rel] = _DIR_MARKER
+    return out
