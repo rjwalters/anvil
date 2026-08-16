@@ -35,13 +35,18 @@ Also consolidates 99 byte-identical ``_read(p_or_path: Path) -> str``
 test helpers (issue #1136) that had been copy-pasted at module scope
 across the repo's test suites -- both a ``p: Path`` and a ``path: Path``
 parameter-name variant of the exact same one-line
-``return <param>.read_text(encoding="utf-8")`` body. A further ~80 files
-use a ``DOC``/``_SKILL_ROOT``-closure variant (a no-arg or relative-path
-wrapper closing over a module-level constant) or have a genuinely
-different body (an extra ``assert path.exists()``/``is_dir()`` branch,
-or a directory-vs-file dispatch) -- those are left for a follow-up
-(tracked in #1136's discussion) rather than forced into this shared
-signature.
+``return <param>.read_text(encoding="utf-8")`` body. A follow-up (issue
+#1140) converted a further 78 files carrying the two closure variants --
+the no-arg ``DOC``-closure (58 files, now ``_read =
+functools.partial(read_text, DOC)``) and the relative-path
+``_SKILL_ROOT``-closure (20 files, now ``_read = lambda rel:
+read_text(_SKILL_ROOT / rel)``) -- binding the module-level constant at
+the call site rather than baking a file-local default into this shared
+helper. Still not absorbed: a handful of files whose ``_read`` has a
+genuinely different body (an extra ``assert path.exists()``/``is_dir()``
+branch, or a directory-vs-file dispatch), plus the ``self``-taking
+method-scope variants -- those carry real behavior beyond the read and
+are deliberately left alone.
 """
 
 from __future__ import annotations
@@ -112,8 +117,9 @@ def read_text(path: Path) -> str:
     one-line body copy-pasted as a module-scope ``_read`` helper across
     99 test files (issue #1136). Callers that closed over a module-level
     constant (``DOC``, ``_SKILL_ROOT``) instead of taking an explicit
-    path argument should bind it locally, e.g. via
-    ``functools.partial(read_text, DOC)``, rather than baking a
+    path argument bind it locally -- ``functools.partial(read_text, DOC)``
+    for the no-arg form, ``lambda rel: read_text(_SKILL_ROOT / rel)`` for
+    the relative-path form (issue #1140) -- rather than baking a
     file-local default into this shared helper.
     """
     return path.read_text(encoding="utf-8")

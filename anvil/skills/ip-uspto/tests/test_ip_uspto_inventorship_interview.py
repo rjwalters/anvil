@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+from anvil.lib.testing import read_text
+
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent
 _LIB_FILE = _SKILL_ROOT / "lib" / "inventorship_interview.py"
@@ -487,9 +489,7 @@ class TestEdgeCases:
 # 9. command-file + lib structure
 # ---------------------------------------------------------------------------
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
 
 
 class TestCommandFileStructure:

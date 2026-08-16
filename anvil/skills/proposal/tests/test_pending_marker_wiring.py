@@ -62,14 +62,13 @@ from anvil.lib.convergence import (
 from anvil.lib.critics import aggregate, compute_verdict
 from anvil.lib.pending_marker import check_pending_markers
 from anvil.lib.review_schema import Kind, Review, Score, Verdict
+from anvil.lib.testing import read_text
 from anvil.skills.proposal.lib.synthesis_schema import GapList
 
 
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
 
 
 class TestDocsWiring(unittest.TestCase):

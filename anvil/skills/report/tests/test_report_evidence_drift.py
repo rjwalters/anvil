@@ -32,11 +32,11 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from anvil.lib.testing import read_text
+
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
 
 
 class TestReportDraftRecordsSnapshot(unittest.TestCase):

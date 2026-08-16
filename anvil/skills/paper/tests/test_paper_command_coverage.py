@@ -43,14 +43,14 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from anvil.lib.testing import read_text
+
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 _REPO_ROOT = _SKILL_ROOT.parent.parent.parent
 
 RUBRIC_ID = "anvil-pub-v2"
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
 
 
 def _read_repo(rel: str) -> str:

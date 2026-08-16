@@ -41,6 +41,8 @@ from pathlib import Path
 
 import pytest
 
+from anvil.lib.testing import read_text
+
 _HERE = Path(__file__).resolve().parent
 _SKILL_ROOT = _HERE.parent
 # ``inventorship_evidence.py`` was promoted to ``anvil/lib/`` in issue #516
@@ -535,9 +537,7 @@ class TestNoGitDegradation:
 # structure tests: command file + SKILL.md contracts
 # ---------------------------------------------------------------------------
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
 
 
 class TestCommandFileStructure:

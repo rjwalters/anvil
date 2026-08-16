@@ -8,7 +8,10 @@ wiring is conditional on that flag but the prose still pins the contract.
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
+
+from anvil.lib.testing import read_text
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOC = (
@@ -20,9 +23,7 @@ DOC = (
     / "memo-figure-content.md"
 )
 
-
-def _read() -> str:
-    return DOC.read_text(encoding="utf-8")
+_read = functools.partial(read_text, DOC)
 
 
 def test_memo_figure_content_doc_references_staged_sidecar_primitive():

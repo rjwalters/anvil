@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
+
+from anvil.lib.testing import read_text
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOC = (
     REPO_ROOT / "anvil" / "skills" / "ip-uspto" / "commands" / "ip-uspto-112.md"
 )
 
-
-def _read() -> str:
-    return DOC.read_text(encoding="utf-8")
+_read = functools.partial(read_text, DOC)
 
 
 def test_ip_uspto_112_doc_references_staged_sidecar_primitive():
