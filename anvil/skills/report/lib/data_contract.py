@@ -72,7 +72,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
-from anvil.skills.report.lib.audit_flags import CriticalFlag
+from anvil.skills.report.lib.audit_flags import AuditCriticalFlag
 
 
 # --------------------------------------------------------------------------
@@ -588,7 +588,7 @@ def detect_fabricated_numeric_claims(
     rows: Iterable[DataClaimRow],
     *,
     contract_active: bool,
-) -> Optional[CriticalFlag]:
+) -> Optional[AuditCriticalFlag]:
     """Detect ``audit_fabricated_numeric_claim`` (aggregated).
 
     Fires iff the data contract is **active** and at least one row
@@ -620,7 +620,7 @@ def detect_fabricated_numeric_claims(
         "Reviser MUST add the claim's source as a manifest entry "
         "under refs/data/ or remove the claim."
     )
-    return CriticalFlag(
+    return AuditCriticalFlag(
         type=CRITICAL_FLAG_AUDIT_FABRICATED_NUMERIC_CLAIM,
         justification=justification,
         originating_rows=tuple(r.row_number for r in offending),
@@ -629,7 +629,7 @@ def detect_fabricated_numeric_claims(
 
 def detect_contradicted_data_claims(
     rows: Iterable[DataClaimRow],
-) -> Optional[CriticalFlag]:
+) -> Optional[AuditCriticalFlag]:
     """Detect ``audit_contradicted_data_claim`` (aggregated).
 
     Fires iff at least one row carries verdict ``CONTRADICTED`` — a
@@ -656,7 +656,7 @@ def detect_contradicted_data_claims(
         "MUST correct the claim to match the entry or re-export the "
         "entry from its source."
     )
-    return CriticalFlag(
+    return AuditCriticalFlag(
         type=CRITICAL_FLAG_AUDIT_CONTRADICTED_DATA_CLAIM,
         justification=justification,
         originating_rows=tuple(r.row_number for r in offending),
