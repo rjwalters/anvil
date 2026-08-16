@@ -159,6 +159,24 @@
   block through `yaml.safe_load`, asserting each parses to a `dict`, so
   this class of bug can't ship silently again.
 
+- **`.loom/scripts/random-file.sh` now actually excludes `.loom/worktrees/`
+  and `.git/` when `fd` is not installed** (#1112). The `find`-fallback path
+  had two independent regex-anchoring bugs that silently defeated both its
+  default excludes and its `.gitignore` handling: `apply_exclusions()`
+  misrouted any dotted directory pattern (`.git`, `.loom/worktrees`) into
+  the file-extension branch, producing a regex that could never match a
+  `find -type f` result, and `gitignore_to_regex()`'s trailing-slash branch
+  required a leading `/` that relative `find` output never has. Verified
+  reproduction: a live worktree file surfaced as a "random" pick. The
+  ~150-line hand-rolled glob-to-regex machinery (`apply_exclusions`,
+  `glob_to_regex`, `filter_by_gitignore`, `gitignore_to_regex`, and
+  `find_with_glob`'s `eval`-based matching) is replaced with
+  `git ls-files --cached --others --exclude-standard` (native `.gitignore`
+  handling, zero regex conversion) plus a small bash-native glob matcher for
+  `DEFAULT_EXCLUDES` / `--exclude` / `--include`; the `fd` path now lets `fd`
+  honor `.gitignore` natively too (dropped `--no-ignore-vcs`) instead of
+  re-implementing it via the same buggy post-filter.
+
 ## [0.11.0] — 2026-08-13
 
 ### Added
