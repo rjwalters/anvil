@@ -4,6 +4,25 @@
 
 ### Added
 
+- **`anvil:essay` review gains a thesis-unity check (5e)** (#1148). The
+  four existing `essay-review.md` step-5 coherence passes each score a
+  section or claim in isolation — none tested whether a `##`-level section
+  actually serves the essay's own stated argument, so a well-crafted,
+  well-transitioned tangent could score perfectly on every dimension
+  (including dim 8 *Structure & flow*) and still not belong in the essay.
+  The new 5e pass restates the essay's argument in one sentence and tests
+  each section against it, emitting a `major` (never critical) finding —
+  feeding dim 7 alongside the existing 5d link-coverage judgment — for any
+  section whose deletion would not weaken the argument. The check
+  deliberately runs on sections already protected on the "What's working"
+  list: craft quality and thesis relevance are independent axes, and
+  `essay-review.md`'s "What essay-review does NOT do" section now documents
+  that distinction explicitly. Essays with zero or one `##` sections
+  degrade gracefully (nothing to test against), matching the existing
+  zero-numbers/zero-links vacuous-pass convention. `SKILL.md`'s
+  failure-mode catalog gains a "the well-crafted tangent" entry alongside
+  the toaster and spread failures.
+
 - **`.loom/scripts/gh-since.sh` — read-only "new merged PRs / new closed
   issues since watermark N" helper** (#1060). The Auditor's Guard-Decision
   Telemetry Review standing policy and ad-hoc WORK_LOG/changelog
