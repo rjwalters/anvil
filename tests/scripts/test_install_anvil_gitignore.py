@@ -40,6 +40,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from anvil.lib.testing import assert_ok as _assert_ok
+
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -60,13 +62,6 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
-    )
-
-
-def _assert_ok(result: subprocess.CompletedProcess[str]) -> None:
-    assert result.returncode == 0, (
-        f"installer exited non-zero:\n"
-        f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
     )
 
 
