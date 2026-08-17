@@ -4,6 +4,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-08-17
+
+- **PR #1142**: refactor(lib): consolidate DOC/_SKILL_ROOT-closure _read test helpers (closes #1140) — converts the two closure-variant shapes of the local `_read` test helper (the no-arg `DOC`-closure and the relative-path `_SKILL_ROOT`-closure) to thin wrappers over `anvil.lib.testing.read_text`, completing the follow-up PR #1139 deliberately deferred; 58 `DOC`-closure files become `_read = functools.partial(read_text, DOC)` and 20 `_SKILL_ROOT`-closure files become `_read = lambda rel: read_text(_SKILL_ROOT / rel)`, with the 6 genuinely-different-body files left untouched per the issue's carve-out
+
 ### 2026-08-16
 
 - **PR #1141**: refactor(report): rename audit_flags.CriticalFlag to AuditCriticalFlag (closes #1138) — `anvil/skills/report/lib/audit_flags.py`'s frozen-dataclass detector return type shared its exact name with the canonical pydantic `_review.json` schema type (`anvil.lib.review_schema.CriticalFlag`), with three sibling files each importing a differently-scoped `CriticalFlag` unqualified — exactly the shape that produces a silent wrong-import bug on the next copy-paste; renamed to `AuditCriticalFlag` with a cross-referencing docstring, pure rename, no behavior change
