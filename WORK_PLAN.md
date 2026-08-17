@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-16 (Guide triage pass — a Builder claimed #1133 ("Consolidate 10 duplicate `_parse_frontmatter` test helpers into `anvil/lib/testing.py`", `loom:curated`/`tier:maintenance`) since the prior pass, moving it `loom:issue` → `loom:building`; `loom-recover-orphans` confirms it is legitimately in progress (freshly claimed, well under the 4h stale-building threshold), not orphaned. Otherwise the operator-only backlog is unchanged: the same ten `loom:operator-only` issues (#888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107) remain open, none newly eligible for `loom:urgent`. No open PRs. Incumbent `loom:urgent` set stayed empty (zero eligible candidates) — another quiet tick on that front. `WORK_LOG.md` updated this pass: appended entries for two Auditor-filed guard-telemetry issues closed as not-planned duplicates since the prior write — #1132 (duplicate of #1103's read-only-heredoc sub-pattern) and #1131 (duplicate of #1069's mktemp/rm-scope pattern) — both folded their additional telemetry into a comment on the surviving issue rather than staying open as separate escalations; no new merged PR needed recording (PR #1129 was already captured, and PR #1130 is this role's own prior docs-maintenance PR, correctly excluded). README checked for architectural drift: none found, left untouched. No token-pool pressure signal (`.loom/tokens/.ranking` absent) — proceeded normally.)*
+*Last updated: 2026-08-17 (Guide triage pass — #1140 (Consolidate DOC/_SKILL_ROOT-closure and remaining `_read(...)` test-helper variants into `anvil/lib/testing.py`) completed its full lifecycle since the prior pass: PR #1142 merged, closing #1140, so it drops out of Urgent/In Progress/PRs Awaiting Review/Proposed below. Otherwise the operator-only backlog is unchanged: the same ten `loom:operator-only` issues (#888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107) remain open, none newly eligible for `loom:urgent`. No open PRs, no `loom:issue`/`loom:building`/`loom:blocked`/`loom:epic` issues. Incumbent `loom:urgent` set stayed empty (zero eligible candidates) — another quiet tick on that front. `WORK_LOG.md` NOT rewritten this pass: only one new merged PR (#1146, closing #1144) since the last write, below the 5-entry `LOOM_WORK_LOG_MIN_ENTRIES` threshold, and only ~4 minutes since WORK_LOG.md was last written (well under the 30-minute debounce) — batched for a later tick. README checked for architectural drift: none found, left untouched. No token-pool pressure signal (`.loom/tokens/.ranking` absent) — proceeded normally.)*
 
 ---
 
@@ -17,7 +17,7 @@ _None._
 
 Issues flagged as highest priority (`loom:urgent`).
 
-- **#1140**: Consolidate DOC/_SKILL_ROOT-closure and remaining _read(...) test-helper variants into anvil/lib/testing.py
+_None._
 
 ## Ready
 
@@ -29,13 +29,13 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-- **#1140**: Consolidate DOC/_SKILL_ROOT-closure and remaining _read(...) test-helper variants into anvil/lib/testing.py
+_None._
 
 ## PRs Awaiting Review
 
 PRs waiting on Judge (`loom:review-requested`).
 
-- **#1142**: refactor(lib): consolidate DOC/_SKILL_ROOT-closure _read test helpers
+_None._
 
 ## Approved (Awaiting Merge)
 
@@ -47,7 +47,6 @@ _None._
 
 Issues carrying `loom:curated`.
 
-- **#1140**: Consolidate DOC/_SKILL_ROOT-closure and remaining _read(...) test-helper variants into anvil/lib/testing.py *(curated)*
 - **#888**: review loop has no lookahead and no cross-version claim ledger — each round's fix creates the next round's defect *(curated)*
 
 ## Proposed (Architect / Hermit)
@@ -63,12 +62,12 @@ _None._
 | Tier | Count |
 |------|-------|
 | Operator merge-risk holds | 0 |
-| Urgent | 1 |
+| Urgent | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 1 |
-| PRs awaiting review | 1 |
+| In Progress (`loom:building`) | 0 |
+| PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 2 |
+| Curated | 1 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
