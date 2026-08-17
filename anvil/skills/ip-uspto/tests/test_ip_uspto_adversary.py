@@ -336,7 +336,9 @@ class TestAllNullScorecardAggregation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             agg = self._aggregate(Path(tmp), flagged=True)
         self.assertEqual(agg.verdict, Verdict.BLOCK)
-        self.assertIn("design_around_no_fallback", {cf.type for cf in agg.critical_flags})
+        self.assertIn(
+            "design_around_no_fallback", {cf.type for cf in agg.critical_flags}
+        )
         # The adversary contributed NO per-dimension score: only the review
         # critic's dim carries a non-null mean.
         non_null = {d for d, m in agg.score_means.items() if m is not None}

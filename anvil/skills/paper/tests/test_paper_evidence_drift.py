@@ -93,7 +93,7 @@ class TestPaperReviewChecksDrift(unittest.TestCase):
         self.assertIn("CriticalFlag", window)
 
     def test_verdict_note_is_advisory_only(self):
-        idx = self.text.index('Evidence drift (conditional')
+        idx = self.text.index("Evidence drift (conditional")
         window = self.text[idx : idx + 900]
         self.assertIn("advisory only", window)
         self.assertIn("does NOT change `advance`", window)

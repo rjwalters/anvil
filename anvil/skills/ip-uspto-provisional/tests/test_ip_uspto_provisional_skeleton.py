@@ -166,9 +166,7 @@ class TestCommandFrontmatter(unittest.TestCase):
             with self.subTest(path=rel):
                 fm = _parse_frontmatter(_read(rel))
                 self.assertEqual(fm.get("name"), expected_name)
-                self.assertTrue(
-                    fm.get("description"), f"{rel} missing a description"
-                )
+                self.assertTrue(fm.get("description"), f"{rel} missing a description")
 
     CRITIC_COMMANDS = (
         "commands/ip-uspto-provisional-review.md",
@@ -187,8 +185,8 @@ class TestCommandFrontmatter(unittest.TestCase):
             with self.subTest(path=rel):
                 text = _read(rel)
                 self.assertIn(RUBRIC_ID, text)
-                self.assertIn('rubric_total: 45', text)
-                self.assertIn('advance_threshold: 39', text)
+                self.assertIn("rubric_total: 45", text)
+                self.assertIn("advance_threshold: 39", text)
                 self.assertIn("staged_sidecar", text)
                 self.assertIn("cleanup_one_staging", text)
                 self.assertIn("machine-summary", text)
@@ -309,9 +307,7 @@ class TestFinalizeCommand(unittest.TestCase):
         # _manifest.json artifact-row examples.
         self.assertIn("NO abstract.txt", self.text)
         manifest_block = self.text[
-            self.text.index('"artifacts": [') : self.text.index(
-                '"claim_seed_present"'
-            )
+            self.text.index('"artifacts": [') : self.text.index('"claim_seed_present"')
         ]
         self.assertNotIn("abstract.txt", manifest_block)
         self.assertNotIn("inventorship-attestation", manifest_block)
@@ -334,8 +330,7 @@ class TestFinalizeCommand(unittest.TestCase):
 
     def test_git_sync_terminal_token(self):
         self.assertIn(
-            "anvil(ip-uspto-provisional/finalize): <thread>.counsel "
-            "[COUNSEL-READY]",
+            "anvil(ip-uspto-provisional/finalize): <thread>.counsel [COUNSEL-READY]",
             self.text,
         )
 
@@ -440,9 +435,7 @@ class TestPreFlightCommand(unittest.TestCase):
         self.assertIn("_gate.json", self.text)
 
     def test_git_sync_token(self):
-        self.assertIn(
-            "anvil(ip-uspto-provisional/pre-flight): <thread>.{N}", self.text
-        )
+        self.assertIn("anvil(ip-uspto-provisional/pre-flight): <thread>.{N}", self.text)
 
 
 class TestClaimsSeedCommand(unittest.TestCase):
@@ -551,9 +544,7 @@ class TestSkillCommandDispatch(unittest.TestCase):
     def test_skill_line108_claim_seed_critic_exists(self):
         text = _read("SKILL.md")
         # The stale "claim-seed critic is a tracked follow-up" sentence gone.
-        self.assertNotIn(
-            "The claim-seed critic is a tracked follow-up.", text
-        )
+        self.assertNotIn("The claim-seed critic is a tracked follow-up.", text)
         self.assertIn("ip-uspto-provisional-claims-seed", text)
 
     def test_skill_multicritic_opt_in_claimseed_tag(self):
@@ -605,9 +596,7 @@ class TestRubric(unittest.TestCase):
             self.text,
             flags=re.MULTILINE,
         )
-        self.assertEqual(
-            len(rows), 9, f"expected 9 dimension rows, found {len(rows)}"
-        )
+        self.assertEqual(len(rows), 9, f"expected 9 dimension rows, found {len(rows)}")
         indices = sorted(int(i) for i, _ in rows)
         self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8, 9])
         total = sum(int(w) for _, w in rows)
@@ -710,9 +699,7 @@ class TestFiguresCommand(unittest.TestCase):
         self.assertIn("1.84", self.text)
 
     def test_git_sync_token(self):
-        self.assertIn(
-            "anvil(ip-uspto-provisional/figures): <thread>.{N}", self.text
-        )
+        self.assertIn("anvil(ip-uspto-provisional/figures): <thread>.{N}", self.text)
 
     def test_numeral_drift_is_not_visual_verification(self):
         # Issue #982: the figurer must not self-report a TikZ render as
@@ -818,9 +805,7 @@ class TestVisionCommand(unittest.TestCase):
         self.assertIn(".vision.tmp", self.text)
 
     def test_git_sync_token(self):
-        self.assertIn(
-            "anvil(ip-uspto-provisional/vision): <thread>.{N}", self.text
-        )
+        self.assertIn("anvil(ip-uspto-provisional/vision): <thread>.{N}", self.text)
 
 
 class TestVisionRubricBehavior(unittest.TestCase):
@@ -857,9 +842,7 @@ class TestVisionRubricBehavior(unittest.TestCase):
                 description="Drawn numerals correspond to spec; pixels-side.",
             ),
         )
-        return VisionRubric(
-            dimensions=dims, rubric_id="anvil-ip-provisional-vision-v1"
-        )
+        return VisionRubric(dimensions=dims, rubric_id="anvil-ip-provisional-vision-v1")
 
     def test_rubric_owns_three_dims_scored_out_of_fifteen(self):
         rubric = self._rubric()

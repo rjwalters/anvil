@@ -74,9 +74,7 @@ class TestCommandFile(unittest.TestCase):
         self.assertIn("1a.", self.text)
         idx_1a = self.text.index("1a. **Opt-in pre-search**")
         idx_step2 = self.text.index("2. **Check prior-art supply**")
-        self.assertLess(
-            idx_1a, idx_step2, "step 1a must be documented before step 2"
-        )
+        self.assertLess(idx_1a, idx_step2, "step 1a must be documented before step 2")
         self.assertIn("anvil:ip-search <thread>", self.text)
 
     def test_never_forces_overwrite(self):
@@ -106,9 +104,7 @@ class TestSkillMd(unittest.TestCase):
         self.text = _read("SKILL.md")
 
     def test_dispatch_row_carries_flag(self):
-        self.assertIn(
-            "`ip-uspto-provisional-prior-art <thread> [--search]`", self.text
-        )
+        self.assertIn("`ip-uspto-provisional-prior-art <thread> [--search]`", self.text)
 
     def test_opt_in_paragraph_present(self):
         self.assertIn("Optional prior-art pre-search wiring", self.text)

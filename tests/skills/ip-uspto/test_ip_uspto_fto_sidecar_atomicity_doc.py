@@ -46,6 +46,7 @@ def test_ip_uspto_fto_doc_references_issue_350():
     text = _read()
     assert "#350" in text
 
+
 def test_ip_uspto_fto_doc_documents_non_python_driver_fallback():
     """Guard the #645 two-tier non-Python-driver fallback clause (#655).
 

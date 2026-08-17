@@ -15,12 +15,7 @@ from anvil.lib.testing import read_text
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOC = (
-    REPO_ROOT
-    / "anvil"
-    / "skills"
-    / "memo"
-    / "commands"
-    / "memo-image-accessibility.md"
+    REPO_ROOT / "anvil" / "skills" / "memo" / "commands" / "memo-image-accessibility.md"
 )
 
 _read = functools.partial(read_text, DOC)

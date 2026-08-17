@@ -14,7 +14,14 @@ from pathlib import Path
 from anvil.lib.testing import read_text
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DOC = REPO_ROOT / "anvil" / "skills" / "project-migrate" / "commands" / "project-migrate.md"
+DOC = (
+    REPO_ROOT
+    / "anvil"
+    / "skills"
+    / "project-migrate"
+    / "commands"
+    / "project-migrate.md"
+)
 
 _read = functools.partial(read_text, DOC)
 
@@ -52,6 +59,7 @@ def test_project_migrate_doc_references_adopt_review_issues():
     text = _read()
     assert "#454" in text
     assert "#645" in text
+
 
 def test_project_migrate_doc_documents_non_python_driver_fallback():
     """Guard the #645 two-tier non-Python-driver fallback clause (#655).

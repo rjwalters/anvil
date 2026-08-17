@@ -164,7 +164,13 @@ class TestCommandFile(unittest.TestCase):
         # charts are mandatory at scores 3/4.
         self.assertIn("0–4", self.text)
         lowered = self.text.lower()
-        for term in ("not relevant", "weak overlap", "adjacent", "near-miss", "likely overlap"):
+        for term in (
+            "not relevant",
+            "weak overlap",
+            "adjacent",
+            "near-miss",
+            "likely overlap",
+        ):
             self.assertIn(term, lowered)
         self.assertIn("claim chart", lowered)
         self.assertIn("mandatory", lowered)
@@ -230,16 +236,16 @@ class TestSkillMd(unittest.TestCase):
         # like .adversary/ and .vision/.
         self.assertIn("<thread>.{N}.fto/", self.text)
         line = next(
-            ln
-            for ln in self.text.splitlines()
-            if ln.startswith("<thread>.{N}.fto/")
+            ln for ln in self.text.splitlines() if ln.startswith("<thread>.{N}.fto/")
         )
         self.assertIn("opt", line.lower())  # "optional" / "on-demand"
         self.assertIn("never flags", line.lower())
 
     def test_fto_refs_in_thread_layout(self):
         line = next(
-            ln for ln in self.text.splitlines() if "fto-refs/" in ln and "Operator" in ln
+            ln
+            for ln in self.text.splitlines()
+            if "fto-refs/" in ln and "Operator" in ln
         )
         self.assertIn("distinct from prior-art/", line)
 

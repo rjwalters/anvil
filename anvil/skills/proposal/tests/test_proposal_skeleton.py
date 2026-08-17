@@ -116,9 +116,7 @@ class TestCommandFrontmatter(unittest.TestCase):
             with self.subTest(path=rel):
                 fm = _parse_frontmatter(_read(rel))
                 self.assertEqual(fm.get("name"), expected_name)
-                self.assertTrue(
-                    fm.get("description"), f"{rel} missing a description"
-                )
+                self.assertTrue(fm.get("description"), f"{rel} missing a description")
 
 
 class TestRubric(unittest.TestCase):
@@ -136,9 +134,7 @@ class TestRubric(unittest.TestCase):
             self.text,
             flags=re.MULTILINE,
         )
-        self.assertEqual(
-            len(rows), 9, f"expected 9 dimension rows, found {len(rows)}"
-        )
+        self.assertEqual(len(rows), 9, f"expected 9 dimension rows, found {len(rows)}")
         indices = sorted(int(i) for i, _ in rows)
         self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8, 9])
         total = sum(int(w) for _, w in rows)

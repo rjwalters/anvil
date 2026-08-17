@@ -27,7 +27,13 @@ def test_datasheet_review_doc_references_staged_sidecar_primitive():
 
 def test_datasheet_review_doc_names_required_files_manifest():
     text = _read()
-    for name in ("verdict.md", "scoring.md", "comments.md", "_meta.json", "_progress.json"):
+    for name in (
+        "verdict.md",
+        "scoring.md",
+        "comments.md",
+        "_meta.json",
+        "_progress.json",
+    ):
         assert name in text, f"required file {name!r} missing from prose"
 
 
@@ -45,6 +51,7 @@ def test_datasheet_review_doc_describes_atomic_rename_contract():
 def test_datasheet_review_doc_references_issue_350():
     text = _read()
     assert "#350" in text
+
 
 def test_datasheet_review_doc_documents_non_python_driver_fallback():
     """Guard the #645 two-tier non-Python-driver fallback clause (#655).
