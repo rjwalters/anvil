@@ -40,7 +40,7 @@ _SKILL_ROOT = Path(__file__).resolve().parent.parent
 
 RUBRIC_ID = "anvil-report-v2"
 
-_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestReportDraftSubjectTier(unittest.TestCase):

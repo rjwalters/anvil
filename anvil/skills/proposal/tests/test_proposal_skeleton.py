@@ -32,9 +32,9 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from anvil.lib.testing import parse_frontmatter as _parse_frontmatter  # noqa: E402
-from anvil.lib.testing import read_text  # noqa: E402
+from anvil.lib.testing import read_text
 
-_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestFilesExist(unittest.TestCase):

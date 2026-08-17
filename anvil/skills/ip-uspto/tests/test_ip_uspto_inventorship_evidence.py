@@ -519,7 +519,7 @@ class TestNoGitDegradation:
 # structure tests: command file + SKILL.md contracts
 # ---------------------------------------------------------------------------
 
-_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestCommandFileStructure:

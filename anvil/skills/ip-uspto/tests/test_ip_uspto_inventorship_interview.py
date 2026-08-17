@@ -483,7 +483,7 @@ class TestEdgeCases:
 # 9. command-file + lib structure
 # ---------------------------------------------------------------------------
 
-_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestCommandFileStructure:

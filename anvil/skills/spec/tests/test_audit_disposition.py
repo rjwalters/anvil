@@ -46,7 +46,7 @@ from anvil.lib.testing import read_text
 
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 
-_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 @dataclass

@@ -50,7 +50,7 @@ _REPO_ROOT = _SKILL_ROOT.parent.parent.parent
 
 RUBRIC_ID = "anvil-pub-v2"
 
-_read = lambda rel: read_text(_SKILL_ROOT / rel)  # noqa: E731
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 def _read_repo(rel: str) -> str:
