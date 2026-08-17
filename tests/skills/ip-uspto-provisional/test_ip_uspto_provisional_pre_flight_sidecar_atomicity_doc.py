@@ -8,14 +8,22 @@ one-file-per-doc `*_sidecar_atomicity_doc.py` shape from the #593 rollout
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 
+from anvil.lib.testing import read_text
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DOC = REPO_ROOT / "anvil" / "skills" / "ip-uspto-provisional" / "commands" / "ip-uspto-provisional-pre-flight.md"
+DOC = (
+    REPO_ROOT
+    / "anvil"
+    / "skills"
+    / "ip-uspto-provisional"
+    / "commands"
+    / "ip-uspto-provisional-pre-flight.md"
+)
 
-
-def _read() -> str:
-    return DOC.read_text(encoding="utf-8")
+_read = functools.partial(read_text, DOC)
 
 
 def test_ip_uspto_provisional_pre_flight_doc_references_staged_sidecar_primitive():
@@ -44,6 +52,7 @@ def test_ip_uspto_provisional_pre_flight_doc_describes_atomic_rename_contract():
 def test_ip_uspto_provisional_pre_flight_doc_references_issue_350():
     text = _read()
     assert "#350" in text
+
 
 def test_ip_uspto_provisional_pre_flight_doc_documents_non_python_driver_fallback():
     """Guard the #645 two-tier non-Python-driver fallback clause (#655).

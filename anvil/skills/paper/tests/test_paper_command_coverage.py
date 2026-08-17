@@ -43,14 +43,14 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from anvil.lib.testing import read_text
+
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 _REPO_ROOT = _SKILL_ROOT.parent.parent.parent
 
 RUBRIC_ID = "anvil-pub-v2"
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 def _read_repo(rel: str) -> str:
@@ -68,7 +68,7 @@ class TestPubDraftSubjectTier(unittest.TestCase):
 
     def test_invokes_resolver(self):
         self.assertIn("resolve_subject_voice_docs", self.text)
-        self.assertIn('voice_grounding.md', self.text)
+        self.assertIn("voice_grounding.md", self.text)
         self.assertIn('"Subject voice tier"', self.text)
 
     def test_records_per_subject_exemplar_map(self):
@@ -272,9 +272,7 @@ class TestPaperVisionRecommendation(unittest.TestCase):
     def test_table_recommends_vision_at_audited_with_figures(self):
         # AUDITED terminal with unchecked figures still surfaces paper-vision,
         # non-blocking (does not reopen the state machine).
-        self.assertIn(
-            "terminal — but recommend `paper-vision <thread>`", self.paper
-        )
+        self.assertIn("terminal — but recommend `paper-vision <thread>`", self.paper)
         self.assertIn("does not reopen the state machine", self.paper)
 
     def test_no_figures_audited_is_byte_identical_terminal(self):
@@ -343,9 +341,7 @@ class TestNatbibCiteCommandGuidance(unittest.TestCase):
         self.assertIn(r"\documentclass[numeric]{anvil-paper}", text)
         self.assertIn("unaffected", text)
         # The shared section heading is present in both files.
-        self.assertIn(
-            "## Citation-command choice under natbib author-year", text
-        )
+        self.assertIn("## Citation-command choice under natbib author-year", text)
 
     def test_draft_documents_cite_command_rule(self):
         self._assert_rule_present(self.draft)
@@ -359,7 +355,9 @@ class TestNatbibCiteCommandGuidance(unittest.TestCase):
 
     def test_revise_prose_rewrite_points_to_rule(self):
         # The reviser's refs.bib step warns against reintroducing the doubling.
-        self.assertIn("reintroduce `Name~\\cite{key}` author-name doubling", self.revise)
+        self.assertIn(
+            "reintroduce `Name~\\cite{key}` author-name doubling", self.revise
+        )
 
 
 if __name__ == "__main__":

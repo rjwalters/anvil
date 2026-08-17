@@ -59,9 +59,9 @@ _REPO_ROOT = _HERE.parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from anvil.lib.testing import read_text
 
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestCommandFile(unittest.TestCase):
@@ -96,9 +96,7 @@ class TestCommandFile(unittest.TestCase):
         self.assertIn("1a.", self.text)
         idx_1a = self.text.index("1a. **Opt-in pre-search**")
         idx_step2 = self.text.index("2. **Check prior art supply**")
-        self.assertLess(
-            idx_1a, idx_step2, "step 1a must be documented before step 2"
-        )
+        self.assertLess(idx_1a, idx_step2, "step 1a must be documented before step 2")
         self.assertIn("anvil:ip-search <thread>", self.text)
 
     def test_never_forces_overwrite(self):
@@ -186,9 +184,7 @@ class TestCodeDelegation(unittest.TestCase):
     def setUp(self):
         from anvil.lib.skill_lib_loader import import_skill_lib_module
 
-        ip_search_lib = (
-            _SKILL_ROOT.parents[0] / "ip-search" / "lib"
-        )
+        ip_search_lib = _SKILL_ROOT.parents[0] / "ip-search" / "lib"
         self.prior_art_step = import_skill_lib_module(
             "ip-search", ip_search_lib, "prior_art_step"
         )

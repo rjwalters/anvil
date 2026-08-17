@@ -35,6 +35,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from anvil.lib.testing import parse_frontmatter as _parse_frontmatter  # noqa: E402
+from anvil.lib.testing import read_text
 
 RUBRIC_ID = "anvil-spec-v1"
 
@@ -42,9 +43,7 @@ RUBRIC_ID = "anvil-spec-v1"
 # sidecar primitive.
 CRITIC_COMMANDS = ("commands/spec-review.md", "commands/spec-audit.md")
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestFilesExist(unittest.TestCase):
@@ -90,7 +89,9 @@ class TestFilesExist(unittest.TestCase):
         # test_spec_example_brief_parses.py; this coverage test only asserts the
         # example dir + its BRIEF + the structural-contract README are present.
         examples = _SKILL_ROOT / "examples"
-        self.assertTrue(examples.is_dir(), "the botho worked example must be vendored (#709)")
+        self.assertTrue(
+            examples.is_dir(), "the botho worked example must be vendored (#709)"
+        )
         self.assertTrue(
             (examples / "botho-bridge-spec" / "BRIEF.md").is_file(),
             "expected the vendored example BRIEF",
@@ -196,9 +197,7 @@ class TestCommandFrontmatter(unittest.TestCase):
             with self.subTest(path=rel):
                 fm = _parse_frontmatter(_read(rel))
                 self.assertEqual(fm.get("name"), expected_name)
-                self.assertTrue(
-                    fm.get("description"), f"{rel} missing a description"
-                )
+                self.assertTrue(fm.get("description"), f"{rel} missing a description")
 
 
 class TestCriticCommandStamping(unittest.TestCase):
@@ -493,9 +492,7 @@ class TestRubric(unittest.TestCase):
             self.text,
             flags=re.MULTILINE,
         )
-        self.assertEqual(
-            len(rows), 9, f"expected 9 dimension rows, found {len(rows)}"
-        )
+        self.assertEqual(len(rows), 9, f"expected 9 dimension rows, found {len(rows)}")
         indices = sorted(int(i) for i, _ in rows)
         self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8, 9])
         total = sum(int(w) for _, w in rows)
@@ -657,9 +654,7 @@ class TestCodeRefResolver(unittest.TestCase):
             project_dir = Path(d)
             impl = project_dir / "impl.rs"
             impl.write_text("fn main() {}\n", encoding="utf-8")
-            self._write_brief(
-                project_dir, code_ref_line="    code_ref: impl.rs\n"
-            )
+            self._write_brief(project_dir, code_ref_line="    code_ref: impl.rs\n")
             resolved = pb.resolve_code_ref(
                 project_dir, "toy-spec", consumer_root=project_dir
             )
@@ -678,9 +673,7 @@ class TestCodeRefResolver(unittest.TestCase):
             src.mkdir()
             (src / "a.rs").write_text("fn a() {}\n", encoding="utf-8")
             (src / "b.rs").write_text("fn b() {}\n", encoding="utf-8")
-            self._write_brief(
-                project_dir, code_ref_line="    code_ref: src/*.rs\n"
-            )
+            self._write_brief(project_dir, code_ref_line="    code_ref: src/*.rs\n")
             resolved = pb.resolve_code_ref(
                 project_dir, "toy-spec", consumer_root=project_dir
             )
@@ -713,9 +706,7 @@ class TestCodeRefResolver(unittest.TestCase):
         pb = self._import_registry()
         with tempfile.TemporaryDirectory() as d:
             project_dir = Path(d)
-            self._write_brief(
-                project_dir, code_ref_line="    code_ref: impl.rs\n"
-            )
+            self._write_brief(project_dir, code_ref_line="    code_ref: impl.rs\n")
             resolved = pb.resolve_code_ref(
                 project_dir, "not-a-slug", consumer_root=project_dir
             )

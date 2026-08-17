@@ -37,6 +37,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from anvil.lib.testing import parse_frontmatter as _parse_frontmatter  # noqa: E402
+from anvil.lib.testing import read_text
 
 RUBRIC_ID = "anvil-memoir-v1"
 
@@ -52,9 +53,7 @@ FABRICATION_FLAGS = (
     "unattributed_paraphrase",
 )
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 def _flat(rel: str) -> str:
@@ -215,9 +214,7 @@ class TestCommandFrontmatter(unittest.TestCase):
             with self.subTest(path=rel):
                 fm = _parse_frontmatter(_read(rel))
                 self.assertEqual(fm.get("name"), expected_name)
-                self.assertTrue(
-                    fm.get("description"), f"{rel} missing a description"
-                )
+                self.assertTrue(fm.get("description"), f"{rel} missing a description")
 
 
 class TestCriticCommandStamping(unittest.TestCase):
@@ -315,9 +312,9 @@ class TestAnchorDriftWiring(unittest.TestCase):
         self.assertIn("anchor drift", text.lower())
 
     def test_shared_snippet_documents_anchor_contract(self):
-        text = (
-            _REPO_ROOT / "anvil" / "lib" / "snippets" / "provenance.md"
-        ).read_text(encoding="utf-8")
+        text = (_REPO_ROOT / "anvil" / "lib" / "snippets" / "provenance.md").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("Anchor", text)
         self.assertIn("NO_ANCHOR", text)
         self.assertIn("DRIFTED", text)
@@ -575,9 +572,7 @@ class TestRubric(unittest.TestCase):
             self.text,
             flags=re.MULTILINE,
         )
-        self.assertEqual(
-            len(rows), 9, f"expected 9 dimension rows, found {len(rows)}"
-        )
+        self.assertEqual(len(rows), 9, f"expected 9 dimension rows, found {len(rows)}")
         indices = sorted(int(i) for i, _ in rows)
         self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8, 9])
         total = sum(int(w) for _, w in rows)
@@ -743,9 +738,7 @@ class TestCorpusResolver(unittest.TestCase):
         pb = self._import_registry()
         with tempfile.TemporaryDirectory() as d:
             project_dir = Path(d)
-            self._write_brief(
-                project_dir, corpus_block="corpus:\n  - no-such-dir/\n"
-            )
+            self._write_brief(project_dir, corpus_block="corpus:\n  - no-such-dir/\n")
             resolved = pb.resolve_corpus_dirs(project_dir, consumer_root=project_dir)
             self.assertEqual(len(resolved), 1)
             self.assertTrue(resolved[0].missing)

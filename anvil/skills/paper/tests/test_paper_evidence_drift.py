@@ -32,11 +32,11 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from anvil.lib.testing import read_text
+
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestPaperDraftRecordsSnapshot(unittest.TestCase):
@@ -93,7 +93,7 @@ class TestPaperReviewChecksDrift(unittest.TestCase):
         self.assertIn("CriticalFlag", window)
 
     def test_verdict_note_is_advisory_only(self):
-        idx = self.text.index('Evidence drift (conditional')
+        idx = self.text.index("Evidence drift (conditional")
         window = self.text[idx : idx + 900]
         self.assertIn("advisory only", window)
         self.assertIn("does NOT change `advance`", window)

@@ -62,14 +62,13 @@ from anvil.lib.convergence import (
 from anvil.lib.critics import aggregate, compute_verdict
 from anvil.lib.pending_marker import check_pending_markers
 from anvil.lib.review_schema import Kind, Review, Score, Verdict
+from anvil.lib.testing import read_text
 from anvil.skills.proposal.lib.synthesis_schema import GapList
 
 
 _SKILL_ROOT = Path(__file__).resolve().parent.parent
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestDocsWiring(unittest.TestCase):
@@ -93,9 +92,7 @@ class TestDocsWiring(unittest.TestCase):
         # NOT implied by the critical-flag clause (pending_dependency is
         # filtered out of blocking_critical_flags).
         text = _read("SKILL.md")
-        self.assertEqual(
-            text.count("no unresolved `[PENDING <source>]` marker"), 2
-        )
+        self.assertEqual(text.count("no unresolved `[PENDING <source>]` marker"), 2)
         self.assertIn("blocking_critical_flags", text)
         self.assertIn("pending_dependency", text)
         self.assertIn("never fabricate", text.lower())
@@ -287,7 +284,9 @@ class TestProposalPendingMarkerLifecycle(unittest.TestCase):
             # proposal scored 40/44 on review stays 40/44.
             self.assertTrue(all(s.score is None for s in pending_review.scores))
 
-            agg = aggregate([_content_review(version_dir.name, total=40), pending_review])
+            agg = aggregate(
+                [_content_review(version_dir.name, total=40), pending_review]
+            )
             self.assertEqual(agg.total, 40)
 
     def test_pending_marker_does_not_force_block_but_holds_ready(self):
@@ -295,7 +294,9 @@ class TestProposalPendingMarkerLifecycle(unittest.TestCase):
             version_dir = self._make_thread(Path(td), _BODY_WITH_MARKER)
             result = check_pending_markers(version_dir, body=Path("proposal.tex"))
             pending_review = result.to_review(version_dir=version_dir.name)
-            agg = aggregate([_content_review(version_dir.name, total=40), pending_review])
+            agg = aggregate(
+                [_content_review(version_dir.name, total=40), pending_review]
+            )
             audit_pass = True  # proposal-audit's independent pass/fail gate
 
             # The pending flag is VISIBLE in the aggregate ...
@@ -325,9 +326,7 @@ class TestProposalPendingMarkerLifecycle(unittest.TestCase):
             version_dir = self._make_thread(tmp, _BODY_WITH_MARKER)
 
             # Resolve: the drafter replaces the marker with the real value.
-            (version_dir / "proposal.tex").write_text(
-                _BODY_RESOLVED, encoding="utf-8"
-            )
+            (version_dir / "proposal.tex").write_text(_BODY_RESOLVED, encoding="utf-8")
 
             result = check_pending_markers(version_dir, body=Path("proposal.tex"))
             self.assertTrue(result.passed())
@@ -335,7 +334,9 @@ class TestProposalPendingMarkerLifecycle(unittest.TestCase):
             self.assertEqual(result.to_critical_flags(), [])
 
             pending_review = result.to_review(version_dir=version_dir.name)
-            agg = aggregate([_content_review(version_dir.name, total=40), pending_review])
+            agg = aggregate(
+                [_content_review(version_dir.name, total=40), pending_review]
+            )
             audit_pass = True
 
             self.assertFalse(has_pending_dependency_flag(agg.critical_flags))

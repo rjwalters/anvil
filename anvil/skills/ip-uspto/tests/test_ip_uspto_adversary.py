@@ -44,12 +44,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from anvil.lib.testing import parse_frontmatter as _parse_frontmatter  # noqa: E402
+from anvil.lib.testing import read_text
 
 RUBRIC_ID = "anvil-ip-uspto-v2"
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestCommandFile(unittest.TestCase):
@@ -337,7 +336,9 @@ class TestAllNullScorecardAggregation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             agg = self._aggregate(Path(tmp), flagged=True)
         self.assertEqual(agg.verdict, Verdict.BLOCK)
-        self.assertIn("design_around_no_fallback", {cf.type for cf in agg.critical_flags})
+        self.assertIn(
+            "design_around_no_fallback", {cf.type for cf in agg.critical_flags}
+        )
         # The adversary contributed NO per-dimension score: only the review
         # critic's dim carries a non-null mean.
         non_null = {d for d, m in agg.score_means.items() if m is not None}

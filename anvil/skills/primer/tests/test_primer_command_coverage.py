@@ -33,6 +33,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from anvil.lib.testing import parse_frontmatter as _parse_frontmatter  # noqa: E402
+from anvil.lib.testing import read_text
 
 RUBRIC_ID = "anvil-primer-v1"
 
@@ -40,9 +41,7 @@ RUBRIC_ID = "anvil-primer-v1"
 # sidecar primitive.
 CRITIC_COMMANDS = ("commands/primer-review.md", "commands/primer-audit.md")
 
-
-def _read(rel: str) -> str:
-    return (_SKILL_ROOT / rel).read_text(encoding="utf-8")
+_read = lambda rel: read_text(_SKILL_ROOT / rel)
 
 
 class TestFilesExist(unittest.TestCase):
@@ -81,9 +80,7 @@ class TestFilesExist(unittest.TestCase):
             "the vendored Botho worked example must ship at examples/botho/",
         )
         self.assertTrue(
-            (
-                _SKILL_ROOT / "examples" / "expected-thread.N" / "README.md"
-            ).is_file(),
+            (_SKILL_ROOT / "examples" / "expected-thread.N" / "README.md").is_file(),
             "the structural-contract README must ship at "
             "examples/expected-thread.N/README.md",
         )
@@ -158,9 +155,7 @@ class TestCommandFrontmatter(unittest.TestCase):
             with self.subTest(path=rel):
                 fm = _parse_frontmatter(_read(rel))
                 self.assertEqual(fm.get("name"), expected_name)
-                self.assertTrue(
-                    fm.get("description"), f"{rel} missing a description"
-                )
+                self.assertTrue(fm.get("description"), f"{rel} missing a description")
 
 
 class TestCriticCommandStamping(unittest.TestCase):
@@ -338,9 +333,7 @@ class TestRubric(unittest.TestCase):
             self.text,
             flags=re.MULTILINE,
         )
-        self.assertEqual(
-            len(rows), 9, f"expected 9 dimension rows, found {len(rows)}"
-        )
+        self.assertEqual(len(rows), 9, f"expected 9 dimension rows, found {len(rows)}")
         indices = sorted(int(i) for i, _ in rows)
         self.assertEqual(indices, [1, 2, 3, 4, 5, 6, 7, 8, 9])
         total = sum(int(w) for _, w in rows)
@@ -495,9 +488,7 @@ class TestSpecRefResolver(unittest.TestCase):
             project_dir = Path(d)
             spec = project_dir / "spec.md"
             spec.write_text("# formal spec\n", encoding="utf-8")
-            self._write_brief(
-                project_dir, spec_ref_line="    spec_ref: spec.md\n"
-            )
+            self._write_brief(project_dir, spec_ref_line="    spec_ref: spec.md\n")
             resolved = pb.resolve_spec_ref(
                 project_dir, "toy-primer", consumer_root=project_dir
             )
@@ -533,9 +524,7 @@ class TestSpecRefResolver(unittest.TestCase):
         pb = self._import_registry()
         with tempfile.TemporaryDirectory() as d:
             project_dir = Path(d)
-            self._write_brief(
-                project_dir, spec_ref_line="    spec_ref: spec.md\n"
-            )
+            self._write_brief(project_dir, spec_ref_line="    spec_ref: spec.md\n")
             resolved = pb.resolve_spec_ref(
                 project_dir, "not-a-slug", consumer_root=project_dir
             )
@@ -676,9 +665,7 @@ class TestRenderGateHardeningContract(unittest.TestCase):
             )
             # The override must COMPILE (exit 0) and produce a PDF. Glyph
             # warnings on stderr are fine; a non-zero exit is not.
-            self.assertEqual(
-                proc.returncode, 0, f"pandoc failed: {proc.stderr[-800:]}"
-            )
+            self.assertEqual(proc.returncode, 0, f"pandoc failed: {proc.stderr[-800:]}")
             self.assertTrue(pdf.exists() and pdf.stat().st_size > 0)
 
 
