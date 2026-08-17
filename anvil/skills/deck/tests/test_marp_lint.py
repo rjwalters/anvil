@@ -1148,5 +1148,156 @@ size: 16:9
         self.assertFalse(any(label.startswith("paragraph(") for label in labels))
 
 
+class TestGeometryFromThemeCss(unittest.TestCase):
+    """``geometry_from_theme_css`` — the ``@anvil-capacity`` contract parser
+    (issue #1150). Exercises the in-memory string API directly."""
+
+    def test_no_block_returns_default_geometry_unchanged(self) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_css
+
+        result = geometry_from_theme_css("section { padding: 72px; }")
+        self.assertFalse(result.found)
+        self.assertEqual(result.geometry, Geometry())
+        self.assertEqual(result.overrides, {})
+
+    def test_valid_block_overrides_only_named_fields(self) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_css
+
+        css = """
+        /* @theme acme-brand */
+        /* @anvil-capacity
+           top_padding_px: 72
+           bottom_padding_px: 72
+           body_line_height_px: 44
+           capacity_units: 12.0
+           ask_class_capacity_penalty_units: 1.8
+        */
+        section { padding: 72px; }
+        """
+        result = geometry_from_theme_css(css)
+        self.assertTrue(result.found)
+        self.assertEqual(result.geometry.top_padding_px, 72)
+        self.assertEqual(result.geometry.bottom_padding_px, 72)
+        self.assertEqual(result.geometry.body_line_height_px, 44)
+        self.assertEqual(result.geometry.capacity_units, 12.0)
+        self.assertEqual(result.geometry.ask_class_capacity_penalty_units, 1.8)
+        # Fields not named in the block keep the shipped default verbatim.
+        self.assertEqual(result.geometry.h1_units, Geometry().h1_units)
+        self.assertEqual(result.geometry.image_units, Geometry().image_units)
+        self.assertEqual(result.warnings, ())
+
+    def test_unknown_and_malformed_keys_are_skipped_not_fatal(self) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_css
+
+        css = """
+        /* @anvil-capacity
+           top_padding_px: 40
+           not_a_real_field: 99
+           capacity_units: not-a-number
+           no colon here at all
+        */
+        """
+        result = geometry_from_theme_css(css)
+        self.assertTrue(result.found)
+        # The one well-formed key still applies...
+        self.assertEqual(result.geometry.top_padding_px, 40)
+        # ...while the malformed/unknown ones fall back to defaults and are
+        # recorded as warnings rather than raising.
+        self.assertEqual(result.geometry.capacity_units, Geometry().capacity_units)
+        self.assertEqual(len(result.warnings), 3)
+
+    def test_fully_malformed_block_falls_back_to_default_geometry(self) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_css
+
+        css = """
+        /* @anvil-capacity
+           not_a_real_field: 99
+           also_not_real: hello
+        */
+        """
+        result = geometry_from_theme_css(css)
+        self.assertTrue(result.found)
+        self.assertEqual(result.geometry, Geometry())
+        self.assertEqual(result.overrides, {})
+        self.assertEqual(len(result.warnings), 2)
+
+
+class TestGeometryFromThemeContract(unittest.TestCase):
+    """``geometry_from_theme_contract`` — the file-based wrapper (issue
+    #1150). Exercises the on-disk fixture themes under
+    ``fixtures/marp_lint/``."""
+
+    def test_none_path_returns_default(self) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_contract
+
+        result = geometry_from_theme_contract(None)
+        self.assertFalse(result.found)
+        self.assertEqual(result.geometry, Geometry())
+
+    def test_missing_file_returns_default(self) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_contract
+
+        result = geometry_from_theme_contract(_FIXTURES / "does-not-exist.css")
+        self.assertFalse(result.found)
+        self.assertEqual(result.geometry, Geometry())
+
+    def test_fixture_theme_with_contract_overrides(self) -> None:
+        from anvil.lib.marp_lint import geometry_from_theme_contract
+
+        result = geometry_from_theme_contract(
+            _FIXTURES / "consumer_theme_capacity.css"
+        )
+        self.assertTrue(result.found)
+        self.assertEqual(result.geometry.top_padding_px, 40)
+        self.assertEqual(result.geometry.capacity_units, 18.0)
+
+    def test_fixture_theme_with_no_contract_returns_default(self) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_contract
+
+        result = geometry_from_theme_contract(
+            _FIXTURES / "consumer_theme_no_capacity.css"
+        )
+        self.assertFalse(result.found)
+        self.assertEqual(result.geometry, Geometry())
+
+    def test_fixture_theme_with_malformed_contract_falls_back_to_default(
+        self,
+    ) -> None:
+        from anvil.lib.marp_lint import Geometry, geometry_from_theme_contract
+
+        result = geometry_from_theme_contract(
+            _FIXTURES / "consumer_theme_malformed_capacity.css"
+        )
+        self.assertTrue(result.found)
+        self.assertEqual(result.geometry, Geometry())
+        self.assertTrue(len(result.warnings) >= 1)
+
+
+class TestConsumerThemeCapacityRegression(unittest.TestCase):
+    """AC regression (issue #1150): a consumer-theme deck with no genuine
+    overflow lints clean under the theme's own capacity contract, without
+    resorting to the per-slide ``anvil-lint-disable`` escape hatch — even
+    though the SAME slide is flagged under the shipped-theme default
+    geometry (proving this isn't just a universally-lenient override)."""
+
+    def test_default_geometry_still_flags_the_fixture(self) -> None:
+        result = lint_deck(_FIXTURES / "overflow_figure_plus_bullets.md")
+        self.assertEqual(len(result.errors), 1)
+
+    def test_consumer_theme_geometry_lints_clean_no_escape_hatch(self) -> None:
+        from anvil.lib.marp_lint import geometry_from_theme_contract
+
+        contract = geometry_from_theme_contract(
+            _FIXTURES / "consumer_theme_capacity.css"
+        )
+        self.assertTrue(contract.found)
+        result = lint_deck(
+            _FIXTURES / "overflow_figure_plus_bullets.md",
+            geometry=contract.geometry,
+        )
+        self.assertEqual(len(result.errors), 0)
+        self.assertEqual(len(result.warnings), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
