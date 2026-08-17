@@ -219,6 +219,39 @@ class TestReviewCommandWiring(unittest.TestCase):
     def test_link_coverage_judgment_is_major_never_critical(self):
         self.assertIn("never critical", self.text)
 
+    def test_thesis_unity_check_present(self):
+        # Issue #1148: 5e restates the argument in one sentence and tests
+        # each ##-level section against it.
+        self.assertIn("5e", self.text)
+        self.assertIn("Thesis-unity check", self.text)
+        self.assertIn("restate the essay's single argument in one sentence", self.text)
+        self.assertIn("weaken the argument", self.text)
+
+    def test_thesis_unity_check_is_major_never_critical(self):
+        self.assertIn("5e", self.text)
+        text_around_5e = self.text[self.text.index("5e. Thesis-unity check") :]
+        self.assertIn("`major`, never critical", text_around_5e[:400])
+
+    def test_thesis_unity_check_degrades_gracefully_with_few_sections(self):
+        # Zero or one ##-level sections: nothing to test a section against,
+        # matching the zero-numbers / zero-links vacuous-pass convention.
+        self.assertIn("Zero or one", self.text)
+        self.assertIn("passes vacuously", self.text)
+        self.assertIn("do NOT force a vacuous finding", self.text)
+
+    def test_thesis_unity_check_feeds_dim_7(self):
+        self.assertIn("dim 7 consumes 5d plus 5e", self.text)
+
+    def test_thesis_unity_runs_on_whats_working_sections(self):
+        # Issue #1148: craft protection ("What's working") must not exempt
+        # a section from the thesis-unity relevance check.
+        self.assertIn("craft-preservation rule, not a relevance exemption", self.text)
+        self.assertIn(
+            "MUST run — and MAY raise a `major` finding — on a section already "
+            'listed as "What\'s working."',
+            self.text,
+        )
+
     def test_self_published_exclusion_wired(self):
         # Issue #890: essay-review step 4 excludes the thread's own
         # published form from the voice.corpus calibration base.
