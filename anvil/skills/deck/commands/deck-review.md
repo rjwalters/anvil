@@ -86,7 +86,18 @@ All paths below are nested under the thread root `<thread>/`, as siblings of the
    - Optionally `<thread>.{N}/figures/` for sanity-checking diagrams.
    - Sibling critic `_summary.md` files at the same `N` (if they exist), for verdict aggregation.
 5b. **Run pre-flight overflow lint (source-side)**:
-   - Invoke `anvil.lib.marp_lint`'s `lint_deck(<thread>.{N}/deck.md)` as a Python import — NOT as a filesystem path. The canonical consumer invocation is:
+   - **Resolve capacity geometry from the deck's registered theme first** (issue #1150) — the capacity model is calibrated against the *shipped* `anvil-deck` theme, and silently diverges when the deck uses a consumer theme (`--theme-set` / frontmatter `theme:`) with different padding, base font size, or `_class: ask` treatment. Read `<thread>.{N}/deck.md`'s frontmatter `theme:` value (default `anvil-deck` when the key is absent).
+     - **Shipped theme (`anvil-deck`, or key absent)**: skip this sub-step entirely — call `lint_deck(path)` below with no `geometry` argument, exactly as before. This is the common case and its behavior is byte-identical to pre-#1150.
+     - **Non-default (consumer) theme**: locate the registered theme CSS — convention is `.anvil/skills/deck/templates/<theme>.css` in an installed consumer repo (or `anvil/skills/deck/templates/<theme>.css` when working in this framework repo itself; see `anvil/lib/snippets/brand-theme-porting.md` §"Registration"). Then:
+       ```bash
+       uv run --project .anvil python -c "
+       from anvil.lib.marp_lint import geometry_from_theme_contract, lint_deck
+       contract = geometry_from_theme_contract('.anvil/skills/deck/templates/<theme>.css')
+       print(lint_deck('<thread>.{N}/deck.md', geometry=contract.geometry))
+       "
+       ```
+       `geometry_from_theme_contract` reads the CSS file's `/* @anvil-capacity ... */` comment block (documented in `anvil/lib/snippets/brand-theme-porting.md` §"Declaring capacity geometry") and returns a `ThemeCapacityContract(geometry, found, overrides, warnings)`. **Absence-tolerant by design**: a theme CSS file that does not exist, has no `@anvil-capacity` block, or has a fully malformed block all resolve `contract.geometry` back to the shipped default `Geometry()` — the call to `lint_deck` below is then behaviorally identical to the no-override path, so there is no special-casing needed at the call site itself. When `contract.warnings` is non-empty (unknown field names or unparseable values in an otherwise-present block), record it as a single info-level entry in `findings.md` § Lint findings (`lint.geometry_warnings: [...]`) so the theme's author sees which keys were ignored — this never blocks the review.
+   - Invoke `anvil.lib.marp_lint`'s `lint_deck(<thread>.{N}/deck.md)` (optionally with the resolved `geometry=` from the sub-step above) as a Python import — NOT as a filesystem path. The canonical shipped-theme consumer invocation is:
      ```bash
      uv run --project .anvil python -c "from anvil.lib.marp_lint import lint_deck; print(lint_deck('<thread>.{N}/deck.md'))"
      ```

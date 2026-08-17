@@ -4,6 +4,23 @@
 
 ### Added
 
+- **`anvil:deck`'s `marp_lint` overflow check gains a consumer-theme
+  capacity-override contract** (#1150). The `slide-content-overflow`
+  capacity model was calibrated against the shipped `anvil-deck` theme's
+  geometry only; a registered consumer theme with different padding, base
+  font size, or `_class: ask` treatment silently diverged from it,
+  producing false-positive findings the per-slide `anvil-lint-disable`
+  escape hatch could suppress only at the cost of per-slide ceremony every
+  future revision had to carry. A consumer theme can now declare its own
+  geometry via a structured `/* @anvil-capacity ... */` comment block in
+  its registered CSS (`anvil.lib.marp_lint.geometry_from_theme_css` /
+  `geometry_from_theme_contract`); `deck-review.md` step 5b resolves it
+  automatically from the deck's `theme:` frontmatter and wires it into
+  `lint_deck(path, geometry=...)`. The shipped-theme default path (no
+  `theme:` key, or `theme: anvil-deck`) is unchanged. Documented in
+  `anvil/lib/snippets/brand-theme-porting.md` §"Declaring capacity
+  geometry" and `deck-brief.md`'s `theme:` section.
+
 - **`anvil:essay` review gains a thesis-unity check (5e)** (#1148). The
   four existing `essay-review.md` step-5 coherence passes each score a
   section or claim in isolation — none tested whether a `##`-level section
