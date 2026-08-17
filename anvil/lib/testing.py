@@ -47,16 +47,31 @@ genuinely different body (an extra ``assert path.exists()``/``is_dir()``
 branch, or a directory-vs-file dispatch), plus the ``self``-taking
 method-scope variants -- those carry real behavior beyond the read and
 are deliberately left alone.
+
+Also consolidates 17 ``_assert_ok(result: subprocess.CompletedProcess[str])
+-> None`` test helpers (issue #1144) that had been copy-pasted at module
+scope across ``tests/scripts/test_install_*.py`` (16 files) and
+``tests/scripts/test_resync_installed.py`` (1 file). 16 of the 17 were
+byte-identical (failure message prefixed ``"installer exited
+non-zero:"``); ``test_resync_installed.py``'s copy differed only in that
+prefix (``"command exited non-zero:"``, since it invokes
+``resync-installed.sh`` rather than the installer). The wording
+difference is not load-bearing -- it only ever appears in a pytest
+assertion-failure message, never asserted on by another test -- so this
+consolidation folds both variants into a single ``"command exited
+non-zero:"`` message rather than threading a ``context`` parameter
+through all 17 call sites.
 """
 
 from __future__ import annotations
 
 import hashlib
+import subprocess
 from pathlib import Path
 
 from anvil.lib.frontmatter import extract_frontmatter
 
-__all__ = ["parse_frontmatter", "read_text", "tree_hash"]
+__all__ = ["assert_ok", "parse_frontmatter", "read_text", "tree_hash"]
 
 # Sentinel value recorded for directory entries. Distinct from any valid
 # sha256 hex digest (which is exactly 64 lowercase hex characters), so a
@@ -133,3 +148,18 @@ def parse_frontmatter(text: str) -> dict:
     #1083), which returns ``None`` where these call sites want ``{}``.
     """
     return extract_frontmatter(text) or {}
+
+
+def assert_ok(result: subprocess.CompletedProcess[str]) -> None:
+    """Assert a subprocess run succeeded, echoing stdout/stderr on failure.
+
+    The exact ``_assert_ok`` body copy-pasted as a module-scope helper
+    across 17 ``tests/scripts/test_install_*.py`` / ``test_resync_installed.py``
+    files (issue #1144). See this module's docstring for why the two
+    pre-consolidation failure-message wordings ("installer exited
+    non-zero" vs. "command exited non-zero") were folded into one.
+    """
+    assert result.returncode == 0, (
+        f"command exited non-zero:\n"
+        f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
+    )
