@@ -710,18 +710,49 @@ WantedBy=default.target
 EOF
 }
 
-# Writes a fake `cargo` that, on `cargo build --release` (cwd = loom-daemon/),
-# copies $NEW_FAKE_BIN_SRC into target/release/loom-daemon instead of
-# compiling. Tests export NEW_FAKE_BIN_SRC before invoking loom-daemon-update.sh.
+# Writes a fake `cargo` that, on `cargo build --release [--message-format=...]`
+# (cwd = loom-daemon/), copies $NEW_FAKE_BIN_SRC into
+# ${CARGO_TARGET_DIR:-target}/release/loom-daemon instead of compiling --
+# honoring CARGO_TARGET_DIR (#6160) exactly like real cargo does, so tests can
+# redirect the build output the same way a redirected host does. Tests export
+# NEW_FAKE_BIN_SRC before invoking loom-daemon-update.sh. When a
+# --message-format=json* flag is present (the invocation loom-daemon-update.sh
+# actually uses since #6160), also emits the compiler-artifact/build-finished
+# JSON messages loom-daemon-update.sh parses to locate the built executable --
+# shaped like real `cargo build --message-format=json-render-diagnostics`
+# output (a null-executable library artifact first, matching the real
+# multi-target stream, then the bin target's own artifact with the real,
+# possibly-redirected, absolute executable path). Also answers `cargo metadata
+# --format-version 1 --no-deps` with a minimal object reporting the same
+# (redirect-aware) target_directory, for the fallback path's own test coverage.
 write_fake_cargo() {
     local path="$1"
     cat > "$path" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "build" ]]; then
-    mkdir -p target/release
-    cp "$NEW_FAKE_BIN_SRC" target/release/loom-daemon
-    chmod +x target/release/loom-daemon
-    echo "[fake cargo] build ok"
+    target_dir="${CARGO_TARGET_DIR:-target}"
+    mkdir -p "$target_dir/release"
+    cp "$NEW_FAKE_BIN_SRC" "$target_dir/release/loom-daemon"
+    chmod +x "$target_dir/release/loom-daemon"
+    abs_target_dir="$(cd "$target_dir" && pwd)"
+    for arg in "$@"; do
+        case "$arg" in
+            --message-format=json*)
+                printf '{"reason":"compiler-artifact","target":{"kind":["lib"],"name":"loom_daemon"},"executable":null}\n'
+                printf '{"reason":"compiler-artifact","target":{"kind":["bin"],"name":"loom-daemon"},"executable":"%s/release/loom-daemon"}\n' "$abs_target_dir"
+                printf '{"reason":"build-finished","success":true}\n'
+                break
+                ;;
+        esac
+    done
+    echo "[fake cargo] build ok" >&2
+    exit 0
+fi
+if [[ "${1:-}" == "metadata" ]]; then
+    target_dir="${CARGO_TARGET_DIR:-target}"
+    mkdir -p "$target_dir"
+    abs_target_dir="$(cd "$target_dir" && pwd)"
+    printf '{"target_directory":"%s"}\n' "$abs_target_dir"
     exit 0
 fi
 echo "[fake cargo] unsupported subcommand: $*" >&2
@@ -993,7 +1024,20 @@ BASE_WORKDIR="$(mktemp -d)"
 #
 # Tests below that need a pinned value still set it on their own invocation
 # (e.g. `LOOM_DAEMON_BIN="$W1/..." bash ...`), which applies regardless.
-live_state_sandbox_init "$BASE_WORKDIR/live-state"
+#
+# The return code is CHECKED, never bare (#6420). init returns non-zero when it
+# could not `cd` into the sandbox root (#6386 — the cwd tier is then still aimed
+# at wherever this suite was launched from, i.e. potentially a LIVE checkout) or
+# when the ambient supervisor label is the real production one (#5501). This
+# suite runs under `set -uo pipefail` with NO `-e`, so a bare call would swallow
+# both and continue with a HALF-ARMED sandbox — the exact state the helper's own
+# failure path exists to prevent — while driving the real lifecycle scripts.
+if ! live_state_sandbox_init "$BASE_WORKDIR/live-state"; then
+    echo "FATAL: live-state sandbox init failed — refusing to run this suite against a half-armed sandbox (#6420)." >&2
+    echo "  See the reason above (lib/live-state-sandbox.sh): a writable sandbox root is required, and the ambient LOOM_LAUNCHD_LABEL / LOOM_WATCHDOG_LABEL must not be the real production identities." >&2
+    rm -rf "$BASE_WORKDIR"
+    exit 1
+fi
 
 # Supervisor identity, not a state path — the watchdog LaunchAgent must be
 # provisioned under the scratch label so a restart path can never touch the
@@ -1177,7 +1221,14 @@ else
     echo -e "${RED}✗${NC} fixture: old daemon process is alive before update"
 fi
 
-( cd "$W5" && PATH="$TEST_PATH" LOOM_DAEMON_BIN="$INSTALLED5" NEW_FAKE_BIN_SRC="$NEW_FAKE5" \
+# `LOOM_PID_FILE=''` (empty) is deliberate and load-bearing since #6386:
+# loom-daemon-update.sh (and the loom-daemon-stop.sh it delegates the restart's
+# stop half to) now resolve LOOM_PID_FILE AHEAD of the $PWD-derived state home,
+# and live_state_sandbox_init exports it suite-wide. A scenario whose fixture
+# pid file lives at "$W<N>/.loom/.daemon.pid" must therefore say it means the
+# $PWD tier. Safe: the paired `cd "$W<N>"` keeps that tier inside this suite's
+# own scratch workspace.
+( cd "$W5" && PATH="$TEST_PATH" LOOM_PID_FILE='' LOOM_DAEMON_BIN="$INSTALLED5" NEW_FAKE_BIN_SRC="$NEW_FAKE5" \
     env -u LOOM_WORK_FINDER -u LOOM_MAIN_HEALTH_GATE \
     bash "$UPDATE_SCRIPT" >"$W5/update.log" 2>&1 )
 update_rc=$?
@@ -1253,7 +1304,7 @@ echo "$old_pid5b" > "$W5B/.loom/.daemon.pid"
 # Capture to a log rather than /dev/null (#4799): when this scenario wedged in
 # CI the tail of the suite output was undiagnostic precisely because its update
 # run wrote nowhere, so the failure surfaced as silence. Mirror scenario 5.
-( cd "$W5B" && PATH="$TEST_PATH" LOOM_DAEMON_BIN="$INSTALLED5B" NEW_FAKE_BIN_SRC="$NEW_FAKE5B" \
+( cd "$W5B" && PATH="$TEST_PATH" LOOM_PID_FILE='' LOOM_DAEMON_BIN="$INSTALLED5B" NEW_FAKE_BIN_SRC="$NEW_FAKE5B" \
     env -u LOOM_WORK_FINDER -u LOOM_MAIN_HEALTH_GATE \
     bash "$UPDATE_SCRIPT" >"$W5B/update.log" 2>&1 )
 update5b_rc=$?
@@ -1408,7 +1459,7 @@ bg_proc_track "$old_pid7"
 sleep 0.3
 echo "$old_pid7" > "$W7/.loom/.daemon.pid"
 
-( cd "$W7" && PATH="$TEST_PATH" LOOM_DAEMON_BIN="$INSTALLED7" NEW_FAKE_BIN_SRC="$NEW_FAKE7" \
+( cd "$W7" && PATH="$TEST_PATH" LOOM_PID_FILE='' LOOM_DAEMON_BIN="$INSTALLED7" NEW_FAKE_BIN_SRC="$NEW_FAKE7" \
     bash "$UPDATE_SCRIPT" --no-restart >/dev/null 2>&1 )
 
 TESTS_RUN=$((TESTS_RUN + 1))
@@ -1828,7 +1879,7 @@ pid17=$!
 bg_proc_track "$pid17"
 sleep 0.3
 echo "$pid17" > "$W17/.loom/.daemon.pid"
-check_pid_out=$( cd "$W17" && PATH="$TEST_PATH" LOOM_DAEMON_LAUNCHD=0 \
+check_pid_out=$( cd "$W17" && PATH="$TEST_PATH" LOOM_PID_FILE='' LOOM_DAEMON_LAUNCHD=0 \
     LOOM_DAEMON_BIN="$INSTALLED17" bash "$UPDATE_SCRIPT" --check 2>&1 )
 TESTS_RUN=$((TESTS_RUN + 1))
 if echo "$check_pid_out" | grep -qi 'manager: PID-file'; then
@@ -3425,7 +3476,7 @@ fi
 # 57. ff-abort classification (#4951): local <default> has DIVERGED from
 #     origin/<default> in commit history, but the two are content-IDENTICAL
 #     (`git diff origin/main...main` is empty — e.g. a local resync commit
-#     and its own revert that net to no change, the robb-STUDIO 2026-08-02
+#     and its own revert that net to no change, the studio-host 2026-08-02
 #     incident shape). Default (no --auto-resolve-safe-abort): still hard
 #     aborts (exit 1, HEAD untouched) but now names the exact safe command
 #     instead of the old bare "resolve manually" message.
@@ -5725,6 +5776,68 @@ else
     echo "  systemctl.log: $(cat "$SD_LOG79" 2>/dev/null)"
 fi
 kill "$STILL_RUNNING_PID79" 2>/dev/null || true
+
+# ============================================================
+# 80. Regression test (#6160): the rebuild is found and PROVISIONED even
+#     when cargo's own build output directory is redirected via
+#     CARGO_TARGET_DIR to a directory OUTSIDE the source tree entirely.
+#     The old logic probed only two hardcoded paths
+#     (<repo>/loom-daemon/target/release, <repo>/target/release) and
+#     hard-failed on this exact host shape even though the build had
+#     fully succeeded (observed for real on a host with
+#     ~/.cargo/config.toml's build.target-dir redirected after an ENOSPC
+#     incident) -- the script now resolves the artifact from cargo's own
+#     build output instead of guessing.
+# ============================================================
+W80="$BASE_WORKDIR/w80"
+new_fixture "$W80"
+HEAD80="$(cd "$W80" && git rev-parse --short HEAD)"
+INSTALLED80="$W80/installed/loom-daemon"
+mkdir -p "$W80/installed"
+write_fake_daemon "$INSTALLED80" "deadbee" "$W80/old-marker"
+NEW_FAKE80="$W80/new-fake-daemon"
+write_fake_daemon "$NEW_FAKE80" "$HEAD80" "$W80/new-marker"
+REDIRECTED_TARGET80="$BASE_WORKDIR/w80-redirected-cargo-target"
+mkdir -p "$REDIRECTED_TARGET80"
+# No .loom/.daemon.pid -> WAS_RUNNING resolves false (mirrors test 6's
+# shape): this scenario is purely about locating + provisioning the
+# artifact, not the restart path.
+
+out80=$( cd "$W80" && PATH="$TEST_PATH" LOOM_DAEMON_BIN="$INSTALLED80" NEW_FAKE_BIN_SRC="$NEW_FAKE80" \
+    CARGO_TARGET_DIR="$REDIRECTED_TARGET80" \
+    bash "$UPDATE_SCRIPT" 2>&1 )
+rc80=$?
+assert_eq "0" "$rc80" "a CARGO_TARGET_DIR redirect outside the source tree still succeeds (#6160)"
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ -x "$REDIRECTED_TARGET80/release/loom-daemon" ]]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo -e "${GREEN}✓${NC} fixture sanity: the build actually landed in the CARGO_TARGET_DIR redirect (#6160)"
+else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo -e "${RED}✗${NC} fixture sanity: the build actually landed in the CARGO_TARGET_DIR redirect (#6160)"
+fi
+
+TESTS_RUN=$((TESTS_RUN + 1))
+if [[ ! -e "$W80/loom-daemon/target/release/loom-daemon" ]]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo -e "${GREEN}✓${NC} nothing was written to the old hardcoded target/release path (proves resolution followed the redirect, not a coincidental match, #6160)"
+else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo -e "${RED}✗${NC} nothing was written to the old hardcoded target/release path (proves resolution followed the redirect, not a coincidental match, #6160)"
+fi
+
+TESTS_RUN=$((TESTS_RUN + 1))
+installed_commit80="$("$INSTALLED80" --version 2>/dev/null | grep -oE 'commit [0-9a-f]+' | awk '{print $2}')"
+if [[ "$installed_commit80" == "$HEAD80" ]]; then
+    TESTS_PASSED=$((TESTS_PASSED + 1))
+    echo -e "${GREEN}✓${NC} the redirected-target build was actually PROVISIONED to LOOM_DAEMON_BIN, not silently dropped (#6160)"
+else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo -e "${RED}✗${NC} the redirected-target build was actually PROVISIONED to LOOM_DAEMON_BIN, not silently dropped (#6160)"
+    echo "  installed commit: ${installed_commit80:-<none>}, expected: $HEAD80"
+    echo "  output: $out80"
+fi
 
 # ============================================================
 # 25. Launchd-sandbox guards (#4078): the whole suite exercises the REAL

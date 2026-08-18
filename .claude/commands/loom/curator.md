@@ -642,7 +642,43 @@ The Builder's complexity-assessment path (`defaults/.claude/commands/loom/builde
 > re-count against the current tree before relying on this number."
 > ```
 >
-> This applies to: raw counts ("18 verbs"), version numbers ("schema_version is 1"), file/line citations ("see parser.py:142"), and negative claims ("no schema_version bump is needed"). The incident this convention guards against: 2AMLogic/klayout-tools#342 curated "18 verbs / 13 net-new" and "no schema_version bump needed" as bare facts; both were correct when written and both had gone stale two days later — after `eval` and `lef-abstract` landed and `schema_version` bumped 1 -> 2 — ahead of an irrevocable PyPI publish that could not be re-uploaded for that version. Neither was a curation error; the facts simply weren't marked as snapshots. See "Complexity routing marker" below for when skipping the stamp on an irrevocable-output issue is itself a curation defect.
+> This applies to: raw counts ("18 verbs"), version numbers ("schema_version is 1"), file/line citations ("see parser.py:142"), and negative claims ("no schema_version bump is needed"). The incident this convention guards against: example-org/tool-repo#203 curated "18 verbs / 13 net-new" and "no schema_version bump needed" as bare facts; both were correct when written and both had gone stale two days later — after `eval` and `lef-abstract` landed and `schema_version` bumped 1 -> 2 — ahead of an irrevocable PyPI publish that could not be re-uploaded for that version. Neither was a curation error; the facts simply weren't marked as snapshots. See "Complexity routing marker" below for when skipping the stamp on an irrevocable-output issue is itself a curation defect.
+
+### Measurable claims need their measurement (or a marker, #6380)
+
+**A curation note is what a Builder implements against, not a suggestion the
+Builder is expected to independently re-derive.** A verdict-style claim in a
+curation note ("`NodeVerificationError` downgrades to a `title-only`
+grounding mode", "this helper is called from three sites") carries the same
+authority as any other enriched detail — the Builder reasonably treats it as
+established and builds on it rather than re-checking it. An unmeasured claim
+that turns out wrong doesn't just waste a read; it can ship a behavior the
+code never performs. In one real case, curation stated an error type
+"downgrades" to a fallback path; the builder traced it and found the error
+actually propagates and fails the build — the fallback path is never
+reached. Had the builder trusted the note instead of tracing it, the shipped
+feature would have narrated a downgrade that cannot happen.
+
+Any claim in a curation note that is **measurable** — a control-flow path, a
+call count, whether a function is reachable, what a file contains — must
+carry one of:
+
+- **The measurement**: the command and its output, however short (`git grep
+  -n 'title-only'` → the matching lines, or "traced by hand: `foo()` ->
+  `bar()`, returns on line 42, never reaches the fallback"), or
+- **An explicit unverified marker**: "not traced", "inferred from the type
+  signature, not stepped through", "assumed from the function name" — so the
+  Builder knows to verify before relying on it.
+
+This covers claims about the issue's own scope **and advice about other
+issues offered in passing** — a "Related Open Work" cross-reference ("#87
+already handles this case") is just as load-bearing as a claim in the issue
+body and needs the same discipline.
+
+No mechanical check enforces this — grepping curation notes for unsourced
+claims would false-positive constantly on ordinary curation prose. The bar
+is a habit: before stating a fact about code behavior, ask whether you
+traced or ran something to know it, and mark it plainly if you didn't.
 
 ### Running Measurement / Board-Pipeline Reproductions (worktree-or-restore, #4991)
 
@@ -974,7 +1010,7 @@ There are **three, and only three**, cost-of-being-wrong strata (issue #4238 add
 - **Hard bounds** (the router's authority is deliberately bounded): **never resolves to `fable`, and never a label.** The frontier model is reserved for the objective escalation ladder on Judge rejection or an explicit operator param. A `roleConfig.model` pin or explicit dispatch param (tiers 1–2) still overrides the marker.
 - **Cheap when the tier map is unconfigured.** With no `sweep.tierModels` in `.loom/config.json` and no `sweep.optimization` profile set (or set to `balanced`, the default), the marker is inert and dispatch falls through to the role default exactly as before — so adding markers is safe even before a workspace opts into cost/speed routing. A workspace opts in either by hand-authoring `sweep.tierModels`, or by setting `sweep.optimization: cost | speed` (a policy switch that materializes a preset over the same map — see `model-selection.md` "Optimization profile switch").
 - **Use sparingly / take the higher tier when torn.** Marking everything `complex` defeats the cheap-first default; marking real judgement calls `mechanical` risks a cheap model on expensive-to-be-wrong work. When genuinely torn, take the higher tier.
-- **`complex` + irrevocable output ⇒ date-stamp any volatile fact in the acceptance criteria.** When a `complex` issue's cost-of-being-wrong comes from an action that cannot be undone (a version/tag push, a package publish, an external API write), and its acceptance criteria embed a volatile fact (a count, a version number, a "no X is needed" claim), that fact **must** carry the "as of `<sha>`, `<date>`" stamp from "Date-stamp volatile facts" above — not a bare assertion. A Builder who trusts a stale bare count on a `complex`/irrevocable issue ships the wrong permanent artifact with no error signal to catch it (see 2AMLogic/klayout-tools#342, the incident that motivated both this rule and the stamping convention).
+- **`complex` + irrevocable output ⇒ date-stamp any volatile fact in the acceptance criteria.** When a `complex` issue's cost-of-being-wrong comes from an action that cannot be undone (a version/tag push, a package publish, an external API write), and its acceptance criteria embed a volatile fact (a count, a version number, a "no X is needed" claim), that fact **must** carry the "as of `<sha>`, `<date>`" stamp from "Date-stamp volatile facts" above — not a bare assertion. A Builder who trusts a stale bare count on a `complex`/irrevocable issue ships the wrong permanent artifact with no error signal to catch it (see example-org/tool-repo#203, the incident that motivated both this rule and the stamping convention).
 
 **Required before applying `loom:curated`**: run the validator below and confirm exit 0. This is not optional — do not apply `loom:curated` if it fails:
 

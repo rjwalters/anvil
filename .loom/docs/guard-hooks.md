@@ -575,9 +575,73 @@ Prefer the `.loom/config.json` route above unless the env var is already set
 for the whole session ahead of time. Restore the guard (remove the config
 override, or `LOOM_GUARD_WORKTREE_ISOLATION=1`) once the direct edit is done.
 
+#### Same-command literal declaration: the workaround for unresolved `$VAR` write targets (#6172, ADR-0016)
+
+The "Unresolvable `$…` targets fail closed" behavior above (issue #4921) has a
+sanctioned, teachable workaround, distinct from the operator escape hatch
+just described: **declare the variable literally, in the same Bash tool
+call, before the write that uses it.**
+
+```bash
+# Denied — $DEST is unresolved at scan time, so the guard cannot tell
+# where the write lands and fails closed (worktree-write-confinement-unresolved-var):
+echo hi > $DEST/file.txt
+
+# Allowed (assuming the resolved path passes the ordinary containment test) —
+# same-command literal assignment lets the guard resolve $DEST before judging it:
+DEST=/tmp/scratch; echo hi > $DEST/file.txt
+```
+
+This reuses the write-confinement scan's own same-command resolver
+(`record_assign()` / `resolve_var()`, #4881) — no new guard logic, and no
+bespoke annotation syntax (`# loom:write-root <path>` and similar were
+considered and rejected in ADR-0016). A `NAME=value` assignment earlier in
+the *same* command's text is captured into `varmap`, and a later `$NAME` /
+`${NAME}` token in that same command is substituted with the captured
+literal before the deny/allow decision is made.
+
+**Soundness argument.** Declaring the variable literally only removes
+*ambiguity* about what the write target resolves to — it never weakens
+containment. After substitution, the guard runs the **exact same** "does
+this resolved absolute path land inside the main checkout while a managed
+worktree exists" containment test it already runs for every literal-path
+write. A declaration of `DEST=<main-checkout>/evil` still denies, because
+the resolved path is still checked against the same containment rule. This
+means a false or self-serving declaration can never grant an allow beyond
+what writing that literal path outright would already have granted — the
+mechanism only converts an unresolvable target into a resolved one; it
+cannot expand what a known target is permitted to do.
+
+**Which shapes resolve same-command, and which stay genuinely ambiguous**
+(from ADR-0016's "Ambiguity behavior (fail-closed, no exceptions)" table —
+`docs/adr/0016-write-target-confinement-approach.md`):
+
+| Ambiguity | Behavior | Basis |
+|---|---|---|
+| Nested loops, loop-bound variables at all, shadowed loop names, multiple bindings via a loop construct | **Deny.** No loop-based binding inference exists in this design — never reintroduced. A bare `$VAR` write target with no same-command *literal assignment* is unresolved regardless of any surrounding loop. | Structural: the inference category that would resolve this does not exist. |
+| Unresolvable reassignment: command substitution (`$(...)`, backticks), `read`, a chained unresolved `$OTHER` | **Deny.** `resolve_var()` returns the token unchanged when the mapped value itself is not a plain literal (starts with `$`, or was never captured because `read`/pipelines don't produce a `NAME=value` token at all). | Verified directly (table above); Phase 2 adds this as a *named, tested* contract rather than an implicit one. |
+| Multiple/conflicting same-name assignments in one command | **Deny.** `record_assign()` poisons to `AMBIG` on the second differing assignment to the same name. | Verified directly (table above). |
+| No assignment found for the referenced name | **Deny.** Baseline #4921 behavior, unchanged. | Verified directly (table above). |
+| Anything the bounded per-idiom tokenizer cannot classify (unrecognized command shape, unterminated/unbalanced quote, an idiom wrapped in a pipe/subshell the extractor does not specifically model) | **Deny**, via the existing fallback: an unclassified/unresolved token is emitted raw and cwd-prefixed into a candidate absolute path, which is then judged by the same containment test as every other target. "I don't understand this command" never falls through to an allow. | Existing #4921 fallback contract, unchanged by this design. |
+
+**Structural limit.** The resolver is same-command only: a variable exported
+or assigned in an *earlier*, separate Bash tool call cannot be resolved,
+because each `PreToolUse` hook invocation only sees the current command's
+text, never prior shell state. Re-declare the literal value in the same
+command as the write.
+
+This workaround applies to the three `worktree-write-confinement-unresolved-var`
+deny sites in `guard-destructive-generic.sh`'s Bash-tool write-confinement
+check (the ones fed by `extract_write_targets()`, which runs the resolver
+above before reaching these deny paths). It does **not** apply to the
+`rm-scope-unresolved-var` deny (`guards.rmScope=repo`) — `extract_rm_targets()`
+never calls `record_assign()`/`resolve_var()`, so a same-command literal
+declaration does not resolve an `rm` target; that check still requires an
+explicit literal path.
+
 ### Background Subagent Stop Guard (`guards.backgroundSubagents` / `LOOM_GUARD_BACKGROUND_SUBAGENTS`)
 
-`guard-background-subagents.sh` (issue #4257, coverage extended by #4389, #4462, #4696, #5013, #5086, and #5976) is a `Stop` hook, not a `PreToolUse` guard — it does not gate a tool call, it gates the orchestrator **ending its turn**. The hazard it backstops: in headless `claude -p` mode there is no later turn to "check back in" on outstanding background work — ending the turn terminates the process, and process exit kills every still-running background child outright, whether that child is a dispatched Task/Agent subagent, a `run_in_background: true` Bash task, or an armed-but-unfired `Monitor`/`ScheduleWakeup` timer. `defaults/.claude/commands/loom/sweep.md`'s "Subagent dispatch is async-only" section (#3822) documents the discipline (always explicitly await a dispatched subagent's completion before advancing); this hook is the mechanical backstop for when an orchestrator forgets it anyway.
+`guard-background-subagents.sh` (issue #4257, coverage extended by #4389, #4462, #4696, #5013, #5086, #5976, and #6175) is a `Stop` hook, not a `PreToolUse` guard — it does not gate a tool call, it gates the orchestrator **ending its turn**. The hazard it backstops: in headless `claude -p` mode there is no later turn to "check back in" on outstanding background work — ending the turn terminates the process, and process exit kills every still-running background child outright, whether that child is a dispatched Task/Agent subagent, a `run_in_background: true` Bash task, or an armed-but-unfired `Monitor`/`ScheduleWakeup` timer. `defaults/.claude/commands/loom/sweep.md`'s "Subagent dispatch is async-only" section (#3822) documents the discipline (always explicitly await a dispatched subagent's completion before advancing); this hook is the mechanical backstop for when an orchestrator forgets it anyway. **The block message's await recipe is context-safe, not a flat "blocking `TaskOutput`" instruction (issue #6168)** — it distinguishes an interactive session (end the turn, await the completion notification on a later turn) from headless `-p` (a bounded, non-blocking `TaskOutput` poll, `block: false`, reading only the `<status>` tag), because a blocking `TaskOutput` on a still-running `local_agent` task can return the raw JSONL transcript dump on timeout instead of just status.
 
 When the session is about to stop, the hook reads the transcript JSONL named in the Stop-hook payload and scans it for three independent dispatch-without-observed-completion patterns:
 
@@ -586,6 +650,8 @@ When the session is about to stop, the hook reads the transcript JSONL named in 
 3. **Armed `Monitor` / `ScheduleWakeup` timers (#4462)** — `Monitor` or `ScheduleWakeup` tool_use entries that the transcript shows no later event retiring. Like (2), the dispatch-time ack is never treated as resolution: arming a timer returns an immediate "started" ack that is NOT the fire event. The #4462 incident was a transport failure (529/Overloaded killing a Builder subagent) handled by arming `Monitor {command: "sleep 90 && …"}` and ending the turn — in `-p` mode the timer has no session to wake, the process exits **0** (so the wrapper logs "completed successfully" and the reaper sees a clean exit), and the issue is stranded in `loom:building` with no PR. The skill-level rule (`#3822` section) is: a transport-failure backoff must be a bounded **in-turn** sleep-and-retry loop, or the orchestrator must exit NONZERO — never an armed end-of-turn timer.
 
    **Retirement shapes (#4696 — the third format-matching gap after #4482/#4462)**: a `Monitor`'s fired-event `<task-notification>` carries **only** `<task-id>`; verified against every live Monitor notification on a real host, it *never* emits the `<tool-use-id>` tag a background-Bash completion does. Matching Monitor dispatch ids against `<tool-use-id>` (the original #4462 implementation) could therefore never observe a resolution, so every `Monitor` ever armed re-blocked one stop per stop sequence for the rest of the session — including timers that had already fired, hit their own timeout, *and* been explicitly `TaskStop`ped. Resolution is now keyed on the **task id** recovered from the arming ack (`Monitor started (task <ID>, timeout <N>ms). …` / `Monitor started (task <ID>, persistent — runs until TaskStop or session end). …`), and a `Monitor` is retired by any of: a `TaskStop` naming `<ID>` (tool_use `input.task_id`, or a `tool_result` containing `Successfully stopped task: <ID>`); a fired `<task-notification>` whose `<task-id>` is `<ID>`; its own `timeout <N>ms` elapsing since the arming entry's `timestamp` (a `persistent` Monitor has no self-timeout and is retired only by a `TaskStop` or a fired event); or the arming call erroring outright. `ScheduleWakeup` has a *different* shape set — its ack is `Next wakeup scheduled for HH:MM:SS (in <N>s). …` and a fired wakeup re-invokes the session rather than emitting a notification, so it is retired by `(in <N>s)` elapsing, by a later `ScheduleWakeup {stop: true}` cancel (`Loop stopped — cancelled <N> pending wakeup(s); …`), or by its arming call erroring. All of these are durable, append-only transcript facts, so a timer retired once stays retired on every later stop sequence — no hook-side state is needed. The same `TaskStop` retirement now also applies to a background Bash task (pattern 2) that was stopped rather than allowed to complete.
+
+   **Loop-continuation exemption (#6175)**: a still-armed `ScheduleWakeup` is not automatically an orphan. A `/loop`-style dynamic-mode continuation re-arms `ScheduleWakeup` on every iteration by design, precisely so it survives turn boundaries in an *interactive* session — ending the turn does not kill it, unlike the headless `-p` orphaning hazard this guard exists to catch, so blocking on it was a false positive repeating once per loop iteration (15+ blocks in one reported day). The guard now recognizes a `ScheduleWakeup` whose `input.prompt` starts with `/loop` (optionally followed by arguments) or carries the `<<autonomous-loop-dynamic>>` sentinel as a recognized loop re-entry, and excludes it from the outstanding-timer count entirely — a session whose only armed timer is a recognized loop continuation is allowed to stop with no block at all. The recognition is deliberately narrow: only `ScheduleWakeup` (never `Monitor`, which has no `prompt` field) with a matching prompt is exempted; everything else — including a `ScheduleWakeup` whose prompt does not match, and a genuinely orphaned `Monitor` — is still counted and still blocks. When the guard *does* block for another reason while a recognized loop-continuation timer is also armed, the reason names the loop timer separately, informational and explicitly not counted toward the block, so the transcript reads unambiguously as "orphaned timer (blocked)" vs. "loop continuation timer (allowed)".
 
 If it finds any of the three, it blocks the stop with a reason describing the hazard, pointing back at the `#3822` section. This is a **heuristic over the transcript file**, not a live process check (no such live signal exists inside a hook), so it can false-positive (e.g. a transcript write that hasn't flushed yet) — for that reason it uses the Stop-hook's `stop_hook_active` flag to block **at most once per stop sequence**: the second consecutive stop, in the same sequence, is always allowed regardless of what the heuristic finds, so a false positive cannot wedge a session in an unblockable loop.
 

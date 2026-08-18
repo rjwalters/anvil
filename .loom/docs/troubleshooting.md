@@ -712,6 +712,17 @@ carries `assessment_failed` / `assessment_errors` for automation.
 - Issues without PRs older than threshold are flagged/recovered
 - Issues with stale PRs are flagged but not auto-recovered (need manual review)
 
+### `loom:building` left on a CLOSED issue (#6199)
+
+The above covers a stuck OPEN issue. A different, purely cosmetic case: a
+**closed** issue that still carries `loom:building` — `gh issue list --label
+loom:building` without `--state open` returns these as noise. `merge-pr.sh`
+strips the label from any issue its own merge closes (`Closes #N` / `Fixes
+#N` / `Resolves #N`), but issues closed by other means (manually, as a
+duplicate, or `--reason "not planned"`) are not covered automatically —
+run `./.loom/scripts/clean-stale-building-labels.sh [--repo OWNER/NAME]
+[--dry-run]` to sweep those (idempotent, safe to re-run).
+
 ### Uncommitted work in the primary clone can be quarantined at any time — branching does not protect it (#5194)
 
 **Symptom**: uncommitted edits made directly in a Loom-managed repo's **primary
@@ -1300,6 +1311,62 @@ Manual invocation:
 ./.loom/scripts/check-host-sleep.sh --quiet # stderr warning only, no stdout line
 ```
 
+#### Making it persistent instead of advisory (`host.preventSleep`, #6311)
+
+The check above only warns — it never mutates anything, so re-applying the
+`systemd-inhibit` mitigation by hand on every run/host gets old fast. Opt a
+repo IN to Loom applying it automatically via `.loom/config.json`:
+
+```json
+{ "host": { "preventSleep": true } }
+```
+
+Env override: `LOOM_HOST_PREVENT_SLEEP=1` (or `0` to force-disable).
+Precedence is the standard env > config > default-OFF tier every Loom knob
+uses (see `defaults/scripts/lib/host-sleep-config.sh`). An absent block, or
+any value that isn't a recognizable true/false spelling, resolves to
+disabled — this knob can never block or fail a sweep.
+
+- **Linux/systemd — the actual closable gap.** With the flag on, two
+  self-wrap points apply `systemd-inhibit --what=idle:sleep --who=loom
+  --why=<role>` (unprivileged, no `sudo`) automatically:
+  - `.loom/scripts/spawn-claude.sh` — the single dispatch chokepoint for
+    BOTH headless `/loom:sweep` and scheduled role-runner spawns. `--why`
+    is the child's `$LOOM_ROLE` (e.g. `sweep-lifecycle`). Verify with
+    `systemd-inhibit --list` while a sweep is running — an active `loom`
+    lock should be visible for its whole lifetime.
+  - `loom-daemon-start.sh --foreground` — wraps the foreground daemon
+    process itself. The systemd-unit-managed and nohup-fallback daemon
+    launch paths are deliberately **not** wrapped (both persist the launched
+    process's pid into places `loom-daemon-stop.sh` / the watchdog / `loom-daemon
+    status` treat as the daemon's own identity; prefixing either with
+    `systemd-inhibit` would change what that pid actually IS). In practice
+    this is not a live gap: `idle:sleep` locks are host-wide, not scoped to
+    one process's children, so any one active sweep/role-runner spawn keeps
+    the whole host — daemon included — awake for as long as it runs.
+  - Every wrap point probes first (`systemd-inhibit ... -- true`) and
+    silently skips the wrap on failure (no reachable `systemd-logind`,
+    `systemd-inhibit` missing, non-systemd Linux) — advisory-only
+    `check-host-sleep.sh` still fires normally in that case.
+  - A manually-started **interactive** session (MOM, a terminal running
+    `claude` directly) is not covered by either self-wrap — wrap it by hand
+    as `check-host-sleep.sh` itself still recommends.
+- **macOS — never automated.** The reliable mitigation
+  (`sudo pmset -c sleep 0`) is privileged and host-global; `host.preventSleep`
+  is a deliberate no-op here and **never** invokes `sudo`. Once you've
+  evaluated and applied a mitigation yourself, record it so the warning stops
+  being permanent noise:
+
+  ```json
+  { "host": { "sleepMitigationAcknowledged": "pmset sleep=0 set at image build" } }
+  ```
+
+  (env override `LOOM_HOST_SLEEP_MITIGATION_ACKNOWLEDGED`). This downgrades
+  `check-host-sleep.sh`'s full banner to a one-liner naming your mitigation —
+  it never claims the host IS protected (macOS user-idle sleep assertions are
+  not reliable, per the incident above), it only stops re-printing an
+  already-evaluated warning on every run.
+
 ### Keeping installed `.loom/` copies fresh after a pull (#3770 detect → #3777/#4239 resync)
 
 The installed Loom surfaces the harness actually executes/reads are synced from
@@ -1461,6 +1528,25 @@ overwrites it, list its relative path (e.g. `hooks/guard-destructive.sh`,
 `.loom/resync-ignore`; matching files are reported `skipped`. A full `loom-daemon
 init` / installer run already performs the equivalent recursive copy, so a normal
 reinstall keeps the copies current too.
+
+**Precondition: this flow needs a resolvable `defaults/` source tree (#6202).**
+`resync-installed.sh` resolves its source in priority order: (1) this checkout
+IS the Loom source repo (`defaults/hooks` or `defaults/scripts` present), (2)
+the gitignored `.loom/loom-source-path` sidecar (written only by a local
+`install.sh` / `install-loom.sh` run) points at a local clone of it, or (3) a
+legacy `install-metadata.json` `"loom_source"` field (dead for any post-#5624
+install — that field is no longer written, since it leaked the installing
+machine's absolute path). **None of these exist on a checkout that never ran
+the Loom installer locally** — a fresh developer clone, a CI checkout, or any
+machine that received the repo rather than installing into it — which is
+exactly the population most likely to be running stale surfaces, since they
+never ran the installer that would have refreshed them. On that population the
+script fails on first use with `Could not locate a defaults/ source tree to
+sync from`. `check-main-freshness.sh` now detects the same gap and appends a
+note to its own staleness warning before you reach that failure, rather than
+only after (#6202). Fix: clone <https://github.com/rjwalters/loom> locally,
+then either re-run its installer against this repo or write the sidecar
+yourself: `echo /path/to/local/loom-clone > .loom/loom-source-path`.
 
 The same list also declares a file **repo-owned**, so the installer's reinstall
 clean sweep never deletes it — see

@@ -1421,6 +1421,26 @@ fi
 
 If a docs PR is already open, **skip the entire document maintenance phase** to prevent PR accumulation (and release the lock — there is nothing left for this tick to do).
 
+**#6327 CORRECTED UNDERSTANDING, DO NOT RE-LITIGATE:** issue #6327 was filed
+observing N-host duplicate `docs: Guide document maintenance update` PRs and
+initially asked for a generic lease/claim primitive for this phase, "the way
+sweeps now have it" (#6165). Verification against live forge history found
+that premise incomplete: single-writer discipline for THIS phase already
+exists — the same-host `docs-guide-lock.sh` mkdir lock above plus Step 5's
+uncached `OPEN_DOCS_PR_RECHECK` (#5615, just above) together bound the
+cross-host race, and `test-guide-docs-pr-race.sh` regression-tests that
+combination the way #6315 did for the sweep-side lease fencing check. The
+observed duplication was sequential, debounce-respecting churn (every host
+reading the same forge-anchored `last_work_log_write_epoch()` /
+`last_work_plan_write_epoch()` clock), not two hosts racing to write the same
+PR at once. The residual, still-open problem is aggregate PR volume as
+dispatcher count grows — addressed by making the debounce windows
+config-tunable (`guide.docsMaintenance.workLogDebounceSecs` /
+`workPlanDebounceSecs`, see `update_work_log()` / `update_work_plan()`
+below), not by adding a lease. Do not build a lease/claim primitive for this
+phase unless a future regression run of `test-guide-docs-pr-race.sh` actually
+finds the lock+recheck insufficient.
+
 ### Step 2: Update WORK_LOG.md
 
 Append entries for newly merged PRs and newly closed issues not yet recorded
@@ -1830,8 +1850,19 @@ update_work_log() {
   #     WORK_PLAN's roadmap snapshot, which is stale-tolerant by nature.
   # `LOOM_WORK_LOG_DEBOUNCE_NOW` is a test seam only (mirrors
   # `LOOM_WORK_PLAN_DEBOUNCE_NOW`) — never set it in normal operation.
+  #
+  # #6327: the debounce window is also overridable via
+  # `guide.docsMaintenance.workLogDebounceSecs` in `.loom/config.json` —
+  # mirrors the `guide.docsMaintenance.poolPressureThreshold`/
+  # `poolPressureMaxDeferSecs` config-read pattern (#6141) below in Step 4b.
+  # Precedence env var > config > default: `LOOM_WORK_LOG_DEBOUNCE_SECS`, if
+  # set, always wins (preserves the existing test seam); otherwise the config
+  # value is used if present; otherwise the 1800s default. A fleet operator
+  # scaling dispatcher count up can widen this per-repo without hand-exporting
+  # env vars into every host's role-runner environment.
   local debounce_secs min_entries
-  debounce_secs="${LOOM_WORK_LOG_DEBOUNCE_SECS:-1800}"
+  debounce_secs="${LOOM_WORK_LOG_DEBOUNCE_SECS:-$(jq -r '.guide.docsMaintenance.workLogDebounceSecs // 1800' .loom/config.json 2>/dev/null)}"
+  [ -n "$debounce_secs" ] || debounce_secs=1800
   min_entries="${LOOM_WORK_LOG_MIN_ENTRIES:-5}"
 
   if [ "$total_new" -lt "$min_entries" ]; then
@@ -1997,14 +2028,6 @@ render_plan_body() {
   count() { [ -z "$1" ] && printf '0' || printf '%s\n' "$1" | grep -c '^- '; }
 
   local held urgent ready building review approved curated proposals epics
-  # #5930: PRs carrying `loom:operator` are Judge-approved work stuck on a
-  # human merge-risk-hold decision — folded into the generated region (see
-  # the "#5930, DO NOT put a hand-written narrative section outside the
-  # markers" note above) so it is exactly as (non-)volatile as every other
-  # section here, and so it is included FIRST since it is the single
-  # highest-priority thing an operator can act on.
-  held=$("$GH_READ" pr list --label "loom:operator" --state open --limit 200 --json number,title \
-    --jq '.[] | "- **#\(.number)**: \(.title)"')
   urgent=$("$GH_READ" issue list --label "loom:urgent" --state open --limit 200 --json number,title \
     --jq '.[] | "- **#\(.number)**: \(.title)"')
   ready=$("$GH_READ" issue list --label "loom:issue" --state open --limit 200 --json number,title \
@@ -2013,8 +2036,22 @@ render_plan_body() {
     --jq '.[] | "- **#\(.number)**: \(.title)"')
   review=$("$GH_READ" pr list --label "loom:review-requested" --state open --limit 200 --json number,title \
     --jq '.[] | "- **#\(.number)**: \(.title)"')
-  approved=$("$GH_READ" pr list --label "loom:pr" --state open --limit 200 --json number,title \
-    --jq '.[] | "- **#\(.number)**: \(.title)"')
+  # #5930/#6457: PRs carrying `loom:operator` are Judge-approved work stuck on
+  # a human merge-risk-hold decision — folded into the generated region (see
+  # the "#5930, DO NOT put a hand-written narrative section outside the
+  # markers" note above) so it is exactly as (non-)volatile as every other
+  # section here, and so it is included FIRST since it is the single
+  # highest-priority thing an operator can act on. `held` is derived from
+  # `approved`'s already-fetched PR list (filtered on `loom:operator` label
+  # membership) rather than a second independently-cached/independently
+  # search-indexed `gh pr list --label "loom:operator"` query, so the two can
+  # never disagree about which open `loom:pr` PRs also carry `loom:operator`
+  # (#6457 — a PR labeled `loom:operator` moments before generation could
+  # appear in "Approved" but be silently omitted from the Pileup section).
+  local approved_json
+  approved_json=$("$GH_READ" pr list --label "loom:pr" --state open --limit 200 --json number,title,labels)
+  approved=$(printf '%s' "$approved_json" | jq -r '.[] | "- **#\(.number)**: \(.title)"')
+  held=$(printf '%s' "$approved_json" | jq -r '.[] | select([(.labels // [])[].name] | index("loom:operator")) | "- **#\(.number)**: \(.title)"')
   curated=$("$GH_READ" issue list --label "loom:curated" --state open --limit 200 --json number,title \
     --jq '.[] | "- **#\(.number)**: \(.title) *(curated)*"')
   local architect hermit
@@ -2098,8 +2135,14 @@ update_work_plan() {
   # `LOOM_WORK_PLAN_DEBOUNCE_NOW` is a test seam only (mirrors
   # `urgent-flip-guard.sh`'s `LOOM_URGENT_GUARD_NOW`) — never set it in
   # normal operation.
+  #
+  # #6327: the debounce window is also overridable via
+  # `guide.docsMaintenance.workPlanDebounceSecs` in `.loom/config.json` —
+  # same config-read pattern and env > config > default precedence as
+  # `update_work_log()`'s `workLogDebounceSecs` above (see its #6327 note).
   local debounce_secs last_merged_epoch now_epoch elapsed
-  debounce_secs="${LOOM_WORK_PLAN_DEBOUNCE_SECS:-3600}"
+  debounce_secs="${LOOM_WORK_PLAN_DEBOUNCE_SECS:-$(jq -r '.guide.docsMaintenance.workPlanDebounceSecs // 3600' .loom/config.json 2>/dev/null)}"
+  [ -n "$debounce_secs" ] || debounce_secs=3600
   last_merged_epoch="$(last_work_plan_write_epoch)"
   now_epoch="${LOOM_WORK_PLAN_DEBOUNCE_NOW:-$(date -u +%s)}"
   elapsed=$(( now_epoch - last_merged_epoch ))

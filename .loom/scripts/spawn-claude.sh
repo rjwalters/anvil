@@ -458,6 +458,65 @@ else
     log_info "spawn-claude: CPU quota mechanism disabled (LOOM_SWEEP_CPU_QUOTA=0, issue #5111)"
 fi
 
+# --- Host-sleep prevention (issue #6311) ---
+#
+# #3350's check-host-sleep.sh is advisory-only by design — it warns but never
+# mutates anything, so an operator re-applies the mitigation by hand on every
+# host, every run. Repo-level opt-in (`host.preventSleep` in
+# `.loom/config.json`, env override `LOOM_HOST_PREVENT_SLEEP`, standard
+# env > config > default-OFF precedence — see lib/host-sleep-config.sh)
+# self-wraps THIS spawn in `systemd-inhibit --what=idle:sleep`, exactly the
+# manual remediation check-host-sleep.sh has always recommended by hand.
+#
+# This is the single dispatch chokepoint for BOTH named Linux entry points in
+# #6311 ("sweep" and "role runner") — `loom-daemon` invokes this script
+# directly for sweep dispatch (SweepRegistryConfig::resolve_spawn_bin) AND
+# scheduled role-runner dispatch (role_runner.rs); MOM's interactive
+# terminals run `claude` directly and never go through this script, so an
+# interactive session still needs its own manual wrap (see
+# check-host-sleep.sh's "Note:" addition for that case).
+#
+# Linux-only — systemd-inhibit talks to systemd-logind, which needs no
+# privilege. macOS's reliable defense (`sudo pmset -c sleep 0`) is privileged
+# and global; a repo-level config flag must NEVER invoke `sudo` silently
+# (#6311's own explicit macOS guardrail), so this mechanism is a deliberate
+# no-op there — check-host-sleep.sh still surfaces the manual macOS
+# remediation (or, once `host.sleepMitigationAcknowledged` is set, a
+# downgraded one-liner naming it).
+#
+# `idle:sleep` locks are HOST-WIDE, not scoped to this process's own
+# children — visible via `systemd-inhibit --list` for the lifetime of this
+# spawn (the #6311 acceptance criterion), and as a side effect keep every
+# sibling process on the host (including a currently-idle `loom-daemon`)
+# awake too, for as long as at least one sweep/role-runner spawn is in
+# flight.
+#
+# Prefix-array composition mirrors CPU_QUOTA_WRAP immediately above: a
+# `--why=probe -- true` dry run first, so a host that rejects it (no
+# reachable logind, e.g. a container with no dbus) degrades to "spawn
+# without the wrap" rather than replacing this process with a failing
+# `systemd-inhibit` at the real exec below. Never blocks the spawn.
+SLEEP_INHIBIT_WRAP=()
+_sleep_inhibit_config_lib="${_script_dir}/lib/host-sleep-config.sh"
+if [[ -f "$_sleep_inhibit_config_lib" ]]; then
+    # shellcheck source=./lib/host-sleep-config.sh
+    source "$_sleep_inhibit_config_lib"
+    if declare -F loom_host_prevent_sleep_enabled >/dev/null 2>&1 \
+        && [[ "$(loom_host_prevent_sleep_enabled "$WORKSPACE")" == "1" ]]; then
+        if command -v systemd-inhibit >/dev/null 2>&1; then
+            _sleep_inhibit_why="${LOOM_ROLE:-loom}"
+            if systemd-inhibit --what=idle:sleep --who=loom --why=probe -- true >/dev/null 2>&1; then
+                SLEEP_INHIBIT_WRAP=(systemd-inhibit --what=idle:sleep --who=loom --why="$_sleep_inhibit_why" --)
+                log_info "spawn-claude: host.preventSleep is enabled — wrapping this spawn in systemd-inhibit --what=idle:sleep --why=${_sleep_inhibit_why} (issue #6311)"
+            else
+                log_warn "spawn-claude: host.preventSleep is enabled but a systemd-inhibit probe failed (no reachable systemd-logind?); spawning WITHOUT the sleep-inhibit wrap (issue #6311)"
+            fi
+        else
+            log_warn "spawn-claude: host.preventSleep is enabled but systemd-inhibit is not on PATH (macOS, or non-systemd Linux); spawning WITHOUT the sleep-inhibit wrap — see check-host-sleep.sh for the manual remediation (issue #6311)"
+        fi
+    fi
+fi
+
 # --- Locate the loom-daemon binary (token selection, issue #4228) ---
 # Resolution precedence (see lib/locate-daemon-bin.sh): $LOOM_DAEMON_BIN ->
 # `loom-daemon` on PATH -> build-output-relative candidates under $WORKSPACE.
@@ -596,6 +655,36 @@ elif [[ -n "${LOOM_EFFORT:-}" ]]; then
     log_info "spawn-claude: effort=$LOOM_EFFORT (from LOOM_EFFORT)"
 fi
 
+# --- Account provider resolution (issue #5609, design D8) ---
+# Reads THIS runtime's own manifest (defaults/runtimes/claude.json)'s
+# "accountProvider" field so the pool `tokens select --provider` dispatches
+# into is a property of the runtime manifest, not a value hardcoded in this
+# script -- an operator can locally repoint it by editing
+# .loom/runtimes/claude.json without touching this script. Resolution mirrors
+# check-runtime-capabilities.sh's precedence: an on-disk
+# <repo>/.loom/runtimes/<name>.json wins over the defaults/runtimes/ fallback
+# next to this script. A missing file, missing field, or missing `jq` all
+# fall open to "claude" (never fail closed) -- design D8's "a missing
+# accountProvider on an un-resynced install must default to claude".
+_loom_account_provider_for_runtime() {
+    local runtime_name="$1" manifest=""
+    if [[ -f "${WORKSPACE}/.loom/runtimes/${runtime_name}.json" ]]; then
+        manifest="${WORKSPACE}/.loom/runtimes/${runtime_name}.json"
+    elif [[ -f "${_script_dir}/../runtimes/${runtime_name}.json" ]]; then
+        manifest="${_script_dir}/../runtimes/${runtime_name}.json"
+    fi
+    if [[ -z "$manifest" ]] || ! command -v jq >/dev/null 2>&1; then
+        printf '%s\n' "claude"
+        return
+    fi
+    local provider
+    provider="$(jq -r '.accountProvider // "claude"' "$manifest" 2>/dev/null)"
+    case "$provider" in
+        "" | null) provider="claude" ;;
+    esac
+    printf '%s\n' "$provider"
+}
+
 # --- Token selection ---
 if [[ -z "${LOOM_SPAWN_NO_EXPORT:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
     _daemon_bin="$(loom_locate_daemon_bin "$WORKSPACE")"
@@ -623,7 +712,8 @@ if [[ -z "${LOOM_SPAWN_NO_EXPORT:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; th
     _daemon_version="$("$_daemon_bin" --version 2>/dev/null | head -1)"
     log_info "spawn-claude: token-selection binary: $_daemon_bin (${_daemon_version:-version unknown})"
 
-    _select_args=(tokens select --workspace "$WORKSPACE" --export)
+    _account_provider="$(_loom_account_provider_for_runtime claude)"
+    _select_args=(tokens select --workspace "$WORKSPACE" --provider "$_account_provider" --export)
     # Pre-flight: auto-unpin if every allowlisted account has hit the
     # consecutive-failure threshold (default 5). Without this, an
     # operator-set pin can trap the spawner once all pinned accounts
@@ -755,11 +845,11 @@ if [[ -f "$_mcp_config_lib" ]]; then
             # in a per-role sweep log nobody was tailing — every sweep on an
             # affected host silently stopped narrating to safehouse for 11
             # hours, unnoticed, because the ONLY consequence anyone could see
-            # from outside was the public 2amlogic.com fleet pulse going
+            # from outside was the public fleet pulse going
             # stale. Name that consequence here, and point at the standalone,
             # on-demand check (independent of a daemon restart) that answers
             # "is this drifted?" without reading any sweep log.
-            log_warn "spawn-claude: SAFEHOUSE DRIFT — safehouse.enabled is true but no socket resolves (safehouse.socket / \$LOOM_SAFEHOUSE_SOCKET / \$SAFEHOUSED_SOCKET); no safehouse narration will be recorded for this sweep — the 2amlogic.com public fleet pulse is fed exclusively from safehouse narration, so this host's activity will not appear there until the socket resolves. Run '.loom/scripts/check-safehouse-socket.sh' to check every managed repo on this host without reading sweep logs. Skipping safehouse MCP injection (loom MCP unaffected)."
+            log_warn "spawn-claude: SAFEHOUSE DRIFT — safehouse.enabled is true but no socket resolves (safehouse.socket / \$LOOM_SAFEHOUSE_SOCKET / \$SAFEHOUSED_SOCKET); no safehouse narration will be recorded for this sweep — the public fleet pulse is fed exclusively from safehouse narration, so this host's activity will not appear there until the socket resolves. Run '.loom/scripts/check-safehouse-socket.sh' to check every managed repo on this host without reading sweep logs. Skipping safehouse MCP injection (loom MCP unaffected)."
         elif ! command -v "$_sh_command" >/dev/null 2>&1; then
             log_warn "spawn-claude: safehouse launch command '$_sh_command' not found in PATH; skipping safehouse MCP injection (loom MCP unaffected)."
         else
@@ -779,18 +869,36 @@ if [[ -f "$_mcp_config_lib" ]]; then
 fi
 
 # --- Dispatch ---
-# CPU_QUOTA_WRAP (issue #5111) is prepended to whichever final command is
-# exec'd below — empty (no-op) unless the CPU-quota block above found a
-# usable systemd --user scope. The `+"${arr[@]}"` guard is required under
-# `set -u`: bash 3.2 (macOS's shipped default) treats `"${arr[@]}"` on a
-# truly empty array as an unbound-variable error without it.
+# SLEEP_INHIBIT_WRAP (issue #6311) then CPU_QUOTA_WRAP (issue #5111) are
+# prepended, in that order, to whichever final command is exec'd below —
+# each empty (no-op) unless its own block above found a usable mechanism.
+# Order composes correctly because both wraps end their own array with a
+# trailing `--`: `systemd-inhibit ... -- systemd-run ... -- claude ...`. The
+# `+"${arr[@]}"` guard on each is required under `set -u`: bash 3.2 (macOS's
+# shipped default) treats `"${arr[@]}"` on a truly empty array as an
+# unbound-variable error without it.
+#
+# Process-group self-reap scope note (Issue #6192): both branches below end
+# in a plain `exec`, which REPLACES this process's image — nothing is left
+# alive afterward to trap the leaf command's exit and reap any children it
+# leaves behind, so `lib/reap-process-group.sh`'s self-reap cannot be wired in
+# here without restructuring `exec` into a fork+wait, a materially riskier
+# change to this script's signal/tty semantics than this issue's scope
+# justifies. This is not a gap in practice for the primary daemon-dispatch
+# path: `sweep_registry::dispatch` appends `--use-wrapper` by default (see
+# `dispatch_appends_use_wrapper_flag`), so daemon-dispatched sweeps take the
+# `USE_WRAPPER` branch into `claude-wrapper.sh`, which already runs `claude`
+# as a managed child (never exec-replaces itself) and carries the self-reap
+# trap directly (see its own header comment). Only a manual/interactive
+# invocation that explicitly omits `--use-wrapper` reaches the raw `exec`
+# below without that backstop.
 if [[ "$USE_WRAPPER" == "true" ]]; then
     _wrapper="${WORKSPACE}/.loom/scripts/claude-wrapper.sh"
     if [[ ! -x "$_wrapper" ]]; then
         log_error "Cannot find executable claude-wrapper.sh at $_wrapper"
         exit 1
     fi
-    exec ${CPU_QUOTA_WRAP[@]+"${CPU_QUOTA_WRAP[@]}"} "$_wrapper" "${PASSTHROUGH_ARGS[@]}"
+    exec ${SLEEP_INHIBIT_WRAP[@]+"${SLEEP_INHIBIT_WRAP[@]}"} ${CPU_QUOTA_WRAP[@]+"${CPU_QUOTA_WRAP[@]}"} "$_wrapper" "${PASSTHROUGH_ARGS[@]}"
 fi
 
 # Default: exec the `claude` CLI directly.
@@ -800,4 +908,4 @@ if ! command -v claude >/dev/null 2>&1; then
     exit 127
 fi
 echo "# LOOM_CLI_START runtime=claude" >&2
-exec ${CPU_QUOTA_WRAP[@]+"${CPU_QUOTA_WRAP[@]}"} claude "${PASSTHROUGH_ARGS[@]}"
+exec ${SLEEP_INHIBIT_WRAP[@]+"${SLEEP_INHIBIT_WRAP[@]}"} ${CPU_QUOTA_WRAP[@]+"${CPU_QUOTA_WRAP[@]}"} claude "${PASSTHROUGH_ARGS[@]}"

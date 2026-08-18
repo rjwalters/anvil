@@ -12,6 +12,21 @@
 # (check-main-freshness.sh) DETECTS the drift with a warning; this script FIXES
 # it. The intended flow is: "freshness warning says you're stale -> run resync."
 #
+# PRECONDITION (#6202): that flow only works when a defaults/ SOURCE tree can
+# be resolved (see resolve_defaults() below) — this checkout IS the Loom
+# source repo, OR the gitignored `.loom/loom-source-path` sidecar points at a
+# local clone of it. Neither holds on a checkout that never ran the Loom
+# installer locally (a fresh developer clone, a CI checkout, a machine that
+# received the repo rather than installing into it) — the exact population
+# most likely to be running stale surfaces, since they never ran the
+# installer that would have refreshed them. On that population this script
+# fails on first use with "Could not locate a defaults/ source tree to sync
+# from"; check-main-freshness.sh now detects the same gap and says so before
+# you get here (see its own #6202 note), but if you landed on this file
+# directly: clone https://github.com/rjwalters/loom locally, then either
+# re-run its installer against this repo or write the sidecar yourself
+# (`echo /path/to/local/loom-clone > .loom/loom-source-path`).
+#
 # It is idempotent (a no-op when already in sync), reports per-file
 # updated/created/removed/unchanged/skipped, only ever touches files that
 # either exist in the source tree or are explicitly declared retired (see
@@ -572,6 +587,41 @@ if ! resolve_defaults; then
     exit 1
 fi
 SOURCE_ROOT="$(dirname "$DEFAULTS_DIR")"
+
+# ---------- pre-resync shell-syntax gate (#6162 AC2) ----------------------
+#
+# #6162: an abandoned `git stash pop` conflict left live conflict markers in
+# defaults/scripts/spawn-claude.sh in the primary checkout. Nothing validated
+# that a source file about to be copied actually PARSES, so a resync would
+# have shipped that non-parsing script into every consumer repo's installed
+# .loom/scripts/. This runs check-shell-syntax.sh (#6162 AC1) against the
+# SOURCE tree (defaults/hooks, defaults/scripts) — the exact files the two
+# walks below are about to read — BEFORE any sync_one call and before the
+# crash-detection marker is written, so a syntax failure aborts with nothing
+# touched, not even a partial write. Scope is intentionally the whole
+# defaults/hooks and defaults/scripts trees (recursive), a superset of what
+# the hooks walk actually copies (top-level *.sh only) — catching a broken
+# script anywhere under either tree is strictly safer than matching the copy
+# walk's scope exactly, and matches the issue's "bash -n every installed
+# shell surface" framing. A missing check-shell-syntax.sh (e.g. an
+# unusually old defaults/ tree) degrades to a warning, never a silent skip,
+# and never blocks the sync — the gate can only get MORE strict over time.
+SYNTAX_CHECK_SCRIPT="$DEFAULTS_DIR/scripts/check-shell-syntax.sh"
+if [[ -x "$SYNTAX_CHECK_SCRIPT" ]]; then
+    syntax_check_dirs=()
+    [[ -d "$DEFAULTS_DIR/hooks" ]] && syntax_check_dirs+=(--dir "$DEFAULTS_DIR/hooks")
+    [[ -d "$DEFAULTS_DIR/scripts" ]] && syntax_check_dirs+=(--dir "$DEFAULTS_DIR/scripts")
+    if [[ "${#syntax_check_dirs[@]}" -gt 0 ]]; then
+        if ! syntax_check_out="$("$SYNTAX_CHECK_SCRIPT" --quiet "${syntax_check_dirs[@]}" 2>&1)"; then
+            err "Refusing to resync: one or more source shell scripts do not parse (bash -n)."
+            printf '%s\n' "$syntax_check_out" >&2
+            err "Fix the offending file(s) under $DEFAULTS_DIR before re-running this script — nothing was copied."
+            exit 1
+        fi
+    fi
+else
+    warn "check-shell-syntax.sh not found at $SYNTAX_CHECK_SCRIPT — skipping the pre-resync shell-syntax gate (#6162)."
+fi
 
 # Current source version (from the resolved SOURCE_ROOT's package.json). Used
 # by restamp_metadata() / resync_claude_md_version_header() below AND by the
@@ -1667,16 +1717,30 @@ refresh_gitignore_block() {
 }
 refresh_gitignore_block
 
-# ---------- shared: pure-copy-surface path classifier (#5983) ----------
+# ---------- shared: pure-copy-surface path classifier (#5983, #6173) ----------
 #
 # Both audit_untracked_loom_paths() (below) and suggest_commit_if_resync_only_dirt()
 # (further down) need to tell shipped-payload paths -- pure copies of
-# defaults/{hooks,scripts,roles,docs,runtimes,bin}/ -- apart from genuine
-# runtime state living elsewhere under .loom/. Single-source the glob list
-# here so the two call sites can never drift out of sync with each other.
+# defaults/{hooks,scripts,roles,docs,runtimes,bin}/, plus the individual
+# single-file payloads synced verbatim by the "single-file nested Biome
+# configs (#6031)" step above -- apart from genuine runtime state living
+# elsewhere under .loom/. Single-source the list here so the two call sites
+# can never drift out of sync with each other.
+#
+# `.loom/biome.jsonc` is shipped payload (a verbatim copy of
+# defaults/.loom/biome.jsonc, applied by sync_one above), not Loom runtime
+# state -- on a consumer's first resync to a version that ships it, the file
+# lands on disk untracked-and-unignored and would otherwise trip
+# audit_untracked_loom_paths()'s "add this to EPHEMERAL_PATTERNS" warning
+# even though it is a tracked-payload file the consumer should simply commit
+# (#6173). `.claude/biome.jsonc` is the same kind of payload but lives
+# outside `.loom/`, so it never reaches audit_untracked_loom_paths() (which
+# only scans paths under `.loom/`) -- it is classified here anyway so
+# suggest_commit_if_resync_only_dirt() (which scans the whole tree) also
+# recognizes it as resync-only dirt safe to suggest committing.
 _is_loom_pure_copy_surface_path() {
     case "$1" in
-        .loom/hooks/*|.loom/scripts/*|.loom/roles/*|.loom/docs/*|.loom/runtimes/*|.loom/bin/*)
+        .loom/hooks/*|.loom/scripts/*|.loom/roles/*|.loom/docs/*|.loom/runtimes/*|.loom/bin/*|.loom/biome.jsonc|.claude/biome.jsonc)
             return 0
             ;;
         *)

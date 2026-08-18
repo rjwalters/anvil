@@ -98,6 +98,47 @@ running an older `worktree.sh` (pre-#4823) or a symptom of a genuinely diverged
 local state — either way, fixing review feedback on top of the wrong base produces
 a PR-clobbering force-push or a diff against the wrong parent.
 
+**Run the check, don't just eyeball it (#6257).** `worktree.sh <ISSUE_NUM>`'s own
+"directory already exists" fast path now performs this same fetch-and-compare and
+prints a warning on drift, but a Doctor session that reuses an already-`cd`'d
+worktree from an earlier phase of the same sweep (no fresh `worktree.sh` call in
+between) does not get that warning re-run. Verify explicitly, immediately before
+making any edits — **pin the worktree path once into `WORKTREE_ABS` and use
+`git -C "$WORKTREE_ABS" ...` for every check, never a bare `git status`/`git
+rev-parse` that relies on a `cd` still being in effect.** A `cd` earlier in the
+same shell session persists for every later command in that session, including
+a command you intended for a *different* directory (e.g. the main checkout) —
+that silent redirection is exactly what made a prior Judge falsely report both
+a worktree and the main checkout clean from a single `cd`'d `git status`
+(#6373). `-C` makes the target directory explicit in the command itself, so it
+can't be hijacked by a stale `cd`:
+
+```bash
+WORKTREE_ABS="$(cd .loom/worktrees/issue-<ISSUE_NUM> && pwd)"
+PR_HEAD_SHA=$(gh pr view <PR_NUMBER> --json headRefOid --jq '.headRefOid')
+WT_HEAD_SHA=$(git -C "$WORKTREE_ABS" rev-parse HEAD)
+WT_STATUS=$(git -C "$WORKTREE_ABS" status --porcelain)
+
+if [ "$WT_HEAD_SHA" != "$PR_HEAD_SHA" ] || [ -n "$WT_STATUS" ]; then
+    echo "Worktree drift detected (HEAD=$WT_HEAD_SHA, PR head=$PR_HEAD_SHA, dirty=$([ -n "$WT_STATUS" ] && echo yes || echo no)) - resyncing"
+    if [ -n "$WT_STATUS" ]; then
+        ./.loom/scripts/worktree.sh snapshot <ISSUE_NUM> --include-untracked   # save WIP, never a bare `git stash` (see below)
+        git -C "$WORKTREE_ABS" checkout -- .
+    fi
+    git -C "$WORKTREE_ABS" pull --ff-only
+fi
+```
+
+Only proceed to fix review feedback once `WT_HEAD_SHA` matches `PR_HEAD_SHA` and
+`WT_STATUS` is empty. If `git pull --ff-only` fails, fall back to the
+`fetch && reset --hard` + `set-upstream-to` sequence above.
+
+If you also need to state that the main checkout is clean (e.g. after
+resolving a contamination scare), name `$WORKTREE_ABS` and the main-checkout
+path explicitly in that claim, and check the main checkout with
+`./.loom/scripts/check-main-clean.sh` — never a second bare `git status` in
+the same session.
+
 ### Never use bare `git stash` for ad-hoc WIP (#4821)
 
 `refs/stash` is **one stack shared across every linked worktree of the
@@ -847,6 +888,14 @@ Do **not** add `loom:review-requested` when standing down — the Doctor who
 actually pushed owns that transition. Leave the PR's state labels alone and
 exit; your only label action is removing your own claim.
 
+**Note on new-PR creation (#6277):** Doctor normally pushes fixes to an
+*existing* PR, so the recheck above is the relevant freshness guard. If a fix
+ever requires opening a brand-new PR (e.g. splitting work into a separate
+branch), use `./.loom/scripts/create-pr.sh` — it applies the analogous check
+on the *target issue* immediately before opening the PR, refusing to open a
+duplicate against an issue a different, already-merged PR already closed.
+See `builder-pr.md` § "Creating the PR" for the full behavior.
+
 ### Verdict-Time CAS Recheck (Step 11 — immediately before the completion label write)
 
 The Pre-Push Head-SHA Recheck above catches a concurrent **code** race. It
@@ -889,9 +938,11 @@ write that actually matters, not just at claim time.
       CAS Recheck above), and aborted/stood down on a lost claim or a raced verdict
       label instead of writing over it
 - [ ] My commit(s) address the specific feedback quoted from the Judge's review
-- [ ] If any comment I posted came from a scratch file, I used `--body-file
-      <path>` (or `gh api -F body=@<path>`) — NEVER `--body @<path>` (see the
-      `--body @path` anti-pattern warning above)
+- [ ] If any comment I posted came from a scratch file, the filename is
+      namespaced by the PR/issue number (`fix-comment-<N>.md`, never a fixed
+      name — wave subagents share one scratchpad, #6381), and I used
+      `--body-file <path>` (or `gh api -F body=@<path>`) — NEVER `--body
+      @<path>` (see the `--body @path` anti-pattern warning above)
 - [ ] I re-fetched the posted comment (`gh pr view <number> --comments`) to
       verify it renders my actual prose, not a literal path string
 - [ ] I ran the label transition (`loom:changes-requested`/`loom:treating` →

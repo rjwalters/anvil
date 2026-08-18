@@ -58,7 +58,19 @@ export LOOM_SYSTEMD_UNIT="loom-daemon-test-$$.service"
 export LOOM_LAUNCHD_LABEL="com.example.loom-quiesce-test-$$"
 
 WORKDIR="$(mktemp -d)"
-live_state_sandbox_init "$WORKDIR/live-state"
+# The return code is CHECKED, never bare (#6420). init returns non-zero when it
+# could not `cd` into the sandbox root (#6386 — the cwd tier is then still aimed
+# at wherever this suite was launched from, i.e. potentially a LIVE checkout) or
+# when the ambient supervisor label is the real production one (#5501). This
+# suite runs under `set -uo pipefail` with NO `-e`, so a bare call would swallow
+# both and continue with a HALF-ARMED sandbox — the exact state the helper's own
+# failure path exists to prevent — while driving the real lifecycle scripts.
+if ! live_state_sandbox_init "$WORKDIR/live-state"; then
+    echo "FATAL: live-state sandbox init failed — refusing to run this suite against a half-armed sandbox (#6420)." >&2
+    echo "  See the reason above (lib/live-state-sandbox.sh): a writable sandbox root is required, and the ambient LOOM_LAUNCHD_LABEL / LOOM_WATCHDOG_LABEL must not be the real production identities." >&2
+    rm -rf "$WORKDIR"
+    exit 1
+fi
 mkdir -p "$WORKDIR/.loom"
 
 trap 'bg_proc_reap; rm -rf "$WORKDIR"' EXIT
@@ -153,7 +165,13 @@ bg_proc_track "$unrelated_pid"
     echo "$unrelated_pid 1 vim notes.txt"
 } > "$PS_FIXTURE"
 
-out2=$( cd "$WORKDIR" && PATH="$STUB_DIR:$PATH" \
+# `LOOM_PID_FILE=''` (empty) is deliberate since #6386: loom-daemon-stop.sh --
+# which quiesce delegates step 1 to -- now resolves LOOM_PID_FILE ahead of the
+# $PWD-derived state home, and live_state_sandbox_init exports it suite-wide.
+# A case whose fixture pid file lives at "$WORKDIR/.loom/.daemon.pid" must
+# therefore say it means the $PWD tier. Safe: the paired `cd "$WORKDIR"` keeps
+# that tier inside this suite's own scratch workspace.
+out2=$( cd "$WORKDIR" && PATH="$STUB_DIR:$PATH" LOOM_PID_FILE='' \
     LOOM_DAEMON_LAUNCHD=0 LOOM_DAEMON_SYSTEMD=0 LOOM_DAEMON_QUIESCE_GRACE_SECS=2 \
     bash "$QUIESCE_SCRIPT" 2>&1 )
 rc2=$?
@@ -198,7 +216,7 @@ bg_proc_track "$agent_pid3"
     echo "$agent_pid3 1 claude -p /loom:doctor"
 } > "$PS_FIXTURE"
 
-out3=$( cd "$WORKDIR" && PATH="$STUB_DIR:$PATH" \
+out3=$( cd "$WORKDIR" && PATH="$STUB_DIR:$PATH" LOOM_PID_FILE='' \
     LOOM_DAEMON_LAUNCHD=0 LOOM_DAEMON_SYSTEMD=0 \
     bash "$QUIESCE_SCRIPT" --dry-run 2>&1 )
 rc3=$?
@@ -343,7 +361,7 @@ if [[ -n "$LEGACY_BASH" ]]; then
     { echo "$agent_pid6 1 claude -p /loom:curator"; } > "$PS_FIXTURE"
 
     out6b=$( cd "$WORKDIR" && PATH="$STUB_DIR:$PATH" env -u LOOM_SYSTEMD_FORCE \
-        LOOM_DAEMON_LAUNCHD=0 LOOM_DAEMON_SYSTEMD=0 LOOM_DAEMON_QUIESCE_GRACE_SECS=3 \
+        LOOM_PID_FILE='' LOOM_DAEMON_LAUNCHD=0 LOOM_DAEMON_SYSTEMD=0 LOOM_DAEMON_QUIESCE_GRACE_SECS=3 \
         "$LEGACY_BASH" "$QUIESCE_SCRIPT" 2>&1 )
     rc6b=$?
     assert_eq "0" "$rc6b" "bash 3.2: a real drain through the grace-window survivor loop exits 0"
