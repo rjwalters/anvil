@@ -1,6 +1,6 @@
 # Anvil - Repository Guide
 
-**Anvil Version**: 0.11.0
+**Anvil Version**: 0.11.1
 **Status**: canary-hardened; **24 skills shipped** (14 artifact-class skills + 2 bridge tools: `anvil:project-migrate`, `anvil:rubric-rebackport` + 1 packaging utility: `anvil:project-share` + 1 discovery utility: `anvil:project-scout` + 1 provenance utility: `anvil:project-photos` + 1 assembly utility: `anvil:project-book` + 1 orientation utility: `anvil:help` + 1 prose-cleanup utility: `anvil:deslop` (#898) — iterates arbitrary AI-drafted prose living outside any anvil-authored project (site copy, README fragments, existing markdown/HTML, pasted text) clean of AI-tell rhetoric and voice mismatch via a deterministic-lint (`anvil/lib/rhetoric_lint.py`) + LLM-critique loop reusing `anvil/lib/convergence.py` / `anvil/lib/critics.py` unmodified, honoring a consumer's declared `voice.rhetoric_rules` / voice-grounding docs when pointed at a project; NEVER auto-edits the source, emits cleaned text + rationale + a ready-to-apply diff instead — v1 scope explicitly excludes JSX/TSX source-literal extraction) + 1 diff-viewer utility: `anvil:diff` (#925) — a local, ephemeral, read-only viewer that renders a stdlib-only (`http.server` + `difflib`), word-level (not line-level) side-by-side HTML diff between two anvil version dirs (resolved via `anvil/lib/latest_resolution.py`), a deslop origin/`cleaned.txt` pair, or two arbitrary files, with an optional `.review/` sidecar (`anvil/lib/review_schema.py` scores/findings) + `rhetoric_lint` overlay anchored to the lines they describe; binds `127.0.0.1` only, never writes to any input path, no CDN assets, no in-browser editing in v1 + 1 prior-art-search utility: `anvil:ip-search` (#957) — the missing input half of the ip suite's prior-art workflow: it derives queries from a thread's `BRIEF.md` §3 inventive-feature inventory (the same disclosure denominator the `s112` critic scores against), queries a live corpus via stdlib `urllib` on the `anvil/lib/cite.py` precedent (PatentsView Search primary, USPTO Open Data Portal secondary; API keys read from `PATENTSVIEW_API_KEY` / `USPTO_API_KEY`, Google Patents a documented MANUAL fallback since it has no public API), and writes one `<thread>/prior-art/<slug>.md` per reference in exactly the frontmatter shape `ip-uspto-prior-art` / `ip-uspto-provisional-prior-art` already parse (`title`/`inventors`/`publication_date`/`kind`/`summary` plus a `patent_number`/`assignee`/`url`/`source`/`retrieved` provenance superset); no key degrades gracefully — writes NOTHING, prints the constructed queries + a Google Patents URL per query, exits 0; writes `<thread>/prior-art/` and nothing else (version dirs and critic siblings are refused structurally before any file is opened), never overwrites an already-collected reference without `--force`, and renders no positioning verdict — dim 5 stays the critics'; explicitly a drafting aid, never an attorney clearance search; artifact-class rubrics on /44 with dim 9 *Rhetorical economy* (the two ip skills on /45: ip-uspto with dim 9 *Claim-spec correspondence*, ip-uspto-provisional with enablement-depth-dominant weights and dim 9 *Conversion readiness*; deck on /49 ≥43 with dim 10 *Business-model & unit-economics credibility* post-#550; essay with voice-dominant weights — dim 2 *Voice fidelity* at weight 7 — and a load-bearing dim 9; primer with pedagogy-dominant weights — dim 1 *Pedagogical scaffolding / learnability* at weight 7 — and an optional `spec_ref` companion input feeding a spec-consistency audit; spec with normative-correctness-dominant weights — dim 1 *Normative correctness* at weight 7, ≥39 audit-grade band — and an optional `code_ref` companion input, the mirror image of primer's `spec_ref`, feeding a spec↔implementation consistency audit — the #697 epic is complete: skeleton #706, three-way audit verdict + implementation-status register #707, deterministic constant-consistency gate #708, and a vendored AUDITED worked example #709; memoir (#740) with sourcing-fidelity-dominant weights — dim 1 *Sourcing fidelity* at weight 7, ≥39 audit-grade band — composing dual-corpus claim provenance (#597) and dual voice tiers (#598) active at once in one chapter-threaded, AUDITED-terminal artifact, with the first exhaustive `kind: tool_evidence` corpus-audit critic sibling and photo-placement macros for `anvil:project-photos`); per-review version stamping (`rubric_id` / `rubric_total` / `advance_threshold`) shipped in v0.4.0; sidecar atomicity primitive (`anvil/lib/sidecar.py`) consumed by critic-writing commands across all 14 artifact-class skills (plus terminal package assemblers such as `ip-uspto-provisional-finalize`). See `ROADMAP.md` for current state, `WORK_LOG.md` for merge history, `WORK_PLAN.md` for backlog.
 
 ## What is Anvil?
@@ -159,6 +159,41 @@ Write the entry for the *reader of the release notes*, not for the diff: what ch
 The check is a deterministic pre-flight in the sense of "Pattern overview" above: run it *before* the expensive content review, and treat it as a reporter, not a merge gate. It renders no quality verdict on the entry's prose.
 
 **The release-time coverage check is the backstop, not the mechanism.** `/repo:release` Phase 5 still cross-references merged PRs since the last tag against the drafted entry (`.claude/commands/repo/release.md` § "Merged-work coverage check (advisory)"), and it stays — but it is a *last* line of defense that costs a human release-time reconstruction every time it fires. If it reports a non-trivial gap at the next cut, the fix belongs upstream in this per-PR discipline, not in a better reconstruction script.
+
+### Installed-surface VERSION discipline (the `<!-- loom:no-surface-change -->` marker)
+
+**The problem this closes** (#1152): `scripts/install-anvil.sh` copies Anvil's skills, framework lib, templates, roles, and agents into every consumer's `.anvil/` (+ `.claude/`, `.agents/`) trees, and **nothing refreshes those copies afterwards** short of re-running the installer or `.anvil/scripts/resync-installed.sh`. The only mechanical signal a consumer has that its copies are behind is a `VERSION` comparison — `install-anvil.sh` reads `VERSION` at install time and records it in `.anvil/install-metadata.json`, and every downstream "am I current?" check (`/repo:update-tools`, fleet drift tooling) diffs against that recorded number. When `VERSION` only moves by hand, that signal silently lies: at the time #1152 was filed `VERSION` read `0.11.0` while `main` was **61 commits** past the `v0.11.0` tag, so every consumer reported "current" for changes it did not have.
+
+**The model, copied from loom as-is (loom#5874): `VERSION` on `main` *is* the release.** Any PR that changes the installed surface bumps `VERSION` (patch is enough) or carries an explicit no-surface-change marker. **Tags and GitHub Releases are unaffected** — they stay manual and occasional (`./scripts/version.sh set X.Y.Z --tag`), exactly as before; loom itself sits at tag `v0.18.0` with `VERSION` well past it. This is not "cut a Release per PR."
+
+**The watched surface** (verified against `scripts/install-anvil.sh`; `./scripts/check-surface-version-bump.sh --list-paths` is the machine-readable copy):
+
+| Path | Why it is consumer-visible |
+|---|---|
+| `anvil/` | `lib/` → `.anvil/anvil/lib/`, `skills/<name>/` → `.anvil/skills/<name>/`, `templates/` → theme + voice scaffolds, `roles/` → `.anvil/roles/` (always installed), `agents/` → `.claude/agents/anvil-*.md`, `__init__.py` → the importable package root |
+| `scripts/install-anvil.sh` | the installer itself — a behavior change here changes what a fresh/updated install does even when no file under `anvil/` moved |
+| `scripts/resync-installed.sh` | physically copied to `.anvil/scripts/resync-installed.sh` (#894) |
+
+Everything else — `docs/`, `tests/`, `WORK_LOG.md`, `CHANGELOG.md`, `README.md`, `.loom/`, `.github/` — is outside the surface and triggers nothing.
+
+**Builder — when your diff touches any watched path:**
+
+1. Run `./scripts/version.sh bump patch` (it keeps `VERSION`, `CLAUDE.md`, `pyproject.toml`, and `README.md` in step; no tag, no commit), **or**
+2. If the change genuinely does not alter installed behavior — a comment, a skill-local test-only edit, a typo fix — put this exact string in the PR body or in a commit message on the PR:
+
+```
+<!-- loom:no-surface-change -->
+```
+
+Do not invent a bump to satisfy the gate when the marker is the honest answer, and do not reach for the marker to avoid a bump that is genuinely owed. State which one you used next to the `TDD:` / `CHANGELOG:` lines in the PR's `## Test Plan`.
+
+**The enforcement is CI, not etiquette.** `.github/workflows/version-bump-gate.yml` runs `./scripts/check-surface-version-bump.sh --base <base sha> --head <head sha>` on every PR (exit `0` = clean or exempt, `1` = surface changed with no bump and no marker, `2` = could not evaluate), and a second step runs `./scripts/version.sh check` so a hand-edited `VERSION` cannot drift from the other three version-bearing files. Run the same check locally before pushing:
+
+```bash
+./scripts/check-surface-version-bump.sh --base origin/main
+```
+
+**Why an anvil-owned script rather than the vendored `.loom/scripts/check-defaults-version-bump.sh`**: that script hardcodes loom's `defaults/` tree, which this repo does not have, so as vendored it is a permanent no-op here — and it is a *vendored copy* refreshed wholesale by `.loom/scripts/resync-installed.sh`, so an edit to it survives until the next resync and then vanishes (the same reasoning as the two sections either side of this one). `scripts/check-surface-version-bump.sh` deliberately keeps a CLI contract compatible with it, so once `rjwalters/loom#6480` lands (watched paths as an argument) this can collapse into a thin wrapper.
 
 ### Guard-decision cross-reference queries (`gh-since.sh`)
 

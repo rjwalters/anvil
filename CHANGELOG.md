@@ -4,6 +4,27 @@
 
 ### Added
 
+- **A CI gate makes any change to the installed surface bump `VERSION`**
+  (#1152). `scripts/install-anvil.sh` copies Anvil's skills, lib, templates,
+  roles, and agents into every consumer's `.anvil/` tree, and nothing
+  refreshes those copies afterwards — so `VERSION` is the only mechanical
+  signal a consumer has that its install is stale. Because `VERSION` moved
+  only when someone bumped it by hand, it read `0.11.0` while `main` was 61
+  commits past the `v0.11.0` tag, and every consumer's `/repo:update-tools`
+  and `install-metadata.json` check reported "current" for changes it did
+  not have. The new `scripts/check-surface-version-bump.sh` (wired into a
+  new `.github/workflows/version-bump-gate.yml`, this repo's first CI job)
+  fails a PR that touches `anvil/`, `scripts/install-anvil.sh`, or
+  `scripts/resync-installed.sh` without either bumping `VERSION` or
+  carrying the explicit `<!-- loom:no-surface-change -->` marker in its
+  body or a commit message; a second step runs `./scripts/version.sh check`
+  so a hand-edited `VERSION` cannot drift from `CLAUDE.md` /
+  `pyproject.toml` / `README.md`. Adopts loom's model (loom#5874):
+  **`VERSION` on `main` is the release** — tags and GitHub Releases are
+  unaffected and stay manual. The convention is documented in `CLAUDE.md` §
+  "Installed-surface VERSION discipline". `VERSION` is bumped once here
+  (0.11.0 → 0.11.1) so consumers see the accumulated delta.
+
 - **`anvil:deck`'s `marp_lint` overflow check gains a consumer-theme
   capacity-override contract** (#1150). The `slide-content-overflow`
   capacity model was calibrated against the shipped `anvil-deck` theme's

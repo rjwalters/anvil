@@ -1,0 +1,55 @@
+# Consumer-visible changes require a VERSION bump (issue #1152).
+#
+# Anvil's installed surface (anvil/ + scripts/install-anvil.sh +
+# scripts/resync-installed.sh) is copied into consumers' .anvil/ trees at
+# install time and never refreshed by a git pull. VERSION is the only
+# mechanical signal a consumer has that its copies are stale, so a PR that
+# changes that surface must bump VERSION -- or say, explicitly, that it does
+# not change installed behavior.
+#
+# Model copied from rjwalters/loom (loom#5874): VERSION on `main` IS the
+# release. Tags and GitHub Releases stay manual and occasional; nothing in this
+# workflow cuts, pushes, or requires one.
+#
+# Escape hatch: put the literal marker
+#     <!-- loom:no-surface-change -->
+# in the PR body or in a commit message on the PR. See CLAUDE.md §
+# "Installed-surface VERSION discipline".
+name: version-bump-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  surface-version-bump:
+    name: consumer-visible changes require a VERSION bump
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          # The gate diffs two explicit shas. A shallow checkout can leave the
+          # base sha unreachable, which the script reports as exit 2 (could not
+          # evaluate) rather than a real verdict -- so fetch everything.
+          fetch-depth: 0
+
+      - name: Check installed-surface change against VERSION
+        env:
+          # The marker is read from the PR body here; the script separately
+          # scans commit messages between base and head with no extra plumbing.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          ./scripts/check-surface-version-bump.sh \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"
+
+      - name: Check version files are in sync
+        # Guards the other half of the same signal: a hand-edited VERSION that
+        # leaves CLAUDE.md / pyproject.toml / README.md behind makes downstream
+        # "am I current?" reads disagree with each other. `version.sh bump`
+        # keeps all four in step; this asserts the result.
+        run: ./scripts/version.sh check
