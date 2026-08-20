@@ -32,6 +32,9 @@ from pathlib import Path
 
 from anvil.lib.rhetoric_lint import (
     CONFIG_RULE_ID,
+    DEFAULT_COMMA_STACK_MAX_COMMAS,
+    DEFAULT_COMMA_STACK_MIN_WORDS,
+    DEFAULT_COMMA_STACK_REFINED_MIN_COMMAS,
     DEFAULT_FREQUENCY_MIN_WORDS,
     DEFAULT_LONG_SENTENCE_WORD_THRESHOLD,
     DEFAULT_RHETORIC_RULES,
@@ -40,6 +43,7 @@ from anvil.lib.rhetoric_lint import (
     EMDASH_MAX_PER_1000_WORDS,
     EMPHASIS_MAX_PER_1000_WORDS,
     LONG_SENTENCE_MAX_PER_1000_WORDS,
+    RULE_KIND_COMMA_STACK,
     RULE_KIND_FREQUENCY,
     RULE_KIND_LONG_SENTENCE,
     RULE_KIND_PHRASE,
@@ -641,6 +645,242 @@ def test_validate_rule_sentence_variance_invalid_min_sentences_falls_back():
 
 
 # ---------------------------------------------------------------------------
+# comma-role-stacking (issue #1182): a per-sentence sibling of
+# long-sentence-density / sentence-variance-floor detecting the demoted-
+# appositive comma-role-stacking failure mode — two deterministic tiers
+# (hard: a blunt comma+word ceiling; refined: an interior appositive span
+# bracketed by commas, with a subordinator elsewhere in the sentence).
+# ---------------------------------------------------------------------------
+
+# The real sentence that motivated the issue (rjwalters.info, 2026-08-20):
+# 4 commas, 38 words. Fails the hard tier's default 5-comma ceiling but
+# trips the refined tier — the appositive "how long a room can hold its
+# focus without me" is bracketed between "interval," and ", seems", and
+# "because" sits outside that span.
+_CANONICAL_STACKED_SENTENCE = (
+    "Everyone is finally climbing it, and I find I am mostly watching "
+    "for the next time they wander, because that interval, how long a "
+    "room can hold its focus without me, seems like the number to be "
+    "optimizing."
+)
+
+# The published fix: the appositive promoted to its own sentence
+# (subject position), no comma bracketing an interjection anywhere.
+_PUBLISHED_FIX_SENTENCE = (
+    "Everyone is finally climbing it, and mostly I am watching for the "
+    "next time they wander. How long a room can hold its focus without "
+    "me seems like the number to be optimizing."
+)
+
+# A serial list: 5 commas, no subordinator, near-uniform-length interior
+# items ("a wrench" / "a screwdriver" / "a level" / "a tape measure").
+_SERIAL_LIST_SENTENCE = (
+    "The kit includes a hammer, a wrench, a screwdriver, a level, a "
+    "tape measure, and a drill."
+)
+
+
+def test_default_set_contains_comma_role_stacking_rule():
+    matches = [
+        r for r in DEFAULT_RHETORIC_RULES if r["id"] == "comma-role-stacking"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["kind"] == RULE_KIND_COMMA_STACK
+    assert matches[0]["max_commas"] == DEFAULT_COMMA_STACK_MAX_COMMAS == 5
+    assert matches[0]["min_words"] == DEFAULT_COMMA_STACK_MIN_WORDS == 25
+    assert (
+        matches[0]["refined_min_commas"]
+        == DEFAULT_COMMA_STACK_REFINED_MIN_COMMAS
+        == 4
+    )
+
+
+def test_comma_stack_canonical_sentence_fires_refined_tier_at_defaults():
+    """Acceptance sketch: the real motivating sentence fires by default.
+
+    4 commas is below the hard tier's default 5-comma ceiling, so only
+    the refined tier fires here — see
+    ``test_comma_stack_hard_and_refined_can_both_fire`` for a
+    threshold-tuned demonstration that the two tiers are independent
+    checks that can both hold on the same sentence.
+    """
+    hits = _active(lint_rhetoric(_CANONICAL_STACKED_SENTENCE))
+    assert [f.rule_id for f in hits] == ["comma-role-stacking"]
+    assert hits[0].line is None  # document-level, no line anchor
+    assert hits[0].match is not None
+    assert hits[0].message.startswith("4 commas doing multiple grammatical jobs")
+
+
+def test_comma_stack_published_fix_fires_neither_tier():
+    """Acceptance sketch: the actual published rewrite is clean."""
+    assert _active(lint_rhetoric(_PUBLISHED_FIX_SENTENCE)) == []
+
+
+def test_comma_stack_serial_list_does_not_fire_refined_tier():
+    """Acceptance sketch: 5 commas, no subordinator, uniform list items —
+    the refined tier's serial-list guard must not fire. The hard tier
+    also does not fire here at defaults (17 words, below the 25-word
+    floor) — the acceptance sketch notes the hard tier MAY still flag at
+    default thresholds; that not happening for this particular sentence
+    is a min_words-floor consequence, not a serial-list-guard gap (see
+    ``test_comma_stack_hard_tier_fires_alone_without_appositive_pattern``
+    for a 25+-word serial-list sentence where the hard tier does fire)."""
+    assert _CANONICAL_STACKED_SENTENCE.count(
+        ","
+    )  # sanity: fixture constant is non-trivial
+    assert _SERIAL_LIST_SENTENCE.count(",") == 5
+    assert _active(lint_rhetoric(_SERIAL_LIST_SENTENCE)) == []
+
+
+def test_comma_stack_serial_list_guard_holds_even_with_incidental_subordinator():
+    """A serial list that happens to contain an unrelated subordinator
+    elsewhere must still not fire the refined tier — the near-uniform
+    interior-span guard is a second line of defense beyond "no
+    subordinator anywhere"."""
+    text = (
+        "The kit includes a hammer, a wrench, a screwdriver, a level, "
+        "a tape measure, which ships in a canvas bag, and a drill."
+    )
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_comma_stack_hard_tier_fires_alone_without_appositive_pattern():
+    """Hard signal: >=5 commas and >=25 words, no appositive/subordinator
+    pattern anywhere — a blunt list-shaped sentence with no refined-tier
+    structure at all."""
+    text = (
+        "The report covers revenue, margin, headcount, churn, pipeline "
+        "coverage, and burn rate across every region we track this "
+        "quarter in painstaking detail for the board."
+    )
+    assert text.count(",") == 5
+    hits = _active(lint_rhetoric(text))
+    assert [f.rule_id for f in hits] == ["comma-role-stacking"]
+    assert hits[0].message.startswith("5 commas doing multiple grammatical jobs")
+
+
+def test_comma_stack_hard_and_refined_can_both_fire():
+    """Threshold-tuned demonstration that the hard and refined tiers are
+    independent checks: lowering ``max_commas`` to the canonical
+    sentence's actual comma count (4) makes the hard-tier condition hold
+    alongside the refined-tier appositive pattern that already fires at
+    defaults — a single finding either way (one comma_stack finding per
+    offending sentence), but both underlying conditions are satisfied."""
+    tuned = {
+        "rules": [
+            {
+                "id": "comma-role-stacking",
+                "kind": "comma_stack",
+                "max_commas": 4,
+                "min_words": 25,
+                "refined_min_commas": 4,
+                "message": "tuned",
+            }
+        ]
+    }
+    hits = _active(lint_rhetoric(_CANONICAL_STACKED_SENTENCE, extra_rules=tuned))
+    assert [f.rule_id for f in hits] == ["comma-role-stacking"]
+    # Sanity: at these tuned thresholds, both the hard condition (4
+    # commas >= max_commas=4 and 38 words >= min_words=25) and the
+    # refined condition (appositive span + outside subordinator) hold.
+    assert _CANONICAL_STACKED_SENTENCE.count(",") == 4
+
+
+def test_comma_stack_below_refined_min_commas_no_finding():
+    """3 commas is below the default refined_min_commas floor (4) even
+    with an appositive-shaped interior span and a subordinator."""
+    text = (
+        "The result, how the team actually shipped it, seems remarkable "
+        "because nobody expected it."
+    )
+    assert text.count(",") == 2
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_comma_stack_requires_subordinator_outside_span():
+    """An appositive-shaped span with enough commas but NO subordinator
+    anywhere does not fire the refined tier."""
+    text = (
+        "The proposal, what everyone on the team calls the fallback "
+        "plan, seems reasonable, cheap, and easy to execute quickly."
+    )
+    assert text.count(",") >= 4
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_comma_stack_disable_via_config():
+    res = lint_rhetoric(
+        _CANONICAL_STACKED_SENTENCE,
+        extra_rules={"disable": ["comma-role-stacking"]},
+    )
+    assert _active(res) == []
+
+
+def test_comma_stack_excludes_code_and_comments():
+    """The stacked sentence inside a fenced code block / HTML comment
+    must not fire — same scan-exclusion contract as every other kind."""
+    text = (
+        "Clean prose here.\n\n"
+        "```\n" + _CANONICAL_STACKED_SENTENCE + "\n```\n\n"
+        "<!-- " + _CANONICAL_STACKED_SENTENCE + " -->\n"
+    )
+    assert _active(lint_rhetoric(text)) == []
+
+
+def test_validate_rule_comma_stack_no_pattern_required():
+    normalized, error = _validate_rule(
+        {"id": "cs", "kind": RULE_KIND_COMMA_STACK, "message": "m"}
+    )
+    assert error is None, error
+    assert normalized is not None
+    assert "pattern" not in normalized
+    assert normalized["max_commas"] == DEFAULT_COMMA_STACK_MAX_COMMAS
+    assert normalized["min_words"] == DEFAULT_COMMA_STACK_MIN_WORDS
+    assert normalized["refined_min_commas"] == DEFAULT_COMMA_STACK_REFINED_MIN_COMMAS
+
+
+def test_validate_rule_comma_stack_invalid_max_commas(tmp_path):
+    path = _write_rules(
+        tmp_path,
+        {"rules": [{"id": "cs", "kind": "comma_stack", "max_commas": 0}]},
+    )
+    result = lint_rhetoric("Plain text.", extra_rules_path=path)
+    config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
+    assert len(config) == 1
+    assert "max_commas" in config[0].message
+
+
+def test_validate_rule_comma_stack_invalid_min_words(tmp_path):
+    path = _write_rules(
+        tmp_path,
+        {"rules": [{"id": "cs", "kind": "comma_stack", "min_words": -1}]},
+    )
+    result = lint_rhetoric("Plain text.", extra_rules_path=path)
+    config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
+    assert len(config) == 1
+    assert "min_words" in config[0].message
+
+
+def test_validate_rule_comma_stack_invalid_refined_min_commas(tmp_path):
+    path = _write_rules(
+        tmp_path,
+        {
+            "rules": [
+                {
+                    "id": "cs",
+                    "kind": "comma_stack",
+                    "refined_min_commas": "nope",
+                }
+            ]
+        },
+    )
+    result = lint_rhetoric("Plain text.", extra_rules_path=path)
+    config = [f for f in result.findings if f.rule_id == CONFIG_RULE_ID]
+    assert len(config) == 1
+    assert "refined_min_commas" in config[0].message
+
+
+# ---------------------------------------------------------------------------
 # no-grade-tags-in-body (issue #751): internal evidence-grade taxonomy
 # leaking into reader-facing prose
 # ---------------------------------------------------------------------------
@@ -1239,7 +1479,15 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
     - ``emphasis-density`` (*frequency*, bold spans) and
       ``no-meta-commentary`` (issue #745);
     - ``long-sentence-density`` (*long_sentence*, issue #750);
-    - ``sentence-variance-floor`` (*sentence_variance*, issue #921).
+    - ``sentence-variance-floor`` (*sentence_variance*, issue #921);
+    - ``comma-role-stacking`` (*comma_stack*, issue #1182) — the naive
+      sentence tokenization it shares with ``long_sentence`` /
+      ``sentence_variance`` collapses non-prose structure (a YAML
+      front-matter block, a Markdown table row, a bulleted enumeration
+      with no terminal punctuation) into one giant pseudo-"sentence"
+      with many commas and no real grammatical structure; several
+      corpus fixtures are exactly that shape (BRIEF.md front matter,
+      an ``expected-thread`` smoke-test README's parenthetical list).
     """
     style_density_excluded = (
         "em-dash-density",
@@ -1248,6 +1496,7 @@ def test_zero_phrase_regex_findings_on_repo_memo_corpus():
         "no-meta-commentary",
         "long-sentence-density",
         "sentence-variance-floor",
+        "comma-role-stacking",
     )
     corpus = (
         sorted((REPO_ROOT / "anvil/skills/memo/tests/fixtures").rglob("*.md"))
