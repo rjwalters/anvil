@@ -4,6 +4,23 @@
 
 ### Added
 
+- **The deterministic rhetoric lint (`anvil/lib/rhetoric_lint.py`) gains a
+  `comma_stack` rule kind — "comma role-stacking" detection** (#1182). A
+  new patternless kind (joining `long_sentence` / `sentence_variance`),
+  default rule id `comma-role-stacking`, catches the predictable
+  em-dash-avoidance fallout of demoting a dash-bracketed appositive to a
+  comma pair inside an already-comma'd sentence — the exact failure mode
+  documented in rjwalters.info's `STYLE_GUIDE.md` §"Comma role-stacking".
+  Two deterministic tiers: a hard ceiling (`max_commas`/`min_words`,
+  defaults 5/25, fires alone like `long_sentence`) and a refined signal
+  (`refined_min_commas`, default 4) that detects an interior
+  comma-bracketed 3-12-word span opening with an appositive marker (`how`,
+  `what`, `i.e.`, ...) or immediately followed by a finite verb, combined
+  with a subordinator (`because`, `which`, `although`, ...) elsewhere in
+  the sentence — with a serial-list guard so `"a, b, c, and d"` never
+  false-positives on span shape alone. Configurable/disable-able like
+  every other rule.
+
 - **A CI gate makes any change to the installed surface bump `VERSION`**
   (#1152). `scripts/install-anvil.sh` copies Anvil's skills, lib, templates,
   roles, and agents into every consumer's `.anvil/` tree, and nothing
