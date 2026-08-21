@@ -325,6 +325,10 @@ Every 15 minutes: Review issue backlog, update priorities and organization
 3. **Be thorough** - Autonomous work should be high quality
 4. **Fail safely** - If unsure, add `loom:blocked` and stop
 5. **Document reasoning** - Explain decisions in issue/PR comments
+6. **Refer to infrastructure by role, not hostname** - In issue/PR text, call
+   the build host "the AWS loom worker" rather than its `ip-172-31-…`
+   internal hostname; the hostname is non-routable but still needless noise
+   in a public repo's issue/PR surface (see `.repo/scrub.toml`, #1185)
 
 ### For Manual Agents
 
