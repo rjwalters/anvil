@@ -163,6 +163,23 @@ ip-10-0-1-5                ip-172-31-74-176                           (dashed-ho
 Plus tailnet `100.64.0.0/10` and elastic IPs. Low severity, high volume —
 `--deep` only, and summarized as a count in the default report.
 
+**`git grep` does not honor `\b`.** For the "tracked files at HEAD" scope,
+`git grep -E` silently matches nothing against a `\b`-bearing pattern like the
+ones above — no error, no warning, just a report of zero findings that is
+wrong, not clean. `git grep -cE '\b10\.\d+\.\d+\.\d+\b' -- wrangler.toml` and
+`git grep -cE '10\.\d+\.\d+\.\d+' -- wrangler.toml` differ only in the `\b`,
+and the first one is vacuous. Use one of:
+
+- `git grep -P` — PCRE mode honors `\b`, where the local `git` was built with
+  PCRE support (not guaranteed; check `git grep -P` doesn't error before
+  relying on it).
+- `git ls-files -z | xargs -0 grep -nE` — keeps the tracked-files-at-HEAD scope
+  while using a grep that honors `\b` unconditionally.
+
+Verify the tool actually matches before trusting a "0 findings" result from
+this scope — a silent `\b` failure produces a confident, clean-looking exit
+`0` while having checked nothing.
+
 ## Severity gates verbosity, not just ordering
 
 This runs inside `/repo:all`, which is routine and mostly clean. **A check that

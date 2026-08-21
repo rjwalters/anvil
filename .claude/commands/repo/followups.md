@@ -82,11 +82,39 @@ Every candidate has to land in *some* repo. Build the routing table by reusing
   instead. `-maxdepth 4` reaches every known tool root (`.loom/`, `.anvil/`,
   `.kct/` at depth 2, and the two-levels-deeper `.claude/skills/*/` at depth 4).
 
-  Resolve each tool's `source` clone path with the **sidecar → legacy inline →
-  unknown** order that is normative in the [tool-package installer
-  contract][contract] (requirement **C6**, which also covers the repo#96 signature
-  below). Each step failing is "source unknown", not an error. Do not re-derive
-  the order from what a given tool happens to do — read C6.
+  **Self-target short-circuit: Repo Skills never needs the ladder.** One of the
+  swept roots is `.claude/skills/repo/` — Repo Skills' own tool root (per the
+  tool-root table in the [installer contract][contract]), the tool that *is*
+  `/repo:followups` running right now. Unlike Loom / Anvil / kicad-tools, which
+  are genuinely-external dependencies with no guarantee a local source clone
+  exists anywhere on this machine, Repo Skills already writes its own repo slug
+  into every copy of itself it installs: the installed
+  `.claude/skills/repo/SKILL.md`'s own contract link and the `CLAUDE.md`
+  install block (`install.sh:786`) both carry the literal
+  `https://github.com/rjwalters/repo`. When the swept metadata path is
+  `.claude/skills/repo/install-metadata.json`, resolve its target from that
+  literal directly and skip the sidecar → legacy → unknown ladder below
+  entirely — there is no source clone to look for, and this target is never
+  surfaced to the operator as UNKNOWN:
+
+  ```bash
+  grep -oE 'github\.com/[^)/]+/[^)/]+' .claude/skills/repo/SKILL.md | head -1 \
+    || echo "github.com/rjwalters/repo"   # fallback constant, mirrors install.sh:786
+  ```
+
+  This is intentionally **not fork-aware** — a fork of Repo Skills that renames
+  itself without also editing its own copy of `SKILL.md` still resolves to
+  `rjwalters/repo` — matching the same non-fork-aware literal `install.sh:786`
+  already writes into every consumer's `CLAUDE.md`. That is a pre-existing
+  limitation of how Repo Skills documents itself, not a new gap introduced by
+  this short-circuit.
+
+  Resolve every **other** discovered tool root's `source` clone path with the
+  **sidecar → legacy inline → unknown** order that is normative in the
+  [tool-package installer contract][contract] (requirement **C6**, which also
+  covers the repo#96 signature below). Each step failing is "source unknown",
+  not an error. Do not re-derive the order from what a given tool happens to
+  do — read C6.
 
   [contract]: https://github.com/rjwalters/repo/blob/main/INSTALLER-CONTRACT.md
 
@@ -110,15 +138,19 @@ Every candidate has to land in *some* repo. Build the routing table by reusing
   (`version` vs `loom_version` / `anvil_version` / `kct_version`, etc.) — read
   whichever variant is present, same as `/repo:update-tools`. Neither the
   tracked metadata nor the sidecar stores an `owner/repo` slug directly for
-  Loom / Anvil / Repo Skills — it is always derived from the source clone's
-  `origin` remote; kicad-tools' `source_ref` in `"git"` mode is the one
-  exception, since it already embeds the full GitHub URL to parse directly.
+  Loom / Anvil — it is always derived from the source clone's `origin` remote.
+  kicad-tools' `source_ref` in `"git"` mode and Repo Skills' self-target
+  short-circuit above are the two exceptions, since each already has the full
+  GitHub URL available to parse without a source clone.
 
 - **Unresolvable targets.** If a tool's source clone is unknown (no sidecar, no
   legacy field) there is no local remote to read — mark that follow-up
   **UNKNOWN** and surface it for the user to name a slug, per the safety rules.
   Likewise, if a candidate doesn't clearly belong to any discovered repo,
-  surface it for a target decision rather than dropping it or guessing.
+  surface it for a target decision rather than dropping it or guessing. Repo
+  Skills itself never reaches this branch — the self-target short-circuit above
+  always resolves it before the ladder runs, so it is never surfaced to the
+  operator as UNKNOWN.
 
   **Signature check** (contract **C6**, "the repo#96 signature"): when
   `install-metadata.json` exists but neither a sidecar nor legacy inline fields
@@ -268,11 +300,65 @@ quietly dropped and not filed as drafted** — carry it into step 4 marked `HOLD
 — needs redaction` and let the user decide, exactly as an UNKNOWN target is
 surfaced rather than guessed at.
 
+### 3c. Detect source-repo confidentiality
+
+3b resolves how public each *target* is. This step checks the other side of
+the same crossing: whether the *source* — the repo this session is running
+in — has declared itself confidential or pre-disclosure. A repo can say so in
+its own root `CLAUDE.md` with language like "confidential", "do not
+disclose", "private", "before a provisional is filed", or "pre-disclosure" —
+a firewall rule on outward writes in general, `/repo:followups` included. In
+one real run the source repo's `CLAUDE.md` opened with exactly that kind of
+line, and nothing in the flow surfaced the mismatch before filing.
+
+**Runs once per session, not once per candidate.** Read this repo's root `CLAUDE.md`,
+if one exists, and scan it case-insensitively for any of:
+
+- "confidential"
+- "do not disclose"
+- "private" (the disclosure sense, in `CLAUDE.md` prose — distinct from a
+  `Vis` value of `private` on a target, which 3b already handles)
+- "before a provisional is filed"
+- "pre-disclosure"
+
+Also honor a structured opt-in in `.repo/scrub.toml` — the same per-repo
+config file [[scrub]] already reads for its affiliated-entity allowlist (see
+[[scrub]]'s "Allowlist and configuration") — if this repo sets a
+confidentiality flag there (e.g. `source_confidential = true`), treat that as
+authoritative and skip the keyword scan; a deliberate flag is a more reliable
+signal than prose matching and should not need re-confirming every session.
+
+**When in doubt, warn** — this follows the same fail-closed convention step 3b
+already uses for an unresolved target visibility. A match on any phrase above
+sets `source-looks-confidential = true` regardless of the surrounding context
+— this step does not try to tell a real firewall statement apart from an
+unrelated use of the same word. A false positive costs one extra line in step
+4's preamble; a false negative is the exact leak this step exists to catch.
+The one case that does **not** set the flag is a **missing** `CLAUDE.md` — no
+file means no signal to read, not a signal to assume one way or the other.
+
+This step reads no candidate bodies and re-derives no target visibility — it
+produces exactly one repo-wide boolean that step 4 combines with 3b's already-resolved
+`Vis` column.
+
 ### 4. Report the proposed set and confirm
 
-Present the full proposal and get explicit approval before touching any repo:
+Present the full proposal and get explicit approval before touching any repo.
+
+**If step 3c found `source-looks-confidential = true`, print a distinct,
+louder warning immediately above the table whenever at least one row's `Vis`
+is `public` or `unknown`** — `unknown` is already treated as public per 3b's
+fail-closed rule, so the warning follows that same treatment rather than
+requiring a literal `public` cell. This is additive to the `Vis` column, not
+a replacement for it, since `Vis` alone reports the target's visibility and
+says nothing about whether the *source* considers itself off-limits:
 
 ```
+⚠️  SOURCE REPO LOOKS CONFIDENTIAL — filing to a PUBLIC repo below. This
+    repo's CLAUDE.md carries a confidentiality/pre-disclosure signal (step
+    3c); the body of any row marked `public` will be publicly visible once
+    filed. Advisory only — review before approving, filing is not blocked.
+
 FOLLOW-UPS FROM THIS SESSION
 ============================
 | # | Target repo        | Vis     | Title                              | Dedup                   |
@@ -283,6 +369,10 @@ FOLLOW-UPS FROM THIS SESSION
 | 4 | rjwalters/anvil    | public  | (docs gap) …                       | NEW                     |
 | 5 | UNKNOWN            | unknown | kicad-tools DRC false positive     | ask — no slug           |
 ```
+
+When 3c found no confidentiality signal, or every row's `Vis` is `private`
+(the one case that is not treated as public), show the table alone with no
+preamble warning — the ordinary confirm is sufficient.
 
 For each proposed issue show the target repo, its visibility, title, a body
 preview (context / repro / suggested acceptance criteria), and dedup status.
@@ -296,6 +386,12 @@ preview, note which rows were rewritten, and mark any `HOLD — needs redaction`
 row so an unscrubbable candidate is decided on rather than skimmed past. A row
 targeting this repo still shows its visibility but carries no scrub obligation
 (step 3b skips it) — say so rather than leaving the cell blank.
+
+Like the rest of this command's confirmation gate, the step 3c warning is
+**purely advisory** — it never blocks filing and never auto-redacts a body;
+it exists only to put the source/target mismatch in front of the user at the
+moment they decide, the same "confirm, never auto-apply" posture the rest of
+the command already holds.
 
 The `Dedup` column carries step 3's classification: `NEW`, a flagged
 near-match, or `ask` for an unresolved target. A flagged near-match may resolve
@@ -389,3 +485,12 @@ Filed issues are triaged like any other afterward — this command does not appl
    `removable-by-deletion` and a PR comment is `permanent`, so there is no
    after-the-fact fix — the operator noticing in the confirmation table is a
    backstop, never the mechanism.
+7. **Warn, never block, on a confidential source filing to a public target** —
+   step 3c checks this repo's own `CLAUDE.md` (and any `.repo/scrub.toml`
+   opt-in) for a confidentiality/pre-disclosure signal; when one is found and
+   any row's `Vis` is `public` or `unknown`, step 4 shows a distinct warning
+   above the table, additive to the `Vis` column. This is advisory only,
+   exactly like the rest of this command's confirm-first posture — it never
+   blocks filing and never auto-redacts a body, and an unreadable or
+   ambiguous `CLAUDE.md` fails closed to warning rather than silently
+   skipping it.

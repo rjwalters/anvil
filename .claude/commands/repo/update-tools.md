@@ -143,7 +143,52 @@ git -C <source> fetch origin --quiet
 git -C <source> log --oneline HEAD..origin/HEAD | wc -l    # source clone itself behind?
 # Version at origin: VERSION file, package.json, or pyproject.toml on origin/HEAD
 git -C <source> show origin/HEAD:VERSION 2>/dev/null
+# How far the INSTALLED commit is behind the source's origin/HEAD
+git -C <source> log --oneline <installed-commit>..origin/HEAD | wc -l
 ```
+
+**Record two numbers per non-dev tool, not one — version drift AND commit
+drift.** Version equality alone systematically under-reports staleness:
+upstream routinely merges a day of work without bumping VERSION, so a tool
+whose stamped version equals the VERSION at `origin/HEAD` can still be dozens
+of commits behind the code that will eventually ship under that same version
+number. In a real run that reported two tools `current`, one was 24 and the
+other 7 commits behind, and the misleading `current` stood for a whole working
+day until upstream happened to cut a release (repo#291). So carry both into
+step 3:
+
+1. **Version drift** — the metadata's installed `version` vs the VERSION at
+   `origin/HEAD` (the comparison already shown above).
+2. **Commit drift** — `git -C <source> log --oneline <installed-commit>..origin/HEAD | wc -l`,
+   where `<installed-commit>` is the metadata's `commit` field. That field is
+   tracked, per-tool, install-time metadata required by the [contract][contract]
+   (**C5**), so it is already available from step 1 — no new metadata is needed.
+   Use the tool's key variant where it differs (`kct_commit` for kicad-tools,
+   `loom_commit` / `anvil_commit` for legacy inline shapes).
+
+**Commit drift is only computable when both inputs exist.** It needs a local
+source clone *and* a recorded installed commit that the clone can actually
+resolve. Record the distance as **unknown** — and report the tool on the
+version comparison alone — whenever any of these holds:
+
+- the source clone is missing, or was never resolved (the `source_mode: "git"`
+  and "source unknown" paths in step 1), so the GitHub fallback below is the
+  only comparison available;
+- the metadata predates the `commit` field, or the field is empty;
+- the clone cannot resolve the recorded commit (upstream force-pushed or
+  rebased it away).
+
+Verify resolvability before measuring, rather than trusting `wc -l` on a failed
+`git log`:
+
+```bash
+git -C <source> cat-file -e <installed-commit>^{commit} 2>/dev/null \
+  || echo "installed commit not in source clone — commit drift unknown"
+```
+
+Never report an uncomputable distance as `0 commits behind`, and never drop the
+caveat silently: a bare `current` that was never actually checked against the
+source HEAD is the exact failure this comparison exists to remove.
 
 If the source clone no longer exists, fall back to GitHub:
 `gh api repos/<owner>/<repo>/tags --jq '.[0].name'` or the latest release.
@@ -158,10 +203,38 @@ TOOL PACKAGES
 |-------------|------------------|---------|-------------|
 | loom        | 0.9.1 (Jun 4)    | 0.10.6  | STALE       |
 | anvil       | 0.9.0 (Jul 1)    | 0.9.0   | current     |
+| other-tool  | 1.2.0 (commit abc1234) | 1.2.0 | current, but 24 commits behind source HEAD |
 | repo-skills | 0.8.0 (Aug 9)    | —       | dev (symlinked to /Users/you/GitHub/repo) |
 | kicad-tools | 2.3.0 (May 20)   | ?       | source repo missing — clone it? |
 | some-tool   | 1.2.0 (Jun 30)   | ?       | sidecar missing — re-run installer? |
 ```
+
+**A non-dev tool gets one of three statuses, not two.** Version equality by
+itself is not "current" — resolve the status from *both* numbers step 2
+recorded:
+
+| Version vs `origin/HEAD` | Installed commit vs `origin/HEAD` | Status |
+|--------------------------|-----------------------------------|--------|
+| behind | not consulted — version drift already decides it | `STALE` |
+| equal | 0 commits behind | `current` |
+| equal | N > 0 commits behind | `current, but N commits behind source HEAD` |
+| equal | not computable (step 2) | `current (commit drift unknown — <why>)` |
+
+The third row is what this distinction exists for. It is **not** a claim that
+the install is broken — the released version really does match — it says the
+source has merged work that has not been cut into a release yet, which the
+operator can take right now (step 4) because the installers are idempotent.
+Reporting it as a plain `current` is what hid 24 unreleased commits for a full
+working day (repo#291), and it is why "is this tool even included in the check?"
+was a reasonable question to ask of a report that *had* included it.
+
+When the commit distance is non-zero, put the installed short SHA in the
+`Installed` cell (`1.2.0 (commit abc1234)`) instead of the install date, so the
+operator can run the `git -C <source> log` range themselves without re-reading
+the metadata file. `STALE` rows do not need a commit count appended: the version
+bump is already the actionable signal there. The `<why>` in the unknown row is
+the specific reason from step 2 (`no source clone`, `no recorded commit`,
+`commit not in source clone`) — never an unqualified `current`.
 
 The last two rows are **different** failure modes, so report them distinctly:
 `source repo missing` means the recorded source clone path no longer exists on
@@ -170,7 +243,11 @@ but the machine-local pointer is gone — typically deleted by pulling an
 untracking commit, repo#96).
 
 **A dev-mode tool (step 1) always gets its own `dev (symlinked to <source>)`
-status row — never `current`, never `STALE`.** `current` would only be a
+status row — never `current`, never `STALE`, and never the commit-drift status
+above.** The three-status table is the *non-dev* path only: a dev install has no
+stamped copy to be behind its source, so its source clone's own distance from
+its remote is reported inside the `dev (…)` row (below), not as
+`current, but N commits behind source HEAD`. `current` would only be a
 coincidence for a symlinked install (the files are the source, not a copy that
 happens to match it), and reporting it that way hides from the operator that
 this install is not an ordinary copy. Leave `Latest` as `—`: there is no
@@ -201,9 +278,24 @@ exists to prevent. If the report showed the source clone behind its remote,
 the fix is a plain `git -C <source> pull` on that clone, run by the operator
 directly — outside this update flow, not through it.
 
-For each stale (non-dev) tool the user approves, update the source clone
-first, then run that tool's own update mechanism — its dedicated updater
-where it ships one, otherwise its installer. Never hand-copy files:
+**Commit drift is offered on exactly the same terms as version drift.** A tool
+reported `current, but N commits behind source HEAD` (step 3) goes into the same
+confirmation prompt as a `STALE` one, with its distance shown, and is updated
+only if the user approves it. The update mechanism does not care which signal
+triggered it: the resync/installer paths below are idempotent and re-runnable
+(Safety Rule 2) and they install whatever is at the source clone's
+`origin/HEAD` — which *is* the unreleased work the commit-drift row is
+reporting. Two things do not change: it is never auto-applied just because an
+unchanged version number makes it look like a no-op (Safety Rule 1 applies
+unchanged — it is a real code change), and a tool whose commit drift came back
+**unknown** is never offered an update on that basis, because nothing was
+actually compared.
+
+For each non-dev tool the user approves — whether it was reported `STALE`
+(version drift) or `current, but N commits behind source HEAD` (commit drift) —
+update the source clone first, then run that tool's own update mechanism — its
+dedicated updater where it ships one, otherwise its installer. Never hand-copy
+files:
 
 ```bash
 git -C <source> pull --ff-only
@@ -317,20 +409,28 @@ Land each tool's bump as its own commit:
 
 1. **Isolate the installer's footprint.** Snapshot the working tree *before*
    running the installer so a pre-existing dirty tree is never folded into the
-   update commit:
+   update commit. **Use a literal, spelled-out scratch path — never a
+   `$(mktemp)`-assigned shell variable — as the `>` redirect target.** In a
+   Loom-managed repo the destructive-write guard denies a write whose target
+   is an unexpanded shell variable outright, because it cannot statically
+   resolve where the write lands (fail-closed, #4921/#4178); a literal path
+   sidesteps that ambiguity entirely, so do not "clean this back up" into
+   `$pre`/`$post`/`$changed` variables for readability. Prefer the session's
+   own scratchpad directory when the agent has one; otherwise spell out a
+   `/tmp/...` path directly:
 
    ```bash
-   pre=$(mktemp); post=$(mktemp)
-   git -C <this-repo> status --porcelain | sed 's/^...//' | sort > "$pre"
+   git -C <this-repo> status --porcelain | sed 's/^...//' | sort > /tmp/update-tools-pre.txt
    # ... run the tool's installer (step 4, above) ...
-   git -C <this-repo> status --porcelain | sed 's/^...//' | sort > "$post"
+   git -C <this-repo> status --porcelain | sed 's/^...//' | sort > /tmp/update-tools-post.txt
    # Paths the installer actually changed = post minus pre:
-   comm -13 "$pre" "$post" > changed.txt
+   comm -13 /tmp/update-tools-pre.txt /tmp/update-tools-post.txt > /tmp/update-tools-changed.txt
    ```
 
-   Stage **only** those paths (`git -C <this-repo> add -- $(cat changed.txt)`),
-   never `git add -A`. If `changed.txt` is empty the installer was a no-op —
-   report "already current" and skip the commit for that tool.
+   Stage **only** those paths
+   (`git -C <this-repo> add -- $(cat /tmp/update-tools-changed.txt)`), never
+   `git add -A`. If `/tmp/update-tools-changed.txt` is empty the installer was
+   a no-op — report "already current" and skip the commit for that tool.
 
 2. **Commit + land on the default branch, without committing straight to it:**
 
@@ -339,6 +439,9 @@ Land each tool's bump as its own commit:
    DEFAULT=${DEFAULT:-main}
    CUR=$(git -C <this-repo> symbolic-ref --short HEAD)
    MSG="chore(tooling): update <tool> <old>→<new>"
+   # Commit-drift update (version identical on both sides): <old>→<new> would
+   # read "0.9.0→0.9.0" and say nothing. Use the installed commits instead:
+   #   chore(tooling): update <tool> 0.9.0 (abc1234→def5678)
 
    if [ "$CUR" = "$DEFAULT" ]; then
      # On the default branch: commit on a short-lived branch, then fast-forward
@@ -363,7 +466,9 @@ Land each tool's bump as its own commit:
 
 ## Safety Rules
 
-1. **Never update without confirmation** — show installed → latest per tool first
+1. **Never update without confirmation** — show installed → latest per tool
+   first, including commit-drift tools, whose prompt shows installed commit →
+   source `origin/HEAD` rather than a version bump
 2. **Always use the tool's own installer or update mechanism** — where a tool
    ships a dedicated non-destructive updater (e.g. Loom's
    `.loom/scripts/resync-installed.sh`), prefer it over re-running the

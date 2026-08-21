@@ -60,22 +60,31 @@ Check and report both:
 ```bash
 git ls-files '.github/dependabot.yml' '.github/dependabot.yaml'   # version updates
 
-# Security updates — repo-level flag, needs admin (see the UNKNOWN note below)
-gh api repos/OWNER/REPO --jq '.security_and_analysis'
-gh api repos/OWNER/REPO --jq '.security_and_analysis.dependabot_security_updates.status'
+# Security updates — a dedicated endpoint, NOT a security_and_analysis key:
+# returns a definitive {"enabled": bool}; 403 → needs admin (see UNKNOWN note below)
+gh api repos/OWNER/REPO/automated-security-fixes --jq '.enabled'
 
-# Alerts — a dedicated endpoint, NOT a security_and_analysis key:
+# Alerts — likewise a dedicated endpoint, NOT a security_and_analysis key:
 #   204 → enabled, 404 → disabled
 gh api repos/OWNER/REPO/vulnerability-alerts -i 2>/dev/null | head -1
 ```
 
-Read the alerts flag from `/vulnerability-alerts`, not from
-`security_and_analysis.dependabot_alerts` — that key is simply **absent** on
-many repos even when the object is otherwise fully populated, so a
-`// "UNKNOWN"` fallback on it reports "can't tell" for a repo you can read
-perfectly well. (Verified against `rjwalters/repo`: `security_and_analysis`
-returns `dependabot_security_updates` and the `secret_scanning*` keys with no
-`dependabot_alerts` among them.)
+Read both flags from their dedicated endpoints, never from `security_and_analysis`.
+That object is an unreliable source for either one, for two different reasons:
+
+- `security_and_analysis.dependabot_alerts` is simply **absent** on many repos
+  even when the object is otherwise fully populated, so a `// "UNKNOWN"`
+  fallback on it reports "can't tell" for a repo you can read perfectly well.
+  (Verified against `rjwalters/repo`: `security_and_analysis` returns
+  `dependabot_security_updates` and the `secret_scanning*` keys with no
+  `dependabot_alerts` among them.)
+- On a **private repo without GitHub Advanced Security**, GitHub omits the
+  **whole `security_and_analysis` object** regardless of token permissions —
+  even a token with full admin sees it absent. So "object absent" and "no
+  permission to see it" are different states, and only `automated-security-fixes`
+  returning `403` is evidence of the latter; treating an absent
+  `security_and_analysis` object itself as proof of missing admin is not
+  reliable and misreports a plan/visibility limitation as a permission gap.
 
 Report them on separate rows, never collapsed into one "Dependabot: on":
 
@@ -86,15 +95,19 @@ DEPENDABOT
 |---------------------------------|-----------------------------------------|
 | .github/dependabot.yml          | absent — no version updates configured  |
 | vulnerability alerts (repo flag)| disabled (404)                          |
-| dependabot_security_updates     | disabled — no automatic CVE fix PRs     |
+| security updates (repo flag)    | disabled — no automatic CVE fix PRs     |
 | Open Dependabot PRs             | 0                                       |
 ```
 
-If the whole `security_and_analysis` object is null or absent, the token lacks
-admin on the repo — report that flag as **UNKNOWN (needs admin)**. Do **not**
-report it as `disabled`; "can't see it" and "it's off" are different answers
-and only one of them justifies a write. A `403` from `/vulnerability-alerts` is
-the same UNKNOWN case; only a `404` means genuinely disabled.
+Reserve **UNKNOWN (needs admin)** for an actual permission failure — a `403`
+from `/automated-security-fixes` (security updates) or `/vulnerability-alerts`
+(alerts). Do **not** report a flag as `disabled` when the endpoint returned
+`403`; "can't see it" and "it's off" are different answers and only one of
+them justifies a write. Conversely, do **not** infer UNKNOWN from an absent
+`security_and_analysis` object — as noted above, private repos without GitHub
+Advanced Security omit that object even for a fully-admin token, so its
+absence alone proves nothing about permissions; the dedicated endpoints are
+the authoritative source either way.
 
 ### 2. Detect the ecosystems actually present
 

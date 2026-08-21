@@ -273,8 +273,28 @@ belt-and-suspenders proof that the include wiring is sound:
 >   final full-chain `sudo visudo -c` check) — the serious case.** This runs
 >   when a candidate that already passed `visudo -cf` in isolation still
 >   fails the full-chain `sudo visudo -c` *after* being copied into
->   `/etc/sudoers.d/`. If the guard denies this rollback, **the drop-in stays
->   installed** even though the command reports failure and exits non-zero.
+>   `/etc/sudoers.d/`. **That trigger is the unreproduced part**: `visudo -cf`
+>   validates the candidate alone, so failing the full chain right afterwards
+>   takes something only the whole chain sees — a cross-file conflict (an
+>   alias or `Defaults` already defined in another drop-in), or the mode and
+>   ownership rules a single-file check never applies. Both are plausible;
+>   neither has been observed here, and reproducing one means breaking `sudo`
+>   on a real machine. The *consequence* is not hypothetical, though. If the
+>   guard denies this rollback, **the drop-in stays
+>   installed** — and it stays installed *silently*, because the deny blocks
+>   the whole Bash call: nothing in the `if ! sudo visudo -c; then … fi` block
+>   runs, not the re-check, not the `rm`, and not the block's own `exit 1`.
+>   The operator sees the guard's denial, never this step's "post-install
+>   validation failed" message, while the grant stays live. This is
+>   **exercised, not inferred**: section 8 of
+>   `commands/repo/tests/test-sudo-rm-guard-contract.sh` drives this exact
+>   block through the real hook against a stand-in drop-in and asserts the
+>   file survives the denial — with the identical block under
+>   `guards.rmScope=off` deleting it as the control. Stranding does require
+>   the `sudo cp` to have landed in an **earlier, separate** call: run the
+>   whole step 5 fence as one Bash call and the same `rm` rule denies that
+>   call *before* the `cp`, so nothing is installed and there is nothing to
+>   strand.
 >   Manual remedy: run `sudo visudo -c` yourself to see the failure, then
 >   `sudo rm -f /etc/sudoers.d/<user>-nopasswd` by hand to remove the
 >   stranded file, then re-run `sudo visudo -c` to confirm it now passes
