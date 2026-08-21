@@ -1,0 +1,32 @@
+# /repo:scrub per-repo configuration and allowlist.
+#
+# Read by `.claude/commands/repo/scrub.md` ("Allowlist and configuration").
+# Absent this file, the affiliated-entity class does not run and every
+# finding is reported fresh on every scan. Entries here are confirmed-benign
+# matches that should stop being (re-)reported.
+#
+# Schema:
+#   [[allowlist]]
+#   class    = one of the scrub.md detection classes: "credentials",
+#              "cloud-resource", "identity", "affiliated-entity",
+#              "network-topology"
+#   pattern  = the literal string or glob (`*` wildcard) being allowlisted
+#   reason   = why this is confirmed benign, not a leak
+#   issue    = tracking issue number for the decision (optional but
+#              recommended — keeps the allowlist auditable)
+
+[[allowlist]]
+class = "network-topology"
+pattern = "ip-172-31-*"
+reason = """
+AWS internal hostname (RFC1918 private address, non-routable) for the
+loom-worker host running this repo's Loom agents. Appears in ~29 issue/PR
+bodies (86 occurrences) and 32 commit messages as of 2026-08-21. Decided
+accept-as-is rather than redact: on a public repo, editing an issue body
+does not remove the original (GitHub retains it in `userContentEdits`,
+queryable via GraphQL — see scrub.md's redaction-is-not-remediation
+caveat), and PR bodies/commit messages are permanent regardless. The
+address itself is non-routable outside the AWS VPC, so there is nothing
+to rotate. See #1185.
+"""
+issue = 1185
