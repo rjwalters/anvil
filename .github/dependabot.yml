@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "tier:maintenance"
+    groups:
+      pip-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    # Major-version bumps are intentionally left ungrouped (one PR per major
+    # bump) so each gets independent review.
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "tier:maintenance"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
