@@ -12,8 +12,7 @@ The `memoir` skill produces **long-form narrative nonfiction told in book
 chapters, reconstructing scenes and dialogue from a private evidentiary
 corpus rather than published sources**: family memoirs, oral histories,
 biography-from-archive, journalistic long-form profiles built on recorded
-interviews. The canary is `nitas-mama` — a family memoir of Mattie Lee Greer
-Fraker narrated by her grandson from ~4,600 lines of interview transcripts
+interviews. The canary is `example-memoir` — a family memoir narrated by a grandchild from ~4,600 lines of interview transcripts
 and nine collected family letters, structured as an introduction + six
 chapters + appendix, each independently drafted/reviewed/revised/audited and
 assembled into one `book.pdf`. Consistent with "skill identity = artifact identity"
@@ -417,7 +416,7 @@ minimal synthetic worked example under `examples/`.
 - **A dedicated structured facts register** (names/dates/relationships) as
   a companion input, mirroring primer's `spec_ref`/spec's `code_ref`
   pattern — worth its own follow-up issue.
-- **A full `nitas-mama` dogfood / vendored worked example** (the `spec`
+- **A full `example-memoir` dogfood / vendored worked example** (the `spec`
   Phase 4 / #709 precedent) — worth its own follow-up issue once the
   skeleton lands, the same sequencing `primer` and `spec` both used.
 - **Any voice-grounding wiring beyond what #598 already generalizes**

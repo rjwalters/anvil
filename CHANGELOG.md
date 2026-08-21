@@ -523,7 +523,7 @@
   `<thread>.{N}.corpus-audit/` sibling, coexisting with a general
   `.audit/` sibling. Deferred to follow-up issues: cross-chapter
   consistency checking, a structured facts-register companion input, and
-  a full `nitas-mama` dogfood worked example.
+  a full `example-memoir` dogfood worked example.
 
 - **`anvil:proposal` — `cost_basis` knob for non-hardware proposals**
   (#840). The proposal template, rubric, and audit assumed a priced,
@@ -1459,7 +1459,7 @@ the sidecar CLI runs warning-free, and adopted-in-place legacy threads get a
 
 ### Summary
 
-Two arcs since v0.6.0: (1) the **deck business-model wave** — deck gains dim 10 *Business-model & unit-economics credibility* (/44 → /49, threshold ≥43), a dim-10-owning `deck-economics` adversarial critic, a fifth critical flag, an outline gate, a figure-legibility gate, and a unified overflow/fit gate; (2) the **`nitas-mama` family-memoir enablement wave** — two new utility skills (`anvil:project-photos`, `anvil:project-book`, catalog 15 → 17) plus two lib-level grounding contracts (subject voice tier, local-corpus claim provenance) that point anvil's voice and evidence machinery at a real person's spoken corpus and an on-disk ground-truth archive — **and their skill-level adoption**: essay and pub write and back-check per-version `provenance.md` claim maps, pub-audit runs the five-way corpus verification, and pub/report adopt the subject voice tier beyond the essay pilot. A blog-parity batch (opening-line em-dash lint scope, `VOCABULARY.words.txt` install scaffold, VALUES template schema completion) and assorted memo/ip/install hardening round it out.
+Two arcs since v0.6.0: (1) the **deck business-model wave** — deck gains dim 10 *Business-model & unit-economics credibility* (/44 → /49, threshold ≥43), a dim-10-owning `deck-economics` adversarial critic, a fifth critical flag, an outline gate, a figure-legibility gate, and a unified overflow/fit gate; (2) the **`example-memoir` family-memoir enablement wave** — two new utility skills (`anvil:project-photos`, `anvil:project-book`, catalog 15 → 17) plus two lib-level grounding contracts (subject voice tier, local-corpus claim provenance) that point anvil's voice and evidence machinery at a real person's spoken corpus and an on-disk ground-truth archive — **and their skill-level adoption**: essay and pub write and back-check per-version `provenance.md` claim maps, pub-audit runs the five-way corpus verification, and pub/report adopt the subject voice tier beyond the essay pilot. A blog-parity batch (opening-line em-dash lint scope, `VOCABULARY.words.txt` install scaffold, VALUES template schema completion) and assorted memo/ip/install hardening round it out.
 
 ### Added
 

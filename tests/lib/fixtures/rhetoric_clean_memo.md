@@ -1,3 +1,7 @@
+<!-- SYNTHETIC TEST FIXTURE. "Halcyon Instruments" and every figure, customer,
+     and person in this memo are invented for the rhetoric-lint tests. No real
+     company, investment, or diligence is described. -->
+
 # Investment memo: Halcyon Instruments
 
 ## Recommendation

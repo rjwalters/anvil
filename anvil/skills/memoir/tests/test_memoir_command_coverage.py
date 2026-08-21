@@ -103,7 +103,7 @@ class TestFilesExist(unittest.TestCase):
                 )
 
     def test_minimal_worked_example_vendored(self):
-        # A minimal SYNTHETIC worked example (NOT the full nitas-mama
+        # A minimal SYNTHETIC worked example (NOT the full example-memoir
         # dogfood — that is deferred, SKILL.md §Scope guard).
         examples = _SKILL_ROOT / "examples"
         self.assertTrue(examples.is_dir(), "a minimal worked example must be vendored")

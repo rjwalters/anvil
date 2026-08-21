@@ -82,16 +82,16 @@ def overfull_dirty_log() -> Path:
 
 
 @pytest.fixture
-def overfull_sphere_canary_log() -> Path:
-    """Sphere-canary regression fixture (issue #572).
+def overfull_legal_canary_log() -> Path:
+    """Legal-document regression fixture (issue #572).
 
-    Mirrors the filed-provisional defect's exact shape: 12 ``Overfull
+    Mirrors a real filed-document defect's exact shape: 12 ``Overfull
     \\hbox`` + 1 ``Overfull \\vbox``, worst case 83.6pt. The legal
     artifact reached FILING-READY because no audit/finalize-time render
     gate ran; this fixture exists so future threshold drift cannot
     silently re-open the hole.
     """
-    return FIXTURES / "overfull_sphere_canary.txt"
+    return FIXTURES / "overfull_legal_canary.txt"
 
 
 @pytest.fixture
@@ -336,12 +336,12 @@ def test_file_scope_transitions_tracks_nested_input(overfull_input_child_log):
     assert rg._file_at_offset(positions, files, len(log_text) - 1) == "spec.tex"
 
 
-def test_overfull_sphere_canary_shape(
-    empty_pdf, fake_pdfinfo_3pages_path, overfull_sphere_canary_log
+def test_overfull_legal_canary_shape(
+    empty_pdf, fake_pdfinfo_3pages_path, overfull_legal_canary_log
 ):
-    """Sphere-canary regression fixture: 12 hbox + 1 vbox, worst 83.6pt.
+    """Legal-document regression fixture: 12 hbox + 1 vbox, worst 83.6pt.
 
-    This is the exact defect shape that reached a filed provisional
+    This is the exact defect shape that reached a filed legal document
     (issue #572): the entire review pipeline was text-content-based and
     never inspected the LaTeX log. The gate, given the canary's compile
     log, MUST flag the defect — at the framework default 5.0pt threshold
@@ -354,7 +354,7 @@ def test_overfull_sphere_canary_shape(
     # cosmetic and the other 12 fire.
     r_default = gate(
         empty_pdf,
-        log_path=overfull_sphere_canary_log,
+        log_path=overfull_legal_canary_log,
         page_cap=None,
         overfull_threshold_pt=5.0,
         pdfinfo_path=fake_pdfinfo_3pages_path,
@@ -381,7 +381,7 @@ def test_overfull_sphere_canary_shape(
     # fire — the 4.21pt hit is no longer cosmetic.
     r_ip = gate(
         empty_pdf,
-        log_path=overfull_sphere_canary_log,
+        log_path=overfull_legal_canary_log,
         page_cap=None,
         overfull_threshold_pt=2.0,
         pdfinfo_path=fake_pdfinfo_3pages_path,
