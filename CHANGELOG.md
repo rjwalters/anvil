@@ -210,6 +210,24 @@
 
 ### Fixed
 
+- **`anvil:primer`'s vendored `botho-from-the-basics` worked example:
+  `_progress.json` no longer misdescribes its shipped `exhibits/`** (#1184).
+  The terminal `botho-from-the-basics.3/_progress.json` claimed "five PNGs +
+  .mmd sources ... copied unchanged into this version's exhibits/", but only
+  the five `.mmd` mermaid sources are actually tracked — the PNGs were
+  dropped, on purpose, when this version was trimmed to fit the vendored
+  worked example's size envelope (`expected-thread.N/README.md`
+  §"Provenance and what was trimmed"), and the note never caught up. The
+  body's five inline `![Figure N — …](exhibits/figN-*.png)` references are
+  therefore intentionally unresolved in this tree; a pinned regression test
+  already asserts no PNG is ever vendored here
+  (`test_primer_example_brief_parses.py::test_no_full_resolution_exhibit_pngs_vendored`),
+  so the fix documents the gap rather than adding megabytes of raster
+  assets back: the `_progress.json` note now states the post-trim reality,
+  a new `exhibits/README.md` explains it at the point a link scan would
+  flag it, and `expected-thread.N/README.md` gets the same pointer so a
+  future audit doesn't re-file it.
+
 - **`version.sh --tag` now creates annotated tags, not lightweight ones**
   (#1038). `git describe` and tag-date tooling rely on annotated tags;
   the release flow's `--tag` path previously emitted lightweight tags.
