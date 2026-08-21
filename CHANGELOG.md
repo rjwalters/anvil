@@ -210,6 +210,12 @@
 
 ### Fixed
 
+- **`version.sh --tag` now creates annotated tags, not lightweight ones**
+  (#1038). `git describe` and tag-date tooling rely on annotated tags;
+  the release flow's `--tag` path previously emitted lightweight tags.
+  (Entry added retroactively — the PR predates the #1040 changelog
+  discipline by about an hour.)
+
 - **`anvil:memoir` test suite: `test_revise_never_fabricates_mapping`
   no longer breaks on prose reflow** (#1054). PR #1033 reworded the
   fabrication prohibition in `memoir-revise.md`; the wording survived

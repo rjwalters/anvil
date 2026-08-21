@@ -190,7 +190,7 @@ anvil/
                        (.anvil.json venue → optional advisory rubric).
     render.py          Marp → PDF, PDF → PNGs, pandoc → PDF, matplotlib
                        walker, mmdc/pdfjam preflight helpers.
-    render_gate.py     Deterministic gate over compiled PDFs (page-fit,
+    render_gate/       Deterministic gate over compiled PDFs (page-fit,
                        overfull boxes, compile success, placeholder scan).
                        LaTeX-skill analog of marp_lint.
     vision.py          VisionCritic + VisionRubric (vision-model review
@@ -219,6 +219,10 @@ scripts/
   generate-anvil-agents.py   Regenerate the checked-in anvil/agents/ files.
   resync-installed.sh        Resync an installed consumer copy against this
                              source checkout.
+  check-changelog-entry.sh   Pre-flight: feat/fix/security PR carries a
+                             CHANGELOG entry or exemption (#1037).
+  check-surface-version-bump.sh   Pre-flight: installed-surface change
+                             carries a VERSION bump or marker (#1152).
 
 tests/
   lib/           Framework-level tests (review_schema, critics, cite,
@@ -252,7 +256,7 @@ Anvil commands never touch git by default. If you run anvil under an external or
 
 ## Project status
 
-Anvil is past the bootstrap phase. The shipped skills (24 as of v0.10.1) are merged and used in production by the [studio canary consumer](https://2amlogic.com). Active work is on follow-up polish surfaced by real authoring use — see [open issues](https://github.com/rjwalters/anvil/issues) for the live punch list. Issues labeled `tier:goal-supporting` are higher-value canary friction; `tier:maintenance` is technical debt and editorial cleanup.
+Anvil is past the bootstrap phase. The shipped skills (24 as of v0.11.2) are merged and used in production by the [studio canary consumer](https://2amlogic.com). Active work is on follow-up polish surfaced by real authoring use — see [open issues](https://github.com/rjwalters/anvil/issues) for the live punch list. Issues labeled `tier:goal-supporting` are higher-value canary friction; `tier:maintenance` is technical debt and editorial cleanup.
 
 ## License
 

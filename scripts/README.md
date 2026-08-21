@@ -10,6 +10,8 @@ Operational scripts for anvil maintenance and installation.
 | `install-anvil.sh` | working | Install anvil into a consumer repo (`./install-anvil.sh /path/to/repo`, or the root `install.sh` shim) |
 | `check-changelog-entry.sh` | working | Deterministic pre-flight: does a `feat`/`fix`/`security` PR carry a `CHANGELOG.md` entry, or a stated exemption? (`<pr-number>` live, or `--title/--body-file/--files-file` offline; exit 0/1/2 — issue #1037, contract in `CLAUDE.md` § "Changelog discipline") |
 | `resync-installed.sh` | working | Ships into a consumer at `.anvil/scripts/resync-installed.sh`; refreshes an existing install from its recorded source, non-destructively (issue #894) |
+| `check-surface-version-bump.sh` | working | Deterministic pre-flight: does an installed-surface change carry a `VERSION` bump or a `<!-- loom:no-surface-change -->` marker? (`--base`/`--head`/`--list-paths`; exit 0/1/2 — issue #1152, contract in `CLAUDE.md` § "Installed-surface VERSION discipline") |
+| `generate-anvil-agents.py` | working | Regenerate the checked-in `anvil/agents/` per-(skill, phase) agent definitions from each skill's command list |
 | `new-skill.sh` | planned | Scaffold a new skill from `anvil/templates/` |
 
 ## Install design

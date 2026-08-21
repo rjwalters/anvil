@@ -149,16 +149,17 @@ anvil/lib/
                                 gate. (#841/#842)
   probe_freshness.py           Perishable-claim freshness advisory for audit
                                 siblings. (#863)
-  project_brief.py             Typed parser for the project-level BRIEF.md.
-                                (#285)
+  project_brief/               Typed parser for the project-level BRIEF.md
+                                (package: loader/models/voice/…). (#285, #1124)
   project_detect.py            Project shape detection. (#297, #407)
   project_discovery.py         Project-as-thread-root discovery. (#284, #295)
   prose_diff.py                Word-level prose diff engine + self-contained
                                 HTML renderer. (#925)
   provenance_anchor.py         Deterministic provenance.md anchor-drift
                                 advisory. (#868)
-  render_gate.py               Deterministic render-gate for paginated
+  render_gate/                 Deterministic render-gate for paginated
                                 artifacts (LaTeX-skill analog of marp_lint).
+                                (#1129)
   revise_consistency.py        Deterministic stale-token sweep for the
                                 *-revise lifecycle.
   rhetoric_lint.py             Deterministic rhetoric lint (anti-trope /

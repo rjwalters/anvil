@@ -61,7 +61,7 @@ Each skill ships a complete `draft → review → revise → (audit) → figures
 | `rubric.py` + `rubric_schema.json` | Rubric models + venue-pinned overlay discovery (`.anvil.json: venue` → optional advisory rubric) | #33 |
 | `render.py` | Marp → PDF, PDF → PNGs, pandoc → PDF, matplotlib walker, `check_*_available()` preflight helpers | #30 |
 | `vision.py` | `VisionCritic` + `VisionRubric` — vision-model review of rendered artifacts | #30 |
-| `render_gate.py` | Deterministic gate over compiled PDFs (page-fit, overfull boxes, compile success, placeholder scan, source-driven glyph verification, embedded-image assertion); LaTeX-skill analog of `marp_lint` | #64, #692 |
+| `render_gate/` | Deterministic gate over compiled PDFs (page-fit, overfull boxes, compile success, placeholder scan, source-driven glyph verification, embedded-image assertion); LaTeX-skill analog of `marp_lint` | #64, #692 |
 | `sidecar.py` | `staged_sidecar` context manager + atomic rename for crash-safe critic-sibling writes; consumed by critic-writing commands across all 14 artifact-class skills | #346 |
 | `numeric_consistency.py` | Deterministic claim-vs-claim numeric-consistency gate (within a body); consumed by `essay` / `memo` / `paper` review | #462 |
 | `figures/palette.py` + `anvil.mplstyle` + `mermaid-theme.json` | Shared figure-theming substrate (navy palette + 4 semantic mermaid classDefs + per-glyph font fallback for Unicode arrows) | #74, #92 |
