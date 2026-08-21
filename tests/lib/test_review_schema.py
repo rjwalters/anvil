@@ -342,3 +342,81 @@ def test_total_optional_on_per_critic_review():
         }
     )
     assert review.total is None
+
+
+# ---------------------------------------------------------------------------
+# Finding.downstream_risk (issue #1197)
+# ---------------------------------------------------------------------------
+
+
+def test_finding_downstream_risk_defaults_to_none():
+    """A legacy finding with no `downstream_risk` key is unaffected."""
+    finding = Finding(severity="major", rationale="x", suggested_fix="y")
+    assert finding.downstream_risk is None
+
+
+def test_finding_downstream_risk_optional_field_round_trips():
+    finding = Finding(
+        severity="major",
+        rationale="x",
+        suggested_fix="y",
+        downstream_risk=(
+            "cross-reference-dangle - fixing this would orphan the "
+            "callback in section 1"
+        ),
+    )
+    blob = finding.model_dump_json()
+    reloaded = Finding.model_validate_json(blob)
+    assert reloaded.downstream_risk == finding.downstream_risk
+
+
+def test_legacy_finding_without_downstream_risk_still_parses():
+    """A finding dict shaped exactly like a pre-#1197 payload (no
+    `downstream_risk` key at all) validates unchanged — the field is
+    additive, not required, and its absence is not distinguishable from
+    "no consequence foreseen" at the schema level (that judgment call is
+    the reviewer's, per essay-review.md step 6c)."""
+    legacy_payload = {
+        "severity": "blocker",
+        "dimension": "numeric_consistency",
+        "evidence_span": "essay.md:L10-L12",
+        "rationale": "The 40% figure contradicts the introduction's 25%.",
+        "suggested_fix": "Reconcile the two figures against the source data.",
+    }
+    finding = Finding.model_validate(legacy_payload)
+    assert finding.downstream_risk is None
+    # Re-serializing does not inject the field with a non-null value.
+    redumped = json.loads(finding.model_dump_json())
+    assert redumped["downstream_risk"] is None
+
+
+def test_review_with_downstream_risk_finding_round_trips_and_matches_committed_schema():
+    """A full Review carrying a downstream_risk-annotated finding round-trips
+    and validates against the checked-in JSON Schema — confirming the
+    additive field did not require a schema_version bump."""
+    from anvil.lib.export_schema import build_schema
+
+    payload = _base_payload()
+    payload["findings"] = [
+        {
+            "severity": "major",
+            "rationale": "Stale cross-referenced figure.",
+            "suggested_fix": "Re-derive the figure and align both instances.",
+            "downstream_risk": (
+                "envelope-breach - the bridging clause needed to fix this "
+                "will push the body past the 1500-word ceiling"
+            ),
+        }
+    ]
+    review = Review.model_validate(payload)
+    assert review.schema_version == SCHEMA_VERSION
+    assert review.findings[0].downstream_risk is not None
+
+    blob = review.model_dump_json()
+    reloaded = Review.model_validate_json(blob)
+    assert reloaded.findings[0].downstream_risk == review.findings[0].downstream_risk
+
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = build_schema()
+    review_subschema = {"$ref": "#/$defs/Review", "$defs": schema["$defs"]}
+    jsonschema.validate(json.loads(blob), review_subschema)

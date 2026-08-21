@@ -4,6 +4,26 @@
 
 ### Added
 
+- **`anvil:essay`'s review/revise loop now names predicted downstream
+  effects on a finding, and the reviser fixes the consequence in the same
+  pass** (#1197, Phase 2 of the #888 decomposition). Field evidence from
+  #888 showed a real revision chain (`wave-one-bandgaps`, `.2`→`.6`) where
+  fixing one round's finding literally introduced the next round's defect —
+  a corrected clause dangled a cross-reference elsewhere in the body; a
+  required link pushed the body past its declared word ceiling. `essay-review`
+  step 6c now instructs the critic to append an optional `Downstream risk:`
+  line to a `comments.md` finding when applying its `suggested_fix` literally
+  would foreseeably dangle a cross-referenced sentence elsewhere in the body
+  (`cross-reference-dangle`) or push the body past a declared word/line
+  ceiling (`envelope-breach`); `essay-revise` reads the annotation and
+  addresses the named consequence as part of the same revision, not a
+  follow-up cycle. The schema gained one additive, optional field —
+  `Finding.downstream_risk: Optional[str]` in `anvil/lib/review_schema.py`
+  (free text, matching `evidence_span` / `CriticalFlag.type`'s existing
+  precedent of an opaque skill-defined string rather than a closed enum) —
+  with no `schema_version` bump, following the `kind: tool_evidence`
+  precedent (#29/#867).
+
 - **The deterministic rhetoric lint (`anvil/lib/rhetoric_lint.py`) gains a
   `comma_stack` rule kind — "comma role-stacking" detection** (#1182). A
   new patternless kind (joining `long_sentence` / `sentence_variance`),
