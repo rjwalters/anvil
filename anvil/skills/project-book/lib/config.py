@@ -26,6 +26,7 @@ Config surface (all fields optional; ``master_doc`` required for compile)::
       chapters_dir: book/chapters   # where to stage per-thread chapter files
       chapter_filename: chapter.tex # per-thread filename to stage
       out_pdf: book/book.pdf        # output PDF path
+      relocate_title: false         # move \title{...} past \begin{document}
 
 ``chapter_filename`` is a **template**: the literal token ``{slug}`` is
 substituted with each thread's own slug when the chapter file is located
@@ -166,6 +167,16 @@ class BookConfig(BaseModel):
         Output PDF path (project-root-relative). When ``None`` it
         defaults to ``<chapters_dir>/../book.pdf`` (see
         :meth:`resolved_out_pdf`).
+    relocate_title
+        Opt-in hook (issue #1205) for consumers whose master document
+        ``\\input``s each staged chapter via LaTeX's ``docmute`` package.
+        ``docmute`` discards a chapter's standalone preamble up to
+        ``\\begin{document}`` — including its ``\\title{...}`` — so when
+        this is ``True``, staging moves each chapter's ``\\title{...}``
+        (if present) from the preamble to immediately after
+        ``\\begin{document}`` instead of byte-copying the file verbatim.
+        Defaults to ``False``, which preserves the original byte-copy
+        behavior exactly.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -175,6 +186,7 @@ class BookConfig(BaseModel):
     chapters_dir: str = Field(default=DEFAULT_CHAPTERS_DIR)
     chapter_filename: str = Field(default=DEFAULT_CHAPTER_FILENAME)
     out_pdf: Optional[str] = Field(default=None)
+    relocate_title: bool = Field(default=False)
 
     @field_validator("order")
     @classmethod

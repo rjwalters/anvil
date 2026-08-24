@@ -15,6 +15,18 @@ def test_zero_config_defaults(tmp_path):
     assert cfg.chapters_dir == C.DEFAULT_CHAPTERS_DIR
     assert cfg.chapter_filename == C.DEFAULT_CHAPTER_FILENAME
     assert cfg.resolved_out_pdf() == "book/book.pdf"
+    assert cfg.relocate_title is False
+
+
+def test_relocate_title_parses_from_brief(tmp_path):
+    write_brief(
+        tmp_path,
+        project="p",
+        documents=default_documents(["a"]),
+        build={"relocate_title": True},
+    )
+    cfg = C.load_book_config(tmp_path)
+    assert cfg.relocate_title is True
 
 
 def test_full_build_block(tmp_path):
