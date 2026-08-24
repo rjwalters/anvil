@@ -150,20 +150,42 @@ def normalize(text: str) -> str:
 _LINE_RANGE_RE = re.compile(r"(\d+)\s*(?:-\s*(\d+))?")
 
 
+def _parse_line_ranges(cell: str) -> List[Tuple[int, int]]:
+    """Parse a ``Line range`` cell that MAY hold several comma-separated
+    ranges (``"61-63, 1, 37-39"``), returning every one that parses, in
+    cell order — not just the first.
+
+    Each comma-separated fragment is parsed independently, so a single
+    malformed fragment (a stray trailing comma producing an empty
+    fragment, stray non-numeric text) is silently skipped rather than
+    discarding the whole cell or raising. A cell with no parseable
+    fragment at all (``"?"``, ``"NOT_FOUND"``, empty) returns ``[]`` — a
+    row with no usable hint, not an error.
+    """
+    ranges: List[Tuple[int, int]] = []
+    for fragment in (cell or "").split(","):
+        m = _LINE_RANGE_RE.search(fragment)
+        if not m:
+            continue
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else start
+        if end < start:
+            start, end = end, start
+        ranges.append((start, end))
+    return ranges
+
+
 def _parse_line_range(cell: str) -> Optional[Tuple[int, int]]:
-    """Parse a ``Line range`` cell (``"412-415"``, ``"7"``, ``"L412-415"``).
+    """Parse a ``Line range`` cell and return its FIRST range only
+    (``"412-415"``, ``"7"``, ``"L412-415"``) — kept for callers that only
+    care about a single primary hint (e.g. :attr:`ProvenanceRow.line_range`).
+    See :func:`_parse_line_ranges` for the full comma-separated list.
 
     Returns ``None`` for anything unparsable (``"?"``, ``"NOT_FOUND"``,
     empty) — a row with no usable hint, not an error.
     """
-    m = _LINE_RANGE_RE.search(cell or "")
-    if not m:
-        return None
-    start = int(m.group(1))
-    end = int(m.group(2)) if m.group(2) else start
-    if end < start:
-        start, end = end, start
-    return (start, end)
+    ranges = _parse_line_ranges(cell)
+    return ranges[0] if ranges else None
 
 
 def _split_row(line: str) -> List[str]:
@@ -199,6 +221,10 @@ class ProvenanceRow:
     source_file: str
     line_range_raw: str
     line_range: Optional[Tuple[int, int]]
+    """The cell's FIRST parsed range only — kept for backward
+    compatibility with callers that assume a single hint. See
+    :attr:`line_range_hints` for the full comma-separated list."""
+
     anchor: Optional[str]
     """``None`` when the row has no ``Anchor`` column value at all — a
     legacy (pre-#868) row or unmigrated table shape."""
@@ -218,6 +244,14 @@ class ProvenanceRow:
     anchor_col: Optional[int] = None
     """The ``Anchor`` column index within this row's own table, or
     ``None`` if that table has no ``Anchor`` column at all."""
+
+    line_range_hints: List[Tuple[int, int]] = field(default_factory=list)
+    """EVERY range parsed from the ``Line range`` cell, in cell order
+    (issue #1204) — a cell MAY cite several comma-separated ranges
+    (``"61-63, 1, 37-39"``). Empty when the cell has no parseable range
+    at all (mirrors :attr:`line_range` being ``None`` in that case).
+    :func:`resolve_anchor` treats a row RESOLVED if the anchor overlaps
+    ANY of these, not just the first."""
 
 
 @dataclass
@@ -382,6 +416,7 @@ def parse_provenance_table(path: Path) -> ParsedProvenanceTable:
         claim = _cell(claim_col)
         source_file = _cell(source_col)
         line_range_raw = _cell(active.line_range_col)
+        line_range_hints = _parse_line_ranges(line_range_raw)
         notes = _cell(notes_col)
         anchor_cell = _cell(active.anchor_col) if active.anchor_col is not None else None
         anchor = anchor_cell.strip("\"'“” ") if anchor_cell else None
@@ -394,12 +429,13 @@ def parse_provenance_table(path: Path) -> ParsedProvenanceTable:
                 claim=claim,
                 source_file=source_file,
                 line_range_raw=line_range_raw,
-                line_range=_parse_line_range(line_range_raw),
+                line_range=line_range_hints[0] if line_range_hints else None,
                 anchor=anchor,
                 notes=notes,
                 table_index=len(tables) - 1,
                 line_range_col=active.line_range_col,
                 anchor_col=active.anchor_col,
+                line_range_hints=line_range_hints,
             )
         )
         idx += 1
@@ -508,6 +544,7 @@ class AnchorResolution:
             "line_range_hint": list(self.row.line_range)
             if self.row.line_range
             else None,
+            "line_range_hints": [list(h) for h in self.row.line_range_hints],
             "anchor": self.row.anchor,
             "status": self.status,
             "resolved_range": list(self.resolved_range)
@@ -584,9 +621,23 @@ def resolve_anchor(
         end_line = line_map[end_idx]
         candidates.append((start_line, end_line))
 
-    hint = row.line_range
-    if hint is not None:
-        chosen = min(candidates, key=lambda c: abs(c[0] - hint[0]))
+    # A Line range cell MAY hold several comma-separated ranges (issue
+    # #1204, e.g. "61-63, 1, 37-39") — `hints` is EVERY range parsed from
+    # the cell, in cell order. The overlap check and the nearest-candidate
+    # tie-break below both consider every hint, not just the first, so
+    # the anchor's true location can be corroborated by ANY cited range.
+    hints = row.line_range_hints
+
+    def _nearest_hint_distance(candidate: Tuple[int, int]) -> int:
+        # Nearest to the CLOSEST of all hint ranges — a single-hint cell
+        # reduces to the pre-#1204 "nearest to the hint" rule exactly
+        # (test_coincidental_duplicate_resolves_to_nearest_hint), and a
+        # multi-hint cell extends it the obvious way: a candidate that is
+        # close to any one cited range is treated as close overall.
+        return min(abs(candidate[0] - h[0]) for h in hints)
+
+    if hints:
+        chosen = min(candidates, key=_nearest_hint_distance)
     else:
         chosen = candidates[0]
 
@@ -597,7 +648,7 @@ def resolve_anchor(
             "to the one nearest the cited Line range hint.)"
         )
 
-    if hint is None:
+    if not hints:
         return AnchorResolution(
             row=row,
             status=STATUS_RESOLVED,
@@ -610,7 +661,9 @@ def resolve_anchor(
             ),
         )
 
-    if _ranges_overlap(chosen, hint):
+    hints_str = ", ".join(_format_line_range(h) for h in hints)
+
+    if any(_ranges_overlap(chosen, h) for h in hints):
         return AnchorResolution(
             row=row,
             status=STATUS_RESOLVED,
@@ -618,8 +671,8 @@ def resolve_anchor(
             occurrences=len(candidates),
             detail=(
                 f"anchor found at '{row.source_file}':{chosen[0]}-"
-                f"{chosen[1]}, matching the cited hint "
-                f"{hint[0]}-{hint[1]}." + ambiguous_note
+                f"{chosen[1]}, matching the cited hint(s) "
+                f"{hints_str}." + ambiguous_note
             ),
         )
 
@@ -631,7 +684,7 @@ def resolve_anchor(
         detail=(
             f"anchor text is still present verbatim in "
             f"'{row.source_file}' but now at line {chosen[0]}-{chosen[1]} "
-            f"(row cites {hint[0]}-{hint[1]}) — the Line range hint is "
+            f"(row cites {hints_str}) — the Line range hint is "
             "stale, not the claim. Distinct from a content MISMATCH: the "
             "cited passage was found, just not where the row says it "
             "is." + ambiguous_note
@@ -731,6 +784,21 @@ def repoint_drifted_anchors(
     the file is reported via ``skipped_tables`` — this function never
     reports success while silently having examined only some of the
     file's tables. Atomic write via tmp-then-``os.replace``.
+
+    Multi-range hints (issue #1204): a cell MAY cite several
+    comma-separated ranges (``"61-63, 1, 37-39"``). After the #1204 fix,
+    :func:`resolve_anchor` only classifies a row :data:`STATUS_DRIFTED`
+    when the anchor's true location overlaps NONE of the cell's cited
+    ranges — i.e. every range the row currently cites is equally stale.
+    There is therefore no "still-good" cited range worth preserving in
+    that case, so this function deliberately COLLAPSES the whole cell to
+    the anchor's single resolved location rather than appending it
+    alongside the old (now-known-wrong) ranges — carrying stale ranges
+    forward would misinform the next reader exactly as the original bug
+    did. A row whose anchor overlaps at least one cited range is
+    RESOLVED, not DRIFTED, and is never touched here, so a genuinely
+    still-good range in a multi-range cell is never at risk of being
+    dropped.
     """
     table = parse_provenance_table(provenance_path)
     repointed: List[Dict[str, Any]] = []

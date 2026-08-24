@@ -230,6 +230,26 @@
 
 ### Fixed
 
+- **`anvil/lib/provenance_anchor.py` now consults every range in a
+  multi-range `Line range` cell, not just the first** (#1204). A
+  `provenance.md` row's `Line range` cell may cite several
+  comma-separated ranges (e.g. `61-63, 1, 37-39`); the drift checker
+  previously used `re.search()` (not per-fragment parsing), so only the
+  first range was ever compared against the anchor's resolved location —
+  a correct row whose anchor lived in a later range self-reported
+  `DRIFTED`. `_parse_line_ranges()` now parses every comma-separated
+  fragment (silently skipping malformed ones, e.g. a trailing comma), the
+  new `ProvenanceRow.line_range_hints` carries the full list, and
+  `resolve_anchor()`'s overlap check and nearest-candidate tie-break both
+  consider every hint — RESOLVED if the anchor overlaps *any* cited
+  range. `repoint_drifted_anchors()` still collapses a genuinely drifted
+  multi-range cell to the anchor's single corrected location (every cited
+  range was equally stale by definition once none overlap), documented
+  explicitly in its docstring. `anvil/lib/snippets/provenance.md`'s `Line
+  range` column contract now documents multi-range cells for the first
+  time. `ProvenanceRow.line_range` (first range only) is unchanged for
+  backward compatibility.
+
 - **`anvil:primer`'s vendored `botho-from-the-basics` worked example:
   `_progress.json` no longer misdescribes its shipped `exhibits/`** (#1184).
   The terminal `botho-from-the-basics.3/_progress.json` claimed "five PNGs +
