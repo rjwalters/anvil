@@ -4,6 +4,18 @@
 
 ### Added
 
+- **`anvil:project-book` gains an opt-in `build.relocate_title` flag for
+  docmute-based master documents** (#1205). Staging previously byte-copied
+  each chapter via `shutil.copy2`, which breaks a master document that
+  `\input`s chapters through LaTeX's `docmute` package — `docmute` discards
+  a chapter's standalone preamble (including `\title{...}`) up to
+  `\begin{document}`. With `build.relocate_title: true` set in `BRIEF.md`,
+  staging instead reads each chapter, moves its `\title{...}` (if present)
+  to immediately after `\begin{document}`, and writes the transformed text
+  — byte-preserving everything else, handling multi-line/nested-brace
+  titles, and leaving placeholder chapters and title-less chapters
+  untouched. Off by default; unset behavior is unchanged from before.
+
 - **`anvil:essay`'s review/revise loop now names predicted downstream
   effects on a finding, and the reviser fixes the consequence in the same
   pass** (#1197, Phase 2 of the #888 decomposition). Field evidence from
