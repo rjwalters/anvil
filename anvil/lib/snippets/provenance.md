@@ -145,7 +145,13 @@ Column contract:
   `resolve_corpus_dirs` roots.
 - **Line range** — a `start-end` line span (or a single line) **hinting**
   at the supporting passage's current location. This is a hint, not the
-  row's identity — see "Anchor: the stable identity" below.
+  row's identity — see "Anchor: the stable identity" below. The cell MAY
+  hold **several comma-separated ranges** (`61-63, 1, 37-39`) when a claim
+  draws on more than one place in the cited file, or a reviser has left a
+  prior hint in place alongside a new one — every range in the cell is a
+  candidate location, in no particular priority order (issue #1204: the
+  anchor-bearing range does NOT need to be listed first). See "Anchor: the
+  stable identity" below for how a multi-range cell resolves.
 - **Anchor** (issue #868) — a short **verbatim quoted snippet** copied
   exactly from the cited passage (curly-quote and whitespace differences
   are tolerated; wording is not). This is the row's stable,
@@ -178,6 +184,17 @@ searches the WHOLE cited file for the anchor's exact text, not just the
 hinted range, and reports where it actually is. `Line range` becomes a
 cheap-to-read hint that is refreshed mechanically when it goes stale
 (Section 4a) — never the ground truth.
+
+**Multi-range cells** (issue #1204): when `Line range` cites several
+comma-separated ranges, the anchor is considered RESOLVED if its actual
+location overlaps **any** of them — not only the first. Order within the
+cell carries no meaning; a corpus audit tool that only checked the first
+range (as `anvil/lib/provenance_anchor.py` did before #1204) produced a
+false `DRIFTED` on a correct row whenever the anchor's true location fell
+in a later range. If the anchor's location overlaps none of the cell's
+cited ranges, the row is genuinely `DRIFTED`; a mechanical `repoint`
+collapses the whole cell to the anchor's single corrected location rather
+than appending it to the (now all equally stale) old ranges.
 
 **Anchor-writing discipline** (drafter and reviser, every row that has
 supporting text at all):
@@ -313,9 +330,13 @@ Each row resolves to exactly one of:
   classification (Section 5); the passage is simply gone.
 - **`RESOLVED`** — the anchor text is present and its actual location
   overlaps the cited `Line range` hint (or the row has no parseable
-  hint). No drift; classification proceeds against the hinted range.
+  hint). When the cell cites several comma-separated ranges (#1204),
+  overlapping **any one of them** is enough — no priority is given to
+  the first-listed range. No drift; classification proceeds against the
+  hinted range.
 - **`DRIFTED`** — the anchor text is present **verbatim** elsewhere in
-  the file, not overlapping the cited hint. This is the signature case:
+  the file, not overlapping any of the cited hint range(s). This is the
+  signature case:
   **the citation is genuine, only its address is stale.** The critic:
   1. Emits a distinct `findings.md` row/finding — worded as **anchor
      drift**, e.g. *"provenance.md row N: quoted text still present in

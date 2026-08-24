@@ -347,6 +347,153 @@ class TestResolveAnchor:
         assert report["counts"][STATUS_RESOLVED] == 1
 
 
+class TestMultiRangeLineRangeHint:
+    """Issue #1204: a `Line range` cell MAY hold several comma-separated
+    ranges (`"61-63, 1, 37-39"`). Only the first range used to be parsed
+    (`_LINE_RANGE_RE.search`, not `.findall`/per-fragment parsing), so an
+    anchor whose true location fell in a LATER range self-reported
+    DRIFTED even though the anchor is exact and cited (just not first)."""
+
+    def test_line_range_hints_parses_every_comma_separated_range(
+        self, tmp_path: Path
+    ):
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| A claim | nita3.txt | 61-63, 1, 37-39 | "some anchor" | note |\n'
+            ),
+        )
+        table = parse_provenance_table(path)
+        row = table.rows[0]
+        # Backward compatibility: `line_range` still reports the FIRST
+        # range only, unchanged from pre-#1204 behavior.
+        assert row.line_range == (61, 63)
+        # New: `line_range_hints` reports every parsed range, in order.
+        assert row.line_range_hints == [(61, 63), (1, 1), (37, 39)]
+
+    def test_trailing_comma_fragment_does_not_crash(self, tmp_path: Path):
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| A claim | nita3.txt | 37-39, | "some anchor" | note |\n'
+            ),
+        )
+        table = parse_provenance_table(path)
+        assert table.rows[0].line_range_hints == [(37, 39)]
+
+    def test_malformed_extra_fragment_is_skipped_not_fatal(self, tmp_path: Path):
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| A claim | nita3.txt | 61-63, not-a-range, 37-39 | "some anchor" | note |\n'
+            ),
+        )
+        table = parse_provenance_table(path)
+        assert table.rows[0].line_range_hints == [(61, 63), (37, 39)]
+
+    def test_anchor_in_non_first_range_resolves_not_drifted(
+        self, tmp_path: Path
+    ):
+        """The exact regression from #1204: the anchor's true location
+        (line 38) falls only in the cell's THIRD cited range (37-39), not
+        its first (61-63). Before the fix this self-reported DRIFTED
+        because only the first range was ever consulted."""
+        root = tmp_path / "corpus3"
+        lines = [f"filler line {i}" for i in range(1, 71)]
+        lines[37] = "The workshop reopened after the fire in early spring."
+        _write(root / "log.txt", "\n".join(lines))
+
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| "workshop reopened" | log.txt | 61-63, 1, 37-39 | '
+                '"The workshop reopened after the fire in early spring." | recall |\n'
+            ),
+        )
+        report = check_provenance_anchors(path, [root])
+        row = report["rows"][0]
+        assert row["status"] == STATUS_RESOLVED
+        assert row["resolved_range"] == [38, 38]
+        assert report["counts"][STATUS_DRIFTED] == 0
+        assert report["drifted"] is False
+
+    def test_anchor_outside_every_hinted_range_still_drifted(
+        self, tmp_path: Path
+    ):
+        """Symmetric guard: when the anchor's true location overlaps NONE
+        of the cell's several cited ranges, the row must still correctly
+        report DRIFTED (the fix must not paper over a genuine drift)."""
+        root = tmp_path / "corpus4"
+        lines = [f"filler line {i}" for i in range(1, 71)]
+        lines[49] = "The workshop reopened after the fire in early spring."
+        _write(root / "log.txt", "\n".join(lines))
+
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| "workshop reopened" | log.txt | 61-63, 1, 37-39 | '
+                '"The workshop reopened after the fire in early spring." | recall |\n'
+            ),
+        )
+        report = check_provenance_anchors(path, [root])
+        row = report["rows"][0]
+        assert row["status"] == STATUS_DRIFTED
+        assert row["resolved_range"] == [50, 50]
+        assert "37-39" in row["detail"] or "61-63" in row["detail"]
+
+    def test_ambiguous_match_in_more_than_one_hinted_range_is_sane(
+        self, tmp_path: Path
+    ):
+        """Edge case: the anchor text coincidentally occurs at a location
+        overlapping MORE THAN ONE of the cell's cited ranges. Must resolve
+        deterministically (no crash, no ambiguity error) — RESOLVED, since
+        at least one hint is corroborated either way."""
+        root = tmp_path / "corpus5"
+        text = "\n".join(
+            ["She said the journey took six weeks in total."]
+            + [f"filler {i}" for i in range(2, 9)]
+            + ["She said the journey took six weeks in total."]
+        )
+        _write(root / "dup.txt", text)
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| Journey took six weeks | dup.txt | 1, 9 | '
+                '"She said the journey took six weeks in total." | inferred |\n'
+            ),
+        )
+        report = check_provenance_anchors(path, [root])
+        row = report["rows"][0]
+        assert row["status"] == STATUS_RESOLVED
+        assert row["occurrences"] == 2
+        assert row["resolved_range"] in ([1, 1], [9, 9])
+
+    def test_single_range_nearest_hint_test_still_passes(self, tmp_path: Path):
+        """Sanity companion to
+        `test_coincidental_duplicate_resolves_to_nearest_hint` above: the
+        multi-hint tie-break rule (nearest to the CLOSEST of all hints)
+        must reduce to the exact pre-#1204 single-hint behavior when the
+        cell has only one range."""
+        root = tmp_path / "corpus6"
+        text = "\n".join(
+            ["She said the journey took six weeks in total."]
+            + [f"filler {i}" for i in range(2, 9)]
+            + ["She said the journey took six weeks in total."]
+        )
+        _write(root / "dup.txt", text)
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| Journey took six weeks | dup.txt | 9 | '
+                '"She said the journey took six weeks in total." | inferred |\n'
+            ),
+        )
+        report = check_provenance_anchors(path, [root])
+        row = report["rows"][0]
+        assert row["status"] == STATUS_RESOLVED
+        assert row["resolved_range"] == [9, 9]
+
+
 class TestCheckProvenanceAnchorsAggregation:
     """`total_rows` / `anchor_column_present` must describe the WHOLE
     FILE (aggregated across every table), not just the first table
@@ -515,6 +662,59 @@ class TestRepointDriftedAnchors:
         assert len(result["skipped_tables"]) == 1
         assert "WARNING" in result["detail"]
         assert "not" in result["detail"].lower()
+
+    def test_multi_range_hint_resolved_row_is_never_repointed(
+        self, tmp_path: Path
+    ):
+        """Issue #1204 symmetry: a row whose anchor overlaps a NON-first
+        cited range is RESOLVED (see TestMultiRangeLineRangeHint), so
+        repoint must leave its Line range cell byte-identical."""
+        root = tmp_path / "corpus_multi"
+        lines = [f"filler line {i}" for i in range(1, 71)]
+        lines[37] = "The workshop reopened after the fire in early spring."
+        _write(root / "log.txt", "\n".join(lines))
+
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| "workshop reopened" | log.txt | 61-63, 1, 37-39 | '
+                '"The workshop reopened after the fire in early spring." | recall |\n'
+            ),
+        )
+        original = path.read_text(encoding="utf-8")
+        result = repoint_drifted_anchors(path, [root])
+        assert result["repointed"] == []
+        assert path.read_text(encoding="utf-8") == original
+
+    def test_multi_range_hint_drifted_row_collapses_to_single_range(
+        self, tmp_path: Path
+    ):
+        """Issue #1204 AC #4: when a multi-range-hint row IS genuinely
+        drifted (the anchor overlaps none of its cited ranges), repoint
+        collapses the cell to the anchor's single corrected location —
+        every previously-cited range was equally stale, so there is
+        nothing worth preserving alongside the correction (see
+        `repoint_drifted_anchors`'s docstring for the full rationale)."""
+        root = tmp_path / "corpus_multi2"
+        lines = [f"filler line {i}" for i in range(1, 71)]
+        lines[49] = "The workshop reopened after the fire in early spring."
+        _write(root / "log.txt", "\n".join(lines))
+
+        path = _write(
+            tmp_path / "provenance.md",
+            _provenance_table(
+                '| "workshop reopened" | log.txt | 61-63, 1, 37-39 | '
+                '"The workshop reopened after the fire in early spring." | recall |\n'
+            ),
+        )
+        result = repoint_drifted_anchors(path, [root])
+        assert len(result["repointed"]) == 1
+        assert result["repointed"][0]["old_line_range"] == "61-63, 1, 37-39"
+        assert result["repointed"][0]["new_line_range"] == "50"
+
+        report = check_provenance_anchors(path, [root])
+        assert report["drifted"] is False
+        assert report["rows"][0]["line_range_hints"] == [[50, 50]]
 
 
 # ---------------------------------------------------------------------------
