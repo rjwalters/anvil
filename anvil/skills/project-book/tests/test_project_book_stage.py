@@ -114,6 +114,45 @@ def test_relocate_title_helper_no_begin_document_noop():
     assert S.relocate_title_after_begin_document(text) == text
 
 
+def test_relocate_title_helper_shared_line_keeps_its_newline():
+    """A title sharing its line with other preamble content must not swallow
+    that line's newline — doing so merges the next line onto the remainder
+    (issue #1205 review finding)."""
+    text = (
+        "\\documentclass{article}\n"
+        "\\newcommand{\\foo}{bar} \\title{Real Title}\n"
+        "\\begin{document}\n"
+        "Body.\n"
+        "\\end{document}\n"
+    )
+    out = S.relocate_title_after_begin_document(text)
+    assert out == (
+        "\\documentclass{article}\n"
+        "\\newcommand{\\foo}{bar} \n"
+        "\\begin{document}\n"
+        "\\title{Real Title}\n"
+        "Body.\n"
+        "\\end{document}\n"
+    )
+    # The structural anchor stays on its own line.
+    assert "\n\\begin{document}\n" in out
+
+
+def test_relocate_title_helper_commented_title_does_not_comment_out_anchor():
+    """A commented-out `% \\title{...}` placeholder must not drag
+    `\\begin{document}` onto the comment line (issue #1205 review finding)."""
+    text = (
+        "\\documentclass{article}\n"
+        "% \\title{Commented Out}\n"
+        "\\begin{document}\n"
+        "Body.\n"
+        "\\end{document}\n"
+    )
+    out = S.relocate_title_after_begin_document(text)
+    assert "% \\begin{document}" not in out
+    assert "\n\\begin{document}\n" in out
+
+
 def test_stage_generates_placeholder_for_empty(tmp_path):
     info = _collect(tmp_path, "ghost")
     chapters = tmp_path / "chapters"

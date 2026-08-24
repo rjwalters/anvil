@@ -121,11 +121,14 @@ def relocate_title_after_begin_document(text: str) -> str:
     survive ``docmute``'s preamble discard.
 
     Byte-preserving over everything except the relocated ``\\title{...}``
-    itself: the removed line (including its own trailing newline, so no
-    blank line is left behind) is reinserted verbatim immediately after
-    ``\\begin{document}``. Handles a ``\\title`` argument that spans
-    multiple lines or contains nested braces via explicit brace-depth
-    matching (not a regex on the argument body).
+    itself, which is reinserted verbatim immediately after
+    ``\\begin{document}``. When ``\\title{...}`` occupies its own whole
+    line, that line is removed including its trailing newline so no blank
+    line is left behind; when it shares a line with other preamble
+    content, only the ``\\title{...}`` text itself is removed and the
+    line's own newline stays put. Handles a ``\\title`` argument that
+    spans multiple lines or contains nested braces via explicit
+    brace-depth matching (not a regex on the argument body).
 
     No-ops (returns ``text`` unchanged) when there is no
     ``\\begin{document}`` anchor, no ``\\title{...}`` in the preamble, or
@@ -155,13 +158,21 @@ def relocate_title_after_begin_document(text: str) -> str:
     # (so no dangling indentation is left behind) and exactly one trailing
     # newline (so no blank line is left behind), without touching any
     # other byte in the preamble.
+    #
+    # The trailing newline is swallowed ONLY in the whole-line-removal
+    # case — when nothing but whitespace precedes ``\title{...}`` on its
+    # line AND nothing but whitespace follows it before the newline. When
+    # the title shares its line with other preamble content (a
+    # ``\newcommand`` before it, a ``%`` comment prefix, …), that line's
+    # own newline is left intact: swallowing it would merge the following
+    # line onto the remainder, which silently corrupts the preamble and,
+    # for a commented-out title, comments out the very
+    # ``\begin{document}`` anchor this function relies on.
     line_start = preamble.rfind("\n", 0, title_start) + 1
-    if preamble[line_start:title_start].strip() == "":
-        remove_start = line_start
-    else:
-        remove_start = title_start
+    whole_line = preamble[line_start:title_start].strip() == ""
+    remove_start = line_start if whole_line else title_start
     trailing = preamble[title_end:]
-    newline_match = re.match(r"[ \t]*\n", trailing)
+    newline_match = re.match(r"[ \t]*\n", trailing) if whole_line else None
     remove_end = title_end + newline_match.end() if newline_match else title_end
 
     new_preamble = preamble[:remove_start] + preamble[remove_end:]
