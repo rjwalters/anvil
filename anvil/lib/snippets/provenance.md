@@ -9,7 +9,7 @@ the failure mode a grounded artifact fears most: an LLM drafting pass
 hallucinating plausible dates, quotes, and attributions that no source
 supports.
 
-The canary is `nitas-mama` (a family memoir): every quote and every
+The canary is `example-memoir` (a family memoir): every quote and every
 factual claim must trace to a local ground-truth corpus — seven
 interview transcripts and nine family letters. But the contract
 generalizes to any artifact grounded in a private evidence base:

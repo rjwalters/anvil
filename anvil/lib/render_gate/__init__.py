@@ -189,10 +189,10 @@ pass would otherwise reach FILING-READY / COUNSEL-READY unchallenged.
 The ip-skill call sites tighten the threshold to
 ``overfull_threshold_pt=2.0`` (the framework default of 5.0pt is
 unchanged for ``installation`` / ``proposal`` / ``datasheet`` / ``paper``
-/ ``report``). The sphere-canary regression fixture at
-``tests/lib/fixtures/render_gate/overfull_sphere_canary.txt`` (13 hits,
+/ ``report``). The legal-document regression fixture at
+``tests/lib/fixtures/render_gate/overfull_legal_canary.txt`` (13 hits,
 worst 83.6pt) is pinned in
-``tests/lib/test_render_gate.py::test_overfull_sphere_canary_shape`` so
+``tests/lib/test_render_gate.py::test_overfull_legal_canary_shape`` so
 threshold drift cannot silently re-open the hole.
 
 Package split (issue #1128)
