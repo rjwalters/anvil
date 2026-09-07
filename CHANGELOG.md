@@ -242,6 +242,23 @@
 
 ### Fixed
 
+- **Champion's Held-PR Census no longer orphans a digest issue created
+  before the marker convention shipped** (#1304). The vendored Step 0
+  lookup in `.claude/commands/loom/champion-pr-merge.md` matches the
+  pinned "Champion: Merge-Risk Hold Digest" issue with a
+  `startswith($DIGEST_MARKER)` jq filter and no fallback — a digest issue
+  whose body predates the `<!-- champion:merge-risk-hold-digest -->`
+  marker (#6870) never matches and is silently abandoned in favor of a
+  fresh duplicate (observed live: `#1211` orphaned, `#1224` created as an
+  unwanted duplicate). Since that markdown file is vendored and refreshed
+  wholesale by `.loom/scripts/resync-installed.sh`, the fix lives in a new
+  anvil-owned `.loom/scripts/champion-digest-lookup.sh` (marker match
+  preferred, title-only fallback adopts and implicitly migrates a
+  pre-marker issue on the next write) plus a `CLAUDE.md` § "Champion
+  digest-issue lookup" instruction redirecting Champion's Step 0 to call
+  it. The underlying defect is filed upstream at
+  [`rjwalters/loom#7338`](https://github.com/rjwalters/loom/issues/7338).
+
 - **`anvil/lib/provenance_anchor.py` now consults every range in a
   multi-range `Line range` cell, not just the first** (#1204). A
   `provenance.md` row's `Line range` cell may cite several
