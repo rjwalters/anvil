@@ -215,6 +215,22 @@ Do not invent a bump to satisfy the gate when the marker is the honest answer, a
 
 rather than composing a fresh multi-line `gh-cached` + `jq` + shell-loop script — that shape is the one that trips the guard. `--exclude-guide-docs` drops the Guide role's automated `docs/guide-update-*` doc-sync PRs, matching the exclusion variant seen in several of the logged incidents.
 
+### Champion digest-issue lookup (`champion-digest-lookup.sh`)
+
+**The problem this closes** (#1304): Champion's Held-PR Census "Step 0 — locate the existing digest issue" (`champion-pr-merge.md`, added by #6870/#6851, extended by #7020/#7031) resolves the pinned "Champion: Merge-Risk Hold Digest" tracking issue with a `select(.body | startswith($DIGEST_MARKER))` jq filter and no fallback. A digest issue created *before* the `<!-- champion:merge-risk-hold-digest -->` marker convention shipped never carries the marker and never will — Champion no longer finds it to rewrite its body, so it is permanently orphaned. Observed live in this repo: `#1211` (created 2026-08-24, pre-marker body) stopped updating on 2026-08-28, the same day `#1224` (marker-prefixed) was created as an unwanted duplicate; `#1211` was closed as an orphaned duplicate in the curation pass that filed #1304.
+
+**This lives here, in `CLAUDE.md`, for the same reason the two sections above do.** `.claude/commands/loom/champion-pr-merge.md` is a *vendored copy* refreshed wholesale by `.loom/scripts/resync-installed.sh`; a direct edit to its Step 0 jq filter would not survive the next resync. The underlying defect is real but belongs upstream — filed as [`rjwalters/loom#7338`](https://github.com/rjwalters/loom/issues/7338) — not as a local patch to the synced file.
+
+**The fix**: `.loom/scripts/champion-digest-lookup.sh <title> <marker>` (anvil-owned, not vendored) resolves the digest issue in two steps: prefer an open issue whose title matches and whose body starts with `<marker>`; if none of the title matches carry the marker, fall back to the oldest (lowest-numbered) open title match instead of returning empty. When more than one open issue matches the title, the marker-tagged one always wins regardless of issue-number ordering. No separate migration step is needed — Champion's own Step 2 always overwrites the resolved issue's body with a marker-prefixed body on the very next write, so an adopted pre-marker issue is migrated in place on the same pass that finds it.
+
+**Use it instead of the inline jq filter**: whenever a Champion pass reaches Held-PR Census Step 0, resolve the digest issue with
+
+```bash
+DIGEST_ISSUE=$(.loom/scripts/champion-digest-lookup.sh "$DIGEST_TITLE" "$DIGEST_MARKER")
+```
+
+rather than the vendored snippet's own `"$GH_READ" issue list --search ... --jq "[.[] | select(.body | startswith(...))] | first | .number // empty"` — that shape is the one with no pre-marker fallback. Regression coverage: `.loom/scripts/tests/test-champion-digest-lookup.sh`.
+
 ## Status of work<!-- BEGIN LOOM ORCHESTRATION -->
 This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration — see the Loom repository for the full guide (roles, labels, worktrees, configuration). When installed, Loom also writes a locally-substituted copy of that guide to `.loom/CLAUDE.md`.
 <!-- END LOOM ORCHESTRATION -->
