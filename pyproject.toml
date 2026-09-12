@@ -95,7 +95,7 @@ classifiers = [
 # See the header comment above for the broader philosophy.
 dependencies = [
     "pydantic>=2.0",
-    "pyyaml>=6.0",
+    "pyyaml>=6.0.3",
 ]
 
 # Opt-in extras. Each one corresponds to a single advanced check that needs
