@@ -4,6 +4,37 @@
 
 ### Added
 
+- **`anvil:essay` gains a cross-version claim ledger so review passes batch
+  inherited-text checks instead of trickling them** (#1198, Failure 3 of
+  the #888 decomposition). A review pass had no record of what had already
+  been checked, so it either re-derived every claim from scratch each round
+  (wasted effort re-verifying unchanged figures) or silently let inherited
+  claims survive multiple rounds unverified — the concrete failure behind
+  both critical flags in #888's original report, surfaced only at
+  iterations 4 and 5. The fix extends the existing local-corpus claim-
+  provenance contract (`anvil/lib/snippets/provenance.md`, #597) rather
+  than adding a second, parallel ledger: `<thread>.{N}/provenance.md`'s
+  row shape gains a `Kind` column (`corpus` — the existing #597 rows,
+  unchanged — or `derived`, for a claim grounded in `refs/`/`research/`/a
+  linked repo rather than a declared corpus) plus a `Verified
+  against`/`Verified at` pair. The new skill-local primitive
+  (`anvil/skills/essay/lib/claim_ledger.py` — skill-local per CLAUDE.md's
+  "promote on a second consumer" rule; essay is the only reported
+  consumer today) reuses `anvil/lib/provenance_anchor.py`'s (#868)
+  content-addressed anchor pattern directly for `corpus`-kind drift
+  detection rather than reimplementing it. `essay-review` now prioritizes
+  never-verified and drift-detected rows in one batched pass instead of an
+  arbitrary sample; `essay-revise` copies the ledger forward unchanged for
+  untouched rows, clears the verification stamp on any row whose claim
+  text changed, and mechanically stamps the rows the just-completed review
+  checked clean. Neither `anvil/lib/critics.py` nor
+  `anvil/lib/convergence.py` needed a code change — an unverified/stale row
+  surfaces as an ordinary finding through the existing aggregation, and the
+  ledger changes what a review pass covers, never when the loop
+  terminates. See the module's docstring for the explicit comparison
+  against the killed `_convictions.md` primitive (#142/#225/#226/#227/
+  #228) and why this design avoids both of its structural defects.
+
 - **`anvil:project-book` gains an opt-in `build.relocate_title` flag for
   docmute-based master documents** (#1205). Staging previously byte-copied
   each chapter via `shutil.copy2`, which breaks a master document that
