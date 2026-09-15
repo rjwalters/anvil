@@ -118,7 +118,7 @@ dependencies = [
 # `.anvil/uv.lock` already pinned the vulnerable version.
 auto_shrink = [
     "Pillow>=12.3.0",
-    "numpy>=1.24",
+    "numpy>=2.2.6",
 ]
 # `anvil:memo` render-gate content-bbox image check (issue #395).
 # Check 3 of the advisory `memo_image_dimensions` gate dimension: flags
@@ -131,7 +131,7 @@ auto_shrink = [
 # run without this extra. Pillow floor matches `[auto_shrink]` — see #744.
 image_lint = [
     "Pillow>=12.3.0",
-    "numpy>=1.24",
+    "numpy>=2.2.6",
 ]
 # `anvil:deck` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
 # Real image backends (Flux, DALL-E, SDXL, etc.) often default to JPEG
