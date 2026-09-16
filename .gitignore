@@ -113,3 +113,8 @@ uv.lock
 # timestamp; issue #894). Not present unless Anvil is itself installed into
 # this repo, but listed here so a future self-install starts out ignored.
 .anvil/.install-local.json
+
+# gh CLI config the daemon writes per checkout — hosts.yml carries a live
+# GitHub App installation token; never track it (swept in by f0d54eca).
+.loom/gh-config/
+.loom/gh-config-by-owner/
