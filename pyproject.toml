@@ -94,7 +94,7 @@ classifiers = [
 #     exception. See issue #231 for the canary reproducer.
 # See the header comment above for the broader philosophy.
 dependencies = [
-    "pydantic>=2.0",
+    "pydantic>=2.13.4",
     "pyyaml>=6.0",
 ]
 
