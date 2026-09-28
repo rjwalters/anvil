@@ -273,6 +273,26 @@
 
 ### Fixed
 
+- **`slide-content-overflow` now measures a `bg right`/`bg left` split-panel
+  slide against the text column it actually has, not the full slide width**
+  (#1321). The wrap-cost model (`body_paragraph_chars_per_line` /
+  `bullet_chars_per_line`) assumed every slide has a full-width text column;
+  on a slide using `![bg right:32%]` the text column is only 68% as wide, so
+  the same character count wraps to more lines than the lint modeled — a
+  slide that scored comfortably clean collided with the footer in the
+  rendered PDF. `anvil/lib/marp_lint.py`'s new
+  `_estimate_text_column_fraction` derives the effective column width from
+  the slide's own `bg left`/`bg right` directive(s) (additive when an image
+  is pinned to each side; the no-percent form defaults to Marp's documented
+  50% split) and scales the wrap-cost constants accordingly. Bare `bg`
+  (full-bleed) and `bg vertical:N%` don't narrow the column, and a slide
+  with no split directive at all is untouched — every existing full-width
+  deck scores unchanged. When a split's magnitude can't be trusted
+  (unparseable, or multiple splits combining to ≥100%), the lint no longer
+  silently falls back to full width — it emits a distinct
+  `slide-content-overflow` warning saying so, so an unmeasurable slide never
+  looks like a clean, measured one.
+
 - **Champion's Held-PR Census no longer orphans a digest issue created
   before the marker convention shipped** (#1304). The vendored Step 0
   lookup in `.claude/commands/loom/champion-pr-merge.md` matches the
