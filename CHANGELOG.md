@@ -4,6 +4,12 @@
 
 ### Added
 
+- **`anvil:paper` checks audience fit and gives the operator a way back in after READY** (#1322). A paper thread reached AUDITED with sentences addressed to the project's operator ("No replay wave is authorized by this estimate", "goal #40 commissioned this manuscript") and ~40 bare repo-relative artifact paths a reader cannot follow, across four review and two audit passes. Four additions:
+  - The rubric gains an **audience-fit sub-rule under dims 7 and 9**: `major` in the body, `minor` in an appendix, with the fix "delete or move to a non-published process log". The rubric total stays /44.
+  - A new deterministic pre-flight, `anvil/lib/audience_check.py`, runs at `paper-review` step 4i and writes an advisory `<thread>.{N}.audience/_review.json` (`kind: tool_evidence`, no critical flag). It flags governance vocabulary, private locators (`s3://`, message numbers, home paths), and unlinked artifact paths in artifacts/availability sections.
+  - `paper-audit` step 6c adds **artifact link hygiene**. A bare repo-relative path in an artifacts section is a critical flag when a public repository URL resolves (the new optional `.anvil.json` / BRIEF `public_repo_url`, else the paper's own forge link), and a non-critical note otherwise.
+  - A documented **operator-feedback path**: a `<thread>.{N}.operator/` sibling (`kind: judgment`, `critic_id: "operator"`, `verdict: BLOCK`, written with `python -m anvil.lib.operator_feedback write`) satisfies `paper-revise` step 4's pre-check. It allows one revision past `max_iterations`, and a BRIEF amendment after READY (`brief_amendment`) is a legitimate trigger. No review-schema change.
+
 - **`anvil:essay` gains a cross-version claim ledger so review passes batch
   inherited-text checks instead of trickling them** (#1198, Failure 3 of
   the #888 decomposition). A review pass had no record of what had already

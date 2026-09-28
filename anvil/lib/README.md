@@ -126,6 +126,9 @@ anvil/lib/
   export_schema.py             One-shot exporter for review_schema.json AND
                                 rubric_schema.json.
   ai_byline.py                 Opt-in AI-authorship byline renderer. (#941)
+  audience_check.py            Deterministic audience-fit pre-flight (advisory):
+                                governance vocabulary, private locators,
+                                unlinked artifact paths. (#1322)
   cross_thread_refs.py         Cross-thread reference resolver. (#287)
   evidence_check.py            Quoted-evidence verifier for critic scoring
                                 tables. (#464)
@@ -143,6 +146,8 @@ anvil/lib/
   marp_lint.py                 Static lint mirroring the marp-vscode
                                 slide-content-overflow diagnostic.
   numeric_consistency.py       Deterministic numeric-consistency gate. (#462)
+  operator_feedback.py         `<thread>.{N}.operator/` sibling: operator
+                                feedback after READY reopens revise. (#1322)
   parity.py                    Pre-flight lint: shared hard claims between
                                 sibling deck.md and memo.md.
   pending_marker.py            Deterministic pending-measurement placeholder
