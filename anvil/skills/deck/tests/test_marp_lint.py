@@ -650,6 +650,251 @@ size: 16:9
         )
 
 
+class TestSplitPanelTextColumnFraction(unittest.TestCase):
+    """Unit tests for the ``_estimate_text_column_fraction`` helper (issue #1321).
+
+    Pure function on a slide's raw source — testable without constructing a
+    full slide or running the whole lint.
+    """
+
+    def test_no_bg_directive_is_full_width(self) -> None:
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction("## Heading\n\nSome body text.\n")
+        self.assertEqual(est.fraction, 1.0)
+        self.assertTrue(est.determinate)
+
+    def test_bg_right_with_percent(self) -> None:
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction("![bg right:32%](figures/x.png)")
+        self.assertAlmostEqual(est.fraction, 0.68, places=6)
+        self.assertTrue(est.determinate)
+
+    def test_bg_left_with_percent(self) -> None:
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction("![bg left:40%](figures/x.png)")
+        self.assertAlmostEqual(est.fraction, 0.60, places=6)
+        self.assertTrue(est.determinate)
+
+    def test_bg_right_no_percent_defaults_to_marp_50_percent_split(self) -> None:
+        """``bg right`` with no ``:N%`` is Marp's documented 50% default."""
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction("![bg right](figures/x.png)")
+        self.assertAlmostEqual(est.fraction, 0.5, places=6)
+        self.assertTrue(est.determinate)
+
+    def test_bare_bg_is_full_width(self) -> None:
+        """Full-bleed ``bg`` (no direction) does not narrow the text column."""
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction("![bg](figures/x.png)")
+        self.assertEqual(est.fraction, 1.0)
+        self.assertTrue(est.determinate)
+
+    def test_bg_vertical_is_full_width(self) -> None:
+        """``bg vertical:N%`` (top/bottom split) does not narrow the column."""
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction("![bg vertical:30%](figures/x.png)")
+        self.assertEqual(est.fraction, 1.0)
+        self.assertTrue(est.determinate)
+
+    def test_out_of_range_percent_is_indeterminate(self) -> None:
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction("![bg right:150%](figures/x.png)")
+        self.assertFalse(est.determinate)
+        # Callers fall back to full width when indeterminate, but must
+        # surface the uncertainty separately — see the lint_source tests.
+        self.assertEqual(est.fraction, 1.0)
+
+    def test_combined_splits_at_100_percent_is_indeterminate(self) -> None:
+        """Two split panels combining to ≥100% leave no real text column."""
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction(
+            "![bg left:60%](figures/l.png)\n\n![bg right:50%](figures/r.png)"
+        )
+        self.assertFalse(est.determinate)
+
+    def test_two_side_splits_are_additive_when_under_100(self) -> None:
+        from anvil.lib.marp_lint import _estimate_text_column_fraction
+        est = _estimate_text_column_fraction(
+            "![bg left:20%](figures/l.png)\n\n![bg right:30%](figures/r.png)"
+        )
+        self.assertTrue(est.determinate)
+        self.assertAlmostEqual(est.fraction, 0.5, places=6)
+
+
+class TestSplitPanelOverflowRepro(unittest.TestCase):
+    """Issue #1321 — a bg right/left slide's text column is narrower than full width.
+
+    ``body_paragraph_chars_per_line`` / ``bullet_chars_per_line`` modeled a
+    full-width column unconditionally. On a slide using
+    ``![bg right:32%]``, the text column is only 68% of the slide's width,
+    so the same character count wraps to more lines than the flat model
+    predicted — a slide that scored comfortably "clean" collided with the
+    footer in the rendered PDF (the issue's own reproduction: effective wrap
+    point ~47 chars against the lint's configured 70 — exactly
+    ``70 * 0.68 = 47.6`` truncated).
+    """
+
+    #: One H2 + a bg right:32% hero panel + 4 bullets + a caption paragraph
+    #: + an attribution paragraph. Every bullet/paragraph line individually
+    #: fits within the full-width 70/64-char budget (no wraps), but several
+    #: exceed the 47/43-char effective budget of a 32%-reserved column.
+    _SOURCE = """---
+marp: true
+size: 16:9
+---
+
+## Q3 regional performance snapshot review
+
+![bg right:32%](figures/chart.png)
+
+- North America grew fourteen percent year over year in Q3 results
+- Europe held steady with modest single digit growth overall this year
+- APAC lagged behind due to currency headwinds this quarter overall
+- LATAM posted a small but real recovery after two rough quarters
+
+Chart shows quarterly revenue growth across all four regions we track
+
+Source internal finance team analysis dated September twenty twenty six
+"""
+
+    def test_full_width_model_would_have_scored_this_clean(self) -> None:
+        """Demonstrates the "passes today" half of the regression.
+
+        Feeding the slide's raw cost estimator the UNMODIFIED (full-width)
+        ``Geometry`` — i.e. the pre-#1321 code path — must still report a
+        total comfortably under the 13.0u budget. This is the false-clean
+        result the issue reports; it is not itself a public API, but it
+        pins that the fix is a real behavior change and not a no-op.
+        """
+        from anvil.lib.marp_lint import Geometry, _estimate_slide_cost, _split_slides
+
+        geo = Geometry()
+        slide = _split_slides(self._SOURCE)[0]
+        breakdown = _estimate_slide_cost(slide, geo)
+        self.assertLessEqual(
+            breakdown.total_units,
+            geo.capacity_units,
+            "sanity check: the full-width model must be the 'passes today' "
+            "case this regression demonstrates a fix for",
+        )
+
+    def test_column_aware_model_flags_the_overflow(self) -> None:
+        """Demonstrates the "fails after" half — ``lint_source`` now flags it."""
+        result = lint_source(self._SOURCE)
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertGreaterEqual(
+            len(overflow_findings), 1,
+            "bg right:32% slide with narrow-column-only overflow must flag",
+        )
+        self.assertIn("text column", overflow_findings[0].message)
+
+    def test_wide_split_short_content_still_stays_clean(self) -> None:
+        """AC4 sibling — a genuinely sparse bg-split slide is still clean.
+
+        The fix must not turn every ``bg left``/``bg right`` slide into an
+        automatic finding; it only narrows the budget used to score the
+        slide's actual content.
+        """
+        source = """---
+marp: true
+size: 16:9
+---
+
+## Hero panel
+
+![bg right:32%](figures/hero.png)
+
+- One short bullet
+- Another short one
+"""
+        result = lint_source(source)
+        overflow_findings = [
+            f for f in result.errors + result.warnings
+            if f.rule == "slide-content-overflow"
+        ]
+        self.assertEqual(overflow_findings, [])
+
+
+class TestSplitPanelIndeterminateWidthReporting(unittest.TestCase):
+    """Issue #1321 AC3 — an unmeasurable split-panel width is reported, not silent.
+
+    When the split percentage can't be trusted (out of range, or multiple
+    splits combining to ≥100%), the lint must not silently fall back to the
+    full-width assumption unannounced — it must emit a finding that makes
+    the slide look different from a normally-measured one.
+    """
+
+    def test_out_of_range_percent_emits_a_distinct_warning(self) -> None:
+        source = """---
+marp: true
+---
+
+## Weird split
+
+![bg right:150%](figures/x.png)
+
+- one bullet
+"""
+        result = lint_source(source)
+        indeterminate = [
+            f for f in result.warnings
+            if f.rule == "slide-content-overflow"
+            and "could not be determined" in f.message
+        ]
+        self.assertEqual(len(indeterminate), 1)
+        self.assertEqual(indeterminate[0].severity, "warning")
+
+    def test_combined_over_100_percent_emits_a_distinct_warning(self) -> None:
+        source = """---
+marp: true
+---
+
+## Two-sided panel
+
+![bg left:60%](figures/l.png)
+
+![bg right:50%](figures/r.png)
+
+- one bullet
+"""
+        result = lint_source(source)
+        indeterminate = [
+            f for f in result.warnings
+            if f.rule == "slide-content-overflow"
+            and "could not be determined" in f.message
+        ]
+        self.assertEqual(len(indeterminate), 1)
+
+    def test_suppressed_indeterminate_downgrades_to_info(self) -> None:
+        source = """---
+marp: true
+---
+
+## Weird split
+
+![bg right:150%](figures/x.png)
+
+<!-- anvil-lint-disable: slide-content-overflow -->
+
+- one bullet
+"""
+        result = lint_source(source)
+        self.assertEqual(
+            [f for f in result.warnings if f.rule == "slide-content-overflow"],
+            [],
+        )
+        indeterminate_infos = [
+            f for f in result.infos
+            if f.rule == "slide-content-overflow"
+            and "could not be determined" in f.message
+        ]
+        self.assertEqual(len(indeterminate_infos), 1)
+        self.assertEqual(indeterminate_infos[0].severity, "info")
+
+
 class TestImageCostUnits(unittest.TestCase):
     """Unit tests for the ``_image_cost_units`` helper (issue #562).
 
