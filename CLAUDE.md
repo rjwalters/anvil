@@ -75,6 +75,9 @@ scripts/
                      CHANGELOG entry or exemption (#1037).
   check-surface-version-bump.sh   Pre-flight: installed-surface change
                      carries a VERSION bump or marker (#1152).
+  check-install-staleness.sh   Read-only: is a consumer's .anvil/ tree
+                     actually at the anvil_version its manifest claims,
+                     or are skills frozen behind it? (#1320).
 
 tests/
   lib/           Framework-level tests (schema, critics, cite, convergence,
@@ -230,6 +233,27 @@ DIGEST_ISSUE=$(.loom/scripts/champion-digest-lookup.sh "$DIGEST_TITLE" "$DIGEST_
 ```
 
 rather than the vendored snippet's own `"$GH_READ" issue list --search ... --jq "[.[] | select(.body | startswith(...))] | first | .number // empty"` — that shape is the one with no pre-marker fallback. Regression coverage: `.loom/scripts/tests/test-champion-digest-lookup.sh`.
+
+### Per-skill install staleness (`check-install-staleness.sh`)
+
+**The problem this closes** (#1320): `install-anvil.sh` records the **installer-run** version in a consumer's `.anvil/install-metadata.json` (`anvil_version`), and — by documented, correct design — declines to overwrite consumer-modified skill bodies without `--force`. Those two facts together let a single unqualified read of `anvil_version` report a tree as current while most of its skill *content* is several releases behind. Hit live upgrading a consumer 0.10.1 → 0.11.6: a plain `install.sh --yes <target>` completed, wrote `0.11.6`, skipped every skill as consumer-modified, and left **467 files** differing from source — including a skill command file still carrying a hostname upstream had already scrubbed to a placeholder.
+
+**The per-skill data was already correct; nothing consumed it.** #633/#635 shipped `skill_versions.<name>` (the version of the run that last *actually* installed that skill's body, carried forward on a skip) alongside `skipped_overrides` and `skill_hashes`. Do **not** re-derive or restructure that schema — the gap was always at the two read sites:
+
+1. **The Stage 11 end-of-install summary** listed skipped skill *names* only and closed with an unconditional `ok: Anvil vX.Y.Z installed`. Fixed in `scripts/install-anvil.sh` (anvil-owned, no caveat needed): a run with a non-empty `SKIPPED_OVERRIDES` now names each frozen skill and the version its body is actually at, states plainly that the tree is not uniformly at `ANVIL_VERSION`, and closes with a `PARTIAL` qualifier. The per-file skip warning still fires, but it scrolls past mid-run — the summary is what a human reads.
+2. **`/repo:update-tools`** — the actual "am I current" checker — compared only the top-level `anvil_version` / `commit`, so it reported a bare `current` for exactly the reported incident.
+
+**This section lives in `CLAUDE.md` for the same reason the three above it do.** `.claude/commands/repo/update-tools.md` is a *vendored copy* refreshed wholesale by Repo Skills' `install.sh`; the edit applied there (steps 1–4, a frozen-component drift dimension ranked above commit drift) gives this repo's sessions the right answer today but evaporates at the next install. The durable home is upstream — filed as [`rjwalters/repo#504`](https://github.com/rjwalters/repo/issues/504). Do not re-apply the vendored edit by hand if a resync reverts it; chase #504 instead.
+
+**The anvil-owned mechanism**: `scripts/check-install-staleness.sh` answers the question after the fact, without re-running an install, for any consumer tree:
+
+```bash
+./scripts/check-install-staleness.sh <target-repo>          # human report
+./scripts/check-install-staleness.sh <target-repo> --json   # machine-readable
+# exit 0 = uniformly current, 1 = N skill(s) frozen behind, 2 = could not evaluate
+```
+
+It is strictly read-only, needs no jq or python (the manifest parse reuses `install-anvil.sh`'s own `tr`/`grep`/`sed` idiom), and degrades a pre-#633 manifest to `frozen at unknown` rather than guessing. Use it — or the three manifest fields directly — instead of reading `anvil_version` alone whenever a session, a fleet drift check, or an `/repo:update-tools` pass needs to know whether an install is genuinely current. Regression coverage: `tests/scripts/test_install_staleness_report.py`.
 
 ## Status of work<!-- BEGIN LOOM ORCHESTRATION -->
 This repository uses [Loom](https://github.com/rjwalters/loom) for AI-powered development orchestration — see the Loom repository for the full guide (roles, labels, worktrees, configuration). When installed, Loom also writes a locally-substituted copy of that guide to `.loom/CLAUDE.md`.

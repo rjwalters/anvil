@@ -1145,6 +1145,28 @@ set_skill_version() {
   SKILL_VERSION_VALUES+=("$version")
 }
 
+# Look up a skill's recorded "as-installed" version in the parallel-array
+# version table. Emits the empty string when the skill has no entry — a
+# pre-#633 legacy manifest, or a skill whose only prior install predates the
+# `skill_versions` field. Callers render the empty result as "unknown" rather
+# than inventing a number (issue #1320).
+#
+# Read AFTER Stage 9's carry-forward loop this returns the honest per-skill
+# content version for BOTH cases: skills installed this run (ANVIL_VERSION) and
+# skills skipped this run (the version carried forward from the run that last
+# actually installed them). That is exactly what the Stage 11 summary needs to
+# answer "is this tree uniformly at $ANVIL_VERSION?".
+get_skill_version() {
+  local skill="$1" i
+  for ((i = 0; i < ${#SKILL_VERSION_KEYS[@]}; i++)); do
+    if [[ "${SKILL_VERSION_KEYS[$i]}" == "$skill" ]]; then
+      printf '%s' "${SKILL_VERSION_VALUES[$i]}"
+      return
+    fi
+  done
+  printf ''
+}
+
 # Manifest path is also referenced by Stage 7 (for the recorded-hash lookup)
 # and Stage 9 (for the write). Defined here so both stages share it.
 MANIFEST="$TARGET/.anvil/install-metadata.json"
@@ -2563,19 +2585,80 @@ else
 fi
 
 # ----- Stage 11: summary ----------------------------------------------------
+# Issue #1320: the skip-on-consumer-modified behavior is correct and stays, but
+# the summary used to list skipped skill NAMES ONLY and then close with a bare
+# "ok: Anvil vX installed" — so a run that delivered none of the new skill
+# bodies read, to a human, exactly like a run that delivered all of them. The
+# per-file `last installed: vX, current: vY` warning (#633) carries the real
+# data but scrolls past mid-run; the summary is what an operator actually reads.
+#
+# Both read sites below now fold in the per-skill `skill_versions` table
+# (populated in Stage 7 for installed skills, carried forward in Stage 9 for
+# skipped ones) so the summary can never claim uniform currency it did not
+# deliver.
+
+# Render the skipped-override list with per-skill version context, e.g.
+#   memo (frozen at 0.10.1), deck (frozen at an unknown version)
+# A skill with no recorded version (pre-#633 manifest) degrades to the
+# "unknown version" wording rather than being dropped or given a made-up
+# number. Emits "" for an empty skip list so callers can fall back to "(none)".
+format_skipped_with_versions() {
+  local out="" skill ver
+  for skill in ${SKIPPED_OVERRIDES[@]+"${SKIPPED_OVERRIDES[@]}"}; do
+    ver="$(get_skill_version "$skill")"
+    [[ -n "$out" ]] && out+=", "
+    if [[ -n "$ver" ]]; then
+      out+="$skill (frozen at $ver)"
+    else
+      out+="$skill (frozen at an unknown version)"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+# The plain-language caveat block. Printed only when at least one skill was
+# skipped. `$1` is `dry` under --dry-run (nothing was written, so the wording
+# shifts to the conditional) and `real` otherwise.
+print_frozen_skill_caveat() {
+  local mode="$1" skill ver total skipped_n headline
+  skipped_n=${#SKIPPED_OVERRIDES[@]}
+  total=$((${#INSTALLED_SKILLS[@]} + skipped_n))
+  if [[ "$mode" == "dry" ]]; then
+    headline="the installed skill tree would NOT be uniformly at v$ANVIL_VERSION: $skipped_n of $total skill(s) would stay pinned to an older version"
+  else
+    headline="the installed skill tree is NOT uniformly at v$ANVIL_VERSION: $skipped_n of $total skill(s) are pinned to an older version"
+  fi
+  warn "$headline"
+  for skill in ${SKIPPED_OVERRIDES[@]+"${SKIPPED_OVERRIDES[@]}"}; do
+    ver="$(get_skill_version "$skill")"
+    printf '         %-24s frozen at %s (installer run: v%s)\n' \
+      "$skill" "${ver:-unknown version}" "$ANVIL_VERSION"
+  done
+  echo "         Those skills' bodies are whatever was last installed into"
+  echo "         $TARGET/.anvil/skills/ — only the importable anvil.lib mirror and the"
+  echo "         registration shims are refreshed for them. The recorded"
+  echo "         anvil_version in .anvil/install-metadata.json is the INSTALLER-RUN"
+  echo "         version; per-skill content versions live in its skill_versions block."
+  echo "         To bring them to v$ANVIL_VERSION (OVERWRITES your local edits to those skills):"
+  echo "             $ANVIL_ROOT/scripts/install-anvil.sh --force $TARGET"
+  echo "         To see what would change first:"
+  echo "             diff -ru $ANVIL_ROOT/anvil/skills/<name> $TARGET/.anvil/skills/<name>"
+}
+
 info "Stage 11: summary"
 echo ""
+SKIPPED_WITH_VERSIONS="$(format_skipped_with_versions)"
 if [[ "$DRY_RUN" == true ]]; then
   # Under --dry-run, relabel the summary so the operator sees WHAT a real run
   # would install (load-bearing info — the point of --dry-run) without the
   # lying "installed skills:" framing (issue #81).
   echo "  would install:       ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
-  echo "  would skip:          ${SKIPPED_OVERRIDES[*]:-(none)}"
+  echo "  would skip:          ${SKIPPED_WITH_VERSIONS:-(none)}"
   echo "  would skip lib:      $([[ "$SKIPPED_LIB" == true ]] && echo "override assets preserved (framework code upgrades)" || echo "(none)")"
   echo "  would target:        $TARGET/.anvil"
 else
   echo "  installed skills:    ${INSTALLED_SKILLS[*]:-(none -- all were consumer-modified)}"
-  echo "  skipped overrides:   ${SKIPPED_OVERRIDES[*]:-(none)}"
+  echo "  skipped overrides:   ${SKIPPED_WITH_VERSIONS:-(none)}"
   echo "  skipped lib:         $([[ "$SKIPPED_LIB" == true ]] && echo "override assets preserved (framework code upgrades)" || echo "(none)")"
   echo "  target:              $TARGET/.anvil"
 fi
@@ -2614,8 +2697,25 @@ fi
 
 if [[ "$DRY_RUN" == true ]]; then
   warn "DRY-RUN: no files were written"
+  if [[ ${#SKIPPED_OVERRIDES[@]} -gt 0 ]]; then
+    print_frozen_skill_caveat "dry"
+  fi
 else
-  ok "Anvil v$ANVIL_VERSION installed into $TARGET"
+  # Issue #1320: the closing line must never make an unqualified currency claim
+  # the run did not deliver. When any skill was skipped the install still
+  # SUCCEEDED (exit 0 — the skip is the documented, correct behavior), but the
+  # tree is a mix of versions, so the line says so and the caveat block spells
+  # out which skills and how far behind.
+  if [[ ${#SKIPPED_OVERRIDES[@]} -gt 0 ]]; then
+    if [[ ${#INSTALLED_SKILLS[@]} -eq 0 ]]; then
+      ok "Anvil v$ANVIL_VERSION install run complete for $TARGET -- PARTIAL: no skill bodies were installed (all ${#SKIPPED_OVERRIDES[@]} were consumer-modified)"
+    else
+      ok "Anvil v$ANVIL_VERSION install run complete for $TARGET -- PARTIAL: ${#SKIPPED_OVERRIDES[@]} skill(s) are NOT at v$ANVIL_VERSION"
+    fi
+    print_frozen_skill_caveat "real"
+  else
+    ok "Anvil v$ANVIL_VERSION installed into $TARGET"
+  fi
   # Memo styling hint (issue #471): the framework default CSS is deliberately
   # minimal (black-on-white, no accents) — first-time consumers read that as
   # "the styling failed." Print the correct post-#230 override paths and the

@@ -293,6 +293,39 @@
   `slide-content-overflow` warning saying so, so an unmeasurable slide never
   looks like a clean, measured one.
 
+- **`install-anvil.sh` no longer reports a clean install over a tree whose
+  skills are frozen several releases behind** (#1320). The installer
+  correctly declines to overwrite consumer-modified skill bodies (its
+  documented `--force` skip) while still stamping the installer-run version
+  into `.anvil/install-metadata.json`'s `anvil_version` — so an upgrade could
+  write `0.11.6` over a tree still carrying `0.10.1` skill content, and every
+  "am I current?" check that read only that scalar answered confidently and
+  wrongly. Reported from a live 0.10.1 → 0.11.6 consumer upgrade where **467
+  files** still differed from source afterwards, including a skill command
+  file carrying a hostname upstream had already scrubbed. The per-skill data
+  was already correct (`skipped_overrides` + `skill_versions`, #633) and is
+  unchanged; what was missing was any consumption of it:
+  - The **Stage 11 end-of-install summary** now names each frozen skill and
+    the version its body is actually at, states plainly that the tree is not
+    uniformly at the reported version, and closes with a `PARTIAL` qualifier
+    instead of a bare `ok: Anvil vX.Y.Z installed`. The run still exits 0 —
+    the skip is correct behavior, not a failure. A pre-#633 manifest degrades
+    to "frozen at an unknown version" rather than borrowing the
+    installer-run number, and `--dry-run` states the same caveat in the
+    conditional.
+  - A new **`scripts/check-install-staleness.sh`** answers the same question
+    after the fact, without re-running an install:
+    `./scripts/check-install-staleness.sh <target-repo> [--json]`, exit `0` =
+    uniformly current / `1` = N skill(s) frozen behind / `2` = could not
+    evaluate. Strictly read-only, no jq or python required.
+  - `/repo:update-tools` gains a third drift dimension (frozen components,
+    ranked above commit drift) so it reports `current, but N skill(s) frozen
+    behind (…)` instead of a bare `current`. That command file is a vendored
+    Repo Skills copy, so the durable home for the change is upstream — filed
+    as [`rjwalters/repo#504`](https://github.com/rjwalters/repo/issues/504),
+    with the local rationale recorded in `CLAUDE.md` § "Per-skill install
+    staleness".
+
 - **Champion's Held-PR Census no longer orphans a digest issue created
   before the marker convention shipped** (#1304). The vendored Step 0
   lookup in `.claude/commands/loom/champion-pr-merge.md` matches the
