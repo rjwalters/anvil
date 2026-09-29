@@ -11,6 +11,7 @@ Operational scripts for anvil maintenance and installation.
 | `check-changelog-entry.sh` | working | Deterministic pre-flight: does a `feat`/`fix`/`security` PR carry a `CHANGELOG.md` entry, or a stated exemption? (`<pr-number>` live, or `--title/--body-file/--files-file` offline; exit 0/1/2 — issue #1037, contract in `CLAUDE.md` § "Changelog discipline") |
 | `resync-installed.sh` | working | Ships into a consumer at `.anvil/scripts/resync-installed.sh`; refreshes an existing install from its recorded source, non-destructively (issue #894) |
 | `check-surface-version-bump.sh` | working | Deterministic pre-flight: does an installed-surface change carry a `VERSION` bump or a `<!-- loom:no-surface-change -->` marker? (`--base`/`--head`/`--list-paths`; exit 0/1/2 — issue #1152, contract in `CLAUDE.md` § "Installed-surface VERSION discipline") |
+| `check-install-staleness.sh` | working | Strictly read-only: is a consumer's `.anvil/` tree *actually* at the `anvil_version` its manifest claims, or are skills frozen behind it? (`[<target-repo>] [--json] [--quiet]`; exit 0 = uniformly current / 1 = N frozen / 2 = could not evaluate — issue #1320) |
 | `generate-anvil-agents.py` | working | Regenerate the checked-in `anvil/agents/` per-(skill, phase) agent definitions from each skill's command list |
 | `new-skill.sh` | planned | Scaffold a new skill from `anvil/templates/` |
 
@@ -50,7 +51,12 @@ that coexists with Loom in the same consumer repo.
    installed skills, skipped overrides, per-skill `skill_hashes` baseline for next re-install) and
    `.anvil/.install-local.json` (gitignored sidecar: `anvil_source` absolute path, `install_date` —
    machine-local fields moved out of the tracked manifest in issue #894).
-10. Print summary.
+10. Print summary. When any skill landed in `skipped_overrides`, the summary states plainly that the
+    tree is **not** uniformly at `ANVIL_VERSION`, names each frozen skill and the version its body is
+    actually at (from `skill_versions`), and closes with a `PARTIAL` qualifier instead of a bare
+    "installed" (issue #1320 — the per-file skip warning scrolls past; the summary is what a human
+    reads). `scripts/check-install-staleness.sh` answers the same question after the fact, without
+    re-running an install.
 
 ### Resyncing an existing install (issue #894)
 
