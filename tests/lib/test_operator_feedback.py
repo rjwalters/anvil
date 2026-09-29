@@ -126,3 +126,23 @@ def test_cli_write_and_check(tmp_path, capsys):
     # A second write to the same version is refused (exit 2), not overwritten.
     assert main(["write", str(v), "--flag", "x: y"]) == 2
     assert main(["check", str(tmp_path / "missing.1")]) == 2
+
+
+def test_cli_refuses_pending_dependency_flag(tmp_path, capsys):
+    """A pending_dependency flag is non-blocking, so ``check`` would report
+    revise_required: false — the write is refused rather than silently
+    doing nothing (Judge note on PR #1325)."""
+    v = _version(tmp_path)
+    rc = main(["write", str(v), "--flag", f"{PENDING_DEPENDENCY_FLAG_TYPE}: waiting on #12"])
+    assert rc == 2
+    assert PENDING_DEPENDENCY_FLAG_TYPE in capsys.readouterr().err
+    assert not (v.parent / f"{v.name}.{OPERATOR_SUFFIX}").exists()
+
+
+def test_cli_unknown_prefix_stays_in_justification(tmp_path, capsys):
+    v = _version(tmp_path)
+    assert main(["write", str(v), "--flag", "abstract: overclaims the bound"]) == 0
+    capsys.readouterr()
+    [flag] = operator_blocking_flags(v)
+    assert flag.type == DEFAULT_FLAG_TYPE
+    assert flag.justification == "abstract: overclaims the bound"

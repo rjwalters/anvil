@@ -96,8 +96,13 @@ Both are reporting aids and never change what is detected:
   order from ``<thread>/.anvil.json`` ``public_repo_url``, the thread
   ``BRIEF.md`` frontmatter ``public_repo_url``, then the first public
   forge link (GitHub, GitLab, Codeberg, Bitbucket, Zenodo, DOI, OSF,
-  figshare, Hugging Face) in the paper itself. When it resolves, each
-  ``unlinked_artifact_path`` fix suggests the concrete ``\\href`` target.
+  figshare, Hugging Face) inside the paper's artifacts/availability
+  section only (a dependency cited elsewhere, e.g. the Mathlib GitHub in
+  the introduction, is never the paper's repository). The result carries
+  ``public_repo_url_source`` (``anvil_json`` / ``brief`` = declared,
+  ``derived`` = guessed). Only a declared URL yields a concrete ``\\href``
+  in the ``unlinked_artifact_path`` fix (and, in ``paper-audit``, a
+  critical flag); a derived URL is named as a candidate to confirm.
   The link-hygiene rule applies either way — a bare repo-relative path is
   unfollowable whether or not a public repository exists.
 
@@ -130,7 +135,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 from anvil.lib.body_resolution import record_body_path, resolve_body_path
 from anvil.lib.review_schema import Finding, Kind, Review, Score
@@ -166,6 +171,17 @@ SEVERITY_SUPPRESSED = "nit"
 BRIEF_FILENAME = "BRIEF.md"
 ANVIL_JSON = ".anvil.json"
 PUBLIC_REPO_KEY = "public_repo_url"
+
+# Provenance of the resolved public repository URL. Only a *declared* URL
+# (``.anvil.json`` / BRIEF frontmatter) is trusted enough to escalate an
+# unlinked artifact path to an audit critical flag or to template a concrete
+# ``\href`` fix; a URL *derived* from the paper's own artifacts section is a
+# candidate the author must confirm (a cited dependency is not the paper's
+# repository).
+REPO_SOURCE_ANVIL_JSON = "anvil_json"
+REPO_SOURCE_BRIEF = "brief"
+REPO_SOURCE_DERIVED = "derived"
+DECLARED_REPO_SOURCES = (REPO_SOURCE_ANVIL_JSON, REPO_SOURCE_BRIEF)
 
 # ---------------------------------------------------------------------------
 # Vocabulary (fixed, small, case-insensitive)
@@ -467,8 +483,15 @@ def _dedupe(terms: Iterable[str]) -> Tuple[str, ...]:
     return tuple(out)
 
 
-def _scan_lines(lines: Sequence[_Line], *, latex: bool) -> List[AudienceHit]:
-    hits: List[AudienceHit] = []
+def _walk_scopes(
+    lines: Sequence[_Line], *, latex: bool
+) -> Iterator[Tuple[_Line, bool, str, str, bool]]:
+    """Yield ``(line, is_heading, region, section, in_artifacts)`` per line.
+
+    ``in_artifacts`` is ``True`` for a non-heading line inside an
+    artifacts/availability section (scope closes at the next heading of
+    the same or a higher level).
+    """
     region = REGION_BODY
     section = ""
     artifacts_level: Optional[int] = None  # heading level that opened scope
@@ -494,6 +517,26 @@ def _scan_lines(lines: Sequence[_Line], *, latex: bool) -> List[AudienceHit]:
                 artifacts_level = None
             if _ARTIFACTS_HEADING_RE.search(title):
                 artifacts_level = level
+        yield (
+            ln,
+            heading is not None,
+            region,
+            section,
+            artifacts_level is not None and heading is None,
+        )
+
+
+def _artifacts_text(lines: Sequence[_Line], *, latex: bool) -> str:
+    """The (comment/code-masked) text of every artifacts-section line."""
+    return "\n".join(
+        ln.base for ln, _h, _r, _s, in_art in _walk_scopes(lines, latex=latex) if in_art
+    )
+
+
+def _scan_lines(lines: Sequence[_Line], *, latex: bool) -> List[AudienceHit]:
+    hits: List[AudienceHit] = []
+
+    for ln, _is_heading, region, section, in_artifacts in _walk_scopes(lines, latex=latex):
 
         def emit(rule: str, terms: Iterable[str]) -> None:
             t = _dedupe(terms)
@@ -519,7 +562,7 @@ def _scan_lines(lines: Sequence[_Line], *, latex: bool) -> List[AudienceHit]:
             RULE_PRIVATE_LOCATOR,
             (m.group(0) for p in _PRIVATE_LOCATOR_PATTERNS for m in p.finditer(ln.base)),
         )
-        if artifacts_level is not None and heading is None:
+        if in_artifacts:
             if not _NOT_PUBLISHED_RE.search(ln.raw):
                 linkless = _mask_links(ln.base).replace("\\_", "_")
                 emit(RULE_UNLINKED_PATH, (m.group(1) for m in _PATH_RE.finditer(linkless)))
@@ -614,12 +657,18 @@ def _normalize_repo_url(url: str) -> str:
     return url
 
 
-def resolve_public_repo_url(thread_dir: Path, text: str = "") -> Optional[str]:
-    """Resolve the thread's public repository URL, or ``None``.
+def resolve_public_repo_url_with_source(
+    thread_dir: Path, text: str = ""
+) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve the thread's public repository URL and where it came from.
 
-    Order: ``<thread>/.anvil.json`` ``public_repo_url`` → thread
-    ``BRIEF.md`` frontmatter ``public_repo_url`` → first public-forge link
-    in ``text`` (forge repo links are normalized to ``https://host/owner/repo``).
+    Returns ``(url, source)``; ``source`` is ``"anvil_json"`` or ``"brief"``
+    for a declared URL, ``"derived"`` for the first public-forge link in
+    ``text``, and ``None`` (with ``url=None``) when nothing resolves.
+    :func:`check_audience` passes only the artifacts/availability-section
+    text as ``text``, so a dependency cited in the introduction (e.g. the
+    Mathlib GitHub) is never mistaken for the paper's own repository.
+    Forge repo links are normalized to ``https://host/owner/repo``.
     """
     thread_dir = Path(thread_dir)
     anvil_json = thread_dir / ANVIL_JSON
@@ -630,14 +679,25 @@ def resolve_public_repo_url(thread_dir: Path, text: str = "") -> Optional[str]:
             cfg = {}
         val = cfg.get(PUBLIC_REPO_KEY) if isinstance(cfg, dict) else None
         if isinstance(val, str) and val.strip():
-            return val.strip().rstrip("/")
+            return val.strip().rstrip("/"), REPO_SOURCE_ANVIL_JSON
     val = _read_frontmatter(thread_dir / BRIEF_FILENAME).get(PUBLIC_REPO_KEY)
     if isinstance(val, str) and val.strip():
-        return val.strip().rstrip("/")
+        return val.strip().rstrip("/"), REPO_SOURCE_BRIEF
     m = _PUBLIC_FORGE_RE.search(text or "")
     if m:
-        return _normalize_repo_url(m.group(0))
-    return None
+        return _normalize_repo_url(m.group(0)), REPO_SOURCE_DERIVED
+    return None, None
+
+
+def resolve_public_repo_url(thread_dir: Path, text: str = "") -> Optional[str]:
+    """Resolve the thread's public repository URL, or ``None``.
+
+    Order: ``<thread>/.anvil.json`` ``public_repo_url`` → thread
+    ``BRIEF.md`` frontmatter ``public_repo_url`` → first public-forge link
+    in ``text``. See :func:`resolve_public_repo_url_with_source` for the
+    provenance, which decides whether the URL is trusted.
+    """
+    return resolve_public_repo_url_with_source(thread_dir, text)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -655,6 +715,14 @@ class AudienceResult:
     hits: List[AudienceHit] = field(default_factory=list)
     declared_audience: List[str] = field(default_factory=list)
     public_repo_url: Optional[str] = None
+    public_repo_url_source: Optional[str] = None
+
+    @property
+    def public_repo_url_declared(self) -> bool:
+        """``True`` only for a URL declared in ``.anvil.json`` / BRIEF.md."""
+        return bool(self.public_repo_url) and (
+            self.public_repo_url_source in DECLARED_REPO_SOURCES
+        )
 
     @property
     def active_hits(self) -> List[AudienceHit]:
@@ -679,6 +747,8 @@ class AudienceResult:
             "files": list(self.files),
             "declared_audience": list(self.declared_audience),
             "public_repo_url": self.public_repo_url,
+            "public_repo_url_source": self.public_repo_url_source,
+            "public_repo_url_declared": self.public_repo_url_declared,
             "hits": [h.to_dict() for h in self.hits],
             "counts": self.counts(),
             "suppressed_count": len(self.suppressed_hits),
@@ -730,7 +800,7 @@ class AudienceResult:
                 f"'not published' marker; a reader cannot follow them. "
                 f"Excerpt: {h.excerpt!r}."
             )
-            if self.public_repo_url:
+            if self.public_repo_url_declared:
                 first = h.terms[0]
                 fix = (
                     f"Link each path to its public location, e.g. "
@@ -738,6 +808,17 @@ class AudienceResult:
                     f"{{\\texttt{{{first}}}}} (resolved public repository: "
                     f"{self.public_repo_url}), or mark it explicitly "
                     f"'not published'."
+                )
+            elif self.public_repo_url:
+                fix = (
+                    f"Link each path to a public location with \\href/\\url, "
+                    f"or mark it explicitly 'not published'. Candidate "
+                    f"repository {self.public_repo_url} was only derived from a "
+                    f"link in this section and is NOT confirmed as the paper's "
+                    f"own repository: if it hosts these artifacts, declare it as "
+                    f"`public_repo_url` in <thread>/.anvil.json or the thread "
+                    f"BRIEF.md frontmatter and link each path there; never "
+                    f"invent a URL."
                 )
             else:
                 fix = (
@@ -823,15 +904,18 @@ def check_audience(
     body_label = record_body_path(version_dir, body_file)
     lines, files = _document_lines(body_file, version_dir, body_label=body_label)
     hits = _scan_lines(lines, latex=body_file.suffix == ".tex")
-    full_text = "\n".join(ln.base for ln in lines)
     thread_dir = version_dir.parent
+    repo_url, repo_source = resolve_public_repo_url_with_source(
+        thread_dir, _artifacts_text(lines, latex=body_file.suffix == ".tex")
+    )
     return AudienceResult(
         version_dir=version_dir.name,
         body_path=body_label,
         files=files,
         hits=hits,
         declared_audience=load_declared_audience(thread_dir),
-        public_repo_url=resolve_public_repo_url(thread_dir, full_text),
+        public_repo_url=repo_url,
+        public_repo_url_source=repo_source,
     )
 
 
@@ -912,6 +996,11 @@ __all__ = [
     "find_audience_hits",
     "load_declared_audience",
     "resolve_public_repo_url",
+    "resolve_public_repo_url_with_source",
+    "REPO_SOURCE_ANVIL_JSON",
+    "REPO_SOURCE_BRIEF",
+    "REPO_SOURCE_DERIVED",
+    "DECLARED_REPO_SOURCES",
     "check_audience",
     "write_review_dir",
     "main",

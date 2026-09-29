@@ -25,7 +25,9 @@ The operator writes one more critic sibling at the current version,
   ``CriticalFlag.type`` are free-form, so no schema-version bump is
   needed. The conventional flag types are ``operator_defect`` (default)
   and ``brief_amendment`` (the BRIEF changed after READY and the text
-  must follow it). The single ``Score`` is ``score=None``: the operator
+  must follow it); the CLI's ``--flag`` recognizes only those two as a
+  ``type:`` prefix and refuses ``pending_dependency:`` (non-blocking, so
+  it would silently do nothing). The single ``Score`` is ``score=None``: the operator
   owns no rubric dimension and the /44 total is unchanged.
 - ``_meta.json``: ``scorecard_kind: "human-verdict"``, the same template
   the reviewer's own sibling uses.
@@ -68,7 +70,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from anvil.lib.convergence import blocking_critical_flags
+from anvil.lib.convergence import PENDING_DEPENDENCY_FLAG_TYPE, blocking_critical_flags
 from anvil.lib.review_schema import CriticalFlag, Finding, Kind, Review, Score, Verdict
 from anvil.lib.sidecar import cleanup_one_staging, staged_sidecar
 
@@ -83,6 +85,10 @@ DEFAULT_FLAG_TYPE = "operator_defect"
 
 BRIEF_AMENDMENT_FLAG_TYPE = "brief_amendment"
 """Flag type for a BRIEF change after READY that the text must follow."""
+
+KNOWN_FLAG_TYPES = (DEFAULT_FLAG_TYPE, BRIEF_AMENDMENT_FLAG_TYPE)
+"""Flag-type prefixes ``--flag`` recognizes; any other ``word:`` prefix is
+kept as part of the justification (typed ``operator_defect``)."""
 
 NOTES_FILENAME = "operator.md"
 REQUIRED_FILES = ("_review.json", "_meta.json", NOTES_FILENAME)
@@ -206,8 +212,25 @@ def revise_required_by_operator(version_dir: Path) -> bool:
 
 
 def _parse_flag(spec: str) -> CriticalFlag:
+    """Parse one ``--flag`` value into a blocking :class:`CriticalFlag`.
+
+    Only the known types (:data:`KNOWN_FLAG_TYPES`) are honoured as a
+    ``type:`` prefix; ``"abstract: overclaims the bound"`` stays an
+    ``operator_defect`` with the full text as justification. A
+    ``pending_dependency:`` prefix raises :class:`ValueError`: that type is
+    non-blocking everywhere (``check`` would report ``revise_required:
+    false``), so the operator's feedback would silently do nothing.
+    """
     m = _FLAG_TYPE_RE.match(spec)
-    if m:
+    if m and m.group(1) == PENDING_DEPENDENCY_FLAG_TYPE:
+        raise ValueError(
+            f"--flag type {PENDING_DEPENDENCY_FLAG_TYPE!r} is non-blocking and "
+            f"would not reopen the thread (check reports revise_required: "
+            f"false). Use '{DEFAULT_FLAG_TYPE}:' or "
+            f"'{BRIEF_AMENDMENT_FLAG_TYPE}:' (or no prefix) for feedback that "
+            f"must be revised."
+        )
+    if m and m.group(1) in KNOWN_FLAG_TYPES:
         return CriticalFlag(type=m.group(1), justification=m.group(2).strip())
     return CriticalFlag(type=DEFAULT_FLAG_TYPE, justification=spec.strip())
 
@@ -231,9 +254,12 @@ def _build_cli_parser():
         required=True,
         metavar="[TYPE:] JUSTIFICATION",
         help=(
-            f"One critical flag per use. A leading lowercase 'type:' sets "
-            f"the flag type (e.g. '{BRIEF_AMENDMENT_FLAG_TYPE}: ...'); "
-            f"otherwise '{DEFAULT_FLAG_TYPE}'."
+            f"One critical flag per use. A leading "
+            f"'{BRIEF_AMENDMENT_FLAG_TYPE}:' or '{DEFAULT_FLAG_TYPE}:' sets "
+            f"the flag type; otherwise '{DEFAULT_FLAG_TYPE}' (any other "
+            f"'word:' prefix stays in the text). "
+            f"'{PENDING_DEPENDENCY_FLAG_TYPE}:' is refused (exit 2): it is "
+            f"non-blocking and would not reopen the thread."
         ),
     )
     w.add_argument("--notes", default=None, help="Free-text notes for operator.md.")
@@ -249,7 +275,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"error: version_dir {version_dir} does not exist", file=sys.stderr)
         return 2
     if args.cmd == "write":
-        review = build_operator_review(version_dir.name, [_parse_flag(s) for s in args.flag])
+        try:
+            flags = [_parse_flag(s) for s in args.flag]
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        review = build_operator_review(version_dir.name, flags)
         try:
             out = write_operator_review(version_dir, review, notes=args.notes)
         except FileExistsError as exc:
@@ -277,6 +308,7 @@ __all__ = [
     "OPERATOR_SUFFIX",
     "DEFAULT_FLAG_TYPE",
     "BRIEF_AMENDMENT_FLAG_TYPE",
+    "KNOWN_FLAG_TYPES",
     "operator_dir",
     "build_operator_review",
     "write_operator_review",

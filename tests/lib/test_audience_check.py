@@ -45,7 +45,11 @@ from anvil.lib.audience_check import (
     find_audience_hits,
     load_declared_audience,
     main,
+    REPO_SOURCE_ANVIL_JSON,
+    REPO_SOURCE_BRIEF,
+    REPO_SOURCE_DERIVED,
     resolve_public_repo_url,
+    resolve_public_repo_url_with_source,
     write_review_dir,
 )
 from anvil.lib.critics import aggregate, compute_verdict, discover_critics, load_review
@@ -274,6 +278,103 @@ def test_result_json_and_fix_names_public_repo(tmp_path):
     gov_findings = [f for f in review.findings if "Combinatorialists" in f.rationale]
     assert gov_findings
     assert "non-published process log" in gov_findings[0].suggested_fix
+
+
+_CITED_DEPENDENCY_TEX = r"""\documentclass{article}
+\begin{document}
+\section{Introduction}
+We build on Mathlib \url{https://github.com/leanprover-community/mathlib4}.
+\section{Artifacts and receipts}
+The timing census is in refs/CENSUS_TIMING_20260928.md and sat49/H1_TIMING.md.
+\end{document}
+"""
+
+
+def test_cited_dependency_outside_artifacts_is_not_the_public_repo(tmp_path):
+    """Judge finding on PR #1325: a repo cited in the introduction (Mathlib)
+    must not be reported as the paper's own repository, must not make the
+    link-hygiene hits critical-eligible, and must not template an invented
+    \\href."""
+    version = _make_thread(tmp_path, _CITED_DEPENDENCY_TEX)
+    result = check_audience(version)
+    payload = result.to_json()
+    assert payload["public_repo_url"] is None
+    assert payload["public_repo_url_source"] is None
+    assert payload["public_repo_url_declared"] is False
+    paths = _by_rule(result.active_hits, RULE_UNLINKED_PATH)
+    assert [h.terms for h in paths] == [
+        ("refs/CENSUS_TIMING_20260928.md", "sat49/H1_TIMING.md")
+    ]
+    review = result.to_review(version_dir=version.name)
+    assert review.critical_flags == []
+    fixes = [f.suggested_fix for f in review.findings if "CENSUS" in f.rationale]
+    assert fixes
+    for fix in fixes:
+        assert "mathlib4" not in fix
+        assert "\\href{http" not in fix
+        assert "declare `public_repo_url`" in fix
+
+
+def test_derived_repo_url_is_a_candidate_not_a_concrete_href(tmp_path):
+    # _DEFECT_TEX links its repository inside the artifacts section, so the
+    # URL is derived — but still unconfirmed: no concrete \href is templated.
+    version = _make_thread(tmp_path, _DEFECT_TEX)
+    result = check_audience(version)
+    assert result.public_repo_url == "https://github.com/example/proofs"
+    assert result.public_repo_url_source == REPO_SOURCE_DERIVED
+    assert result.public_repo_url_declared is False
+    review = result.to_review(version_dir=version.name)
+    fix = next(
+        f.suggested_fix for f in review.findings if "refs/CENSUS_TIMING_20260928.md" in f.rationale
+    )
+    assert "\\href{https://github.com/example/proofs" not in fix
+    assert "NOT confirmed" in fix
+    assert "never invent a URL" in fix
+
+
+def test_declared_repo_url_templates_concrete_href(tmp_path):
+    version = _make_thread(tmp_path, _CITED_DEPENDENCY_TEX)
+    (version.parent / "BRIEF.md").write_text(
+        "---\npublic_repo_url: https://github.com/example/proofs\n---\n", encoding="utf-8"
+    )
+    result = check_audience(version)
+    assert result.public_repo_url_source == REPO_SOURCE_BRIEF
+    assert result.public_repo_url_declared is True
+    assert result.to_json()["public_repo_url_declared"] is True
+    fix = next(
+        f.suggested_fix
+        for f in result.to_review(version_dir=version.name).findings
+        if "CENSUS" in f.rationale
+    )
+    assert (
+        "\\href{https://github.com/example/proofs/blob/<ref>/refs/CENSUS_TIMING_20260928.md}"
+        in fix
+    )
+
+
+def test_public_repo_url_source_order(tmp_path):
+    thread = tmp_path / "t"
+    thread.mkdir()
+    text = "Repo: https://github.com/example/proofs/tree/main/x"
+    assert resolve_public_repo_url_with_source(thread, text) == (
+        "https://github.com/example/proofs",
+        REPO_SOURCE_DERIVED,
+    )
+    (thread / "BRIEF.md").write_text(
+        "---\npublic_repo_url: https://gitlab.com/brief/repo/\n---\n", encoding="utf-8"
+    )
+    assert resolve_public_repo_url_with_source(thread, text) == (
+        "https://gitlab.com/brief/repo",
+        REPO_SOURCE_BRIEF,
+    )
+    (thread / ".anvil.json").write_text(
+        json.dumps({"public_repo_url": "https://codeberg.org/json/repo"}), encoding="utf-8"
+    )
+    assert resolve_public_repo_url_with_source(thread, text) == (
+        "https://codeberg.org/json/repo",
+        REPO_SOURCE_ANVIL_JSON,
+    )
+    assert resolve_public_repo_url_with_source(tmp_path / "nowhere", "") == (None, None)
 
 
 # ---------------------------------------------------------------------------
