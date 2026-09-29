@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-08-17 (Guide triage pass — #1140 (Consolidate DOC/_SKILL_ROOT-closure and remaining `_read(...)` test-helper variants into `anvil/lib/testing.py`) completed its full lifecycle since the prior pass: PR #1142 merged, closing #1140, so it drops out of Urgent/In Progress/PRs Awaiting Review/Proposed below. Otherwise the operator-only backlog is unchanged: the same ten `loom:operator-only` issues (#888, #918, #1069, #1070, #1072, #1073, #1081, #1090, #1103, #1107) remain open, none newly eligible for `loom:urgent`. No open PRs, no `loom:issue`/`loom:building`/`loom:blocked`/`loom:epic` issues. Incumbent `loom:urgent` set stayed empty (zero eligible candidates) — another quiet tick on that front. `WORK_LOG.md` NOT rewritten this pass: only one new merged PR (#1146, closing #1144) since the last write, below the 5-entry `LOOM_WORK_LOG_MIN_ENTRIES` threshold, and only ~4 minutes since WORK_LOG.md was last written (well under the 30-minute debounce) — batched for a later tick. README checked for architectural drift: none found, left untouched. No token-pool pressure signal (`.loom/tokens/.ranking` absent) — proceeded normally.)*
+*Last updated: 2026-09-29 (Guide triage pass — the backlog is essentially empty: zero open issues other than Champion's auto-maintained `loom:blocked` merge-risk-hold digest (#1224, not a work item, never curated/built/promoted), and the only open PRs are unlabeled Dependabot/Renovate dependency-bump PRs outside the loom review pipeline. `#888` (previously listed here as `loom:curated`) closed 2026-09-15 via PR #1317/#1316, so "Proposed" is now empty. This pass also migrated the section set from the retired `loom:urgent` label to `loom:operator-priority` (#9244) — Guide never applies or removes that label, only reads it; it stayed empty this tick. `WORK_LOG.md` was rewritten this pass after a large gap: the prior committed entry was #1142 (2026-08-17), 18 merged PRs and 165 closed issues had accumulated unrecorded since, well above the 5-entry minimum — written immediately rather than deferred. No token-pool pressure signal (`.loom/tokens/.ranking` absent) — proceeded normally.)*
 
 ---
 
@@ -13,9 +13,9 @@ Judge-approved PRs stuck under a `loom:operator` merge-risk hold — implementat
 
 _None._
 
-## Urgent
+## Operator Priority
 
-Issues flagged as highest priority (`loom:urgent`).
+Issues the operator starred (`loom:operator-priority`); land these first.
 
 _None._
 
@@ -47,7 +47,7 @@ _None._
 
 Issues carrying `loom:curated`.
 
-- **#888**: review loop has no lookahead and no cross-version claim ledger — each round's fix creates the next round's defect *(curated)*
+_None._
 
 ## Proposed (Architect / Hermit)
 
@@ -62,12 +62,12 @@ _None._
 | Tier | Count |
 |------|-------|
 | Operator merge-risk holds | 0 |
-| Urgent | 0 |
+| Operator priority | 0 |
 | Ready (`loom:issue`) | 0 |
 | In Progress (`loom:building`) | 0 |
 | PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 1 |
+| Curated | 0 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
