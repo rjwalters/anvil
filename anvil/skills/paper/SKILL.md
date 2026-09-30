@@ -300,6 +300,8 @@ Bringing a pre-existing, hand-authored LaTeX paper into the `paper` grammar is a
 
 **Decision guidance:** use `\documentclass[numeric]{anvil-paper}` when only the citation style is the blocker; keep the original `\documentclass` verbatim when the preamble itself collides (theorem environments, package-option clashes, or highly customized macros). See `commands/paper-draft.md` § "Documentclass overrides" for how the brief frontmatter selects the class.
 
+**Migrating from Markdown via pandoc (issue #1328):** when the source manuscript is Markdown, `pandoc -t latex` body output pastes into `main.tex` under `anvil-paper` as-is — including its tables. Pandoc renders *every* pipe table as a `longtable` (not `tabular`), with the caption inside the environment and, for tables wider than the line, `>{\raggedright\arraybackslash}p{(\linewidth - 2\tabcolsep) * \real{...}}` column specs. The class loads `booktabs`, `longtable`, `array`, and `calc` **before** `caption` so all of that typesets without a preamble patch; the ordering is load-bearing (`caption` installs its `\LT@` longtable hooks for a `longtable` already loaded when `caption` itself loads, which is why adding `\usepackage{longtable}` to the document preamble instead is not a reliable substitute on older caption/longtable releases). **Do not rewrite pandoc longtables as `tabular`/`tabularx`** — that was the pre-#1328 workaround and it loses page breaking for tables longer than a page. Convert only the body (`pandoc -t latex body.md`), not a `--standalone` document: pandoc's own preamble would re-`\usepackage` these packages and clash with the class's options.
+
 ## Anonymous / double-blind submission
 
 When the brief sets `anonymous: true`, the drafter:

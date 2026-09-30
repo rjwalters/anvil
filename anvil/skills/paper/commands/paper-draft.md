@@ -162,6 +162,8 @@ The skill ships `templates/anvil-paper.cls`, a generic single-column class that 
 
 The `documentclass:` frontmatter is **not restricted to venue styles**. When migrating an existing paper with a load-bearing preamble (custom theorem environments, `xcolor`/`hyperref`/`caption`/`amsthm` option clashes, or a citation style anvil-paper does not support even with the `numeric` option), the brief MAY set `documentclass: article` (or the paper's original class) and keep the paper's preamble verbatim in `main.tex`. This is a first-class, sanctioned value — the drafter's step-5 branch has no allowlist, and the lifecycle, rubric, and render-gate are all class-agnostic. See `SKILL.md` § "Migrating an existing paper" for the full decision guidance.
 
+**Pandoc-converted tables need no override (issue #1328).** `anvil-paper` loads `booktabs`, `longtable`, `array`, and `calc` before `caption`, so a `pandoc -t latex` table body — always a `longtable`, with its `\caption{}` inside the environment, and `p{... \real{...}}` column specs once wider than the line — compiles under the default class untouched. Paste it in verbatim; do **not** rewrite it as `tabular`/`tabularx` (that loses page breaking on long tables), and do not reach for a `documentclass:` override on account of tables alone. Convert the body only (`pandoc -t latex body.md`), not `--standalone`: pandoc's own preamble re-`\usepackage`s these same packages and can clash with the class's options. See `SKILL.md` § "Migrating an existing paper".
+
 This is the standard anvil override pattern — see `SKILL.md` "Defaults and overrides" and the consumer's `.anvil/skills/paper/` layout.
 
 ## Idempotence and resumability
