@@ -243,3 +243,34 @@
   description: "Non-collaborator submission; needs maintainer approval before curation. Applied by: humans only."
   color: "E5E7EB"  # gray-200 - external/hold marker
 # END LOOM LABELS
+
+# Points Estimate Labels (Curator sizing, #1331)
+# Not part of the LOOM-MANAGED block above — these are anvil-repo-local and
+# survive resync-installed.sh refreshes, per the BEGIN/END marker's own
+# instruction to add repo-owned labels outside the managed range.
+# Fibonacci size classes per .loom/docs/story-points.md; exactly one per
+# curated issue, applied by Curator in the same `gh issue edit` as
+# `loom:curated` (see curator.md "Points estimate marker").
+- name: points:1
+  description: "Story points: ~12 hand-written lines, ~1 file (Fibonacci size class)"
+  color: "C5DEF5"  # light blue - smallest size class
+
+- name: points:2
+  description: "Story points: ~110 hand-written lines, ~2 files (Fibonacci size class)"
+  color: "BFD4F2"  # blue
+
+- name: points:3
+  description: "Story points: ~285 hand-written lines, ~4 files (Fibonacci size class)"
+  color: "B3C6E7"  # medium blue
+
+- name: points:5
+  description: "Story points: ~610 hand-written lines, ~6 files (Fibonacci size class)"
+  color: "9DB4DB"  # blue-gray
+
+- name: points:8
+  description: "Story points: ~1,000 hand-written lines, ~8 files (Fibonacci size class)"
+  color: "8AA0CC"  # deeper blue-gray
+
+- name: points:13
+  description: "Story points: ~2,000 hand-written lines, 8+ files (largest size class before required split)"
+  color: "7389B8"  # darkest size class
