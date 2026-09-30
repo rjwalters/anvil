@@ -707,10 +707,20 @@ The lib reads three on-disk shapes today:
    used by ip-uspto and the deck specialists.
 
 When a critic sibling contains both `_review.json` and a legacy triple,
-the canonical JSON wins and the legacy files are treated as stale (with a
-`DeprecationWarning`). When only a legacy triple exists, the adapter
-parses it into a `Review` and emits a `DeprecationWarning` per call so the
-migration backlog is visible.
+the canonical JSON always wins as the parsed payload. Whether the
+co-present prose is *stale* is a separate question (issue #1327): a
+schema-aware command may write prose **and** `_review.json` together as
+one canonical output — `paper-review` does — so co-presence alone is not
+deprecation. The prose is treated as part of the same canonical write,
+with **no** `DeprecationWarning`, when `_meta.json` declares a
+`scorecard_kind` and `verdict.md`'s `Total:` / `Decision: advance:` lines
+do not contradict the JSON's `total` / `verdict`; otherwise the prose is
+reported as stale. See `snippets/scorecard_kind.md` §"Canonical
+`_review.json` alongside prose" for the full table.
+
+When only a legacy triple exists, the adapter parses it into a `Review`
+and emits a `DeprecationWarning` per call so the migration backlog is
+visible — `scorecard_kind` does not suppress that path.
 
 The adapter is a **bridge**, not a permanent home. Each shipped skill
 should migrate its `<skill>-review` command to write `_review.json` in a

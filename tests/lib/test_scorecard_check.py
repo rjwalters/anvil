@@ -10,6 +10,7 @@ weights sum to 48 under a declared 44/44 ``advance: true`` verdict).
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 
 import pytest
@@ -649,6 +650,101 @@ def test_dir_value_bolded_total_and_decision_parse_correctly(tmp_path):
 
     findings = check_review_dir(critic_dir)
     assert findings == []
+
+
+def test_dir_legacy_prose_only_load_stays_silent(tmp_path):
+    """Issue #1327 AC5: the remaining suppression covers the legacy shape.
+
+    ``check_review_dir``'s job includes reading a prose triple that has
+    no ``_review.json`` at all, so the legacy adapter's
+    ``DeprecationWarning`` is still suppressed for exactly that shape.
+    """
+    critic_dir = _write_review_dir(
+        tmp_path,
+        weights=MEMO_WEIGHTS,
+        scores=[4, 6, 5, 5, 4, 5, 4, 4, 4],
+        total=41,
+        denominator=44,
+        advance=True,
+        meta=STAMPED_META,
+    )
+    assert not (critic_dir / "_review.json").exists()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        findings = check_review_dir(critic_dir)
+
+    assert findings == []
+    assert [w for w in caught if w.category is DeprecationWarning] == []
+
+
+def test_dir_declared_co_write_load_stays_silent(tmp_path):
+    """Issue #1327 AC5: the canonical co-write no longer needs suppression.
+
+    A sidecar carrying BOTH ``_review.json`` and agreeing prose, with a
+    ``scorecard_kind`` stamped in ``_meta.json`` (the ``paper-review``
+    shape), is loaded without the suppression branch and still emits
+    nothing.
+    """
+    critic_dir = _write_review_dir(
+        tmp_path,
+        weights=MEMO_WEIGHTS,
+        scores=[4, 6, 5, 5, 4, 5, 4, 4, 4],
+        total=41,
+        denominator=44,
+        advance=True,
+        meta=STAMPED_META,
+    )
+    canonical = _make_review(
+        weights=MEMO_WEIGHTS,
+        scores=[4, 6, 5, 5, 4, 5, 4, 4, 4],
+        total=41,
+        verdict=Verdict.ADVANCE,
+    )
+    (critic_dir / "_review.json").write_text(canonical.model_dump_json(indent=2))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        findings = check_review_dir(critic_dir)
+
+    assert findings == []
+    assert [w for w in caught if w.category is DeprecationWarning] == []
+
+
+def test_dir_co_present_prose_disagreement_warning_reaches_caller(tmp_path):
+    """Issue #1327 AC5: the suppression no longer covers the canonical shape.
+
+    A sidecar carrying BOTH ``_review.json`` and prose whose verdict
+    disagrees is a real defect (a hand-edited or left-behind
+    ``verdict.md``). ``check_review_dir`` no longer swallows
+    ``load_review``'s warning about it.
+    """
+    critic_dir = _write_review_dir(
+        tmp_path,
+        weights=MEMO_WEIGHTS,
+        scores=[4, 6, 5, 5, 4, 5, 4, 4, 4],
+        total=41,
+        denominator=44,
+        advance=True,  # prose says advance: true ...
+        meta=STAMPED_META,
+    )
+    canonical = _make_review(
+        weights=MEMO_WEIGHTS,
+        scores=[4, 6, 5, 5, 4, 5, 4, 4, 4],
+        total=41,
+        verdict=Verdict.REVISE,  # ... the JSON says REVISE
+    )
+    (critic_dir / "_review.json").write_text(canonical.model_dump_json(indent=2))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        check_review_dir(critic_dir)
+
+    messages = [
+        str(w.message) for w in caught if w.category is DeprecationWarning
+    ]
+    assert messages, "a prose/JSON disagreement warning must reach the caller"
+    assert "disagrees" in messages[0]
 
 
 def test_finding_is_frozen_dataclass():

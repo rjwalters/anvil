@@ -4,6 +4,10 @@ Covers:
 
 - Discovery of sibling critic dirs (canonical + legacy + mixed).
 - Load precedence: canonical > legacy, with deprecation warnings.
+- Canonical co-write (prose + ``_review.json`` written together by a
+  schema-aware command) loading silently, vs genuinely-stale prose
+  (content disagreement, or no ``scorecard_kind`` declaration) still
+  warning — issue #1327.
 - Loading errors when no recognizable payload exists.
 - Aggregation: mean-of-non-null, OR of critical, fix union dedup,
   evidence-span first-wins.
@@ -42,6 +46,7 @@ from anvil.lib.review_schema import (
     Score,
     Verdict,
 )
+from anvil.lib.sidecar import staged_sidecar
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +185,12 @@ def test_load_canonical(tmp_path):
 
 
 def test_load_canonical_with_stale_legacy_files_warns(tmp_path):
+    """Undeclared co-presence stays a warning (issue #1327).
+
+    Prose alongside ``_review.json`` with NO ``_meta.json`` at all is the
+    genuinely-legacy shape: nothing declares the prose as part of a
+    canonical co-write, so it is still reported as stale.
+    """
     review_dir = tmp_path / "thread.1.review"
     _write_canonical(review_dir, _make_review())
     (review_dir / "verdict.md").write_text("stale")
@@ -193,6 +204,267 @@ def test_load_canonical_with_stale_legacy_files_warns(tmp_path):
     assert any(
         "stale" in str(w.message) for w in caught if w.category is DeprecationWarning
     )
+
+
+# ---------------------------------------------------------------------------
+# Loading — canonical co-write vs genuinely-stale prose (issue #1327)
+# ---------------------------------------------------------------------------
+
+
+PAPER_CO_WRITE_SCORING_MD = """# Scoring
+
+| # | Dimension | Weight | Score | Justification |
+|---|---|---|---|---|
+| 1 | rigor_of_method | 6 | 5 | "the estimator is unbiased" — §3.1. |
+| 2 | evidence_sufficiency | 6 | 5 | "n = 1,200 builds" — §4. |
+| 3 | clarity_of_contribution | 5 | 4 | "history as a scheduling signal" — §1. |
+| 4 | related_work_positioning | 5 | 4 | "unlike Chen et al." — §2. |
+| 5 | reproducibility | 5 | 5 | "the harness is published" — §6. |
+| 6 | figure_table_quality | 4 | 4 | "Figure 3" — §4.2. |
+| 7 | prose_structural_quality | 4 | 3 | "the section opens twice" — §5. |
+| 8 | citation_hygiene | 5 | 5 | no instance of an unsupported cite found. |
+| 9 | rhetorical_economy | 4 | 3 | "it is important to note" — §5. |
+"""
+
+
+def _paper_co_write_scores() -> list[Score]:
+    """The nine-dimension scorecard the prose table above declares."""
+    rows = [
+        ("rigor_of_method", 5, 6),
+        ("evidence_sufficiency", 5, 6),
+        ("clarity_of_contribution", 4, 5),
+        ("related_work_positioning", 4, 5),
+        ("reproducibility", 5, 5),
+        ("figure_table_quality", 4, 4),
+        ("prose_structural_quality", 3, 4),
+        ("citation_hygiene", 5, 5),
+        ("rhetorical_economy", 3, 4),
+    ]
+    return [Score(dimension=d, score=s, max=m) for d, s, m in rows]
+
+
+PAPER_CO_WRITE_META = {
+    "critic": "review",
+    "role": "paper-review.md",
+    "started": "2026-09-30T01:00:00Z",
+    "finished": "2026-09-30T01:22:00Z",
+    "model": "<model-id>",
+    "schema_version": 1,
+    "scorecard_kind": "human-verdict",
+    "rubric_id": "anvil-pub-v2",
+    "rubric_total": 44,
+    "advance_threshold": 35,
+}
+
+
+def _write_paper_review_dir(
+    tmp_path: Path,
+    *,
+    prose_total: int | str | None = 38,
+    prose_advance: bool | None = True,
+    canonical_total: int = 38,
+    canonical_verdict: Verdict | None = Verdict.ADVANCE,
+    meta: dict | None = None,
+) -> Path:
+    """Write a dir shaped exactly like ``paper-review``'s own output.
+
+    The full required-files manifest from
+    ``anvil/skills/paper/commands/paper-review.md`` step 3, committed
+    through ``staged_sidecar`` so the fixture exercises the same atomic
+    write path the real command uses.
+    """
+    final_dir = tmp_path / "thread.1.review"
+    required = [
+        "verdict.md",
+        "scoring.md",
+        "comments.md",
+        "findings.md",
+        CANONICAL_REVIEW_FILENAME,
+        "_summary.md",
+        "_meta.json",
+        "_progress.json",
+    ]
+    review = Review(
+        version_dir="thread.1",
+        critic_id="paper-review",
+        rubric="anvil-pub-v2",
+        scores=_paper_co_write_scores(),
+        total=canonical_total,
+        threshold=35,
+        verdict=canonical_verdict,
+    )
+    verdict_lines = ["# Verdict — thread.1 (paper-review)", ""]
+    if prose_total is not None:
+        verdict_lines.append(f"**Total**: {prose_total} / 44")
+    if prose_advance is not None:
+        decision = "true" if prose_advance else "false"
+        verdict_lines.append(f"**Decision**: `advance: {decision}`")
+    verdict_lines += ["", "## Critical flags", "", "None.", ""]
+
+    with staged_sidecar(final_dir=final_dir, required_files=required) as staging:
+        (staging / "verdict.md").write_text("\n".join(verdict_lines))
+        (staging / "scoring.md").write_text(PAPER_CO_WRITE_SCORING_MD)
+        (staging / "comments.md").write_text("# Comments\n\nNone.\n")
+        (staging / "findings.md").write_text("# Findings\n\nNone.\n")
+        (staging / CANONICAL_REVIEW_FILENAME).write_text(
+            review.model_dump_json(indent=2)
+        )
+        (staging / "_summary.md").write_text(
+            "# Review summary — thread.1\n\n## Rubric\n\n```json\n"
+            '{ "id": "anvil-pub-v2", "total": 44, "advance_threshold": 35 }\n'
+            "```\n"
+        )
+        if meta is not None:
+            (staging / "_meta.json").write_text(json.dumps(meta, indent=2))
+        else:
+            # The manifest still requires the file; an empty-object
+            # _meta.json is the pre-discriminator legacy shape.
+            (staging / "_meta.json").write_text("{}\n")
+        (staging / "_progress.json").write_text(
+            json.dumps({"phases": {"review": {"state": "complete"}}})
+        )
+    return final_dir
+
+
+def _deprecations(caught) -> list[str]:
+    return [
+        str(w.message) for w in caught if w.category is DeprecationWarning
+    ]
+
+
+def test_load_paper_style_co_write_does_not_warn(tmp_path):
+    """AC: a real paper-review dir loads with zero DeprecationWarning (#1327)."""
+    review_dir = _write_paper_review_dir(tmp_path, meta=PAPER_CO_WRITE_META)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        review = load_review(review_dir)
+
+    assert _deprecations(caught) == []
+    assert review.critic_id == "paper-review"
+    assert review.total == 38
+
+
+def test_load_paper_style_co_write_raises_nothing_under_error_filter(tmp_path):
+    """The manual reproduction from the issue: warnings-as-errors is silent."""
+    review_dir = _write_paper_review_dir(tmp_path, meta=PAPER_CO_WRITE_META)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        review = load_review(review_dir)  # must not raise
+    assert review.verdict is Verdict.ADVANCE
+
+
+def test_load_co_write_with_free_form_prose_does_not_warn(tmp_path):
+    """Declared co-write with no machine-comparable prose fields stays silent.
+
+    The vendored paper worked examples phrase the total as ``Total
+    **33/44**`` with no colon, which the memo verdict parser does not
+    read. A declared ``scorecard_kind`` is what makes the co-presence
+    intentional, so an unparseable verdict.md is not evidence of
+    staleness.
+    """
+    review_dir = _write_paper_review_dir(
+        tmp_path,
+        prose_total=None,
+        prose_advance=None,
+        meta=PAPER_CO_WRITE_META,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        load_review(review_dir)
+
+    assert _deprecations(caught) == []
+
+
+def test_load_co_write_with_disagreeing_total_warns(tmp_path):
+    """Edge case: hand-edited prose that contradicts the JSON still warns."""
+    review_dir = _write_paper_review_dir(
+        tmp_path,
+        prose_total=28,
+        canonical_total=38,
+        meta=PAPER_CO_WRITE_META,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        load_review(review_dir)
+
+    messages = _deprecations(caught)
+    assert messages, "a prose/JSON total disagreement must warn"
+    assert "28" in messages[0] and "38" in messages[0]
+    assert "stale" in messages[0]
+
+
+def test_load_co_write_with_disagreeing_advance_warns(tmp_path):
+    """A prose advance decision contradicting the canonical verdict warns."""
+    review_dir = _write_paper_review_dir(
+        tmp_path,
+        prose_advance=False,
+        canonical_verdict=Verdict.ADVANCE,
+        meta=PAPER_CO_WRITE_META,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        load_review(review_dir)
+
+    messages = _deprecations(caught)
+    assert messages, "a prose/JSON advance disagreement must warn"
+    assert "advance" in messages[0]
+    assert "stale" in messages[0]
+
+
+def test_load_co_write_without_scorecard_kind_warns(tmp_path):
+    """Consistent prose but no discriminator: still reported as stale."""
+    review_dir = _write_paper_review_dir(tmp_path, meta=None)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        load_review(review_dir)
+
+    messages = _deprecations(caught)
+    assert messages, "co-presence with no scorecard_kind must warn"
+    assert "scorecard_kind" in messages[0]
+
+
+def test_load_co_write_with_unparseable_meta_warns(tmp_path):
+    """A corrupt _meta.json is not a declaration — treat as undeclared."""
+    review_dir = _write_paper_review_dir(tmp_path, meta=None)
+    (review_dir / "_meta.json").write_text("{not json")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        load_review(review_dir)
+
+    assert _deprecations(caught), "unreadable _meta.json must not silence"
+
+
+def test_load_legacy_prose_only_still_warns_with_scorecard_kind(tmp_path):
+    """Edge case: prose WITHOUT _review.json keeps warning (memo-style skills).
+
+    ``scorecard_kind`` only suppresses the co-write warning; it must not
+    silence the legacy-adapter path, which is the signal that a critic
+    has not been migrated to write ``_review.json`` at all.
+    """
+    review_dir = tmp_path / "thread.1.review"
+    review_dir.mkdir()
+    (review_dir / "verdict.md").write_text(
+        "# Verdict\n\n**Total**: 38 / 44\n**Decision**: `advance: true`\n"
+    )
+    (review_dir / "scoring.md").write_text(PAPER_CO_WRITE_SCORING_MD)
+    (review_dir / "comments.md").write_text("# Comments\n\nNone.\n")
+    (review_dir / "_meta.json").write_text(json.dumps(PAPER_CO_WRITE_META))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        review = load_review(review_dir)
+
+    messages = _deprecations(caught)
+    assert messages, "the legacy memo triple must still warn"
+    assert "legacy memo prose triple" in messages[0]
+    assert review.total == 38
 
 
 def test_load_missing_raises(tmp_path):
