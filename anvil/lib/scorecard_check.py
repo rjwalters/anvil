@@ -60,7 +60,10 @@ convenience ``check_review_dir`` loads via ``critics.load_review``,
 reads the stamps from ``_meta.json``, reads any overlay-adjusted pool
 from ``_summary.md``'s ``rubric_overlay.weight_adjustments`` block, and
 converts ``pydantic.ValidationError`` into findings rather than
-crashing.
+crashing. It suppresses the legacy adapter's ``DeprecationWarning``
+**only** for a genuinely-legacy sidecar (prose with no ``_review.json``
+at all), since reading that shape is its job; a warning about co-present
+prose is passed through to the caller (issue #1327).
 """
 
 from __future__ import annotations
@@ -74,7 +77,11 @@ from typing import Dict, List, Optional
 
 from pydantic import ValidationError
 
-from anvil.lib.critics import load_review, parse_memo_verdict_decision
+from anvil.lib.critics import (
+    CANONICAL_REVIEW_FILENAME,
+    load_review,
+    parse_memo_verdict_decision,
+)
 from anvil.lib.review_schema import Review, Verdict
 
 
@@ -439,12 +446,23 @@ def check_review_dir(
     if verdict_path.exists():
         advance = parse_memo_verdict_decision(verdict_path.read_text())
 
-    # Load the typed review. Reading legacy prose triples is this
-    # function's job, so the adapter's DeprecationWarning is suppressed.
+    # Load the typed review. Reading a genuinely-legacy prose triple (no
+    # `_review.json` at all) is this function's job, so the legacy
+    # adapter's DeprecationWarning is suppressed for that shape only.
+    #
+    # Issue #1327: the suppression no longer covers the canonical case.
+    # A sidecar carrying BOTH `_review.json` and prose no longer warns on
+    # its own (critics.load_review recognizes the declared co-write), so
+    # when it *does* warn the prose genuinely disagrees with the JSON or
+    # is undeclared — exactly the defect class this function reports on.
+    # Letting that through to the caller is the point.
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
+        if (critic_dir / CANONICAL_REVIEW_FILENAME).exists():
             review = load_review(critic_dir)
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                review = load_review(critic_dir)
     except ValidationError as exc:
         return _validation_error_findings(exc)
 

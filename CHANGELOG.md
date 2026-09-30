@@ -286,6 +286,32 @@
 
 ### Fixed
 
+- **`load_review` no longer reports `paper-review`'s own canonical output as
+  deprecated** (#1327). Every `paper-review` pass writes the prose quadruple
+  (`verdict.md`, `scoring.md`, `comments.md`, `findings.md`) **and**
+  `_review.json` into `<thread>.{N}.review/` in one atomic `staged_sidecar`
+  commit — the prose for the reviser and a human, the JSON for the
+  convergence gate — but `anvil/lib/critics.py::load_review` treated "both
+  present" as the legacy shape and emitted a `DeprecationWarning` calling the
+  prose "stale" on every subsequent load of that directory (`paper-revise`,
+  `project-book`, `anvil:diff`, `anvil:deslop`, `operator_feedback`). It now
+  distinguishes a declared canonical co-write from genuinely stale prose:
+  silence requires `_meta.json` to declare a `scorecard_kind` (the
+  discriminator every schema-aware critic already stamps) **and** the prose
+  not to contradict the JSON — `verdict.md`'s `Total: XX / YY` and
+  `Decision: advance: true|false` lines, when present, must agree with
+  `_review.json`'s `total` and `verdict`. A hand-edited or left-behind
+  `verdict.md` that disagrees still warns, now naming the disagreement, and a
+  prose-only sibling with no `_review.json` at all still warns via the
+  unchanged legacy-adapter path (the un-migrated-critic signal the
+  `human-verdict` skills rely on). `anvil/lib/scorecard_check.py`'s
+  `warnings.catch_warnings()` workaround is narrowed to the genuinely-legacy
+  shape it was written for, so a co-present-prose disagreement now reaches the
+  caller instead of being swallowed. Contract reconciled across
+  `anvil/lib/critics.py`, `anvil/lib/snippets/scorecard_kind.md` (new
+  §"Canonical `_review.json` alongside prose"), `anvil/lib/README.md`, and
+  `anvil/skills/paper/commands/paper-review.md`.
+
 - **`slide-content-overflow` now measures a `bg right`/`bg left` split-panel
   slide against the text column it actually has, not the full slide width**
   (#1321). The wrap-cost model (`body_paragraph_chars_per_line` /
