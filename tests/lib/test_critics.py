@@ -8,7 +8,10 @@ Covers:
   schema-aware command) loading silently, vs genuinely-stale prose
   (content disagreement, or no ``scorecard_kind`` declaration) still
   warning — issue #1327.
-- Loading errors when no recognizable payload exists.
+- Loading errors when no recognizable payload exists, and the corrupt
+  ``_review.json`` shapes (truncated JSON, valid-JSON non-object) that
+  must reach validation instead of tripping the co-write staleness probe
+  — issue #1335.
 - Aggregation: mean-of-non-null, OR of critical, fix union dedup,
   evidence-span first-wins.
 - Aggregation rejection: inconsistent max, mismatched version_dir, empty
@@ -26,6 +29,7 @@ import warnings
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from anvil.lib.critics import (
     CANONICAL_REVIEW_FILENAME,
@@ -471,6 +475,72 @@ def test_load_missing_raises(tmp_path):
     review_dir = tmp_path / "thread.1.review"
     review_dir.mkdir()
     with pytest.raises(CriticDiscoveryError):
+        load_review(review_dir)
+
+
+# ---------------------------------------------------------------------------
+# Corrupt _review.json payloads (issue #1335)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("payload", ["[]", '"x"', "null", "3", "[1, 2]"])
+def test_load_non_object_payload_raises_validation_error_not_attribute_error(
+    tmp_path, payload
+):
+    """Issue #1335 AC3: the co-write staleness probe must not raise itself.
+
+    ``_warn_on_stale_co_present_prose`` reads the *raw* parsed payload
+    before ``Review.model_validate`` runs. A syntactically-valid
+    non-object payload co-present with a legacy prose triple used to trip
+    ``AttributeError: 'list' object has no attribute 'get'`` there,
+    replacing the ``ValidationError`` the payload is about to earn anyway.
+    """
+    review_dir = tmp_path / "thread.1.review"
+    review_dir.mkdir()
+    (review_dir / CANONICAL_REVIEW_FILENAME).write_text(payload)
+    for name in ("verdict.md", "scoring.md", "comments.md"):
+        (review_dir / name).write_text("**Total**: 38 / 44\n")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        with pytest.raises(ValidationError):
+            load_review(review_dir)
+
+
+def test_load_non_object_payload_emits_no_staleness_warning(tmp_path):
+    """Issue #1335 AC3: no staleness verdict against an unparseable payload.
+
+    The probe has no comparable field to read, so it must stay silent
+    rather than guess — the payload's own ``ValidationError`` is the
+    signal the caller acts on.
+    """
+    review_dir = tmp_path / "thread.1.review"
+    review_dir.mkdir()
+    (review_dir / CANONICAL_REVIEW_FILENAME).write_text("[]")
+    for name in ("verdict.md", "scoring.md", "comments.md"):
+        (review_dir / name).write_text("**Total**: 38 / 44\n")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ValidationError):
+            load_review(review_dir)
+
+    assert _deprecations(caught) == []
+
+
+def test_load_truncated_review_json_raises_json_decode_error(tmp_path):
+    """Issue #1335: ``load_review`` raises for a corrupt payload by design.
+
+    The documented caller convention (see ``load_review``'s docstring):
+    verdict-bearing consumers let this propagate, display consumers catch
+    it, and ``scorecard_check.check_review_dir`` converts it to a
+    ``parse_error`` finding. What ``load_review`` must NOT do is guess.
+    """
+    review_dir = tmp_path / "thread.1.review"
+    review_dir.mkdir()
+    (review_dir / CANONICAL_REVIEW_FILENAME).write_text('{"critic_id": "x", "tot')
+
+    with pytest.raises(json.JSONDecodeError):
         load_review(review_dir)
 
 

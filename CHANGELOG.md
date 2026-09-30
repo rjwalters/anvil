@@ -286,6 +286,29 @@
 
 ### Fixed
 
+- **A corrupt `_review.json` is now a `parse_error` finding instead of a
+  traceback** (#1335). `anvil/lib/scorecard_check.py`'s module docstring
+  promised that `check_review_dir` "converts `pydantic.ValidationError` into
+  findings rather than crashing", but `ValidationError` was the *only*
+  exception it caught, so two other corruption modes escaped the no-crash
+  contract: a truncated or otherwise syntactically-invalid `_review.json` (the
+  realistic shape for a file written outside the `staged_sidecar` path — an
+  interrupted write, a hand-edit, a partial `scp`) raised a raw
+  `json.JSONDecodeError`, and a valid-JSON non-object payload (`[]`, `"x"`,
+  `null`, `3`) co-present with a legacy prose triple raised an `AttributeError`
+  from the #1327 co-write staleness probe, which reads the raw parsed payload
+  before validation runs. Both now produce a `parse_error` finding naming the
+  cause, and the staleness probe guards on `isinstance(data, dict)` so it stays
+  silent for a payload that is about to fail validation anyway. No anvil writer
+  produces either shape, so this is a contract-honesty fix rather than an
+  observed failure. `critics.load_review` itself still raises, and its
+  docstring now states the previously-unwritten caller convention:
+  verdict-bearing consumers (`operator_feedback.operator_blocking_flags`,
+  `deslop`'s `aggregate_reviews`) let it propagate, because degrading an
+  unreadable review to "no blocking flags" would invert a lifecycle decision
+  rather than degrade it; display/report consumers (`anvil:diff`'s overlay,
+  `project-book`'s collect) catch it and render less.
+
 - **`load_review` no longer reports `paper-review`'s own canonical output as
   deprecated** (#1327). Every `paper-review` pass writes the prose quadruple
   (`verdict.md`, `scoring.md`, `comments.md`, `findings.md`) **and**
