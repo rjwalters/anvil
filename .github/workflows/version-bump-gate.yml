@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # The gate diffs two explicit shas. A shallow checkout can leave the
           # base sha unreachable, which the script reports as exit 2 (could not
