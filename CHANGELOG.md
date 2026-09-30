@@ -259,6 +259,13 @@
 
 ### Changed
 
+- **Dependency floors raised: `pydantic>=2.13.4`, `pyyaml>=6.0.3`, and
+  `numpy>=2.2.6` in the `auto_shrink` / `image_lint` extras** (Dependabot
+  #1192, #1195, #1193). The floors now land in the consumer
+  `.anvil/pyproject.toml` that `install-anvil.sh` writes, not only in the
+  source `pyproject.toml`, so a consumer's next `uv sync --project .anvil`
+  re-resolves past the old lower bounds.
+
 - **`anvil:report`'s `report-promote` step 6 now invokes `ack.py`'s CLI
   shim instead of re-deriving the ack-file validation algorithm in
   prose** (#1098). `anvil/skills/report/lib/ack.py` (the nine
