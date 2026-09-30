@@ -286,6 +286,26 @@
 
 ### Fixed
 
+- **`anvil:paper` now compiles pandoc-generated tables under
+  `anvil-paper.cls` without a preamble patch** (#1328). Bringing an existing
+  Markdown manuscript into a `paper` thread via `pandoc -t latex` produced
+  `longtable` environments the class could not typeset at all — it loaded
+  `caption` but never loaded `longtable`, so a pasted table body failed with
+  `Environment longtable undefined`, and a consumer who added
+  `\usepackage{longtable}` to the document preamble instead hit
+  `No counter 'none' defined` at the first `\caption` inside the table
+  (`caption` installs its `\LT@` longtable hooks for a `longtable` already
+  loaded when `caption` itself loads; on older caption/longtable releases
+  nothing installs them retroactively). `anvil-paper.cls` now loads
+  `longtable`, `array`, and
+  `calc` **before** `caption`, so both pandoc table forms — the plain
+  `@{}ll@{}` one and the wide
+  `>{\raggedright\arraybackslash}p{... \real{...}}` one — compile verbatim.
+  The documented workaround of rewriting each `longtable` as
+  `tabular`/`tabularx`, which loses page breaking on tables longer than a
+  page, is no longer needed; `SKILL.md` § "Migrating an existing paper" and
+  `paper-draft.md` § "Documentclass overrides" now say so.
+
 - **A corrupt `_review.json` is now a `parse_error` finding instead of a
   traceback** (#1335). `anvil/lib/scorecard_check.py`'s module docstring
   promised that `check_review_dir` "converts `pydantic.ValidationError` into
