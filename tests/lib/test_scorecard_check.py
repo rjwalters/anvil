@@ -747,6 +747,84 @@ def test_dir_co_present_prose_disagreement_warning_reaches_caller(tmp_path):
     assert "disagrees" in messages[0]
 
 
+# ---------------------------------------------------------------------------
+# Corrupt _review.json: the no-crash contract (issue #1335)
+# ---------------------------------------------------------------------------
+
+
+TRUNCATED_REVIEW_JSON = '{"critic_id": "x", "tot'
+
+
+def _write_prose_triple(critic_dir: Path) -> None:
+    """The minimal legacy prose triple, enough to make it co-present."""
+    for name in ("verdict.md", "scoring.md", "comments.md"):
+        (critic_dir / name).write_text("**Total**: 38 / 44\n")
+
+
+def test_dir_truncated_review_json_yields_parse_error_not_traceback(tmp_path):
+    """Issue #1335 AC1: syntactically-invalid JSON is a finding, not a crash.
+
+    The exact reproduction from the issue body: a truncated
+    ``_review.json`` co-present with a legacy prose triple used to
+    propagate a raw ``json.JSONDecodeError`` out of ``check_review_dir``,
+    contradicting the module's documented "never crash" contract.
+    """
+    critic_dir = tmp_path / "t.1.review"
+    critic_dir.mkdir()
+    (critic_dir / "_review.json").write_text(TRUNCATED_REVIEW_JSON)
+    _write_prose_triple(critic_dir)
+
+    findings = check_review_dir(critic_dir)
+
+    assert len(findings) == 1
+    assert findings[0].code == PARSE_ERROR
+    assert findings[0].severity == SEVERITY_ERROR
+    assert "_review.json" in findings[0].detail
+    assert "not valid JSON" in findings[0].detail
+
+
+def test_dir_truncated_review_json_alone_yields_parse_error(tmp_path):
+    """Issue #1335 AC1: the same holds with no co-present prose at all."""
+    critic_dir = tmp_path / "t.1.review"
+    critic_dir.mkdir()
+    (critic_dir / "_review.json").write_text(TRUNCATED_REVIEW_JSON)
+    (critic_dir / "_meta.json").write_text(json.dumps(STAMPED_META))
+
+    findings = check_review_dir(critic_dir)
+
+    assert [f.code for f in findings] == [PARSE_ERROR]
+
+
+@pytest.mark.parametrize("payload", ["[]", '"x"', "null", "3"])
+def test_dir_non_object_review_json_yields_parse_error(tmp_path, payload):
+    """Issue #1335 AC2: a valid-JSON non-object is a ``parse_error``.
+
+    Restores the pre-#1334 disposition for this shape: the co-write
+    staleness probe added by #1327/#1334 reads the *raw* parsed payload
+    before ``Review.model_validate`` runs, and raised ``AttributeError``
+    on a non-object rather than letting validation produce the finding.
+    """
+    critic_dir = tmp_path / "t.1.review"
+    critic_dir.mkdir()
+    (critic_dir / "_review.json").write_text(payload)
+    _write_prose_triple(critic_dir)
+
+    findings = check_review_dir(critic_dir)
+
+    assert findings, "a non-object payload must produce findings"
+    assert set(_codes(findings)) == {PARSE_ERROR}
+    assert all(f.severity == SEVERITY_ERROR for f in findings)
+
+
+def test_dir_non_object_review_json_without_prose_yields_parse_error(tmp_path):
+    """Issue #1335: the non-object disposition does not depend on prose."""
+    critic_dir = tmp_path / "t.1.review"
+    critic_dir.mkdir()
+    (critic_dir / "_review.json").write_text("[]")
+
+    assert set(_codes(check_review_dir(critic_dir))) == {PARSE_ERROR}
+
+
 def test_finding_is_frozen_dataclass():
     f = ScorecardFinding(
         code=PARSE_ERROR, severity=SEVERITY_ERROR, detail="x", message="y"

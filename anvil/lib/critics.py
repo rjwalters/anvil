@@ -192,7 +192,37 @@ def load_review(critic_dir: Path) -> Review:
     4. Else raise ``CriticDiscoveryError``.
 
     Raises ``pydantic.ValidationError`` on schema violation; raises
-    ``CriticDiscoveryError`` when no recognizable payload is found.
+    ``CriticDiscoveryError`` when no recognizable payload is found;
+    raises ``json.JSONDecodeError`` (a ``ValueError``) when
+    ``_review.json`` is not syntactically valid JSON.
+
+    Caller convention on a corrupt sidecar (issue #1335)
+    ----------------------------------------------------
+
+    ``load_review`` deliberately **raises** rather than degrading — it has
+    no way to know whether its caller is allowed to proceed without the
+    payload. Which of the two behaviors a caller wants is decided by what
+    the loaded review *drives*:
+
+    - **Verdict-bearing consumers raise** (do NOT wrap): the review gates
+      a lifecycle decision, so silently dropping it would invert the
+      decision rather than degrade it. ``operator_feedback.
+      operator_blocking_flags`` (an unreadable operator sidecar must not
+      read as "no blocking flags" and let the thread advance past a
+      human's blocking feedback) and ``deslop/lib/orchestrate.
+      aggregate_reviews`` (a dropped sidecar silently shifts the
+      aggregated mean and loses critical flags) are the reference cases.
+    - **Display / report consumers degrade** (catch and skip): the review
+      only adds detail to a rendering, so one bad sibling must not blank
+      the whole surface. ``skills/diff/lib/overlay.py`` (skip the sibling,
+      render fewer notes) and ``skills/project-book/lib/collect.py``
+      (score degrades to ``None``, audit state to ``"present"``) are the
+      reference cases.
+
+    ``scorecard_check.check_review_dir`` is a third shape: it is the
+    *lint* whose entire job is reporting malformedness, so it converts
+    every load failure into a ``parse_error`` finding instead of either
+    raising or skipping.
     """
     critic_dir = Path(critic_dir)
     canonical = critic_dir / CANONICAL_REVIEW_FILENAME
@@ -241,7 +271,7 @@ def load_review(critic_dir: Path) -> Review:
 # --- Canonical co-write vs stale prose (issue #1327) ------------------------
 
 
-def _warn_on_stale_co_present_prose(critic_dir: Path, data: dict) -> None:
+def _warn_on_stale_co_present_prose(critic_dir: Path, data: object) -> None:
     """Emit a ``DeprecationWarning`` iff co-present prose looks stale.
 
     Called only when ``_review.json`` AND at least one legacy file
@@ -249,7 +279,19 @@ def _warn_on_stale_co_present_prose(critic_dir: Path, data: dict) -> None:
     co-write case, e.g. every ``paper-review`` output) requires the dir
     to be *declared* schema-aware via ``_meta.json.scorecard_kind`` AND
     the prose to carry no field that contradicts ``data``.
+
+    ``data`` is the **raw** parsed JSON, read before
+    ``Review.model_validate`` runs, so it is not yet known to be an
+    object. A syntactically-valid non-object payload (``[]``, ``"x"``,
+    ``null``, ``3``) is passed over silently (issue #1335) for two
+    reasons: a staleness verdict is meaningless against a payload that
+    declares no comparable field and is about to fail validation anyway,
+    and probing one raises ``AttributeError`` from the ``.get`` calls in
+    :func:`_prose_contradicts_canonical` — replacing the
+    ``ValidationError`` the caller should have seen.
     """
+    if not isinstance(data, dict):
+        return
     contradiction = _prose_contradicts_canonical(critic_dir, data)
     if contradiction is not None:
         warnings.warn(
