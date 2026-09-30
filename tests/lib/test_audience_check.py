@@ -492,6 +492,50 @@ def test_dependency_signal_only_applies_when_it_precedes_the_link(tmp_path):
     ) == ("https://github.com/example/proofs", REPO_SOURCE_DERIVED)
 
 
+def test_available_via_locator_yields_a_candidate(tmp_path):
+    """#1341: "via" is an ordinary locator preposition ("available via
+    <link>"), not a dependency marker on its own, so it no longer suppresses
+    deriving a candidate repository. A genuine dependency phrasing that
+    happens to use "via" is still caught by its accompanying verb."""
+    thread = tmp_path / "t"
+    thread.mkdir()
+    assert resolve_public_repo_url_with_source(
+        thread,
+        "The source code is available via "
+        "\\url{https://github.com/example/proofs}.",
+    ) == ("https://github.com/example/proofs", REPO_SOURCE_DERIVED)
+    # Regression guard (#1329): a dependency verb still suppresses, with or
+    # without a trailing "via".
+    assert resolve_public_repo_url_with_source(
+        thread, "The pipeline requires NumPy \\url{https://github.com/numpy/numpy}."
+    ) == (None, None)
+    assert resolve_public_repo_url_with_source(
+        thread,
+        "The pipeline requires NumPy via "
+        "\\url{https://github.com/numpy/numpy}.",
+    ) == (None, None)
+
+
+def test_used_and_provided_by_dependency_phrasing_stay_out_of_scope(tmp_path):
+    """#1341 is scoped to the bare "via" preposition only (dropped from
+    ``_REPO_DEPENDENCY_RE``): "used" and "provided by" remain in the
+    dependency vocabulary, so ordinary "used"/"provided by" locator prose
+    for the paper's OWN artifact is still (conservatively) suppressed. This
+    documents the chosen fix's boundary rather than claiming a fix these
+    phrasings never received."""
+    thread = tmp_path / "t"
+    thread.mkdir()
+    for text in (
+        "The code used to produce these results is at "
+        "\\url{https://github.com/example/proofs}.",
+        "Data used in this study are archived at "
+        "\\url{https://github.com/example/proofs}.",
+        "The solver provided by this project is at "
+        "\\url{https://github.com/example/proofs}.",
+    ):
+        assert resolve_public_repo_url_with_source(thread, text) == (None, None)
+
+
 def test_ownership_signal_wins_over_a_dependency_link(tmp_path):
     thread = tmp_path / "t"
     thread.mkdir()
