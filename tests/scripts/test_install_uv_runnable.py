@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -43,6 +44,32 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
+
+
+def _parse_build_system_requires(pyproject_text: str) -> list[str]:
+    """Extract ``[build-system].requires`` entries from raw TOML text.
+
+    Deliberately avoids a TOML parser dependency (``tomllib`` is 3.11+
+    only, and this repo's ``requires-python`` floor is 3.10 — see
+    ``pyproject.toml``): both files under test write ``requires`` as a
+    single-line list literal (``requires = ["pkg>=X", "wheel"]``), so a
+    small regex over that exact shape is sufficient and keeps the test
+    dependency-free.
+    """
+
+    match = re.search(r'(?m)^requires\s*=\s*\[(.*?)\]', pyproject_text)
+    assert match, "no `requires = [...]` line found under [build-system]"
+    return [entry.strip().strip('"').strip("'") for entry in match.group(1).split(",") if entry.strip()]
+
+
+def _setuptools_floor(requires: list[str]) -> tuple[int, ...]:
+    """Parse the ``setuptools>=X.Y.Z`` entry's version floor into a tuple."""
+
+    for entry in requires:
+        match = re.match(r"setuptools>=([0-9.]+)", entry)
+        if match:
+            return tuple(int(part) for part in match.group(1).split("."))
+    raise AssertionError(f"no setuptools>=... entry found in {requires!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +195,23 @@ def test_install_produces_consumer_pyproject_toml(tmp_path: Path) -> None:
     # Package layout points at the in-tree anvil/ mirror.
     assert '[tool.setuptools.packages.find]' in body
     assert 'include = ["anvil*"]' in body
+
+    # AC (#1333): [build-system].requires' setuptools floor must not drift
+    # below the source repo's own floor — a substring check on a hardcoded
+    # value (as the pre-#1333 test did) would not catch a future bump to
+    # the source that the installer's heredoc fails to mirror. Parse both
+    # and compare the actual version tuples.
+    source_pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+    source_requires = _parse_build_system_requires(source_pyproject)
+    consumer_requires = _parse_build_system_requires(body)
+    source_floor = _setuptools_floor(source_requires)
+    consumer_floor = _setuptools_floor(consumer_requires)
+    assert consumer_floor >= source_floor, (
+        f"consumer pyproject setuptools floor {consumer_floor} is below "
+        f"source pyproject floor {source_floor} — install-anvil.sh's "
+        "write_consumer_pyproject() heredoc is out of sync with "
+        "pyproject.toml's [build-system].requires"
+    )
 
 
 def test_install_records_layout_version_two_in_manifest(tmp_path: Path) -> None:
