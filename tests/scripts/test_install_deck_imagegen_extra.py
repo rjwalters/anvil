@@ -73,4 +73,4 @@ def test_consumer_pyproject_still_declares_auto_shrink_extra(tmp_path: Path) -> 
 
     body = (target / ".anvil" / "pyproject.toml").read_text()
     assert "auto_shrink = [" in body
-    assert "numpy>=1.24" in body
+    assert "numpy>=2.2.6" in body

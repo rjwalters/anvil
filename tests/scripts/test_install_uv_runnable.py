@@ -163,8 +163,8 @@ def test_install_produces_consumer_pyproject_toml(tmp_path: Path) -> None:
     # Base deps mirror source; pyyaml is the load-bearing addition gated on
     # #231 (which has landed — see WORK_LOG entry for PR #268).
     assert 'name = "anvil"' in body
-    assert "pydantic>=2.0" in body, "pydantic missing from consumer pyproject base deps"
-    assert "pyyaml>=6.0" in body, "pyyaml missing from consumer pyproject base deps"
+    assert "pydantic>=2.13.4" in body, "pydantic missing from consumer pyproject base deps"
+    assert "pyyaml>=6.0.3" in body, "pyyaml missing from consumer pyproject base deps"
     # Package layout points at the in-tree anvil/ mirror.
     assert '[tool.setuptools.packages.find]' in body
     assert 'include = ["anvil*"]' in body

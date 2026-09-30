@@ -14,7 +14,7 @@ dist/
 .venv/
 venv/
 # Anvil is a library consumed via flexible version ranges (pyproject.toml's
-# pydantic>=2.0 base dep), not a pinned deployment — no committed lockfile
+# pydantic>=2.13.4 base dep), not a pinned deployment — no committed lockfile
 # to keep in sync across contributors/CI. Decision recorded per #1035.
 uv.lock
 
