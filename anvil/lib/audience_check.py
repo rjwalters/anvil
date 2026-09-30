@@ -278,10 +278,19 @@ _REPO_DEPENDENCY_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Sentence-ish segmentation used to scope the two signals above: a newline,
-# or a sentence terminator followed by whitespace and a capital / LaTeX
+# Sentence-ish segmentation used to scope the two signals above: a *paragraph*
+# break, or a sentence terminator followed by whitespace and a capital / LaTeX
 # control sequence (so "e.g. https://..." is not split off its sentence).
-_SEGMENT_SPLIT_RE = re.compile(r"\n+|(?<=[.!?])\s+(?=[A-Z\\])")
+#
+# Splitting on a *single* newline would make the two signals above
+# formatting-dependent: the text being segmented is `_artifacts_text()`, which
+# preserves the source line structure of the body verbatim, so a `.tex`
+# availability section hard-wrapped at ~80 columns would have each sentence
+# broken across several segments — and a dependency verb on one wrapped line
+# would not scope to the URL on the next (#1329). The sentence-terminator arm
+# still separates genuinely distinct sentences that share a paragraph,
+# including one-sentence-per-line source, because `\s+` spans a lone newline.
+_SEGMENT_SPLIT_RE = re.compile(r"\n\s*\n+|(?<=[.!?])\s+(?=[A-Z\\])")
 
 # ---------------------------------------------------------------------------
 # Masking
@@ -741,7 +750,11 @@ def _derive_repo_candidate(text: str) -> Optional[str]:
             unflagged.append(url)
     if owned:
         return owned[0] if len(owned) == 1 else None
-    if len(seen) == 1 and unflagged:
+    # Rule 2: the section's sole distinct repository, and only when no
+    # dependency signal introduced it. `unflagged` is a subset of `seen`, so
+    # under the `len(seen) == 1` guard the membership test below is simply
+    # "the one repository is not dependency-flagged".
+    if len(seen) == 1 and seen[0] in unflagged:
         return seen[0]
     return None
 

@@ -414,6 +414,68 @@ def test_dependency_link_in_availability_yields_no_candidate(tmp_path):
     assert "Candidate repository" not in census
 
 
+_WRAPPED_DEPENDENCY_AVAILABILITY_TEX = r"""\documentclass{article}
+\begin{document}
+\section{Data availability}
+The pipeline requires NumPy
+\url{https://github.com/numpy/numpy}.
+The timing census is in refs/CENSUS_TIMING_20260928.md and sat49/H1_TIMING.md.
+\end{document}
+"""
+
+
+def test_hard_wrapped_dependency_link_yields_no_candidate(tmp_path):
+    """#1329: the same availability section as above, hard-wrapped so the
+    dependency verb and its URL land on different *source* lines.
+
+    ``_artifacts_text()`` preserves the ``.tex`` source's line structure
+    verbatim, so segmenting on any newline would put "requires NumPy" and
+    ``\\url{...}`` in different segments and lose the dependency signal —
+    making the fix formatting-dependent. Segmenting on paragraph breaks keeps
+    the wrapped sentence whole.
+    """
+    version = _make_thread(tmp_path, _WRAPPED_DEPENDENCY_AVAILABILITY_TEX)
+    result = check_audience(version)
+    payload = result.to_json()
+    assert payload["public_repo_url"] is None
+    assert payload["public_repo_url_source"] is None
+    assert payload["public_repo_url_declared"] is False
+    fixes = [f.suggested_fix for f in result.to_review(version_dir=version.name).findings]
+    assert fixes
+    for fix in fixes:
+        assert "numpy" not in fix
+
+
+def test_hard_wrapped_signals_scope_across_source_lines(tmp_path):
+    """Both vocabularies scope across a wrapped line, and a paragraph break
+    still separates two sentences that would otherwise be conflated."""
+    thread = tmp_path / "t"
+    thread.mkdir()
+    # Dependency verb on the previous wrapped line still suppresses the link.
+    for text in (
+        "The pipeline requires NumPy\n\\url{https://github.com/numpy/numpy}.\n",
+        "The solver is built on\nhttps://gitlab.com/example/solver\nfor its core.\n",
+    ):
+        assert resolve_public_repo_url_with_source(thread, text) == (None, None)
+    # Ownership signal on the previous wrapped line still claims the link
+    # (the Judge's note that the same weakness cuts both ways on #1340).
+    wrapped_ownership = (
+        "The pipeline requires NumPy\n\\url{https://github.com/numpy/numpy}.\n"
+        "Our code is at\n\\url{https://github.com/example/proofs}.\n"
+    )
+    assert resolve_public_repo_url_with_source(thread, wrapped_ownership) == (
+        "https://github.com/example/proofs",
+        REPO_SOURCE_DERIVED,
+    )
+    # A paragraph break is still a segment boundary: the dependency framing in
+    # the first paragraph does not reach the link in the second.
+    assert resolve_public_repo_url_with_source(
+        thread,
+        "Our experiments used NumPy throughout\nand SciPy for the solvers\n\n"
+        "Everything is at\n\\url{https://github.com/example/proofs}\n",
+    ) == ("https://github.com/example/proofs", REPO_SOURCE_DERIVED)
+
+
 def test_dependency_signal_only_applies_when_it_precedes_the_link(tmp_path):
     thread = tmp_path / "t"
     thread.mkdir()
