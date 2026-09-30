@@ -269,10 +269,17 @@ _REPO_OWNERSHIP_RE = re.compile(
 
 # Dependency signal: the text immediately preceding a forge link introduces
 # it as something the work builds ON, not something the work publishes.
+#
+# Deliberately excludes the bare preposition "via" (#1341): it is the
+# ordinary locator idiom for the paper's OWN artifact ("available via
+# <link>", "the code used to produce these results is at <link>") far more
+# often than it is a dependency marker, and a genuine "X via <link>"
+# dependency phrasing is already caught above by its accompanying verb
+# ("requires X via <link>", "built on X via <link>").
 _REPO_DEPENDENCY_RE = re.compile(
     r"\b(?:requires?|required|requiring|depends?\s+on|depending\s+on|"
     r"built\s+(?:on|upon|with)|build(?:s|ing)?\s+(?:on|upon)|"
-    r"based\s+on|relies?\s+on|relying\s+on|uses?|using|used|via|"
+    r"based\s+on|relies?\s+on|relying\s+on|uses?|using|used|"
     r"powered\s+by|provided\s+by|courtesy\s+of|thanks\s+to|"
     r"we\s+use|we\s+build\s+on)\b",
     re.IGNORECASE,

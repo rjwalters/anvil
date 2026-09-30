@@ -286,6 +286,18 @@
 
 ### Fixed
 
+- **`audience_check` no longer suppresses an ordinary "available via
+  `<link>`" locator when deriving a candidate repository** (#1341). The
+  #1329 dependency vocabulary (`requires`, `built on`, `via`, `used`, …)
+  that scopes a forge link to "the work builds on this" rather than "this
+  is the paper's own artifact" included the bare preposition `via`, which
+  is the ordinary way a paper points at its own repository ("the source
+  code is available via `\url{...}`") far more often than it marks a
+  dependency — a genuine dependency phrasing that happens to use `via`
+  ("requires NumPy via `\url{...}`") is already caught by its accompanying
+  verb. `via` is dropped from `_REPO_DEPENDENCY_RE`; the #1329 regression
+  case ("the pipeline requires NumPy, `\url{...}`") is unaffected.
+
 - **`audience_check` no longer offers a cited dependency as the paper's
   candidate repository** (#1329). Following #1322/#1325, a candidate public
   repository URL is derived only from links inside the artifacts/availability
