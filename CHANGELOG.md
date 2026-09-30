@@ -286,6 +286,20 @@
 
 ### Fixed
 
+- **Installer's consumer `pyproject.toml` now declares the same
+  `setuptools` build-requirement floor as the source repo** (#1333). The
+  source `pyproject.toml`'s `[build-system].requires` reads
+  `setuptools>=84.0.0`, but `install-anvil.sh`'s
+  `write_consumer_pyproject()` heredoc — a hand-kept mirror, same drift
+  class as #1330's pydantic/pyyaml/numpy floors — still hardcoded
+  `setuptools>=68`, so `uv sync --project .anvil` on a consumer install
+  never picked up the raised floor. The heredoc now reads
+  `setuptools>=84.0.0`; the regression test parses
+  `[build-system].requires` out of both the source and a freshly
+  generated consumer `.anvil/pyproject.toml` and asserts the consumer's
+  floor is never below the source's, instead of a substring check on one
+  hardcoded value.
+
 - **`audience_check` no longer suppresses an ordinary "available via
   `<link>`" locator when deriving a candidate repository** (#1341). The
   #1329 dependency vocabulary (`requires`, `built on`, `via`, `used`, …)
