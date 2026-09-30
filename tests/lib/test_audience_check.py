@@ -378,6 +378,176 @@ def test_public_repo_url_source_order(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Derived candidate: dependency links inside the availability section (#1329)
+# ---------------------------------------------------------------------------
+
+
+_DEPENDENCY_AVAILABILITY_TEX = r"""\documentclass{article}
+\begin{document}
+\section{Data availability}
+The pipeline requires NumPy \url{https://github.com/numpy/numpy}.
+The timing census is in refs/CENSUS_TIMING_20260928.md and sat49/H1_TIMING.md.
+\end{document}
+"""
+
+
+def test_dependency_link_in_availability_yields_no_candidate(tmp_path):
+    """#1329: the availability section's only forge link is introduced as a
+    dependency ("requires NumPy, \\url{...}"), so it is NOT offered as the
+    paper's candidate repository — the fix asks for a declaration instead."""
+    version = _make_thread(tmp_path, _DEPENDENCY_AVAILABILITY_TEX)
+    result = check_audience(version)
+    payload = result.to_json()
+    assert payload["public_repo_url"] is None
+    assert payload["public_repo_url_source"] is None
+    assert payload["public_repo_url_declared"] is False
+    fixes = [f.suggested_fix for f in result.to_review(version_dir=version.name).findings]
+    assert fixes
+    for fix in fixes:
+        assert "numpy" not in fix
+    census = next(
+        f.suggested_fix
+        for f in result.to_review(version_dir=version.name).findings
+        if "CENSUS" in f.rationale
+    )
+    assert "declare `public_repo_url`" in census
+    assert "Candidate repository" not in census
+
+
+_WRAPPED_DEPENDENCY_AVAILABILITY_TEX = r"""\documentclass{article}
+\begin{document}
+\section{Data availability}
+The pipeline requires NumPy
+\url{https://github.com/numpy/numpy}.
+The timing census is in refs/CENSUS_TIMING_20260928.md and sat49/H1_TIMING.md.
+\end{document}
+"""
+
+
+def test_hard_wrapped_dependency_link_yields_no_candidate(tmp_path):
+    """#1329: the same availability section as above, hard-wrapped so the
+    dependency verb and its URL land on different *source* lines.
+
+    ``_artifacts_text()`` preserves the ``.tex`` source's line structure
+    verbatim, so segmenting on any newline would put "requires NumPy" and
+    ``\\url{...}`` in different segments and lose the dependency signal —
+    making the fix formatting-dependent. Segmenting on paragraph breaks keeps
+    the wrapped sentence whole.
+    """
+    version = _make_thread(tmp_path, _WRAPPED_DEPENDENCY_AVAILABILITY_TEX)
+    result = check_audience(version)
+    payload = result.to_json()
+    assert payload["public_repo_url"] is None
+    assert payload["public_repo_url_source"] is None
+    assert payload["public_repo_url_declared"] is False
+    fixes = [f.suggested_fix for f in result.to_review(version_dir=version.name).findings]
+    assert fixes
+    for fix in fixes:
+        assert "numpy" not in fix
+
+
+def test_hard_wrapped_signals_scope_across_source_lines(tmp_path):
+    """Both vocabularies scope across a wrapped line, and a paragraph break
+    still separates two sentences that would otherwise be conflated."""
+    thread = tmp_path / "t"
+    thread.mkdir()
+    # Dependency verb on the previous wrapped line still suppresses the link.
+    for text in (
+        "The pipeline requires NumPy\n\\url{https://github.com/numpy/numpy}.\n",
+        "The solver is built on\nhttps://gitlab.com/example/solver\nfor its core.\n",
+    ):
+        assert resolve_public_repo_url_with_source(thread, text) == (None, None)
+    # Ownership signal on the previous wrapped line still claims the link
+    # (the Judge's note that the same weakness cuts both ways on #1340).
+    wrapped_ownership = (
+        "The pipeline requires NumPy\n\\url{https://github.com/numpy/numpy}.\n"
+        "Our code is at\n\\url{https://github.com/example/proofs}.\n"
+    )
+    assert resolve_public_repo_url_with_source(thread, wrapped_ownership) == (
+        "https://github.com/example/proofs",
+        REPO_SOURCE_DERIVED,
+    )
+    # A paragraph break is still a segment boundary: the dependency framing in
+    # the first paragraph does not reach the link in the second.
+    assert resolve_public_repo_url_with_source(
+        thread,
+        "Our experiments used NumPy throughout\nand SciPy for the solvers\n\n"
+        "Everything is at\n\\url{https://github.com/example/proofs}\n",
+    ) == ("https://github.com/example/proofs", REPO_SOURCE_DERIVED)
+
+
+def test_dependency_signal_only_applies_when_it_precedes_the_link(tmp_path):
+    thread = tmp_path / "t"
+    thread.mkdir()
+    for text in (
+        "The pipeline requires NumPy \\url{https://github.com/numpy/numpy}.",
+        "Built on https://github.com/numpy/numpy.",
+        "The solver depends on https://gitlab.com/example/solver for its core.",
+        "Timings were produced using https://github.com/numpy/numpy.",
+    ):
+        assert resolve_public_repo_url_with_source(thread, text) == (None, None)
+    # A trailing mention of a dependency does not flag a link ahead of it.
+    assert resolve_public_repo_url_with_source(
+        thread, "Everything is at https://github.com/example/proofs; it requires NumPy."
+    ) == ("https://github.com/example/proofs", REPO_SOURCE_DERIVED)
+
+
+def test_ownership_signal_wins_over_a_dependency_link(tmp_path):
+    thread = tmp_path / "t"
+    thread.mkdir()
+    text = (
+        "The pipeline requires NumPy \\url{https://github.com/numpy/numpy}.\n"
+        "Our code is at \\url{https://github.com/example/proofs}.\n"
+    )
+    assert resolve_public_repo_url_with_source(thread, text) == (
+        "https://github.com/example/proofs",
+        REPO_SOURCE_DERIVED,
+    )
+    text = (
+        "We build on \\url{https://github.com/leanprover-community/mathlib4}.\n"
+        "The repository for this paper is "
+        "\\url{https://codeberg.org/example/proofs/src/branch/main}.\n"
+    )
+    assert resolve_public_repo_url_with_source(thread, text) == (
+        "https://codeberg.org/example/proofs",
+        REPO_SOURCE_DERIVED,
+    )
+
+
+def test_two_unflagged_links_are_ambiguous_and_yield_no_candidate(tmp_path):
+    thread = tmp_path / "t"
+    thread.mkdir()
+    text = (
+        "Certificates: \\url{https://github.com/example/proofs}.\n"
+        "Solver: \\url{https://gitlab.com/example/solver}.\n"
+    )
+    assert resolve_public_repo_url_with_source(thread, text) == (None, None)
+    # Two ownership-flagged repositories are equally ambiguous.
+    text = (
+        "Our code is at \\url{https://github.com/example/proofs}.\n"
+        "Our code is also at \\url{https://gitlab.com/example/solver}.\n"
+    )
+    assert resolve_public_repo_url_with_source(thread, text) == (None, None)
+
+
+def test_repeated_links_to_one_repo_remain_a_sole_candidate(tmp_path):
+    """Regression guard for ``_DEFECT_TEX``: the availability section links
+    the same repository twice (a ``\\url`` and a deep ``\\href``), which is
+    still exactly one candidate repository."""
+    thread = tmp_path / "t"
+    thread.mkdir()
+    text = (
+        "The repository is \\url{https://github.com/example/proofs}.\n"
+        "Solver timing: \\href{https://github.com/example/proofs/blob/main/sat49/H1.md}"
+        "{\\texttt{sat49/H1.md}}.\n"
+    )
+    assert resolve_public_repo_url_with_source(thread, text) == (
+        "https://github.com/example/proofs",
+        REPO_SOURCE_DERIVED,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Advisory review + sidecar
 # ---------------------------------------------------------------------------
 

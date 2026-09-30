@@ -286,6 +286,23 @@
 
 ### Fixed
 
+- **`audience_check` no longer offers a cited dependency as the paper's
+  candidate repository** (#1329). Following #1322/#1325, a candidate public
+  repository URL is derived only from links inside the artifacts/availability
+  section — but it was still the *first* such link, so an availability
+  section that credits the libraries the work builds on ("the pipeline
+  requires NumPy, `\url{https://github.com/numpy/numpy}`") named that
+  dependency as the paper's candidate repository in the advisory
+  link-hygiene note. The derivation now reads every forge link in the
+  section and offers one only when the surrounding sentence names it as the
+  paper's own ("our code", "the repository for this paper"), or when the
+  section holds exactly one repository that is not introduced as a
+  dependency. An ambiguous or dependency-only section resolves to no URL,
+  and the finding falls back to "declare `public_repo_url` in
+  `<thread>/.anvil.json`" without naming a candidate. A declared URL is
+  unaffected, and a derived candidate still never escalates to a critical
+  flag or a concrete `\href`.
+
 - **`anvil:paper` now compiles pandoc-generated tables under
   `anvil-paper.cls` without a preamble patch** (#1328). Bringing an existing
   Markdown manuscript into a `paper` thread via `pandoc -t latex` produced
