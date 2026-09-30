@@ -467,6 +467,20 @@
   honor `.gitignore` natively too (dropped `--no-ignore-vcs`) instead of
   re-implementing it via the same buggy post-filter.
 
+- **`points:1`/`points:2`/`points:3`/`points:5`/`points:8`/`points:13` labels
+  now exist on the repo, matching the points-estimate workflow `curator.md`
+  has documented since #9056** (#1331). The Curator convention requires
+  attaching a `points:<N>` label in the same `gh issue edit` that applies
+  `loom:curated`, but no `points:*` label was ever created — `gh label list`
+  showed zero, so the mandated call
+  (`gh issue edit <n> --remove-label "points:<old>" --add-label
+  "loom:curated,points:<new>"`) failed with `'points:N' not found` on every
+  curation pass that reached it (hit live curating #1327). The six labels are
+  declared in `.github/labels.yml` outside the `BEGIN`/`END LOOM LABELS`
+  managed block (per that block's own "add your repo's own labels outside
+  this range" instruction, since Loom's vendored label set has no points
+  concept) and synced onto the live repo via `.loom/scripts/sync-labels.sh`.
+
 ## [0.11.0] — 2026-08-13
 
 ### Added
