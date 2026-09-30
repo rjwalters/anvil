@@ -1041,8 +1041,8 @@ license = { text = "MIT" }
 #     transitively required by \`from anvil.lib import ...\` — see issue
 #     #231 for the canary reproducer.
 dependencies = [
-    "pydantic>=2.0",
-    "pyyaml>=6.0",
+    "pydantic>=2.13.4",
+    "pyyaml>=6.0.3",
 ]
 
 # Opt-in extras mirrored from the source repo. Each one corresponds to a
@@ -1058,7 +1058,7 @@ dependencies = [
 # next time install-anvil.sh runs.
 auto_shrink = [
     "Pillow>=12.3.0",
-    "numpy>=1.24",
+    "numpy>=2.2.6",
 ]
 # \`anvil:deck\` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
 # Real image backends (Flux, DALL-E, SDXL, etc.) often default to JPEG or
