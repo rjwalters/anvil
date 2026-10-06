@@ -4,6 +4,28 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-09-30
+
+- **PR #1343**: fix: raise consumer pyproject setuptools floor to match source (>=84.0.0)
+- **Issue #1333** (closed): installer consumer pyproject still requires setuptools>=68 while the source requires >=84
+- **PR #1342**: fix(audience_check): drop bare "via" from the dependency vocabulary
+- **Issue #1341** (closed): audience_check: dependency vocabulary suppresses ordinary "available via <link>" phrasings
+- **Issue #1339** (closed): loom-daemon pr-queue subcommand missing from installed binary — blocks Judge/Doctor/Champion PR discovery
+- **PR #1340**: fix(audience_check): stop offering a dependency link as the candidate repo
+- **Issue #1329** (closed): audience_check: a dependency link inside the availability section is offered as the candidate repo URL
+- **PR #1338**: fix: load longtable/array/calc before caption in anvil-paper.cls
+- **Issue #1328** (closed): anvil-paper.cls loads caption before longtable; pandoc longtables fail with "No counter 'none' defined"
+- **PR #1337**: fix: convert a corrupt _review.json into a parse_error finding (#1335)
+- **Issue #1335** (closed): check_review_dir's documented no-crash contract does not cover a corrupt _review.json (JSONDecodeError / AttributeError)
+- **PR #1336**: fix: add points:1/2/3/5/8/13 labels to the repo's label set
+- **Issue #1331** (closed): Points-estimate labels (points:1/2/3/5/8/13) don't exist in this repo's label set
+- **PR #1334**: fix(lib): stop warning on paper-review's canonical prose + _review.json co-write
+- **Issue #1327** (closed): paper-review writes both _review.json and legacy prose files, so load_review warns on its own canonical output
+- **PR #1330**: chore(deps): raise pydantic, pyyaml and numpy floors through to the consumer pyproject
+- **PR #1194**: chore(deps-dev): update setuptools requirement from >=68 to >=84.0.0
+- **PR #1196**: chore(deps-dev): update pytest requirement from >=7.4 to >=9.1.1
+- **PR #1191**: chore(deps): bump actions/checkout from 4 to 7 in the github-actions group across 1 directory
+
 ### 2026-09-29
 
 - **Issue #1322** (closed): paper-review: audience-irrelevant governance notes and private/relative artifact pointers pass all critics; no operator revise path after READY
