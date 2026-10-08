@@ -4,6 +4,8 @@
 
 ### Added
 
+- **One canonical essay word count** (#1349). The same essay body measured 1196 (reviewer: rendered text minus title), 1204 (`wc -w`) and 1232 (`rhetoric_lint`) in one review cycle, which straddled a 1200 ceiling. New `anvil/lib/word_count.py::essay_word_count` counts visible prose (link text yes, URLs no, title excluded, other headings counted, code/comments/images excluded); `rhetoric_lint`'s density denominators share its tokenizer, and the essay SKILL.md, rubric.md and review/revise/draft commands name it as the single meaning of a BRIEF envelope.
+
 - **`anvil:paper` checks audience fit and gives the operator a way back in after READY** (#1322). A paper thread reached AUDITED with sentences addressed to the project's operator ("No replay wave is authorized by this estimate", "goal #40 commissioned this manuscript") and ~40 bare repo-relative artifact paths a reader cannot follow, across four review and two audit passes. Four additions:
   - The rubric gains an **audience-fit sub-rule under dims 7 and 9**: `major` in the body, `minor` in an appendix, with the fix "delete or move to a non-published process log". The rubric total stays /44.
   - A new deterministic pre-flight, `anvil/lib/audience_check.py`, runs at `paper-review` step 4i and writes an advisory `<thread>.{N}.audience/_review.json` (`kind: tool_evidence`, no critical flag). It flags governance vocabulary, private locators (`s3://`, message numbers, home paths), and unlinked artifact paths in artifacts/availability sections.

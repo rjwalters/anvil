@@ -97,10 +97,11 @@ def test_module_is_pure_stdlib():
         "dataclasses",
         "pathlib",
         "typing",
+        "anvil",  # anvil.lib.word_count: stdlib-only sibling (#1349)
     }
     assert imported <= allowed, f"non-stdlib imports: {imported - allowed}"
     # Belt-and-braces: every import resolves from the stdlib set.
-    assert imported - {"__future__"} <= set(sys.stdlib_module_names)
+    assert imported - {"__future__", "anvil"} <= set(sys.stdlib_module_names)
 
 
 # ---------------------------------------------------------------------------

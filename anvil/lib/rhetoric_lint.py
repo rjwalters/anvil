@@ -322,6 +322,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence, Union
 
+from anvil.lib.word_count import WORD_RE as _CANONICAL_WORD_RE, count_words
+
 
 # Rule kinds ------------------------------------------------------------------
 
@@ -971,7 +973,7 @@ class RhetoricLintResult:
 
 # Word tokens for the per-1000-words denominator. Hyphenated and
 # apostrophized compounds count once ("fast-paced", "it's").
-_WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['’\-][A-Za-z0-9]+)*")
+_WORD_RE = _CANONICAL_WORD_RE  # single definition: anvil/lib/word_count.py (#1349)
 
 # Code-fence opener/closer (``` or ~~~, up to 3 leading spaces per
 # CommonMark).
@@ -1852,7 +1854,7 @@ def lint_rhetoric(
     scan_lines = _scannable_lines(text)
     scan_lines = _collapse_markdown_links(scan_lines)
     disabled_lines = _collect_disabled_lines(text, suppress_rules)
-    words = sum(len(_WORD_RE.findall(line)) for line in scan_lines)
+    words = count_words("\n".join(scan_lines))
     # Computed once for all positional (``scope: "first-line"``) rules.
     first_prose_lineno = _first_prose_lineno(scan_lines, text)
     # Computed lazily (only if a ``long_sentence``, ``sentence_variance``,
