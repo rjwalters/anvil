@@ -21,6 +21,10 @@ Each dimension maps to a dimension of the surveyed consumer's blog-review rubric
 | 9 | **Rhetorical economy** | 5 | **Load-bearing** (absorbs consumer dim 6, length discipline). Does every paragraph carry weight the essay needs? 500–1000 words where every section earns its place scores full; wandering past 1500, repeating itself, throat-clearing, or trailing recaps scores low. Fed by the deterministic rhetoric lint (#463) as advisory evidence — lint findings never force a deduction on their own; the judgment call is the reviewer's. Teaching-oriented length is not padding — see `anvil/lib/snippets/plain_language.md` and `anvil/lib/snippets/rubric.md` §"Dim 9 — teaching-oriented length is not padding" (issue #1042) for the plain-language-first distinction between padding and patient explanation. |
 | | **Total** | **44** | Advance threshold: ≥35 |
 
+## Word count
+
+All word envelopes in this rubric and in a consumer BRIEF's `target_length` are measured with `anvil/lib/word_count.py::essay_word_count` (#1349): visible prose, link text counted and URLs not, title (first H1) excluded, other headings counted, code fences/comments/images excluded. Reviewers cite this count rather than choosing a method per pass.
+
 ## Scoring guidance
 
 Each dimension is scored as an **integer from 0 to its weight** (the weight is the per-dimension maximum; no half-points). A short justification accompanies each score (1–3 sentences citing specific evidence: a quoted passage, a line reference, a corpus exemplar for dim 2).

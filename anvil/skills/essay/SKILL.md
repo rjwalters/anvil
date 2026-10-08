@@ -139,6 +139,10 @@ The fix is a persistent, per-thread `<thread>.{N}/provenance.md` **claim ledger*
 | `essay-review <thread>` | reviewer (single critic + deterministic gates) | latest `<thread>.{N}/`, voice docs, `rubric.md` | `<thread>.{N}.review/` (+ the `.numeric/` and `.hyperlinks/` gate sidecars via their CLIs) |
 | `essay-revise <thread>` | reviser | latest `<thread>.{N}/` + `<thread>.{N}.review/` + gate sidecars + any optional critic siblings | `<thread>.{N+1}/` with `changelog.md`, or reports `READY` |
 
+## Word count (one method — issue #1349)
+
+**Canonical word count (#1349)**: `anvil/lib/word_count.py::essay_word_count` — visible prose only: frontmatter, HTML comments, code fences, images, and link URLs excluded; link text counted; the title (first H1) excluded; other headings counted; tokens are letter/digit runs with internal `'`/`-` (punctuation alone is never a word). Every length envelope (BRIEF `target_length`, the default 500–1500 envelope, dim 9) means this count. `essay-review`, the drafter/reviser self-check, and `rhetoric_lint`'s per-1000-words denominators all use it (`rhetoric_lint` runs the same tokenizer over its scan text, which keeps the title). Compute it with `uv run --project .anvil python -m anvil.lib.word_count <thread>.{N}/<thread>.md`; do not use raw `wc -w`.
+
 ## Rubric
 
 See `rubric.md` for the 9-dimension **/44** schema (`anvil-essay-v1`), the **≥35** advance threshold, the voice-dominant weighting (dim 2 *Voice fidelity* at weight 7 — the inverse of memo's substance-dominant tilt), the **load-bearing dim 9** (*Rhetorical economy* absorbs the consumer rubric's length discipline and is fed by the rhetoric lint), and the **seven critical flags** ported from the consumer's blog-review: anti-stance violation, out-of-standing claim, generic AI cadence, factual error, unattributed borrowing, example-coherence failure, numeric-consistency failure.
