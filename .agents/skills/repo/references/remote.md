@@ -27,6 +27,7 @@ locally to drive the cloud CLI; they are **never** copied to the VM.
 /repo:remote aws
 /repo:remote --status          # List instances created by this command
 /repo:remote --verify          # Prove the SSH alias still reaches THIS repo's instance
+/repo:remote --attach          # Reconnect: verify the host, then open a session with a FRESH GitHub credential
 /repo:remote --down            # Stop instances created by this command
 /repo:remote --down --delete   # Terminate/delete them
 ```
@@ -48,6 +49,9 @@ repo-remote up --yes [--json]        # provision (or reuse) with no prompts; req
 repo-remote up --yes --force         # additionally override the fleet-marker guard (see below)
 repo-remote status [--json]          # list instances tagged repo-remote=<name>
 repo-remote verify [--json]          # prove the SSH alias still reaches this repo's instance (exit 6 if not)
+repo-remote attach [--container|--host] [--command <cmd>]
+                                     # verify the host, THEN resolve the GitHub credential, then open a
+                                     # session on the existing instance (connect and reconnect; repo#565)
 repo-remote down [--yes] [--delete]  # dry-run listing without --yes; stop (or --delete to terminate) with --yes
 ```
 
@@ -67,6 +71,15 @@ apart from a vCPU-count-scaled guess or a last-resort flat heuristic for an
 instance type with no price data at all — a confidently-wrong flat number is
 worse for cost consent than an honestly-vague one.
 
+On AWS, the `--json` output for `up` also carries three **additive** fields
+(repo#564): `transport` (`"ssh"` or `"ssm"`), `instance_profile` (the
+configured `REPO_REMOTE_INSTANCE_PROFILE`, `""` if none), and — on a real
+provision — `connect_target`, the `HostName` the SSH alias resolves to: the
+public IP for `ssh`, the instance ID for `ssm`. Existing fields keep their
+meaning; under `ssm`, `public_ip` is `""` because no public IP is looked up.
+See [AWS transport: direct SSH or SSM Session
+Manager](#aws-transport-direct-ssh-or-ssm-session-manager).
+
 `--force` is a **separate** override with a single job: it lets `up` reuse, or
 `down` stop/terminate, an instance carrying a **fleet marker** (see
 [Fleet-marked hosts: the reuse and teardown
@@ -80,7 +93,11 @@ failed, `5` refused to reuse a fleet-marked instance (pass `--force`), `6`
 host-identity verification failed — the host reachable at the SSH alias is not
 this repo's instance, or its identity could not be established (see [Stale SSH
 aliases and released public IPs](#stale-ssh-aliases-and-released-public-ips-host-identity-verification);
-**not** overridable with `--force`), `64` usage error.
+**not** overridable with `--force`), `7` `attach` could not resolve the GitHub
+credential — `REPO_REMOTE_GH_TOKEN_CMD` failed or printed a malformed token;
+nothing was sent and the static token was **not** used instead (see [GitHub
+credentials on the VM](#github-credentials-on-the-vm)), `64` usage error.
+`attach` otherwise exits with the remote session's own status.
 
 ## Configuration — two layers
 
@@ -150,16 +167,25 @@ REPO_REMOTE_SSH_KEY=~/.ssh/id_ed25519     # key used for the SSH session (fine t
 
 # --- dev-session auth (optional; used ON the VM) ---
 # Unlike the provisioning creds above, these DO travel to the VM so gh/claude
-# work there. The gh token rides the SSH channel into the container env; the
-# Claude account pool (token FILES) is copied to the VM's .loom/tokens/
-# (chmod 600) so a Loom install there can rotate accounts. Prefer
-# scoped/short-lived tokens.
-REPO_REMOTE_GH_TOKEN=                      # GitHub PAT → gh + git-over-https on the VM.
+# work there. The gh token is resolved by `repo-remote attach` for each session
+# and handed over as data on the verified SSH connection (never a file, never
+# the container's configuration); the Claude account pool (token FILES) is
+# copied to the VM's .loom/tokens/ (chmod 600) so a Loom install there can
+# rotate accounts. See "GitHub credentials on the VM" below.
+REPO_REMOTE_GH_TOKEN_CMD=                  # RECOMMENDED: a LOCAL command whose stdout is a short-lived
+                                           # token, run for every attach (e.g. a GitHub App
+                                           # installation-token minter). Wins over REPO_REMOTE_GH_TOKEN
+                                           # when non-empty; a failure is fatal (exit 7), never a
+                                           # fallback to the static token.
+REPO_REMOTE_GH_TOKEN=                      # legacy static GitHub token → gh + git-over-https on the VM.
                                            # Fine-grained, scoped to the target repo. For Loom-style
                                            # label workflows grant Contents + Issues + Pull requests
                                            # (all Read/write): issue labels need Issues:write, PR labels
                                            # need Pull requests:write. Sets existing labels only — no
                                            # label *creation* needed (Loom never invents labels).
+                                           # The same permissions apply to a minted token.
+REPO_REMOTE_GH_API_HOST=                   # optional: route gh's API traffic through an operator-run
+                                           # gateway (bare hostname) — see "GitHub API gateway" below
 
 # Claude Code multi-account pool (the Loom pattern — same triples as
 # lean-genius/.env). Registry lives here; the raw 1-year OAuth tokens live in
@@ -182,7 +208,10 @@ REPO_REMOTE_INSTANCE_ID=                  # RECOMMENDED: pin the exact instance 
                                            # live host against, and the only handle that survives a
                                            # stop/start unambiguously — see "Stale SSH aliases and
                                            # released public IPs" below.
-REPO_REMOTE_DISK_GB=100
+REPO_REMOTE_DISK_GB=100                   # root volume size in GiB (default 50)
+REPO_REMOTE_VOLUME_TYPE=gp3               # AWS only: root EBS type, gp3 (default) or gp2 — see "AWS root volume" below
+REPO_REMOTE_VOLUME_IOPS=3000              # AWS gp3 only: provisioned IOPS (default 3000); must be unset for gp2
+REPO_REMOTE_VOLUME_THROUGHPUT=125         # AWS gp3 only: provisioned MiB/s (default 125); must be unset for gp2
 REPO_REMOTE_IMAGE=                         # optional host-image override (else: Ubuntu LTS, or the GPU AMI on GPU hosts)
 REPO_REMOTE_GPU=                          # GCP accelerator (e.g. nvidia-l4:1); AWS infers GPU from the instance family
 
@@ -204,6 +233,13 @@ REPO_REMOTE_SSH_CIDR=                     # optional: pin the SG's SSH-ingress C
 REPO_REMOTE_SSH_MIN_PREFIX=32             # narrowest IPv4 prefix accepted for SSH ingress (default 32 = one address;
                                            # set e.g. 24 to allow a known ISP block)
 REPO_REMOTE_ALLOW_WORLD_SSH=              # "1" opts in, loudly, to a CIDR wider than the minimum (0.0.0.0/0, ::/0)
+
+# --- transport (AWS only; see "AWS transport: direct SSH or SSM Session Manager" below) ---
+REPO_REMOTE_TRANSPORT=ssh                 # ssh (default: public IP + tcp/22 from your address) or
+                                           # ssm (SSH over SSM Session Manager; NO inbound rule, no public IP needed)
+REPO_REMOTE_INSTANCE_PROFILE=             # optional IAM instance profile NAME attached at launch
+                                           # (--iam-instance-profile Name=<name>); REQUIRED for a fresh ssm launch.
+                                           # Setting it alone does not change the transport.
 ```
 
 Only `REPO_REMOTE_PROVIDER` (or a provider argument) and that provider's
@@ -224,13 +260,26 @@ IPs](#stale-ssh-aliases-and-released-public-ips-host-identity-verification).
 **Two classes of secret — treat them differently:**
 - **Provisioning credentials** (`AWS_*`, `GCP_*`) drive the cloud CLI *locally*
   and are **never** copied to the VM.
-- **Dev-session auth** (`REPO_REMOTE_GH_TOKEN`, the `ACCOUNT_*` Claude pool) is
+- **Dev-session auth** (the GitHub credential, the `ACCOUNT_*` Claude pool) is
   **optional** and, when set, is **placed on the VM by design** so `gh` and
-  `claude` work there. The gh token rides the SSH channel into the container
-  env (no file on disk); the Claude pool's **token files** are copied to the
-  VM's `.loom/tokens/` at `chmod 600` (they must be files for Loom to rotate
-  them). Use scoped/short-lived tokens; the whole set is wiped when the box is
-  terminated. If unset, the VM stays unauthenticated and you log in there
+  `claude` work there.
+  - **GitHub — the recommended path is a minted token:** set
+    `REPO_REMOTE_GH_TOKEN_CMD` to a local command that prints a short-lived
+    token (a GitHub App installation token, for example). `repo-remote attach`
+    runs it for **each session**, only after the host identity is verified,
+    and hands the result to that session over the verified SSH connection — it
+    lives only in the session's process environment: not in `remote.env`, not
+    on the VM's disk, not in the container's configuration, not in any argv. A
+    compromised VM then exposes a credential that expires, attributed to the
+    App rather than a person. A static `REPO_REMOTE_GH_TOKEN` still works the
+    same way (with a one-line notice recommending the command form); it is
+    simply long-lived. See [GitHub credentials on the
+    VM](#github-credentials-on-the-vm).
+  - **Claude pool:** the pool's **token files** are copied to the VM's
+    `.loom/tokens/` at `chmod 600` (they must be files for Loom to rotate
+    them); they are wiped when the box is terminated.
+
+  If neither is set, the VM stays unauthenticated and you log in there
   interactively.
 
 **Pool resolution (layered, like the config files):** the shared pool is
@@ -249,6 +298,179 @@ shipped — so remoting a Loom repo carries *its* accounts, not the shared set.
   variables are needed and point the user at `/repo:remote --configure` — don't
   silently fall back to ambient cloud auth (that would be non-deterministic
   across machines).
+
+## GitHub credentials on the VM
+
+`gh` and git-over-https on the VM authenticate with a GitHub token. That token
+is resolved and delivered **per session** by `repo-remote attach` — the
+credential-aware connect *and* reconnect entry point — and by nothing else:
+`up` (dry run or `--yes`), `status`, `verify` and `down` never run the token
+command and never send a token anywhere.
+
+### Where the token comes from
+
+| Configured | What `attach` does |
+|---|---|
+| `REPO_REMOTE_GH_TOKEN_CMD` (non-empty) — **recommended** | Runs it locally and uses its stdout. Wins over a static token, which is then ignored (a notice says so) and is **never** used as a fallback. |
+| only `REPO_REMOTE_GH_TOKEN` | Uses the static token, exactly as before, and prints one line recommending `REPO_REMOTE_GH_TOKEN_CMD`. The notice never contains the token. |
+| neither | Opens a plain session; `gh`/git-over-https on the VM stay unauthenticated. |
+
+Both values follow the normal two-layer rule (the per-repo file overrides the
+shared `remote.env`), so a repo can set its own command, and a per-repo
+`REPO_REMOTE_GH_TOKEN_CMD=` (empty) switches off a shared one.
+
+**How the command runs.** `REPO_REMOTE_GH_TOKEN_CMD` is a shell command string
+run **on your machine** with `bash -c`, stdin from `/dev/null`, with the same
+environment and trust as the config files themselves (which are already
+sourced as shell, so it grants nothing new). It may use local credentials — an
+App private key, a keychain, a broker CLI — and those are **never**
+transmitted; only its stdout is. Keep secrets out of the command *string*
+itself (it is visible in your local process list while it runs); read them
+inside the command instead. Requirements, all enforced:
+
+- exit `0` and print **exactly one line** holding the token (a trailing
+  newline is fine);
+- no whitespace or control characters in the token, at most 4096 characters;
+- non-interactive: its stdout **and** stderr are never displayed (either could
+  carry credential material), so anything it needs from you must use its own
+  `/dev/tty` or GUI prompt.
+
+Anything else — a non-zero exit, empty output, a second line — stops `attach`
+with exit `7` **before** anything is sent, and says so. There is no fallback to
+`REPO_REMOTE_GH_TOKEN`: a broken minter is a failure, not a reason to quietly
+use the long-lived credential it was meant to replace.
+
+```bash
+# e.g. a GitHub App installation token minted by a local helper (operator-supplied):
+REPO_REMOTE_GH_TOKEN_CMD='gh-app-token --app-id 123456 --installation-id 7890123 --key-file ~/.config/repo/app.pem'
+```
+
+The minted token needs the same repository permissions the static one did
+(Contents, Issues, Pull requests read/write for Loom-style workflows). This
+tool does not provision GitHub Apps, distribute keys, or run a broker — you
+supply the command.
+
+### When it runs, and how the token travels
+
+`repo-remote attach` does these in order, each step gating the next:
+
+1. **Validate config** — transport, gateway, repo name, static-token shape. No
+   network, nothing run.
+2. **Open one SSH master connection** over `repo-remote-<name>` and **verify
+   the host identity over it**, exactly as `repo-remote verify` does: a
+   mismatch, an unreachable host, or an identity it cannot establish is exit
+   `6`, and the token command has **not** run.
+3. **Resolve the credential** (run the command, or read the static token).
+4. **Open the session over that same verified connection** (multiplexed —
+   `ControlMaster`), with `StrictHostKeyChecking=yes` as a backstop, carrying
+   the token as an SSH **environment value** (`SendEnv
+   LC_REPO_REMOTE_GH_TOKEN`), not as an argument or part of the command string.
+
+On the VM a small generated bootstrap (it contains no secret) reads that value,
+**unsets** it, and exports the token only into the process it starts:
+
+- **dev container running** → `docker exec -it -w /work -e GH_TOKEN … repo-remote-<name> bash -l`.
+  `-e GH_TOKEN` passes the value by *name*, so it is not in docker's argv, and
+  an exec's environment is not part of the container's persisted configuration;
+- **no container** (or `--host`) → your login shell in `~/<repo-name>`.
+
+`--container` / `--host` force one side (`--container` with no running
+container is refused on the VM, exit `98`). `--command '<cmd>'` runs `<cmd>`
+non-interactively instead of a login shell — that is how the steps below clone
+the repo and check `gh auth status`.
+
+git is pointed at the same token without writing anything: the bootstrap adds
+`GIT_CONFIG_*` environment entries that first **reset** every credential helper
+configured for `https://github.com` (an empty `credential.helper` value — so a
+configured `store` helper can never write the token to `~/.git-credentials`)
+and then add one that answers `get` with `x-access-token` and the token, read
+from the environment **by name** at the moment git asks. Your git remotes are
+not changed; other hosts are not offered the token. There is no `gh auth
+login`, no `gh auth setup-git`, no stored git credential.
+
+What this guarantees, and the evidence behind it:
+
+- **No token in any argv** — locally (the `ssh` client gets it in its
+  environment only) or on the VM (`sh -c <bootstrap>`, `docker exec -e GH_TOKEN`).
+  Verified with real OpenSSH 10.3 client and server: the value arrives byte for
+  byte, punctuation and all, and no process's arguments contain it.
+- **Nothing on disk** — not in `remote.env`, the per-repo config, the SSH
+  config, the VM's home directory, or Docker's state. Checked against Docker
+  29.8: a token passed with `docker run -e GH_TOKEN` is stored in
+  `/var/lib/docker/containers/<id>/config.v2.json` and shown by `docker
+  inspect`; the same token passed with `docker exec -e GH_TOKEN` appears in
+  neither, nor in the exec's own inspect output.
+- **Tracing-safe** — config loading and the whole credential window run with
+  shell tracing suspended, so even `bash -x repo-remote.sh attach` never prints
+  a token.
+- **Requires** the VM's sshd to accept `LC_*` environment values (`AcceptEnv
+  LANG LC_*`, the stock Ubuntu setting). If the value does not arrive, the
+  bootstrap refuses to start an unauthenticated session (exit `97`) rather
+  than quietly proceeding. The token exists only in process memory; Ubuntu
+  cloud images have no swap by default.
+
+**Containers created the old way.** Earlier versions of this command started
+the dev container with `docker run … -e GH_TOKEN`, which stored that token in
+the container's configuration on the VM's disk. `attach` overrides it for its
+own session and warns when it sees one (without printing it); recreate such a
+container without `-e GH_TOKEN` to remove the stored copy (step 6).
+
+### Reconnect and refresh
+
+Re-running `repo-remote attach` (or `/repo:remote --attach`) **is** the refresh:
+it verifies the host again, runs the token command again, and the **new**
+session gets the new token — on the same instance and the same container,
+with nothing provisioned, started, or stopped. A token that expires mid-session
+is replaced by attaching again; no relaunch is needed.
+
+What it does **not** do: change the environment of anything already running.
+Existing shells, `tmux` panes, and long-running processes (a Loom daemon, a
+build) keep the token they were started with, and fail once it expires. Exit
+and re-attach, or restart those processes from a fresh attachment. There is no
+background renewal.
+
+### GitHub API gateway
+
+`REPO_REMOTE_GH_API_HOST=<hostname>` routes `gh`'s API traffic on the VM
+through an operator-run gateway (for teams that broker and audit API access
+centrally), while **git keeps talking to its github.com remote** with the same
+token. This composes with the token command — git still needs a token, so a
+gateway with no credential configured is refused.
+
+The contract is narrow on purpose, because `gh` itself decides where requests
+go:
+
+- **Accepted value:** a bare DNS hostname with at least one dot — no scheme,
+  port, path, or user. `https://…`, `host:8443`, `localhost`, `github.com` and
+  `*.github.com` are refused (exit `2`, before anything connects or runs).
+- **What the gateway must be:** an HTTPS endpoint on port 443 that serves the
+  **GitHub Enterprise Server API layout** — REST under `https://<host>/api/v3/`,
+  GraphQL at `https://<host>/api/graphql` — with a certificate the VM (or
+  container) trusts, and that accepts the minted token as a bearer token.
+  `gh` has no certificate-verification bypass and this tool adds none: an
+  untrusted certificate is a hard failure, never a fallback to github.com.
+- **What the session gets:** `GH_HOST=<host>` (which `gh api` routes by),
+  `GH_REPO=<host>/<owner>/<repo>` (which `gh issue` / `gh pr` route by — the
+  owner/repo come from this checkout's github.com `origin`, and attach refuses
+  a non-github.com origin), the token as `GH_ENTERPRISE_TOKEN` (what `gh` sends
+  to a non-github.com host), and an **empty** `GH_TOKEN`, so nothing reaches
+  `api.github.com` directly.
+
+Evidence (gh 2.102.0, `GH_DEBUG=api`, an unresolvable `.invalid` gateway and an
+isolated `GH_CONFIG_DIR`): with that environment `gh api repos/{owner}/{repo}`
+requests `https://<gw>/api/v3/repos/<owner>/<repo>` and `gh issue list` / `gh
+pr list` / `gh auth status` request `https://<gw>/api/graphql`, each with an
+`Authorization` header, and nothing goes to `api.github.com`; `GH_HOST` alone
+does **not** route a github.com clone (gh refuses: none of the git remotes
+correspond to `GH_HOST`); `gh api` ignores the host in `GH_REPO` (so both are
+needed); `GH_TOKEN` is not sent to a non-github.com host; and a gateway whose
+certificate is not trusted fails with `x509: certificate signed by unknown
+authority`. The suite re-runs these checks with `RR_GH_EVIDENCE=1`.
+
+Not claimed: commands that must match the gateway host against git remotes
+(`gh pr create`, `gh pr checkout`, `gh repo clone`), `gh auth setup-git`, a
+gateway on another port, and any gateway that is not GHES-shaped. Use plain
+github.com (no `REPO_REMOTE_GH_API_HOST`) for those.
 
 ## `--configure` — guided `.env` setup
 
@@ -296,6 +518,11 @@ settings there and never create an in-tree `.env`.
    command instead.
 7. **SSH key.** Ask which SSH key to use (`REPO_REMOTE_SSH_KEY`); it goes in
    the shared file by default (a key path is usually the same everywhere).
+   **GitHub on the VM (optional).** Recommend `REPO_REMOTE_GH_TOKEN_CMD` — ask
+   for the operator's own minter command — over pasting a long-lived
+   `REPO_REMOTE_GH_TOKEN`. Never run the command during the wizard, and never
+   echo a token back. Only offer `REPO_REMOTE_GH_API_HOST` if the user already
+   runs a GHES-shaped gateway (see [GitHub API gateway](#github-api-gateway)).
 8. **Validate & write.** Run the provider identity check with the entered
    credentials to prove they work. Then show **both** resulting files (shared
    creds and repo `.env`, secrets masked), get a yes, and write each — merging
@@ -400,6 +627,14 @@ RUNNING → offer reuse; STOPPED → offer to start.
    `up` prints an explicit warning that the **alias was not refreshed** — the
    previously written `HostName` is therefore stale — rather than silently
    leaving the old value in place.
+   With `REPO_REMOTE_TRANSPORT=ssm` none of that runs: reuse makes no ingress
+   change and no current-IP or public-IP lookup, and re-points the alias at the
+   instance ID instead — see [AWS transport: direct SSH or SSM Session
+   Manager](#aws-transport-direct-ssh-or-ssm-session-manager).
+   On AWS, reuse also **inspects the instance's actual root volume** and, if it
+   is still gp2, prints a stderr advisory with the exact `aws ec2
+   modify-volume` command to convert it — `up` never runs that command itself.
+   See **AWS root volume (gp3) and disk I/O pressure** below.
 5. **The refreshed alias is then proved to reach the right box.** After writing
    the alias, `up` asks the host at the other end for its own instance id and
    refuses (exit `6`) if it is not the instance this run resolved — see **Stale
@@ -416,6 +651,10 @@ Requirements for the created instance:
 - Label/tag it `repo-remote=<repo-name>` so `--status`/`--down` only ever touch
   instances this command created
 - Ubuntu LTS image, disk size from config
+- **AWS: an explicitly typed root volume** — gp3 at 3,000 IOPS / 125 MiB/s by
+  default (`Ebs={VolumeSize=…,VolumeType=gp3,Iops=3000,Throughput=125}`), never
+  the AMI's default type. See **AWS root volume (gp3) and disk I/O pressure**
+  below.
 - **AWS: always attach a key pair** (`--key-name`), resolved from
   `REPO_REMOTE_SSH_KEY`'s public key (`<REPO_REMOTE_SSH_KEY>.pub`) — an
   existing account key pair with a matching fingerprint is reused,
@@ -427,6 +666,12 @@ Requirements for the created instance:
   public key is also injected into `~ubuntu/.ssh/authorized_keys` via
   cloud-init user-data on every boot, so the host stays reachable even if
   key-pair attachment itself ever regresses.
+- **AWS: pinned instance metadata options** — every launch passes
+  `--metadata-options HttpTokens=required,HttpPutResponseHopLimit=1,HttpEndpoint=enabled`
+  (IMDSv2 only, hop limit 1). See **AWS instance metadata (IMDSv2)** below.
+- **AWS: the configured instance profile, if any** — `REPO_REMOTE_INSTANCE_PROFILE=<name>`
+  adds `--iam-instance-profile Name=<name>` to `run-instances` on either
+  transport. A fresh `ssm` launch requires it.
 - For GPU hosts, see **GPU hosts** below — this needs a GPU-ready image and,
   on AWS, quota-aware handling.
 - Install an idle-shutdown guard (cron checking SSH sessions + CPU, running
@@ -436,8 +681,9 @@ Requirements for the created instance:
   idle-exit marker contract.
 - AWS: security group allowing SSH from the user's IP only, using
   `REPO_REMOTE_SSH_KEY`'s public key — see **Security group and SSH ingress
-  (AWS)** below for exactly how the CIDR is resolved and verified. GCP: prefer
-  OS Login / IAP.
+  (AWS)** below for exactly how the CIDR is resolved and verified. With
+  `REPO_REMOTE_TRANSPORT=ssm` the group has **no** inbound rule at all instead.
+  GCP: prefer OS Login / IAP.
 
 If the zone/region is stocked out (common for GPU types), offer the nearest
 alternative zone or the next type down rather than failing.
@@ -563,6 +809,124 @@ it would just leak an unused group per repo while looking like a repair. The
 same limitation applies whenever a reused instance is attached to some *other*
 security group (created outside this tooling): the group refreshed here is not
 the one guarding it, and that group must be fixed by hand.
+
+Everything in this section describes the default `ssh` transport. With
+`REPO_REMOTE_TRANSPORT=ssm`, none of it runs — see the next section.
+
+#### AWS transport: direct SSH or SSM Session Manager
+
+`REPO_REMOTE_TRANSPORT` chooses how `up`, `verify`, and your own `ssh`/`rsync`
+reach an AWS box (AWS only; both settings use the usual two config layers):
+
+| Setting | `ssh` (default) | `ssm` |
+|---|---|---|
+| Alias `HostName` | the public IP | the instance ID |
+| Alias `ProxyCommand` | none | `aws ssm start-session --region <region> --target %h --document-name AWS-StartSSHSession --parameters portNumber=22` |
+| Security group | tool-owned, tagged `repo-remote=<name>`, tcp/22 from your address | tool-owned, tagged `repo-remote-ssm=<name>`, **no inbound rule** |
+| Current-IP lookup / public-IP poll | yes | **no** — a box with no public IP works |
+| SSH user and key | `REPO_REMOTE_SSH_USER` / `REPO_REMOTE_SSH_KEY` | the same |
+
+```bash
+# per-repo (or shared) config
+REPO_REMOTE_TRANSPORT=ssm
+REPO_REMOTE_INSTANCE_PROFILE=repo-remote-ssm   # an existing instance profile; its role needs AmazonSSMManagedInstanceCore
+```
+
+`REPO_REMOTE_INSTANCE_PROFILE` on its own only attaches the role at launch
+(`--iam-instance-profile Name=<name>`); it never switches the transport. The
+generated alias for `ssm` looks like this, and every connection goes through it:
+the readiness probe, the host-identity check, your interactive `ssh
+repo-remote-<name>`, and both `rsync` flows in steps 5 and 6a:
+
+```
+Host repo-remote-<name>
+    HostName i-0123456789abcdef0
+    User ubuntu
+    IdentityFile ~/.ssh/id_ed25519
+    ProxyCommand aws ssm start-session --region us-west-2 --target %h --document-name AWS-StartSSHSession --parameters portNumber=22
+```
+
+**Prerequisites checklist (`ssm`).** Check these against the current AWS
+Session Manager documentation for your account. An instance profile does not by
+itself make the agent ready or give it a network path.
+
+- **Local:** the AWS CLI and its **Session Manager plugin**
+  (`session-manager-plugin`). `up --yes` and `verify` refuse to start (exit
+  `2`, before any cloud call) when the plugin is not on `PATH`.
+- **Caller (your AWS identity):** `ssm:StartSession` on the instance and on the
+  `AWS-StartSSHSession` document; for a fresh launch, `iam:PassRole` on the
+  profile's role (condition `iam:PassedToService = ec2.amazonaws.com`) plus the
+  EC2 permissions the default transport already needs. A `run-instances`
+  rejection over the profile is reported with `iam:PassRole` named.
+- **Instance profile:** a role with the `AmazonSSMManagedInstanceCore` managed
+  policy (or equivalent), so the agent can register.
+- **Instance:** a running SSM agent (preinstalled on the Ubuntu AMIs this tool
+  launches) with outbound HTTPS to the regional `ssm`, `ssmmessages`, and
+  `ec2messages` endpoints, through a NAT/internet gateway or VPC endpoints. The
+  tool-owned group keeps the default allow-all outbound rule.
+- **Interactive use outside `repo-remote`:** the `ProxyCommand` runs `aws` with
+  whatever credentials your shell has. During `up`/`verify` those are the
+  resolved config credentials. In a plain terminal, export the same credentials
+  or set `AWS_PROFILE` to one that may call `ssm:StartSession`.
+
+**Fresh launch (`ssm`).** Before any mutation, `up` requires
+`REPO_REMOTE_INSTANCE_PROFILE` (exit `2` otherwise; nothing is imported,
+created, or launched). It resolves the security group like this:
+
+1. An explicit `REPO_REMOTE_SECURITY_GROUP` is inspected first. If it has any
+   inbound rule, the run is **refused** (exit `2`) and the rules are left alone.
+2. Otherwise a group tagged `repo-remote-ssm=<name>` from an earlier run is
+   reused, after the same check.
+3. Otherwise a new `repo-remote-ssm-<name>` group is created, tagged
+   `repo-remote-ssm=<name>`, and checked to have no inbound rule before
+   `run-instances`.
+
+The direct-SSH group (tag `repo-remote=<name>`) is never picked up for an `ssm`
+launch, so a zero-ingress box never lands in a group with open tcp/22. No
+`authorize-security-group-ingress` or `revoke-security-group-ingress` call is
+made, and no current-IP or public-IP lookup happens.
+
+**Readiness (`ssm`).** The SSM agent needs a while after boot to register, and
+until it does `start-session` fails with `TargetNotConnected`. The probe retries
+that error within the same `REPO_REMOTE_SSH_READY_TIMEOUT` /
+`REPO_REMOTE_SSH_READY_POLL_INTERVAL` budget used for the default transport. It
+fails **at once**, with a distinct message, on an access denial (naming
+`ssm:StartSession`), a missing plugin, or an SSH key/user rejection. When the
+budget runs out it exits `4` with the prerequisites checklist. The instance ID
+is written back **before** the first probe, so a timeout never orphans the box.
+It **never falls back to direct SSH**. A host-identity mismatch through the
+alias still exits `6`.
+
+**Reused instances (`ssm`).** No profile is needed in config to reuse a box.
+Reuse skips the direct-SSH ingress refresh entirely: no group lookup, no IP
+lookup, no rule change, and no group creation. Two limitations are reported
+instead of fixed:
+
+- If the instance has **no instance profile**, `up` prints a warning with the
+  `aws ec2 associate-iam-instance-profile` command. It never attaches a role
+  itself. The readiness probe will most likely then time out with
+  `TargetNotConnected`.
+- If a security group on the instance still has inbound rules (for example a
+  tcp/22 `/32` from when it was launched with `ssh`), `up` names the group and
+  the rule count and says plainly that it did **not** remove them. Switching
+  the transport does not reduce an existing box's exposure. Review and revoke
+  those rules yourself, or launch a fresh box under `ssm`.
+
+Automatic conversion of existing groups or instances, and creating IAM roles or
+policies, are out of scope.
+
+**Switching transport.** Re-running `up` rewrites the whole
+`Host repo-remote-<name>` block, so switching either way drops the previous
+`HostName`/`ProxyCommand` and leaves every other `Host` block alone. The dry
+run (`repo-remote up` without `--yes`) shows the transport and profile and
+flags a missing profile or plugin. It starts no session and touches no
+resource.
+
+Invalid values fail before any cloud call (exit `2`): an unknown transport,
+`ssm` or a profile with GCP, a profile value that is not a plain IAM profile
+*name* (an ARN is refused), an `AWS_REGION` that is not a plain region code
+under `ssm` (it goes into the `ProxyCommand`), and an SSH user or key path
+that would add a line to the SSH config.
 
 #### The idle-shutdown guard
 
@@ -811,6 +1175,173 @@ the address.
   tooling does not make on your behalf; allocate and associate one by hand if
   the box is long-lived enough to be worth it.
 
+#### AWS instance metadata (IMDSv2)
+
+**What a new instance gets (repo#562).** `aws_create()` passes, on its one
+`run-instances` call:
+
+```
+--metadata-options HttpTokens=required,HttpPutResponseHopLimit=1,HttpEndpoint=enabled
+```
+
+- `HttpTokens=required` — IMDSv2 only. A metadata request without a session
+  token is refused, so a plain unauthenticated GET (the typical SSRF shape)
+  cannot read metadata or user-data.
+- `HttpPutResponseHopLimit=1` — the token `PUT` response may cross one network
+  hop.
+- `HttpEndpoint=enabled` — the metadata service stays on; the host needs it.
+
+Launch parameters take precedence over AMI and account-level defaults, and AWS
+evaluates each option on its own (see AWS's
+[metadata options and precedence](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-options.html)).
+So the settings above hold whichever image is launched — the default Ubuntu
+AMI, the GPU AMI, or a configured `REPO_REMOTE_IMAGE` — instead of depending on
+what that image or account happens to default to. There is no setting to relax
+them. If AWS rejects the launch (for example an image that cannot honor the
+options), `up` fails with the usual `aws ec2 run-instances failed: …` (exit
+`4`) after that single attempt; it never retries with weaker settings.
+
+**Host compatibility.** Everything this tool runs on the host already speaks
+IMDSv2: the cloud-init identity marker and the `verify` identity probe both
+`PUT /latest/api/token` first and send the token on their metadata `GET`s. The
+idle-shutdown guard does not query metadata at all. Nothing on the host needs
+IMDSv1.
+
+**Effect on containers.** A process in a container on Docker's default bridge
+network is one hop further from the metadata service than the host. With hop
+limit 1 the token `PUT` response does not reach it, and with tokens required
+there is no tokenless fallback — so code in a bridged container that reads
+instance metadata (an AWS SDK auto-detecting its region, a `curl` to
+`169.254.169.254`) will fail or time out. The dev container gets what it needs
+over SSH and through its environment, not from metadata, so this tool is
+unaffected. If your own workload needs metadata from inside a container, run
+that container with host networking or pass the values in (for example
+`AWS_REGION`). Treat the hop limit as narrowing the default path, not as an
+isolation guarantee: a container with host networking, or any other process
+on the host itself, still reaches the metadata service normally.
+
+**Existing instances keep their settings.** Metadata options are fixed at
+launch unless explicitly changed, and `up` does **not** inspect or change them
+when it reuses or restarts an instance. A box created before this change keeps
+whatever it was launched with — often `HttpTokens=optional` (IMDSv1) or a hop
+limit of `2`. Migrating it is a separate operator step, and needs
+`ec2:ModifyInstanceMetadataOptions` (which a scoped-down collaborator policy may
+not grant):
+
+```bash
+aws ec2 describe-instances --instance-ids <id> --region <region> \
+  --query 'Reservations[0].Instances[0].MetadataOptions'
+aws ec2 modify-instance-metadata-options --instance-id <id> --region <region> \
+  --http-tokens required --http-put-response-hop-limit 1 --http-endpoint enabled
+```
+
+Check first that nothing on that box (including any of your own containers)
+still relies on IMDSv1 or a hop limit of 2.
+
+#### AWS root volume (gp3) and disk I/O pressure
+
+**Why it is explicit (repo#559).** Left unspecified, EC2 gives the root volume
+the AMI's default type — **gp2**, whose baseline is 3 IOPS per GiB (minimum
+100): a 50 GiB root gets **150 IOPS**, plus a burst bucket that refills slowly.
+Hours of repeated builds or full test-suite runs drain that bucket, and the box
+then *looks* broken — tests time out, a 15-minute suite takes 100 — when its
+disk is simply throttled. gp3 has a flat **3,000 IOPS / 125 MiB/s** baseline
+included in its price, with no burst credits to run out; in AWS's own EBS
+pricing examples it is also cheaper per GB than gp2 ($0.08 vs $0.10 per
+GB-month — check the [EBS pricing page](https://aws.amazon.com/ebs/pricing/)
+for your region rather than relying on that ratio).
+
+**Configuration** (AWS only; both config layers, like every other setting):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `REPO_REMOTE_DISK_GB` | `50` | root volume size, GiB |
+| `REPO_REMOTE_VOLUME_TYPE` | `gp3` | `gp3` or `gp2` (case-insensitive); nothing else is supported |
+| `REPO_REMOTE_VOLUME_IOPS` | `3000` | gp3 only — provisioned IOPS |
+| `REPO_REMOTE_VOLUME_THROUGHPUT` | `125` | gp3 only — provisioned throughput, MiB/s |
+
+The launch mapping follows the type: gp3 sends
+`Ebs={VolumeSize=<gb>,VolumeType=gp3,Iops=<iops>,Throughput=<mibps>}`; an
+explicit `REPO_REMOTE_VOLUME_TYPE=gp2` sends `Ebs={VolumeSize=<gb>,VolumeType=gp2}`
+and nothing else, because gp2 performance is a function of size and takes no
+IOPS/throughput parameters. Values are checked **before any cloud call** (exit
+`2`, nothing created — the dry-run plan included) against AWS's documented gp3
+limits (*Amazon EBS User Guide → General Purpose SSD volumes*, checked
+2026-10-05): IOPS 3,000–80,000 and at most 500 per GiB above the 3,000
+baseline; throughput 125–2,000 MiB/s and at most 0.25 MiB/s per provisioned
+IOPS; size up to 64 TiB (gp2: 16 TiB). Also refused: an unsupported type, a
+value that is not a positive whole number, and `REPO_REMOTE_VOLUME_IOPS` or
+`REPO_REMOTE_VOLUME_THROUGHPUT` set alongside `gp2`. (gp3 above the baseline is
+billed extra; the cost estimate covers the instance, not the volume.)
+
+**Existing gp2 hosts: advisory on reuse, never automatic.** The volume type is
+fixed at launch, so an instance created before this change keeps gp2. Every
+AWS `up` that **reuses** an instance (pinned or tag-discovered, running or
+restarted) looks up its real root volume — `RootDeviceName` matched against its
+`BlockDeviceMappings`, never "the first attached volume" — and reads the type
+with `describe-volumes`. If it is gp2, `up` prints one stderr notice naming the
+volume, the region, and a copyable command:
+
+```bash
+aws ec2 modify-volume --volume-id <root-volume-id> --volume-type gp3 --region <region>
+```
+
+(with `--iops`/`--throughput` appended when you configured non-default gp3
+values). **`up` never runs it** — converting is your decision. Notes before you
+do:
+
+- **Permission:** the call needs the IAM action **`ec2:ModifyVolume`** on that
+  volume. It is not something the rest of this tooling needs, so many operator
+  users lack it — if the call is denied, ask your AWS admin for
+  `ec2:ModifyVolume` (optionally scoped to the volume's ARN).
+- **Online:** Elastic Volumes modifies a volume in place on all current-generation
+  instance types (and C1/C3/C4/G2/I2/M1/M3/M4/R3/R4), without detaching it or
+  stopping the instance. On an instance type that does not support Elastic
+  Volumes, stop the instance, modify the root volume, then start it.
+- **Timing and limits:** the modification passes through `modifying` →
+  `optimizing` → `completed` and can take minutes to hours; the new performance
+  applies progressively during `optimizing`. A volume can be modified at most
+  **four times per rolling 24 hours**, and only once its previous modification
+  has completed. Track it with
+  `aws ec2 describe-volumes-modifications --volume-ids <root-volume-id> --region <region>`.
+- No guest-side step is needed for a type change (unlike a size change, which
+  also needs the partition and filesystem grown).
+
+The inspection itself is best effort: if the instance lookup fails, the root
+mapping is missing, or `describe-volumes` is denied (it needs
+**`ec2:DescribeVolumes`**), `up` prints a NOTICE saying the check was skipped
+and how to run it by hand, and otherwise succeeds exactly as before — it never
+guesses a volume id. A gp3 root, or a configured `REPO_REMOTE_VOLUME_TYPE=gp2`,
+produces no notice. All of this goes to stderr; `--json` stdout is unchanged.
+
+**Troubleshooting: "the box is slow" — check disk wait before blaming CPU.** A
+throttled disk and a saturated CPU feel the same from the outside (timeouts,
+long runs) but have opposite fixes. On the host:
+
+```bash
+cat /proc/pressure/io      # I/O pressure stall info: "some avg10/avg60/avg300" = % of time tasks waited on I/O
+cat /proc/pressure/cpu     # the same for CPU — compare the two
+vmstat 5                   # high "wa" + many "b" (blocked) with low "us"/"sy" => disk-bound
+ps -eo state,pid,pcpu,comm | awk '$1 == "D"'   # processes stuck in uninterruptible disk wait
+iostat -x 5                # (sysstat) per-device r/s, w/s, await, %util
+```
+
+- **Disk-bound:** `/proc/pressure/io` `avg300` well above a few percent (the
+  original incident sat near 45%), processes in **D** state at low `%CPU`, high
+  `wa`. Then check the volume's type (`aws ec2 describe-volumes --volume-ids
+  <id> --query 'Volumes[0].VolumeType'`) and its CloudWatch `AWS/EBS` metrics:
+  **`BurstBalance`** (gp2 only — at or near 0% means the credits are gone and
+  the volume is pinned to its 3 IOPS/GiB baseline) and `VolumeQueueLength`.
+  For example:
+  `aws cloudwatch get-metric-statistics --namespace AWS/EBS --metric-name BurstBalance --dimensions Name=VolumeId,Value=<id> --statistics Minimum --period 300 --start-time <iso> --end-time <iso> --region <region>`
+  (needs `cloudwatch:GetMetricStatistics`). Fix: convert gp2 to gp3 as above,
+  or raise `REPO_REMOTE_VOLUME_IOPS`/`REPO_REMOTE_VOLUME_THROUGHPUT` for a gp3
+  volume that is genuinely at its provisioned limit (for a new host via config;
+  for an existing one with `modify-volume --iops/--throughput`).
+- **CPU-bound:** high `us`/`sy`, load average near the vCPU count, high
+  `/proc/pressure/cpu`, low I/O pressure. Fix: a larger instance type, or
+  fewer parallel workers.
+
 #### GPU hosts
 
 Treat the host as a GPU box when the instance type is a GPU family (AWS
@@ -855,17 +1386,27 @@ Update the line in place if present, else append it. Report the edit.
 
 ### 5. Get the repo onto the instance
 
-- **Repo has an `origin` remote** and forge auth can be used non-interactively
-  (e.g. `gh auth token` for GitHub over HTTPS): clone on the VM, check out the
-  current branch.
+- **Repo has an `origin` remote:** clone on the VM and check out the current
+  branch. For a private GitHub repo, run the clone through `attach` so it is
+  authenticated by a freshly resolved session token and nothing is stored:
+
+  ```bash
+  repo-remote attach --host --command 'git clone https://github.com/<owner>/<repo>.git ~/<repo-name> && git -C ~/<repo-name> checkout <branch>'
+  ```
+
+  Never put a token in the clone URL or in any command string.
 - **Then sync uncommitted work** (or, with no usable remote, sync the whole
   tree): rsync the working tree over SSH, excluding gitignored content:
 
 ```bash
 rsync -az --delete \
   --filter=':- .gitignore' --exclude '.git/' \
-  ./ <host>:~/<repo-name>/
+  ./ repo-remote-<name>:~/<repo-name>/
 ```
+
+Always target the SSH alias `repo-remote-<name>`, not a raw IP. The alias
+carries the user, key, and on `REPO_REMOTE_TRANSPORT=ssm` the SSM
+`ProxyCommand`, so the same command works on both transports.
 
 **Never copy the *provisioning* `.env` or cloud keys to the VM** — the
 `.gitignore` filter already excludes a gitignored `.env`; double-check it's
@@ -887,12 +1428,19 @@ How the repo declares its environment decides the path:
   ```bash
   docker build -t repo-remote-<name> -f "$REPO_REMOTE_DOCKERFILE" ~/<repo-name>
   docker run -d --name repo-remote-<name> $GPUS \
-    -e GH_TOKEN -e CLAUDE_CODE_OAUTH_TOKEN \
+    -e CLAUDE_CODE_OAUTH_TOKEN \
     -v ~/<repo-name>:/work -w /work repo-remote-<name> sleep infinity
   #   GPUS="--gpus all" on GPU hosts, empty otherwise
-  #   GH_TOKEN / CLAUDE_CODE_OAUTH_TOKEN are read from the remote shell env,
-  #   set inline over SSH from the resolved pool (see 6a) — never a file.
+  #   CLAUDE_CODE_OAUTH_TOKEN is read from the remote shell env, set inline over
+  #   SSH from the resolved pool (see 6a).
+  #   NO GH_TOKEN here: `docker run -e` stores the value in the container's
+  #   configuration on the VM's disk. The GitHub token is given to each session
+  #   by `repo-remote attach` instead (`docker exec -e GH_TOKEN`, not persisted).
   ```
+
+  A container created by an earlier version **with** `-e GH_TOKEN` still holds
+  that token on disk; `docker rm -f repo-remote-<name>` and re-run the
+  `docker run` above (the repo is a bind mount, so nothing in it is lost).
 
   This is what makes GPU clean: the **host** (GPU AMI) supplies the driver +
   `nvidia-container-toolkit`; the **repo's Dockerfile** supplies CUDA and the
@@ -923,13 +1471,16 @@ VM to interactive login.
    own pool (`.env` `ACCOUNT_*` **and** `.loom/tokens/`), use it; else fall back
    to the shared `~/.config/repo/remote.env` registry + `~/.config/repo/tokens/`.
 
-2. **gh — inline, no file.** Export the resolved `REPO_REMOTE_GH_TOKEN` as
-   `GH_TOKEN` in the remote shell for the `docker run` above, then inside the
-   container `gh auth setup-git` and confirm with `gh auth status`. The token
-   lives only in the container env. **Note:** `gh` infers the repo from the
-   local `.git` remote — so `gh pr/issue` commands need the **clone** path
-   (step 5), not a rsync-only tree (which excludes `.git`). If the VM has no
-   `.git`, pass `-R <owner>/<repo>` explicitly for label/PR/issue operations.
+2. **gh — per session, via `attach`.** Do **not** export a token for
+   `docker run`, and do not run `gh auth login` or `gh auth setup-git`. Every
+   session opened with `repo-remote attach` receives a freshly resolved token
+   (`REPO_REMOTE_GH_TOKEN_CMD`, else the static `REPO_REMOTE_GH_TOKEN`) as
+   `GH_TOKEN`, plus an environment-only git credential helper — see [GitHub
+   credentials on the VM](#github-credentials-on-the-vm). The token lives only
+   in that session's processes. **Note:** `gh` infers the repo from the local
+   `.git` remote — so `gh pr/issue` commands need the **clone** path (step 5),
+   not a rsync-only tree (which excludes `.git`). If the VM has no `.git`, pass
+   `-R <owner>/<repo>` explicitly for label/PR/issue operations.
 
 3. **Claude pool — token files (Loom needs them as files).** Copy the resolved
    `*.token` files to the VM at `~/<repo-name>/.loom/tokens/` (`chmod 600`,
@@ -942,14 +1493,16 @@ VM to interactive login.
    # local -> VM, over the SSH channel; never the provisioning creds.
    # NOTE: rsync --chmod is GNU-rsync only and fails on macOS's system rsync,
    # so set the perms in a follow-up ssh step instead of relying on it.
-   rsync -az -e "ssh -i $REPO_REMOTE_SSH_KEY" \
-     "<resolved-tokens-dir>/" <host>:~/<repo-name>/.loom/tokens/
-   ssh -i "$REPO_REMOTE_SSH_KEY" <host> \
+   # The alias supplies the key (and, on the ssm transport, the ProxyCommand).
+   rsync -az \
+     "<resolved-tokens-dir>/" repo-remote-<name>:~/<repo-name>/.loom/tokens/
+   ssh repo-remote-<name> \
      'chmod 700 ~/<repo-name>/.loom/tokens && chmod 600 ~/<repo-name>/.loom/tokens/*.token'
    ```
 
-4. **Verify:** `docker exec repo-remote-<name> bash -lc 'claude --version && gh auth status'`.
-   Report which account is active and how many are in the pool.
+4. **Verify:** `repo-remote attach --command 'claude --version && gh auth status'`
+   (it lands in the container when one is running). Report which account is
+   active and how many are in the pool — never the token.
 
 Then, either path:
 - Claude Code ships **in the Dockerfile** (container path); for the no-Dockerfile
@@ -961,6 +1514,8 @@ Host repo-remote-<name>
     HostName <ip-or-iap-alias>
     User <user>
     IdentityFile <REPO_REMOTE_SSH_KEY>
+    # AWS + REPO_REMOTE_TRANSPORT=ssm: HostName is the instance ID, plus
+    #   ProxyCommand aws ssm start-session --region <region> --target %h --document-name AWS-StartSSHSession --parameters portNumber=22
     # GCP+IAP: use a ProxyCommand via `gcloud compute start-iap-tunnel`
 ```
 
@@ -987,16 +1542,24 @@ IP and rewrite the alias, then verify again. This applies to *every* reconnect,
 not just the first one after provisioning — an alias written before a stop/start
 cycle is exactly the stale handle this guards against.
 
-Once it passes, open a new terminal window with the session. Where it lands depends on the
-environment path:
+`repo-remote attach` runs exactly this verification itself, over the same
+connection it then uses, and only then resolves the GitHub credential — so the
+session command is simply:
 
-- **Dev container running** → drop straight into it, at the mounted repo:
-  `ssh -t repo-remote-<name> 'docker exec -it -w /work repo-remote-<name> bash -l'`
-- **No container** → land in the repo dir on the host:
-  `ssh -t repo-remote-<name> 'cd ~/<repo-name>; exec $SHELL -l'`
+```bash
+.claude/skills/repo/scripts/repo-remote.sh attach      # installed path; `repo-remote attach` below
+```
+
+It lands in the dev container at `/work` when one is running, else in
+`~/<repo-name>` on the host (`--container` / `--host` force one). Because the
+token command runs **in that terminal, at attach time**, every new window gets
+a fresh credential; to refresh an expired one, exit and attach again (see
+[Reconnect and refresh](#reconnect-and-refresh)). Do not hand-build an
+`ssh … 'docker exec …'` command that carries a token: a token in a command
+string lands in process lists, shell history, and logs.
 
 Claude Code cannot host an interactive SSH session itself, so hand it to the OS
-(substituting the appropriate command above):
+(substituting the attach command above):
 
 - **macOS**: `osascript -e 'tell app "Terminal" to do script "<ssh command>"' -e 'tell app "Terminal" to activate'`
   (if the user runs iTerm2, use the equivalent iTerm AppleScript)
@@ -1027,6 +1590,17 @@ makes no cloud API call, so it is cheap enough to run before every session. Full
 rationale: [Stale SSH aliases and released public
 IPs](#stale-ssh-aliases-and-released-public-ips-host-identity-verification).
 
+## `--attach`
+
+Delegates to `repo-remote attach` in a new terminal window (step 7). It is the
+reconnect path too: run it whenever you want another session, or a fresh token
+after one expired. It verifies the host identity first (exit `6` stops it
+before any credential is resolved), then resolves the credential (exit `7` if
+the token command fails — no static fallback), then opens the session on the
+existing instance. It never creates, starts, or stops anything, and needs no
+cost confirmation. Full contract: [GitHub credentials on the
+VM](#github-credentials-on-the-vm).
+
 ## `--status` and `--down`
 
 Both delegate to the shared script (`repo-remote status` / `repo-remote down`),
@@ -1054,10 +1628,12 @@ path — see **Fleet-marked hosts: the reuse and teardown guard** above.
    the pinned `REPO_REMOTE_INSTANCE_ID`) — never enumerate-and-guess
 3. **Two secret classes, handled differently** — **provisioning credentials**
    (`AWS_*`/`GCP_*`) are local-only and **never** reach the VM; **dev-session
-   auth** (`REPO_REMOTE_GH_TOKEN`, the `ACCOUNT_*` Claude pool) is opt-in and
-   goes to the VM *by design* (gh token in the container env; pool token files
-   at `chmod 600` under the VM's `.loom/tokens/`). Never copy the provisioning
-   `.env` wholesale — carry only the resolved dev-session secrets.
+   auth** (the GitHub credential, the `ACCOUNT_*` Claude pool) is opt-in and
+   goes to the VM *by design*: the GitHub token — preferably minted per
+   session by `REPO_REMOTE_GH_TOKEN_CMD` — only into the environment of a
+   session opened by `repo-remote attach`; pool token files at `chmod 600`
+   under the VM's `.loom/tokens/`. Never copy the provisioning `.env`
+   wholesale — carry only the resolved dev-session secrets.
 4. **Keep both config files out of harm's way** — refuse to run if the repo's
    `.env` exists and is not gitignored (it may hold credentials); warn and offer
    to `chmod 600` the shared `~/.config/repo/remote.env` if it's readable by
@@ -1071,3 +1647,9 @@ path — see **Fleet-marked hosts: the reuse and teardown guard** above.
    public IP is released on stop and reassigned to another AWS customer, so a
    resolving alias and a successful login prove nothing about *which* machine
    you reached
+7. **Never put a GitHub token in a command, a file, or the container's
+   configuration** — no token in an SSH or `docker` command string, a clone
+   URL, `docker run -e`, `remote.env` write-back, or a `gh auth login` /
+   stored git credential on the VM. Use `repo-remote attach`, which hands the
+   token over as data after verifying the host; never run the token command
+   for `--status`, `--verify`, `--down`, or a dry run

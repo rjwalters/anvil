@@ -146,6 +146,14 @@ Also report, per repo:
   already uses (`app/dependabot`, `app/renovate`, or the configured
   self-hosted identity for that repo).
 
+Step 1's **open-alert count is deliberately not a survey column.** This mode
+answers one question — where the Dependabot→Renovate migration stands — and
+alert counts would add one paginated `/dependabot/alerts` read plus a per-alert
+PR cross-reference to every repo enumerated, most of which would come back
+UNKNOWN on a token that is not an admin everywhere. Run `/repo:deps --check`
+against a specific repo for its alert state; a survey row is not evidence that
+a repo has no open vulnerabilities, and must not be reported as if it were.
+
 #### Ordering check: the org preset must be merged before any client can adopt it
 
 Compute this once per survey run, not once per repo. A client's
@@ -253,7 +261,12 @@ Reuse steps 2–3 below for ecosystem/ownership detection and label validation.
   resulting effective native config with `renovate-config-validator`.
 - Keep the dependency graph and Dependabot alerts enabled and grant Renovate
   read access to alerts. Probe the dedicated alerts and security-fixes endpoints
-  shown in step 1. Treat `dependencies.dependabotSecurityUpdates` as desired
+  shown in step 1 — **including the open-alert read** (`GET
+  repos/OWNER/REPO/dependabot/alerts?state=open`): this path skips step 1, and
+  the open-alert count is the one reading that does not depend on which
+  provider owns fix PRs. Report it, its severity breakdown, and any alert with
+  no open fix PR exactly as step 1 specifies, cross-referencing against this
+  repo's actual bot identities. Treat `dependencies.dependabotSecurityUpdates` as desired
   state: disable Dependabot PR generation only after Renovate's fix coverage is
   verified for this client's ecosystems and lockfiles. Report pending migration
   instead of temporarily removing all security-fix automation — and record that
@@ -475,6 +488,16 @@ gh api repos/OWNER/REPO/automated-security-fixes
 # Alerts — likewise a dedicated endpoint, NOT a security_and_analysis key:
 #   204 → enabled, 404 → disabled
 gh api repos/OWNER/REPO/vulnerability-alerts -i 2>/dev/null | head -1
+
+# Open alerts — a THIRD endpoint, and the only one that answers "is anything
+# vulnerable RIGHT NOW". The two flags above answer different questions:
+# `vulnerability-alerts` says whether alerting is turned on, and
+# `automated-security-fixes` says whether a fix PR would be raised. Neither is
+# a count of findings, and an alert whose fix sits behind a lockfile pin or a
+# dependency override produces NO PR at all — so it is invisible to both flags
+# AND to step 7's PR list. 403 → UNKNOWN, never 0 (see below).
+gh api repos/OWNER/REPO/dependabot/alerts --paginate -X GET -f state=open \
+  --jq '.[] | {number, severity: .security_advisory.severity, package: .dependency.package.name, ecosystem: .dependency.package.ecosystem, manifest: .dependency.manifest_path, fixed_in: .security_vulnerability.first_patched_version.identifier}'
 ```
 
 **Security updates are three states, not two.** `automated-security-fixes`
@@ -520,6 +543,81 @@ That object is an unreliable source for either one, for two different reasons:
   `security_and_analysis` object itself as proof of missing admin is not
   reliable and misreports a plan/visibility limitation as a permission gap.
 
+**Open alerts are a count of findings, not a fourth flag.** A flag being ON
+says nothing about whether anything is currently vulnerable, and the PR list
+in step 7 is not a proxy for the alert list: an advisory resolved only by a
+transitive bump — one held back by a lockfile pin, a `resolutions`/`overrides`
+entry, or a paused Dependabot — generates **no PR**, so a report built from
+the flags and the PR list alone reads clean while the repo has open
+vulnerabilities. (Observed on this repo, issue #551: a `--check` run reported
+config present, security updates ON, 4 open Dependabot PRs / 0 majors / 0
+stale, and the very next `git push` printed GitHub's banner for 2 open
+vulnerabilities on the default branch.)
+
+Group the read above by `security_advisory.severity` and report the counts.
+The API spells the four levels `critical` / `high` / `medium` / `low`; GitHub's
+web UI and the post-push banner render `medium` as **moderate**, so say which
+spelling you used rather than leaving a reader to reconcile "1 medium" with a
+banner that said "1 moderate". The response maps to report values like this:
+
+| Response | Report as | What it means |
+|---|---|---|
+| `[]` | `0 open` | Read succeeded and nothing is open — the only way to earn a zero |
+| a non-empty array | `N open (<by severity>)` | Each alert is live on the default branch right now |
+| `403`, alerts flag **enabled** | `UNKNOWN (needs security_events read)` | Permission failure — this token cannot read alerts |
+| `403`/`404`, alerts flag **disabled** | `n/a — alerts disabled` | Nothing is being detected at all; fix the flag first (step 5) |
+
+**Never report `0 open` for a read that failed.** `GET /dependabot/alerts`
+answers `403` both for a token without `security_events` read (or
+admin/security-manager) **and** for a repo where alert detection is off, so
+disambiguate it against the `vulnerability-alerts` result you just read rather
+than guessing: alerts enabled → the `403` is about the token, so UNKNOWN;
+alerts disabled → there is no alert set to count, so `n/a`. This is the same
+rule the two flags already follow (Safety Rule 2) — "can't see it" and "there
+is nothing there" are different answers, and only one of them is good news.
+
+**Alerts with no open fix PR are the ones needing manual action — list them
+individually.** A severity count tells a reader how bad things are; it does
+not tell them what to do, and the alerts that *do* have a Dependabot PR
+already have an owner (step 7's triage). So cross-reference the open-alert set
+against the open bot PRs, using the same author-filtered listing step 7 uses
+(`gh pr list --author "app/dependabot" --state open`, extended to
+`app/renovate` or the configured self-hosted identity when that provider is
+present — run it here too; it is one cheap REST call, and it keeps this row
+self-contained rather than back-filled after step 7):
+
+```bash
+# Does any open bot PR actually bump the alerting package? Match on the diff,
+# not the title: a grouped PR's title names none of its packages, and a
+# lockfile-only security bump may not appear in the title either.
+gh api "repos/OWNER/REPO/pulls/<N>/files" --paginate \
+  --jq '.[] | select(.filename | test("package-lock.json|pnpm-lock.yaml|yarn.lock|Cargo.lock|uv.lock|poetry.lock|go.sum|package.json|Cargo.toml|pyproject.toml")) | .patch' \
+  | grep -i '<package>'
+```
+
+An alert is **covered** only when some open PR bumps that package to at least
+its `fixed_in` version (`security_vulnerability.first_patched_version`), using
+the ecosystem's version semantics — the same comparison the stale check in
+step 8 uses. A PR that touches the package but lands *below* `fixed_in` is not
+coverage. Everything left over is an alert nothing is currently fixing, and it
+needs a human action — a direct bump, an override/`resolutions` change, or a
+lockfile refresh — so name each one with its package, ecosystem, severity, and
+`fixed_in` version:
+
+```
+ALERTS NEEDING MANUAL ACTION
+============================
+| Package  | Ecosystem | Severity      | Fixed in | Why no PR                                   |
+|----------|-----------|---------------|----------|---------------------------------------------|
+| lodash   | npm       | high          | 4.17.21  | transitive dev dep pinned by an override    |
+| tar-fs   | npm       | medium (mod.) | 3.1.1    | lockfile-only fix; no manifest change to PR |
+```
+
+Print this block only when the leftover set is non-empty — with zero open
+alerts, or with every alert covered by an open PR, the table row below carries
+the whole story. Under `--check` this is still report-only: do not open a PR,
+edit a manifest, or refresh a lockfile to close an alert.
+
 Report them on separate rows, never collapsed into one "Dependabot: on":
 
 ```
@@ -530,6 +628,7 @@ DEPENDABOT
 | .github/dependabot.yml          | absent — no version updates configured  |
 | vulnerability alerts (repo flag)| disabled (404)                          |
 | security updates (repo flag)    | disabled — no automatic CVE fix PRs     |
+| open Dependabot alerts          | 0 open                                  |
 | Open Dependabot PRs             | 0                                       |
 ```
 
@@ -554,6 +653,27 @@ them justifies a write. Conversely, do **not** infer UNKNOWN from an absent
 Advanced Security omit that object even for a fully-admin token, so its
 absence alone proves nothing about permissions; the dedicated endpoints are
 the authoritative source either way.
+
+The `open Dependabot alerts` row is a **fourth, always-printed row** — it is a
+count of open findings, not another on/off flag, so never fold it into
+`vulnerability alerts (repo flag)` and never omit it when the count is zero
+(an omitted row reads as "not checked", which is the state this row exists to
+rule out). Its four renderings, one per row of the response table above:
+
+```
+| open Dependabot alerts          | 0 open                                  |
+| open Dependabot alerts          | 2 open (1 high, 1 medium) — 1 with no open fix PR: lodash (npm) → 4.17.21 |
+| open Dependabot alerts          | UNKNOWN (needs security_events read) — endpoint returned 403 |
+| open Dependabot alerts          | n/a — alerts disabled (no alert set to count) |
+```
+
+**Carry the alert counts into the caller's summary**, not just this table.
+`/repo:all` stage 6 runs `/repo:deps --check` and condenses it to a single
+`Deps:` line (see [[all]]' Final Summary); that line must include
+`alerts: N open (<by severity>)` — or `alerts: UNKNOWN` — alongside the
+existing provider/flag/PR counts, and must name any uncovered alert count,
+since a summary that reports only open-PR counts is exactly how an open
+vulnerability reaches the end of a clean-looking hygiene run.
 
 ### 2. Detect the ecosystems actually present
 
@@ -1197,9 +1317,13 @@ natural wrong assumption, and it is safety-relevant:
    use existing authorization when it covers it. Closing a superseded PR and
    commenting `@dependabot rebase` are writes too, held to the same bar. Under
    `--check`, write nothing.
-2. **Policy, updater, alerts, and security PRs are independent** — a present
-   config says nothing about whether CVE alerting is on. Report
-   UNKNOWN (not `disabled`) when the token can't read the setting.
+2. **Policy, updater, alerts, open alerts, and security PRs are independent** —
+   a present config says nothing about whether CVE alerting is on, and an
+   alerting flag that is ON says nothing about whether alerts are open. Report
+   UNKNOWN (not `disabled`) when the token can't read a setting, and
+   UNKNOWN (not `0 open`) when it can't read `/dependabot/alerts`. Never
+   present flag state or an empty bot-PR list as evidence that nothing is
+   vulnerable.
 3. **Never create a label**, and never reference one whose description reserves
    it for any party (`Applied by: <party>` — humans, Champion, a bot, …). No
    suitable label → no `labels:` key.
