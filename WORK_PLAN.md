@@ -47,8 +47,7 @@ _None._
 
 Issues carrying `loom:curated`.
 
-- **#1348**: rhetoric_lint: sentence splitter inflates long-sentence density *(curated)*
-- **#1349**: essay: define one canonical word-count method for the length envelope *(curated)*
+_None._
 
 ## Proposed (Architect / Hermit)
 
@@ -68,7 +67,7 @@ _None._
 | In Progress (`loom:building`) | 0 |
 | PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 2 |
+| Curated | 0 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
