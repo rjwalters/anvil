@@ -1003,7 +1003,18 @@ _HEADING_RE = re.compile(r"^#{1,6}\s")
 # same fidelity the module already accepts for word counts — abbreviation
 # noise ("Dr. Smith", "e.g. foo") produces occasional over-splits, which is
 # tolerated rather than specially handled (see the module docstring).
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+#
+# A terminator may be followed by one or two closing quotes (straight or
+# curly) before the whitespace: ``"...cited papers." After`` (issue #1348).
+# The lookbehind alternation keeps the closer attached to the preceding
+# sentence (a plain split would drop it). Closing ``)`` / ``]`` are
+# deliberately NOT treated as closers: ``(Smith et al.) went`` would
+# over-split, the same noise class as abbreviations but more frequent.
+_SENTENCE_SPLIT_RE = re.compile(
+    r"(?<=[.!?])\s+"
+    r"|(?<=[.!?][\"'\u201d\u2019])\s+"
+    r"|(?<=[.!?][\"'\u201d\u2019]{2})\s+"
+)
 
 # ATX heading line, depth-capturing variant. Used by
 # :func:`_sources_block_lines` to track section boundaries (needs the

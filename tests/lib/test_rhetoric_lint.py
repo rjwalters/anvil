@@ -1951,3 +1951,67 @@ def test_hyphen_pair_density_excludes_neutral_engineering_terms():
     )
     ids = [f.rule_id for f in _active(lint_rhetoric(text))]
     assert "hyphen-pair-density" not in ids
+
+
+# --- sentence splitting after a closing quote (issue #1348) ---------------
+
+
+def _chunks(text: str) -> list[str]:
+    from anvil.lib.rhetoric_lint import _sentence_chunks
+
+    return _sentence_chunks([text])
+
+
+def test_sentence_split_after_straight_closing_quote():
+    assert _chunks('It was "transcribed from the cited papers." After the fix we went.') == [
+        'It was "transcribed from the cited papers."',
+        "After the fix we went.",
+    ]
+
+
+def test_sentence_split_after_curly_closing_quote():
+    assert _chunks("It was “transcribed from the papers.” After the fix we went.") == [
+        "It was “transcribed from the papers.”",
+        "After the fix we went.",
+    ]
+
+
+def test_sentence_split_question_and_exclaim_closing_quote():
+    assert _chunks('She asked "why?" He shouted "stop!" Done.') == [
+        'She asked "why?"',
+        'He shouted "stop!"',
+        "Done.",
+    ]
+    assert _chunks("He said ‘no.’ Then left.") == [
+        "He said ‘no.’",
+        "Then left.",
+    ]
+
+
+def test_sentence_split_closing_quote_at_end_of_text():
+    assert _chunks('He said "that is all."') == ['He said "that is all."']
+    assert _chunks('One. "Two."  ') == ["One.", '"Two."']
+
+
+def test_sentence_split_bare_lowercase_start_already_splits():
+    """Issue #1348 cause #1 did not reproduce: the splitter is case-blind."""
+    assert _chunks("He said it. lindhard keeps going and going.") == [
+        "He said it.",
+        "lindhard keeps going and going.",
+    ]
+
+
+def test_sentence_split_abbreviation_noise_unchanged():
+    # Over-split on "e.g. " is the pre-existing tolerated behavior.
+    assert _chunks("Use tools, e.g. a hammer.") == ["Use tools, e.g.", "a hammer."]
+
+
+def test_long_sentence_still_flagged_with_closing_quote_sentence():
+    quoted = '"' + " ".join(f"quoted{i}" for i in range(45)) + '."'
+    plain = " ".join(f"plain{i}" for i in range(45)) + "."
+    filler = " ".join("Short filler here." for _ in range(150))
+    text = " ".join([plain] * 3 + [quoted] * 3) + " " + filler + "\n"
+    assert len(_chunks(text)) == 156  # quoted sentences split, not merged
+    hits = _active(lint_rhetoric(text))
+    assert [f.rule_id for f in hits] == ["long-sentence-density"]
+    assert "6 sentence(s) over 40 words" in hits[0].message
