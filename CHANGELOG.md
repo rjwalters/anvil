@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`rhetoric_lint` sentence splitter now breaks after a terminator plus closing quote** (#1348). `_SENTENCE_SPLIT_RE` only looked behind for `.`/`!`/`?`, so `"...cited papers." After` (straight or curly quotes) merged into one chunk and skewed `long_sentence`, `sentence_variance`, and `comma_stack`. The closer now stays attached to the preceding sentence. A bare `. lowercase` start already split correctly; a test pins that. Closing `)`/`]` are deliberately not treated as boundaries.
+
 ### Added
 
 - **One canonical essay word count** (#1349). The same essay body measured 1196 (reviewer: rendered text minus title), 1204 (`wc -w`) and 1232 (`rhetoric_lint`) in one review cycle, which straddled a 1200 ceiling. New `anvil/lib/word_count.py::essay_word_count` counts visible prose (link text yes, URLs no, title excluded, other headings counted, code/comments/images excluded); `rhetoric_lint`'s density denominators share its tokenizer, and the essay SKILL.md, rubric.md and review/revise/draft commands name it as the single meaning of a BRIEF envelope.
