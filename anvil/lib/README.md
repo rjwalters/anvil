@@ -76,6 +76,7 @@ anvil/lib/
     perspective.md             Perspective phase: pre-draft external-substrate sibling.
     provenance.md              Claim provenance: local-corpus ground-truth verification.
     voice_grounding.md         Voice grounding: persona docs as drafting/review substrate.
+    plain_language.md          Plain-language-first: explain before you name. (#1042)
   figures/                     Figure conventions: palette.py + palette.json +
                                 anvil.mplstyle + mermaid-theme.json.
   latex/                       Shared LaTeX substrate for LaTeX-source skills
@@ -188,6 +189,11 @@ anvil/lib/
                                 multi-file LaTeX threads.
   theme.py                     Per-company theme primitive. (#322)
   vocab_reminder.py            Precision-vocabulary REMINDER tool. (#579)
+  atomic_write.py              Atomic tmp-sibling + os.replace file writes. (#1104)
+  body_resolution.py           Shared body-file resolution for version-dir verifiers. (#1110)
+  frontmatter.py               Shared YAML-frontmatter extraction. (#1075)
+  testing.py                   Shared test-support helpers (tree hashing). (#1125)
+  word_count.py                Canonical essay word count. (#1349)
   examples/
     review-example.json        Fully-populated worked example fixture.
     vision-review-example.json Fully-populated `kind: vision` example. (#30)
@@ -276,7 +282,7 @@ CLI render line.
 ### Smoke tests
 
 Each skill's `tests/` directory contains a `test_marp_smoke.py` that
-asserts the smoke fixture (`tests/fixtures/marp-smoke/deck.md`) parses
+asserts the smoke fixture (`anvil/skills/{deck,slides}/tests/fixtures/marp-smoke/deck.md`) parses
 with the pinned frontmatter and passes the `slide-content-overflow` lint.
 A conditional check renders the fixture via Marp CLI when the binary is on
 `PATH` and skips otherwise — matching the existing skill-test discipline

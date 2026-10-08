@@ -27,6 +27,9 @@ that coexists with Loom in the same consumer repo.
 | `--skills=<a,b,c>` | Install only the listed skills (default: all). Validates names before writing. |
 | `--force` | Overwrite consumer-edited skill files (default: skip with warning). |
 | `--dry-run` | Print planned actions, write nothing. |
+| `--check-deps` | Check renderer dependencies (marp/pdftoppm/mmdc/pdfjam) and exit. |
+| `--no-sync` | Skip the post-install `uv sync --project .anvil` step. |
+| `--fix-tracked` | Untrack (`git rm -r --cached`, index-only) already-tracked files the installer now ignores. |
 | `-y`, `--yes` | Non-interactive (skip confirmation prompts). |
 | `-h`, `--help` | Show help and exit. |
 
@@ -51,7 +54,7 @@ that coexists with Loom in the same consumer repo.
    installed skills, skipped overrides, per-skill `skill_hashes` baseline for next re-install) and
    `.anvil/.install-local.json` (gitignored sidecar: `anvil_source` absolute path, `install_date` —
    machine-local fields moved out of the tracked manifest in issue #894).
-10. Print summary. When any skill landed in `skipped_overrides`, the summary states plainly that the
+11. Print summary (installer Stage 11; Stage 10 is the renderer dependency check, 10.5 the `uv sync`). When any skill landed in `skipped_overrides`, the summary states plainly that the
     tree is **not** uniformly at `ANVIL_VERSION`, names each frozen skill and the version its body is
     actually at (from `skill_versions`), and closes with a `PARTIAL` qualifier instead of a bare
     "installed" (issue #1320 — the per-file skip warning scrolls past; the summary is what a human

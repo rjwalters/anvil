@@ -223,6 +223,8 @@ scripts/
                              CHANGELOG entry or exemption (#1037).
   check-surface-version-bump.sh   Pre-flight: installed-surface change
                              carries a VERSION bump or marker (#1152).
+  check-install-staleness.sh   Read-only: is a consumer's .anvil/ tree at the
+                             anvil_version its manifest claims? (#1320).
 
 tests/
   lib/           Framework-level tests (review_schema, critics, cite,

@@ -269,7 +269,7 @@ as a one-shot. The on-disk evidence is the stamped `_meta.json` /
 
 ## Tests
 
-Fixtures under `tests/fixtures/` (programmatic builders, mirroring the
+Fixtures built by `tests/_rebackport_fixtures.py` (programmatic builders, mirroring the
 project-migrate test-fixtures pattern):
 
 - `legacy_unstamped/` — single legacy /40 memo review missing

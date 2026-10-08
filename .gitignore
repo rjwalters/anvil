@@ -43,14 +43,6 @@ uv.lock
 # — `.loom-local/local.json` is the "Local" tier and outranks .loom/config.json.
 .loom-local/
 
-# Exception: the config-resolver conformance fixture needs a real
-# .loom-local/ directory to exercise the "Local" config tier by name (see
-# .loom/scripts/tests/fixtures/config_resolver/README.md). Without this,
-# the .loom-local/ rule above silently un-adds any file placed under a test
-# fixture's .loom-local/ subdirectory. Decision recorded per #1035.
-!**/tests/fixtures/**/.loom-local/
-!**/tests/fixtures/**/.loom-local/**
-
 # >>> loom-managed (do not edit) >>>
 # Loom runtime state (don't commit these)
 .loom-in-use
@@ -126,6 +118,15 @@ uv.lock
 .loom/gh-config-by-owner-*/
 .loom-local/
 # <<< loom-managed <<<
+# Exception: the config-resolver conformance fixture needs a real
+# .loom-local/ directory to exercise the "Local" config tier by name (see
+# .loom/scripts/tests/fixtures/config_resolver/README.md). Without this,
+# the .loom-local/ rules above silently un-adds any file placed under a test
+# fixture's .loom-local/ subdirectory. Decision recorded per #1035.
+# Must stay BELOW the loom-managed block: that block repeats `.loom-local/`,
+# and the last matching rule wins.
+!**/tests/fixtures/**/.loom-local/
+!**/tests/fixtures/**/.loom-local/**
 
 # Repo Skills machine-local install metadata (absolute source path + timestamp)
 .claude/skills/repo/.install-local.json
