@@ -154,7 +154,7 @@ deck_imagegen = [
 # Use xelatex as the fallback engine on Python 3.14+ until weasyprint ships
 # Python 3.14 support. See issue #306 for the canary reproducer.
 html = [
-    "weasyprint>=60.0 ; python_version < '3.14'",
+    "weasyprint>=60.2; python_version < '3.14'",
 ]
 # Test-time dev deps. Not required for any shipped skill; install for
 # running the test suite locally.
