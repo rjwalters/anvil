@@ -6,6 +6,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-10-08
 
+- **PR #1319**: Adopt Renovate dependency security policy (14-day quarantine)
 - **PR #1352**: fix: split sentences after terminator plus closing quote in rhetoric_lint
 - **Issue #1348** (closed): rhetoric_lint: sentence splitter inflates long-sentence density
 - **PR #1351**: feat(essay): define one canonical word-count method for the length envelope
