@@ -42,11 +42,14 @@
   "schedule": ["before 10am on monday"],
   "timezone": "UTC",
 
-  // --- Python (uv) ---
+  // --- Python ---
 
-  // Update lockfile without widening pyproject.toml version ranges.
-  // Renovate detects uv.lock natively.
-  "rangeStrategy": "update-lockfile",
+  // anvil declares `>=` floors in pyproject.toml and does not commit uv.lock
+  // (it is gitignored), so "update-lockfile" had nothing to update. "bump"
+  // raises the floor itself (e.g. pydantic >=2.13.4 → >=2.13.5).
+  // Renovate files pyproject.toml under the `poetry` manager here, hence the
+  // `poetry` entries in the packageRules below. (Operator ruling 2026-10-09.)
+  "rangeStrategy": "bump",
 
   // Refresh uv.lock even when no direct dependency range changes.
   // This is how Renovate keeps transitive dependencies current.
@@ -71,13 +74,13 @@
     // Group all non-major Python dependency updates into one PR
     {
       "groupName": "python minor/patch dependencies",
-      "matchManagers": ["pep621", "uv"],
+      "matchManagers": ["pep621", "poetry", "uv"],
       "matchUpdateTypes": ["minor", "patch"]
     },
 
     // Python major updates get individual PRs (more risk, need individual review)
     {
-      "matchManagers": ["pep621", "uv"],
+      "matchManagers": ["pep621", "poetry", "uv"],
       "matchUpdateTypes": ["major"]
     },
 
