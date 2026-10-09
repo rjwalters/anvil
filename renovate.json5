@@ -1,6 +1,5 @@
 // Renovate configuration for rjwalters/anvil
 // Docs: https://docs.renovatebot.com/configuration-options/
-// Pipeline docs: docs/ops/dependency-security-pipeline.md
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
 
@@ -31,7 +30,7 @@
   // Never auto-merge. Agents review, humans merge.
   "automerge": false,
 
-  // Create PRs as drafts — consistent with AGENTS.md PR policy
+  // Create PRs as drafts
   "draftPR": true,
 
   // --- Schedule ---
@@ -82,9 +81,9 @@
       "matchUpdateTypes": ["major"]
     },
 
-    // Group all GitHub Actions SHA updates into one PR
-    // AGENTS.md mandates SHA pinning with inline version comments (# vX.Y.Z)
-    // Renovate preserves these comments natively when updating digests
+    // Group all non-major GitHub Actions updates into one PR. Workflows
+    // currently pin actions by tag (e.g. actions/checkout@v7), not by SHA;
+    // "digest" only applies if SHA pins are adopted later.
     {
       "groupName": "github-actions",
       "matchManagers": ["github-actions"],
@@ -105,7 +104,9 @@
 
   // --- Ignored paths ---
 
-  // Don't touch vendored dependencies (submodules)
+  // Don't touch vendored trees. `.claude/**` holds installed Loom/Repo Skills
+  // copies; `vendor/**` and `infra/pulumi/**` do not exist in this repo and
+  // are carried over from the template this config came from.
   "ignorePaths": [
     "vendor/**",
     ".claude/**",
