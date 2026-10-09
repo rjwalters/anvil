@@ -154,7 +154,10 @@ deck_imagegen = [
 # Use xelatex as the fallback engine on Python 3.14+ until weasyprint ships
 # Python 3.14 support. See issue #306 for the canary reproducer.
 html = [
-    "weasyprint>=60.2; python_version < '3.14'",
+    # >=70.0: CVE-2025-68616 / GHSA-983w-rhvv-gwmv (redirect bypasses a custom
+    # url_fetcher) is fixed in 68.0; 70.0 is the version verified with
+    # anvil/lib/memo/styles.css.
+    "weasyprint>=70.0; python_version < '3.14'",
 ]
 # Test-time dev deps. Not required for any shipped skill; install for
 # running the test suite locally.

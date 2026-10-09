@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **`[html]` extra now requires `weasyprint>=70.0`** (CVE-2025-68616 / GHSA-983w-rhvv-gwmv). WeasyPrint's default URL fetcher followed redirects without re-checking a custom `url_fetcher`'s allow/block rules; fixed upstream in 68.0. Renovate's #1357 landed `>=60.2`, which still admitted vulnerable releases; this raises the floor to the tested 70.0.
+
 - **Skill docs now name the real `render_gate` / `project_brief` modules.** Both became packages (#1121 and the earlier `render_gate` split), but about 200 mentions across skill commands, snippets, templates, and lib docstrings still pointed at the deleted `anvil/lib/render_gate.py` / `anvil/lib/project_brief.py`. Symbol references now name their defining submodule (e.g. `anvil/lib/project_brief/voice.py::resolve_voice_docs`, `anvil/lib/render_gate/compile_and_gate.py::compile_and_gate`); bare mentions point at the package directory. Historical "split from the former monolithic …" notes are unchanged.
 - **`rhetoric_lint` sentence splitter now breaks after a terminator plus closing quote** (#1348). `_SENTENCE_SPLIT_RE` only looked behind for `.`/`!`/`?`, so `"...cited papers." After` (straight or curly quotes) merged into one chunk and skewed `long_sentence`, `sentence_variance`, and `comma_stack`. The closer now stays attached to the preceding sentence. A bare `. lowercase` start already split correctly; a test pins that. Closing `)`/`]` are deliberately not treated as boundaries.
 
