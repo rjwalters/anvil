@@ -24,7 +24,7 @@ We use the **filesystem as substrate** so the pattern works on a single laptop w
 
 ---
 
-## Current State (v0.10.1)
+## Current State (v0.11.x)
 
 The complete authoring lifecycle is supported for **fourteen artifact classes**:
 
@@ -47,7 +47,7 @@ The complete authoring lifecycle is supported for **fourteen artifact classes**:
 
 Each skill ships a complete `draft → review → revise → (audit) → figures` lifecycle (with skill-specific variations — e.g. `essay` ships draft/review/revise/status only), a 9-dimension /44 rubric (the two `ip-uspto` skills on /45, `deck` on 10-dim /49), opinionated templates, a worked example thread, and tests.
 
-**Bridge + utility skills** round out the set: `anvil:project-migrate` and `anvil:rubric-rebackport` (contract-shift bridges), `anvil:project-share` (shareable provenance-stamped export), `anvil:project-scout` (read-only repo survey), `anvil:project-photos` (scanned-archive provenance manifest), `anvil:project-book` (multi-thread book assembly), and `anvil:help` (read-only orientation over the installed skill set). Twenty-one skills ship in total.
+**Bridge + utility skills** round out the set: `anvil:project-migrate` and `anvil:rubric-rebackport` (contract-shift bridges), `anvil:project-share` (shareable provenance-stamped export), `anvil:project-scout` (read-only repo survey), `anvil:project-photos` (scanned-archive provenance manifest), `anvil:project-book` (multi-thread book assembly), `anvil:help` (read-only orientation over the installed skill set), `anvil:deslop` (cleans AI-drafted prose outside any anvil project; never edits the source, #898), `anvil:diff` (local read-only word-level diff viewer, #925), and `anvil:ip-search` (prior-art collection for the ip skills from a thread's inventive-feature inventory, #957). Twenty-four skills ship in total.
 
 ### Shared framework primitives (`anvil/lib/`)
 
@@ -150,7 +150,7 @@ To keep scope honest:
 - **Anvil is not a renderer.** It shells out to `marp`, `pandoc`, `xelatex`, `mmdc`, `pdftoppm`. The renderer choices are pinned (e.g. Marp for slides, MathJax not KaTeX) but the rendering itself happens in subprocess.
 - **Anvil is not a forge.** No GitHub-style PR workflow for the artifacts. The version history is the audit trail; collaboration happens via shared filesystem + (optionally) git.
 - **Anvil is not opinionated about voice.** Each skill ships defaults; consumers override via `.anvil/skills/<name>/voice.md` and other extension points.
-- **Anvil is not yet** broadly distributed. The framework hardens through real use, not speculative design — v0.10.1 is driven by several live canary consumers (2AM Logic Studio; botho, which drove `primer` and `spec`; `walters-family-tree`, which drove `memoir`; geode-fem and the Tractatus Lean-4 project on `paper`) rather than one.
+- **Anvil is not yet** broadly distributed. The framework hardens through real use, not speculative design — v0.11.x is driven by several live canary consumers (2AM Logic Studio; botho, which drove `primer` and `spec`; `walters-family-tree`, which drove `memoir`; geode-fem and the Tractatus Lean-4 project on `paper`) rather than one.
 
 ---
 
