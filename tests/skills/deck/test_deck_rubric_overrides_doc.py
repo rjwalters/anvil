@@ -37,7 +37,7 @@ def test_deck_review_documents_loader_step() -> None:
     body = _read(DECK_REVIEW_MD)
     assert "load_rubric_overrides_for_slug" in body
     # Canonical lib path, not the memo shim path.
-    assert "anvil/lib/project_brief.py::load_rubric_overrides_for_slug" in body
+    assert "anvil/lib/project_brief/loader.py::load_rubric_overrides_for_slug" in body
     # Project dir = parent of the thread root (post-#382 nested model).
     assert "parent of the thread root" in body
 

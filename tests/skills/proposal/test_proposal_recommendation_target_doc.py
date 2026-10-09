@@ -20,7 +20,7 @@ early:
    `_summary.md.recommendation_target_resolved` block in step 9b that
    records the audit trail.
 3. The helper `load_recommendation_target` is exported from
-   `anvil/lib/project_brief.py` — the canonical module since issue
+   `anvil/lib/project_brief/` — the canonical module since issue
    #1092 consolidated the proposal-local copy (byte-identical body) into
    the shared lib, mirroring memo's existing shim convention. The
    proposal-local `anvil/skills/proposal/lib/project_brief.py` now
@@ -262,21 +262,21 @@ def test_proposal_draft_documents_recommendation_target_key() -> None:
 
 
 def test_project_brief_exports_load_recommendation_target() -> None:
-    """The helper MUST be exported from anvil/lib/project_brief.py via __all__.
+    """The helper MUST be exported from anvil/lib/project_brief/ via __all__.
 
     Issue #1092 promoted `load_recommendation_target` from the proposal-local
     `anvil/skills/proposal/lib/project_brief.py` into the shared
-    `anvil/lib/project_brief.py` (the same module memo's copy was already
+    `anvil/lib/project_brief/` (the same module memo's copy was already
     promoted into via #382) — the reader function's body was verified
     byte-identical, so this is a pure dedup, not a behavior change.
     """
     body = _read(PROJECT_BRIEF)
     assert "def load_recommendation_target" in body, (
-        "anvil/lib/project_brief.py MUST define `load_recommendation_target` "
+        "anvil/lib/project_brief/ MUST define `load_recommendation_target` "
         "(issue #356, promoted to the shared lib in #1092)"
     )
     assert '"load_recommendation_target"' in body, (
-        "anvil/lib/project_brief.py's `__all__` MUST include "
+        "anvil/lib/project_brief/'s `__all__` MUST include "
         "`load_recommendation_target` (issue #356, promoted to the shared "
         "lib in #1092)"
     )
@@ -288,7 +288,7 @@ def test_project_brief_documents_closed_set() -> None:
     # All four values appear in the helper's recognized-set tuple.
     for value in ("invest", "pass", "conditional", "undecided"):
         assert value in body, (
-            f"anvil/lib/project_brief.py MUST recognize {value!r} as one of "
+            f"anvil/lib/project_brief/ MUST recognize {value!r} as one of "
             f"the closed-set values for recommendation_target (issue #356, "
             f"promoted to the shared lib in #1092)"
         )
@@ -299,11 +299,11 @@ def test_project_brief_stays_skill_local() -> None:
 
     This test's original name/docstring ("The helper MUST stay skill-local;
     promotion to anvil/lib/ is deferred") explicitly anticipated this move —
-    "if a future change promotes the helper to anvil/lib/project_brief.py
+    "if a future change promotes the helper to anvil/lib/project_brief/
     the test catches the move and forces the author to update the doc-
     coverage guards accordingly." Issue #1092 is that future change: the
     reader function's body was verified byte-identical to memo's
-    already-promoted `anvil/lib/project_brief.py` version, so proposal now
+    already-promoted `anvil/lib/project_brief/` version, so proposal now
     imports it rather than redefining it (mirroring memo's own shim). This
     test is kept under its original name (rather than renamed) so git blame
     stays attached to the same test identity across the move; it now pins
@@ -322,7 +322,7 @@ def test_project_brief_stays_skill_local() -> None:
     assert "def load_recommendation_target" not in body, (
         "the proposal-local project_brief.py MUST NOT redefine "
         "`load_recommendation_target` now that it is promoted to "
-        "anvil/lib/project_brief.py (issue #1092)"
+        "anvil/lib/project_brief/ (issue #1092)"
     )
     assert "def load_cost_basis" in body, (
         "the proposal-local project_brief.py MUST keep `load_cost_basis` "

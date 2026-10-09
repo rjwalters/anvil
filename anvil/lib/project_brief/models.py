@@ -739,7 +739,7 @@ class BriefDocument(BaseModel):
         consolidation moved it here).
     render_engine
         Optional per-document override for the memo HTML/PDF engine
-        used by ``anvil/lib/render_gate.py``. One of
+        used by ``anvil/lib/render_gate/``. One of
         ``"weasyprint"``, ``"xelatex"``, or ``"wkhtmltopdf"`` (issue
         #320). When set, ``_select_memo_engine`` honors this request
         if the named binary is on PATH; otherwise it gracefully

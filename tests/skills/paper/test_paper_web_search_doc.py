@@ -2,7 +2,7 @@
 
 Issue #424 adds an opt-in `web_search: true` knob (per-thread BRIEF
 frontmatter; also a recognized strict-bool document-entry key in
-`anvil/lib/project_brief.py`) that lets `paper-litsearch` run live web
+`anvil/lib/project_brief/`) that lets `paper-litsearch` run live web
 searches under the resolver-verified-or-dropped contract — every
 web-discovered candidate enters `candidates.bib` ONLY after
 `anvil/lib/cite.py::resolve()` returns a `BibRecord`; unresolvable hits

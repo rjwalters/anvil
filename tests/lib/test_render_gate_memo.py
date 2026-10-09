@@ -1,4 +1,4 @@
-"""Unit tests for ``anvil/lib/render_gate.py`` memo mode (``kind="memo"``).
+"""Unit tests for ``anvil/lib/render_gate/`` memo mode (``kind="memo"``).
 
 These tests stub pandoc + the HTML/PDF engines + pdfinfo via
 monkeypatching so the suite runs in CI without weasyprint, wkhtmltopdf,

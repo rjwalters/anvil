@@ -160,7 +160,7 @@ The contract mirrors the venue-overlay discovery/fail-open shape exactly (fail-o
 - **Declared and resolvable**: each command in `commands` runs via `subprocess.run` in the resolved `cwd` (thread-relative or absolute; defaults to the thread root) under `timeout_s` (default 300s), subprocess-only with no new Python dependency. ALL commands run — an earlier failure does not short-circuit the rest — so a reviewer sees every failing step in one pass. A failed command (non-zero exit OR timeout) emits a `CriticalFlag` with `type` prefix `artifact_verify_<n>` (`<n>` is the 0-based command index) that routes through the unchanged `anvil/lib/critics.py::compute_verdict` path and forces `Verdict.BLOCK` — no aggregator or schema change.
 - **Declared but unresolvable** (missing / non-directory `cwd`, or a command whose executable is not launchable): the gate **fails open** — a one-line stdout warning + a `major` finding in `comments.md`, and the review proceeds. A broken declaration is a defect worth surfacing, but it must not be indistinguishable from "the reviewer never checked" — so it does NOT block and does NOT silently pass as "verified".
 
-The gate's raw stdout/stderr capture is written to `<thread>.{N}.review/_artifact_verify.json` (mirroring the render gate's `_gate.json`) for CI/operator inspection — a conditional output, NOT in the review's required-files manifest. The skill-local implementation lives at `anvil/skills/paper/lib/artifact_verify.py` (`discover_artifact_verify`, `verify`, `ArtifactVerifyResult.to_review()`/`to_critical_flags()`), modeled on `anvil/lib/render_gate.py`'s `GateResult` shape but scoped to paper per the "wait for the second consumer before generalizing" rule.
+The gate's raw stdout/stderr capture is written to `<thread>.{N}.review/_artifact_verify.json` (mirroring the render gate's `_gate.json`) for CI/operator inspection — a conditional output, NOT in the review's required-files manifest. The skill-local implementation lives at `anvil/skills/paper/lib/artifact_verify.py` (`discover_artifact_verify`, `verify`, `ArtifactVerifyResult.to_review()`/`to_critical_flags()`), modeled on `anvil/lib/render_gate/`'s `GateResult` shape but scoped to paper per the "wait for the second consumer before generalizing" rule.
 
 ### Area Chair pattern (AI-Scientist) maps to existing N-critics-one-reviser
 
@@ -222,7 +222,7 @@ See `rubric.md` for the 9-dimension /44 scoring schema (paper-tuned weights, rig
 
 ### Opt-in web search (`web_search: true`) — issue #424
 
-By default this skill runs **no autonomous web search** — the anti-hallucination posture above. A consumer can opt a thread in by setting `web_search: true` (a YAML boolean, default `false`) in the per-thread `<thread>/BRIEF.md` frontmatter; in a post-#295 project layout the equivalent carrier is the `web_search` key on the thread's `documents:` entry in the project `BRIEF.md` (schema-validated as a strict bool by `anvil/lib/project_brief.py`). When the knob is absent or `false`, `paper-litsearch` and `paper-review` are byte-identical to their default no-web behavior.
+By default this skill runs **no autonomous web search** — the anti-hallucination posture above. A consumer can opt a thread in by setting `web_search: true` (a YAML boolean, default `false`) in the per-thread `<thread>/BRIEF.md` frontmatter; in a post-#295 project layout the equivalent carrier is the `web_search` key on the thread's `documents:` entry in the project `BRIEF.md` (schema-validated as a strict bool by `anvil/lib/project_brief/`). When the knob is absent or `false`, `paper-litsearch` and `paper-review` are byte-identical to their default no-web behavior.
 
 When enabled:
 
@@ -245,7 +245,7 @@ See `commands/paper-litsearch.md` § "Opt-in web search" and `commands/paper-rev
 
 The auditor (`paper-audit`) may re-run scripts in `figures/src/` to verify rendered outputs are current; this verification policy is documented in `paper-audit.md`.
 
-**`paper-review` render-gate hook (deterministic pre-flight).** `paper-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate.py` (the LaTeX-skill analog of `marp_lint` for the deck/slides skills). The gate checks page count (`page_cap=None` — paper length is venue-dependent; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`), overfull boxes (>5.0pt threshold), compile success, and source-side placeholders (`TODO` / `[TBD]` / `(figure)` / `.MISSING`). The gate runs after `paper-audit` has produced `main.pdf` + `compile-log.txt`; if invoked before audit, the gate fails open with a clear stdout message and the review proceeds without enforcement. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension, which the existing `anvil/lib/critics.py::compute_verdict` path treats as `BLOCK`. See `commands/paper-review.md` step 4b.
+**`paper-review` render-gate hook (deterministic pre-flight).** `paper-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate/` (the LaTeX-skill analog of `marp_lint` for the deck/slides skills). The gate checks page count (`page_cap=None` — paper length is venue-dependent; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`), overfull boxes (>5.0pt threshold), compile success, and source-side placeholders (`TODO` / `[TBD]` / `(figure)` / `.MISSING`). The gate runs after `paper-audit` has produced `main.pdf` + `compile-log.txt`; if invoked before audit, the gate fails open with a clear stdout message and the review proceeds without enforcement. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension, which the existing `anvil/lib/critics.py::compute_verdict` path treats as `BLOCK`. See `commands/paper-review.md` step 4b.
 
 ## Templates / assets
 
@@ -261,7 +261,7 @@ The auditor (`paper-audit`) may re-run scripts in `figures/src/` to verify rende
 
 `paper` is registered as a **skill-identity** `artifact_type` value in the
 shared project-BRIEF registry
-(`anvil/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES` /
+(`anvil/lib/project_brief/types.py::REGISTERED_ARTIFACT_TYPES` /
 `SKILL_IDENTITY_ARTIFACT_TYPES`; issue #408, following the #386
 pattern for `deck`/`slides`/`proposal`). In a shared project BRIEF, a
 `documents:` entry with `artifact_type: paper` declares that this skill

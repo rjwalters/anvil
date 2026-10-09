@@ -246,7 +246,7 @@ def test_freshness_check_independent_of_render_gate(
 ) -> None:
     """Step 4c is independent of step 4b's render-gate fail-open path.
 
-    Even if the render-gate at ``anvil/lib/render_gate.py`` is fully
+    Even if the render-gate at ``anvil/lib/render_gate/`` is fully
     stubbed out (simulating the fail-open path: no compile log, no
     PDF, no gate result at all), step 4c MUST still fire when the PDF
     is missing or stale. This verifies the two checks are truly

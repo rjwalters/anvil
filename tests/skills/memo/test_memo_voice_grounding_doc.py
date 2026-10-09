@@ -187,7 +187,7 @@ def test_review_references_snippet_and_resolver() -> None:
     )
     assert "resolve_voice_docs" in body, (
         "memo-review.md MUST invoke "
-        "anvil/lib/project_brief.py::resolve_voice_docs"
+        "anvil/lib/project_brief/voice.py::resolve_voice_docs"
     )
     assert "4l." in body, (
         "memo-review.md MUST add the voice-doc load as step 4l (after the "

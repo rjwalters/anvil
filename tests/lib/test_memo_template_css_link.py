@@ -4,7 +4,7 @@
 Issue #470: ``anvil/lib/memo/template.html`` accepted ``--metadata`` and
 ``header-includes`` but had no ``$for(css)$`` loop, so pandoc's ``--css``
 flag — the documented stylesheet-delivery mechanism used by both
-``anvil/lib/memo/README.md`` and ``anvil/lib/render_gate.py`` (which
+``anvil/lib/memo/README.md`` and ``anvil/lib/render_gate/`` (which
 passes the absolute path to ``styles.css``) — was silently dropped.
 Every HTML-chain memo render (weasyprint / wkhtmltopdf) produced an
 unstyled PDF with no diagnostic. The regression shipped in PR #331,

@@ -1,7 +1,7 @@
 """Gate-integration tests for the ``memo_rhetoric_lint`` dimension (issue #463).
 
 Covers the seventh memo render-gate dimension added to
-``anvil/lib/render_gate.py``'s memo gate — the #395 ``memo_image_dimensions``
+``anvil/lib/render_gate/``'s memo gate — the #395 ``memo_image_dimensions``
 advisory model applied verbatim to the deterministic rhetoric lint:
 
 - findings recorded, ``passed`` unaffected, no ``CriticalFlag``;

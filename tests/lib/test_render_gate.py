@@ -1,4 +1,4 @@
-"""Unit tests for ``anvil/lib/render_gate.py``.
+"""Unit tests for ``anvil/lib/render_gate/``.
 
 These tests stub the toolchain (pdfinfo + log files) so the suite runs in
 CI without LaTeX or poppler. The per-skill integration smoke tests live

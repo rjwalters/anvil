@@ -57,7 +57,7 @@ the original absolute `/Users/you/GitHub/botho/bridge/**/*.rs`). That glob
 points at **botho's own bridge Rust workspace**, which is deliberately NOT
 vendored here (out of scope, large, not anvil's to maintain). When this example
 is copied standalone the glob **matches nothing**, and
-`anvil/lib/project_brief.py::resolve_code_ref` returns a structured
+`anvil/lib/project_brief/refs.py::resolve_code_ref` returns a structured
 `missing: true` `ResolvedCodeRef` (it never raises). This ACTIVATES the
 spec↔implementation consistency tier but degrades gracefully — the spec critics
 would surface a `major` finding recommending you fix the path, never a crash and

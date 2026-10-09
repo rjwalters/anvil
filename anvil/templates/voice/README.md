@@ -96,7 +96,7 @@ starting points. Before you rely on them:
 Once the docs exist under `.anvil/voice/` (or at a project root),
 activate them by declaring the `voice:` block in the project `BRIEF.md`
 frontmatter. This reuses the existing grammar
-(`anvil/lib/project_brief.py::VoiceDocs` / `resolve_voice_docs`) — there
+(`anvil/lib/project_brief/models.py::VoiceDocs` / `resolve_voice_docs`) — there
 is no separate config surface:
 
 ```yaml

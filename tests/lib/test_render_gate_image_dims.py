@@ -1,7 +1,7 @@
 """Unit tests for the ``memo_image_dimensions`` render-gate check (issue #395).
 
 Covers the advisory image-dimension/aspect sanity dimension added to
-``anvil/lib/render_gate.py``'s memo gate:
+``anvil/lib/render_gate/``'s memo gate:
 
 - pure-stdlib PNG IHDR / JPEG SOFn header parsing (no PIL, no subprocess);
 - check 1 (pixel ceiling), check 1b (extreme aspect), check 2

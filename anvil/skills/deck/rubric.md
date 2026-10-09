@@ -185,7 +185,7 @@ The deduction is applied entirely via reviewer judgment — there is no automate
 
 ## Per-thread rubric overrides (calibrations + waivers)
 
-A deck thread MAY carry a `rubric_overrides:` block on its matching `documents:` entry in the **project-level** `BRIEF.md` (the parent of the thread root, post-#382 nested model), parsed by `anvil/lib/project_brief.py::load_rubric_overrides_for_slug(<project_dir>, <slug>)`. Two key families apply to decks (issue #393, mirroring the memo #233 / #265 / #296 contract):
+A deck thread MAY carry a `rubric_overrides:` block on its matching `documents:` entry in the **project-level** `BRIEF.md` (the parent of the thread root, post-#382 nested model), parsed by `anvil/lib/project_brief/loader.py::load_rubric_overrides_for_slug(<project_dir>, <slug>)`. Two key families apply to decks (issue #393, mirroring the memo #233 / #265 / #296 contract):
 
 ```yaml
 # project BRIEF.md, documents: entry for the deck slug

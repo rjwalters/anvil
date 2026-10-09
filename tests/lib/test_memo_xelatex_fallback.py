@@ -40,7 +40,7 @@ This module pins three lanes of regression coverage:
    — i.e. the renderer surface keeps returning the 4-tuple contract
    even when the LaTeX compile fails. Pins that the compat-preamble
    edit doesn't change ``_render_memo_source``'s graceful-degrade
-   contract documented in ``anvil/lib/render_gate.py`` lines 894-911.
+   contract documented in ``anvil/lib/render_gate/``.
 
 Filename ``test_memo_xelatex_fallback.py`` is distinct from
 ``test_memo_render_detection.py`` and ``test_render_gate_memo.py`` per
@@ -396,7 +396,7 @@ def test_repro_fixture_renders_under_real_pandoc_plus_xelatex(tmp_path):
 
     Skipped when either binary is absent so the CI lane that lacks
     TeX Live still passes (mirrors the ``_select_memo_engine``
-    graceful-degrade contract in ``anvil/lib/render_gate.py``).
+    graceful-degrade contract in ``anvil/lib/render_gate/``).
     """
     repro = _repro_fixture_path()
     assert repro.is_file(), f"reproducer fixture not found at {repro}"

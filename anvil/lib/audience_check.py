@@ -2,7 +2,7 @@
 
 Sixth member of the deterministic-checks family (alongside
 ``anvil/lib/numeric_consistency.py``, ``anvil/lib/pending_marker.py``,
-``anvil/lib/render_gate.py``, ``anvil/lib/marp_lint.py`` and
+``anvil/lib/render_gate/``, ``anvil/lib/marp_lint.py`` and
 ``anvil/lib/revise_consistency.py``).
 
 The problem

@@ -433,7 +433,7 @@ question this report defers rather than pre-answers.
    docs-only.** `blader/humanizer` states its precedence rule in one
    sentence: a user-provided writing sample outranks the generic rule set,
    specifically naming that it overrides the em-dash ban. Anvil's
-   `voice.rhetoric_rules` (`anvil/lib/project_brief.py::resolve_rhetoric_rules`,
+   `voice.rhetoric_rules` (`anvil/lib/project_brief/voice.py::resolve_rhetoric_rules`,
    issue #468) already has the *mechanism* to do this — a consumer rule file
    can `disable` any default rule id by id, including `em-dash-density` and
    `no-opening-emdash` — but the *contract* is not documented anywhere as a

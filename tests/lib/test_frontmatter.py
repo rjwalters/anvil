@@ -3,7 +3,7 @@
 ``anvil/lib/frontmatter.py::extract_frontmatter`` consolidates five
 byte-for-byte-identical ``_extract_frontmatter()`` copies that had
 accumulated across ``anvil/lib/project_discovery.py``,
-``anvil/lib/project_brief.py``, ``anvil/skills/project-share/lib/config.py``,
+``anvil/lib/project_brief/``, ``anvil/skills/project-share/lib/config.py``,
 ``anvil/skills/project-book/lib/config.py``, and
 ``anvil/skills/proposal/lib/project_brief.py``. This module tests the
 shared primitive directly; the five call sites already have their own

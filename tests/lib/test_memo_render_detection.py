@@ -298,7 +298,7 @@ def test_lib_memo_ships_pandoc_html_template(memo_lib_dir: Path):
     """``template.html`` ships with the pandoc variables referenced.
 
     Stylesheet delivery is via pandoc ``--css`` (see
-    ``anvil/lib/render_gate.py``), which populates the ``css`` template
+    ``anvil/lib/render_gate/``), which populates the ``css`` template
     variable — so the template MUST carry the standard pandoc
     ``$for(css)$ … $endfor$`` link loop. Without it the ``--css`` flag
     is silently dropped and every HTML-chain memo render produces an
@@ -336,7 +336,7 @@ def test_lib_memo_template_html_avoids_bare_stylesheet_link(
     ends up being the CWD pandoc ran from (the consumer repo root).
     That fetch fails with a stderr ``ERROR: Failed to load
     stylesheet`` and would be promoted to a hard error by the
-    ``--fail-if-warnings`` invariant in ``anvil/lib/render_gate.py``.
+    ``--fail-if-warnings`` invariant in ``anvil/lib/render_gate/``.
     See issue #319.
 
     The ONE permitted link shape is the pandoc-variable form

@@ -31,7 +31,7 @@
 # Layout produced in <target-repo> (issue #230 — uv-runnable consumer install):
 #   .anvil/anvil/                      Importable Python package mirror.
 #                                      `from anvil.lib.render_gate import gate`
-#                                      resolves to .anvil/anvil/lib/render_gate.py.
+#                                      resolves to .anvil/anvil/lib/render_gate/.
 #     anvil/lib/                       Framework Python (was .anvil/lib/ pre-#230).
 #     anvil/skills/<name>/lib/         Skill-side Python.
 #   .anvil/pyproject.toml              Generated uv project descriptor. Declares
@@ -1995,7 +1995,7 @@ fi
 #   * --dry-run reports the would-scaffold action and writes nothing
 #     (issue #81 honesty discipline).
 #
-# Reuses the existing `voice:` grammar (anvil/lib/project_brief.py::VoiceDocs /
+# Reuses the existing `voice:` grammar (anvil/lib/project_brief/models.py::VoiceDocs /
 # resolve_voice_docs) — no new declaration mechanism.
 #
 # Private voice-grounding protection (issue #577): the personal layer of voice

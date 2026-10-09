@@ -234,7 +234,7 @@ Both paths produce `report.pdf` alongside `report.md` in the same version direct
 
 **Consumer-pluggable block-figure adapters (opt-in, defaults off).** For reports about hardware/design artifacts, consumers can register external CLI figure generators (e.g., SPICE→SVG, GDS→PNG) under `report.figure_adapters` in the repo-level `.anvil/config.json`. `report-figures` invokes each adapter once per glob-matched design unit and lands outputs at `<thread>.{N}/exhibits/blocks/<unit>/<adapter>.<ext>`, where body references are covered by the existing `report-review` step-4c existence/freshness gate and the pandoc render. Anvil ships the contract plus a no-op reference adapter (`assets/noop-figure-adapter.sh`), zero EDA tooling; per-unit failures write `*.FAILED.md` stubs and never abort the phase, and a missing adapter binary degrades gracefully. Block coverage is reported, not gated. See `commands/report-figure-adapter.md` for the full contract and `lib/figure_adapters.py` for the dispatcher.
 
-**`report-review` render-gate hook (deterministic pre-flight).** `report-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate.py`. The gate checks page count (`page_cap=None` — customer reports vary; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`), overfull boxes (>5.0pt threshold; **skipped when `delivery_format` selects the pandoc path** — no `Overfull` semantics in CSS output), compile success, and source-side placeholders. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension; the existing `anvil/lib/critics.py::compute_verdict` path treats this as `BLOCK`. See `commands/report-review.md` step 4b.
+**`report-review` render-gate hook (deterministic pre-flight).** `report-review` runs a deterministic render-gate pre-flight via `anvil/lib/render_gate/`. The gate checks page count (`page_cap=None` — customer reports vary; consumers can override per-thread via `<thread>/.anvil.json: render_gate.page_cap`), overfull boxes (>5.0pt threshold; **skipped when `delivery_format` selects the pandoc path** — no `Overfull` semantics in CSS output), compile success, and source-side placeholders. On failure, the gate emits a typed `Review(kind=tool_evidence)` with one `CriticalFlag` per failed gate dimension; the existing `anvil/lib/critics.py::compute_verdict` path treats this as `BLOCK`. See `commands/report-review.md` step 4b.
 
 ## Defaults and overrides
 
@@ -252,7 +252,7 @@ Resolution rule: consumer overrides win when present, else fall back to skill de
 
 `report` is registered as a **skill-identity** `artifact_type` value in
 the shared project-BRIEF registry
-(`anvil/lib/project_brief.py::REGISTERED_ARTIFACT_TYPES` /
+(`anvil/lib/project_brief/types.py::REGISTERED_ARTIFACT_TYPES` /
 `SKILL_IDENTITY_ARTIFACT_TYPES`; issue #432, following the #386/#408
 pattern for `deck`/`slides`/`proposal`/`paper`). In a shared project
 BRIEF, a `documents:` entry with `artifact_type: report` declares that

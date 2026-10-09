@@ -108,7 +108,7 @@ def test_memo_render_invokes_render_gate_kind_memo():
     )
     assert 'kind="memo"' in body or "kind='memo'" in body, (
         "memo-render.md MUST document invoking gate(kind='memo') from "
-        "anvil/lib/render_gate.py (PR #185) — issue #190 AC"
+        "anvil/lib/render_gate/ (PR #185) — issue #190 AC"
     )
 
 

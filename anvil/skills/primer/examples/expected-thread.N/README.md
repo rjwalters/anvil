@@ -58,7 +58,7 @@ The vendored `BRIEF.md` keeps `spec_ref: ../../whitepaper/sections/*.tex`.
 That glob points at **botho's own whitepaper**, which is deliberately NOT
 vendored here (out of scope, large, not anvil's to maintain). When this
 example is copied standalone the glob **matches nothing**, and
-`anvil/lib/project_brief.py::resolve_spec_ref` returns a structured
+`anvil/lib/project_brief/refs.py::resolve_spec_ref` returns a structured
 `missing: true` entry (it never raises). This ACTIVATES the
 spec-consistency tier but degrades gracefully — the primer critics would
 surface a `major` finding recommending you fix the path, never a crash and

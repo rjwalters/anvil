@@ -72,7 +72,7 @@ collision, an `order` slug missing from `documents:`, or xelatex absent.
   is a **marker-guarded blow-away rebuild** —
   stale chapters from threads removed from `order` disappear by construction.
 - **Compiles** the consumer `master_doc` with **two-pass XeLaTeX** via
-  `anvil/lib/render_gate.py::compile_and_gate` (the skill does not roll its
+  `anvil/lib/render_gate/compile_and_gate.py::compile_and_gate` (the skill does not roll its
   own LaTeX invocation) and writes `out_pdf`.
 - **Reports** `BOOK_REPORT.md`: a per-thread table (slug, resolved version,
   state, score/44, audit state, recommended next command) plus a "Build
@@ -173,12 +173,12 @@ compiled `book.pdf`, and the `BOOK_REPORT.md` provenance report.
 
 ## Lib primitives composed
 
-- `anvil/lib/project_brief.py` — `load_project_brief_strict` for the
+- `anvil/lib/project_brief/` — `load_project_brief_strict` for the
   `documents:` list and default ordering.
 - `anvil/lib/latest_resolution.py` — `resolve_latest(thread_dir, slug)` per
   thread.
 - `anvil/lib/render.py` — `check_xelatex_available()` + `XELATEX_REMEDIATION`.
-- `anvil/lib/render_gate.py` — `compile_and_gate` (two-pass LaTeX + gate).
+- `anvil/lib/render_gate/` — `compile_and_gate` (two-pass LaTeX + gate).
 - `anvil/lib/critics.py` — `load_review` + `aggregate` for review scores.
 - Skill-local `lib/`: `config.py` (BookConfig + `build:` parser), `collect.py`
   (per-thread resolution + state + score + audit), `stage.py` (marker-guarded

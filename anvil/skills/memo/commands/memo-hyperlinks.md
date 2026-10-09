@@ -9,7 +9,7 @@ description: Hyperlink resolver critic for the memo skill (Epic #328 Track B Pha
 **Reads**: `<thread>.{N}/<thread>.md` (memo body, slug-echo per #295).
 **Writes**: `<thread>.{N}.hyperlinks/_review.json` (canonical sibling critic dir).
 
-This command is the memo-skill's **hyperlink-resolver critic** — a deterministic, subprocess-only detector that walks every link expression in a memo version directory and validates each per its class. It is the second mechanical detector in the deterministic-checks family (alongside `anvil/lib/render_gate.py` and `anvil/lib/revise_consistency.py`) and the **Track B Phase 2** deliverable of the reframed Epic #328 (Track A judgment-enrichment shipped via the memo rubric in #333 / PR #334; Track B Phase 3 ships the citation-coverage critic in parallel issue #336).
+This command is the memo-skill's **hyperlink-resolver critic** — a deterministic, subprocess-only detector that walks every link expression in a memo version directory and validates each per its class. It is the second mechanical detector in the deterministic-checks family (alongside `anvil/lib/render_gate/` and `anvil/lib/revise_consistency.py`) and the **Track B Phase 2** deliverable of the reframed Epic #328 (Track A judgment-enrichment shipped via the memo rubric in #333 / PR #334; Track B Phase 3 ships the citation-coverage critic in parallel issue #336).
 
 **Design contract** (settled at Epic #328 kickoff; do NOT re-litigate):
 

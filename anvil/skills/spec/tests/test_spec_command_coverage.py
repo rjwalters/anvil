@@ -422,7 +422,7 @@ class TestFigurePlanContract(unittest.TestCase):
         # Existence validation mirrors report/primer-figures.
         self.assertIn("Validation by file existence", text)
         # LaTeX render path (not pandoc/markdown) + the render gate.
-        self.assertIn("render_gate.py", text)
+        self.assertIn("anvil/lib/render_gate/", text)
         self.assertIn("xelatex", text.lower())
 
     def test_review_has_exhibit_existence_freshness_check(self):

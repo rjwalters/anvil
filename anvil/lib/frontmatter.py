@@ -5,7 +5,7 @@ implementations that had accumulated, each one documenting itself as a
 manual mirror of an earlier copy:
 
 - ``anvil/lib/project_discovery.py`` (the original)
-- ``anvil/lib/project_brief.py``
+- ``anvil/lib/project_brief/``
 - ``anvil/skills/project-share/lib/config.py``
 - ``anvil/skills/project-book/lib/config.py``
 - ``anvil/skills/proposal/lib/project_brief.py``
