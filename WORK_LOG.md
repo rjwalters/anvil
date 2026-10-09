@@ -4,6 +4,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-10-09
+
+- **PR #1357**: fix(deps): update dependency weasyprint to >=60.2 [security]
+
 ### 2026-10-08
 
 - **PR #1319**: Adopt Renovate dependency security policy (14-day quarantine)
