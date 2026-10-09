@@ -1,124 +1,77 @@
-// Renovate configuration for rjwalters/anvil
-// Docs: https://docs.renovatebot.com/configuration-options/
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-
-  // Extend recommended defaults, plus security-focused presets
-  "extends": [
-    "config:recommended",
-    "security:openssf-scorecard",
-    ":dependencyDashboard"
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'security:openssf-scorecard',
+    ':dependencyDashboard',
   ],
-
-  // Override Mend-hosted "silent" default (applied when app is installed on
-  // "All repositories").  "full" lets Renovate create branches, PRs, and the
-  // Dependency Dashboard issue.
-  "mode": "full",
-
-  // --- Supply chain security ---
-
-  // 14-day quarantine: do not propose updates until 14 days after release.
-  // This lets registries catch and yank malicious packages before we see them.
-  // Ref: https://docs.renovatebot.com/key-concepts/minimum-release-age/
-  "minimumReleaseAge": "14 days",
-
-  // Flag known vulnerabilities from the OSV database
-  "osvVulnerabilityAlerts": true,
-
-  // --- Merge policy ---
-
-  // Never auto-merge. Agents review, humans merge.
-  "automerge": false,
-
-  // Create PRs as drafts
-  "draftPR": true,
-
-  // --- Schedule ---
-
-  // Weekly on Monday mornings (UTC). Security/vulnerability PRs bypass
-  // both this schedule and minimumReleaseAge (Renovate built-in behavior).
-  // Ref: https://docs.renovatebot.com/key-concepts/minimum-release-age/
-  // "Security updates bypass any minimumReleaseAge checks"
-  "schedule": ["before 10am on monday"],
-  "timezone": "UTC",
-
-  // --- Python ---
-
-  // anvil declares `>=` floors in pyproject.toml and does not commit uv.lock
-  // (it is gitignored), so "update-lockfile" had nothing to update. "bump"
-  // raises the floor itself (e.g. pydantic >=2.13.4 → >=2.13.5).
-  // Renovate files pyproject.toml under the `poetry` manager here, hence the
-  // `poetry` entries in the packageRules below. (Operator ruling 2026-10-09.)
-  "rangeStrategy": "bump",
-
-  // Refresh uv.lock even when no direct dependency range changes.
-  // This is how Renovate keeps transitive dependencies current.
-  // Match the repo's Monday morning schedule explicitly; Renovate otherwise
-  // applies a separate lock-file-maintenance default schedule.
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["before 10am on monday"]
+  mode: 'full',
+  minimumReleaseAge: '14 days',
+  osvVulnerabilityAlerts: true,
+  automerge: false,
+  draftPR: true,
+  schedule: [
+    'before 10am on monday',
+  ],
+  timezone: 'UTC',
+  rangeStrategy: 'bump',
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: [
+      'before 10am on monday',
+    ],
   },
-
-  // --- PR behavior ---
-
-  // Limit concurrent PRs to keep review queue manageable
-  "prConcurrentLimit": 5,
-
-  // Add release notes and changelogs to PR body for agent review
-  "fetchReleaseNotes": true,
-
-  // --- Package grouping ---
-
-  "packageRules": [
-    // Group all non-major Python dependency updates into one PR
+  prConcurrentLimit: 5,
+  fetchChangeLogs: 'pr',
+  packageRules: [
     {
-      "groupName": "python minor/patch dependencies",
-      "matchManagers": ["pep621", "poetry", "uv"],
-      "matchUpdateTypes": ["minor", "patch"]
+      groupName: 'python minor/patch dependencies',
+      matchManagers: [
+        'pep621',
+        'poetry',
+        'uv',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
     },
-
-    // Python major updates get individual PRs (more risk, need individual review)
     {
-      "matchManagers": ["pep621", "poetry", "uv"],
-      "matchUpdateTypes": ["major"]
+      matchManagers: [
+        'pep621',
+        'poetry',
+        'uv',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
     },
-
-    // Group all non-major GitHub Actions updates into one PR. Workflows
-    // currently pin actions by tag (e.g. actions/checkout@v7), not by SHA;
-    // "digest" only applies if SHA pins are adopted later.
     {
-      "groupName": "github-actions",
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["minor", "patch", "digest"]
+      groupName: 'github-actions',
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+        'digest',
+      ],
     },
-
-    // GitHub Actions major updates get individual PRs
     {
-      "matchManagers": ["github-actions"],
-      "matchUpdateTypes": ["major"]
-    }
-
-    // Note: security/vulnerability PRs bypass both schedule and
-    // minimumReleaseAge by default (Renovate built-in behavior).
-    // Ref: https://docs.renovatebot.com/key-concepts/minimum-release-age/
-    // No packageRule needed — vulnerabilityAlerts config below handles it.
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+    },
   ],
-
-  // --- Ignored paths ---
-
-  // Don't touch vendored trees. `.claude/**` holds installed Loom/Repo Skills
-  // copies; `vendor/**` and `infra/pulumi/**` do not exist in this repo and
-  // are carried over from the template this config came from.
-  "ignorePaths": [
-    "vendor/**",
-    ".claude/**",
-    "infra/pulumi/**"
+  ignorePaths: [
+    'vendor/**',
+    '.claude/**',
+    'infra/pulumi/**',
   ],
-
-  // --- Vulnerability alerts ---
-
-  "vulnerabilityAlerts": {
-    "enabled": true
-  }
+  vulnerabilityAlerts: {
+    enabled: true,
+  },
 }
