@@ -4,6 +4,12 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-10-13
+
+- **PR #1363**: Remove Renovate config: Dependabot takes over
+- **PR #1364**: chore(deps): update pydantic requirement from >=2.13.4 to >=2.13.5
+- **PR #1362**: Dependabot: render dependabot.yml from the org policy
+
 ### 2026-10-09
 
 - **PR #1357**: fix(deps): update dependency weasyprint to >=60.2 [security]
