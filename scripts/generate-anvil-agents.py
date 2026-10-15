@@ -35,7 +35,7 @@ AGENTS_DIR = REPO_ROOT / "anvil" / "agents"
 # Lifecycle phases that map to a per-skill-phase agent type. Order matters
 # for the per-skill commit grouping in the generated files (drafter comes
 # first because the lifecycle starts there).
-LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures"]
+LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures", "import"]
 
 # The artifact-class skills shipped in anvil/skills/ (8 at v0 + datasheet
 # under issue #418 + ip-uspto-provisional under issue #433 + essay under
@@ -69,6 +69,7 @@ PHASE_ROLE = {
     "revise": "Reviser",
     "audit": "Auditor",
     "figures": "Figurer",
+    "import": "Importer",
 }
 
 # Phase → agent suffix (e.g., `draft` → `drafter` per the curator's
@@ -79,6 +80,7 @@ PHASE_SUFFIX = {
     "revise": "reviser",
     "audit": "auditor",
     "figures": "figurer",
+    "import": "importer",
 }
 
 # Tool-scope per phase. Mirrors the curator's table; reviewers do NOT carry
@@ -90,6 +92,7 @@ PHASE_TOOLS = {
     "revise": "Read, Glob, Grep, Edit, Write, Bash",
     "audit": "Read, Glob, Grep, Bash, Write",
     "figures": "Read, Glob, Grep, Bash, Write, Edit",
+    "import": "Read, Glob, Grep, Write, Bash",
 }
 
 # Phase → expected output filenames (sidecar contract). Empty list means
@@ -114,6 +117,7 @@ PHASE_EXPECTED_OUTPUTS = {
         "_progress.json",
     ],
     "figures": [],
+    "import": [],
 }
 
 # Phase → staging-name pattern used by `anvil/lib/sidecar.py`. The pattern
@@ -126,6 +130,7 @@ PHASE_STAGING_PATTERN = {
     "revise": "",
     "audit": ".{thread}.{N}.audit.tmp/",
     "figures": "",
+    "import": "",
 }
 
 # Phase → one-line role summary surfaced in the agent's body.
@@ -135,6 +140,7 @@ PHASE_ROLE_SUMMARY = {
     "revise": "consume all critic siblings of the latest `{thread}.{N}/` and produce a single revised `{thread}.{N+1}/`",
     "audit": "run the audit gate against a READY version and produce an audit sibling with verdict / findings",
     "figures": "regenerate or update figures and exhibits under the latest `{thread}.{N}/exhibits/`",
+    "import": "import an externally-authored artifact (e.g. a PDF deck) into a first `{thread}.1/` version directory",
 }
 
 # Per-(skill, phase) extra responsibility paragraphs appended to the

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`anvil:slides` can import a deck authored outside anvil** (#1368). New `slides-import <thread> --pdf <path> [--notes <dir>]` turns an existing PDF talk into an image-backed `<thread>.1/`: one `![bg fit](figures/slide-NN.png)` slide per page (via `pdftoppm`) with that page's text, in reading order (`pdftotext` without `-layout`), kept in an HTML comment so audit quotes resolve. The untouched PDF and a SHA-256 manifest go to `<thread>/refs/original/` (not `<thread>.0/`, which stays reserved for the outline). It refuses to overwrite an existing `<thread>.1/`, and degrades with install guidance when poppler is missing. A new optional thread-BRIEF block `slides.external_source: {dir, build, pdf}` tells `slides-revise` to edit the real source, run `build`, and re-render the pages instead of editing `deck.md`. `marp_lint` now reports `info: image-only slide — lint not applicable` for slides that are only background images, so 0 warnings no longer reads as a pass. Adds the `anvil-slides-importer` agent.
+
 ### Fixed
 
 - **`[html]` extra now requires `weasyprint>=70.0`** (CVE-2025-68616 / GHSA-983w-rhvv-gwmv). WeasyPrint's default URL fetcher followed redirects without re-checking a custom `url_fetcher`'s allow/block rules; fixed upstream in 68.0. Renovate's #1357 landed `>=60.2`, which still admitted vulnerable releases; this raises the floor to the tested 70.0.

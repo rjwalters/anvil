@@ -92,7 +92,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 |---|---|
 | `EMPTY` | No `<thread>.{N}/` directories AND no `<thread>.0.outline/` |
 | `OUTLINED` | `<thread>.0.outline/outline.md` exists; no `<thread>.1/` yet |
-| `DRAFTED` | Latest `<thread>.{N}/` exists with `deck.md` and `_progress.json.draft == done`; no sibling review at the same `N` |
+| `DRAFTED` | Latest `<thread>.{N}/` exists with `deck.md` and `_progress.json.draft == done` (or `import == done` for a `slides-import`ed version); no sibling review at the same `N` |
 | `REVIEWED` | `<thread>.{N}.review/verdict.md` exists for the latest `N` |
 | `REVISED` | A `<thread>.{N+1}/` exists after a prior `<thread>.{N}.review/` |
 | `READY` | Latest `<thread>.{N}.review/verdict.md` records `advance: true` AND no unresolved critical flag |
@@ -116,6 +116,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 | Command | Role | Reads | Writes |
 |---|---|---|---|
 | `slides` | portfolio orchestrator | all `<thread>.*` dirs under cwd | (none; reports state per thread + recommends next command) |
+| `slides-import <thread> --pdf <path>` | importer | an externally-authored PDF (+ optional `--notes <dir>`) | `<thread>.1/` (image-backed `deck.md`, `figures/slide-NN.png`, `notes/`) + `refs/original/` (untouched PDF + SHA-256 manifest) |
 | `slides-outline <thread>` | outliner | `<thread>/BRIEF.md` (+ `<thread>/refs/`) | `<thread>.0.outline/outline.md` |
 | `slides-draft <thread>` | drafter | `<thread>/BRIEF.md` (+ refs); for revisions, also `<thread>.{N}/` + all `<thread>.{N}.*/` siblings; AND `<thread>.0.outline/` if present | `<thread>.1/` (or `<thread>.{N+1}/` on revise-from-feedback path; see `slides-revise`) |
 | `slides-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
@@ -127,6 +128,12 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 | `slides-handout <thread>` | handout exporter | latest READY+AUDITED+REHEARSED `<thread>.{N}/` | `<thread>.{N}.handout/handout.pdf` |
 
 The portfolio orchestrator is the user-facing entry point for status; the lifecycle commands are dispatched from it (or invoked directly by the orchestrating agent).
+
+### Importing a deck authored outside anvil
+
+`slides-import` is the entry point for an existing PDF talk. It writes an image-backed `<thread>.1/` (one `![bg fit](figures/slide-NN.png)` slide per page, page text kept in an HTML comment so audit quotes resolve) and preserves the untouched original in `<thread>/refs/original/` — not `<thread>.0/`, which stays reserved for the outline. Re-running on a thread that already has `<thread>.1/` refuses. The lint reports `info: image-only slide — lint not applicable` for these slides; it is never a pass.
+
+An optional thread-`BRIEF.md` block, `slides.external_source: {dir, build, pdf}`, tells `slides-revise` to edit the real source under `dir`, run `build`, and re-render the PDF into `figures/` instead of editing `deck.md`. The block is skill-local (ignored by other skills); absent, behavior is unchanged. See `commands/slides-revise.md` § "External-source threads".
 
 ## Progress tracking
 
