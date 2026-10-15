@@ -17,6 +17,28 @@ This command is the "N parallel critics, one reviser" pattern from anvil's desig
 - **Latest version**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Critic siblings**: ALL `<thread>.{N}.<critic>/` directories at that `N` (also under the thread root). At minimum the `.review/` sibling is required (the reviewer's verdict drives the dimension-by-dimension revision plan). The `.audit/` and `.rehearse/` siblings, when present, contribute additional findings — and `wrong` audit verdicts or set density/time flags MUST be addressed (they short-circuit advancement). The `.vision/` sibling (per `slides-vision.md`), when present, contributes the rendered-artifact scorecard (`kind=vision`, discovered via `anvil.lib.critics.discover_critics`): its `vertical_overflow`/`label_cropping`/`axis_legibility`/`palette_adherence`/`mathtext_artifacts`/`slide_density` dims and its `rendered_overflow_unrecoverable` / `mathtext_artifact_breaks_meaning` critical flags MUST be addressed if set.
 
+## External-source threads (`slides.external_source`)
+
+A thread imported by `slides-import` has an image-backed `deck.md` whose real source lives elsewhere (JSON + a build script, a Keynote export pipeline, …). Its thread `BRIEF.md` may declare, in frontmatter, a skill-local block (ignored by every other skill; same shape as `project-book`'s `build:`):
+
+```yaml
+slides:
+  external_source:
+    dir: source/            # editable source tree, relative to the thread root
+    build: "python3 build.py"   # command that rebuilds the PDF; run with cwd = dir
+    pdf: out/talk.pdf       # the PDF `build` produces, relative to dir
+```
+
+When the block is **absent**, this command behaves exactly as documented below. When **present**, the procedure changes at steps 8–10:
+
+- Step 8: edit the files under `dir` (copied into `<thread>.{N+1}/source/` first, so each version carries its own editable source), NOT `deck.md` prose. `deck.md` slide text lives only in page-text comments.
+- Then run `build` with cwd `<thread>.{N+1}/source/`; if it exits non-zero, stop and report (write nothing further; the revision is not complete).
+- Re-render the resulting `pdf` to `<thread>.{N+1}/figures/slide-NN.png` (`pdftoppm -png -r 150 -singlefile`), refresh each page's text comment in `deck.md` from `pdftotext` (no `-layout`), and rewrite the `![bg fit]` slide list to match the new page count.
+- Step 10: the carried-over figures are the re-rendered pages; do not run `slides-figures` over them (it only renders missing mermaid/data figures and does not touch existing PNGs).
+- `changelog.md` entries cite the changed source file, not a `deck.md` line.
+
+The original PDF under `refs/original/` is never modified.
+
 ## Outputs
 
 Nested under the thread root `<thread>/`, as a sibling of `<thread>.{N}/`:
