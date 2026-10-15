@@ -6,7 +6,16 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-10-15
 
+- **PR #1382**: test(slides): add poppler-gated real-binary test for slides-import
+- **PR #1379**: feat(slides): add slides-import for externally-authored PDF decks
+- **PR #1377**: feat(slides): add rehearse script mode and cap D8 without timing evidence
+- **PR #1376**: fix(vision): add score anchors, palette consistency fallback, agent-as-VLM mode
+- **PR #1374**: fix(slides): separate on-slide disclosure from provenance and add talk_genre
 - **PR #1366**: Bump Repo Skills 0.21.6 -> 0.24.1
+- **Issue #1372** (closed): Vision critic without an API key: agent-as-VLM works but drifts, and palette_adherence assumes the anvil theme
+- **Issue #1371** (closed): Time-budget realism (D8) is scored inconsistently without a rehearsal, and rehearse can't time script-style notes
+- **Issue #1370** (closed): Critics over-apply disclosure and hedging; slides rubric assumes a technical lecture
+- **Issue #1368** (closed): slides: no import path for a deck authored outside anvil (PDF / Keynote / code-built)
 
 ### 2026-10-13
 
