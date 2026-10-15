@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`slides-rehearse` script mode and a D8 evidence cap** (#1371). A notes file with a `## Script (timed core)` heading is now timed as `words(that section + any ## Transition section) ÷ wpm × 60` (default 130 wpm, overridable via `.anvil.json` `script_wpm`; no base/figure terms, no 180s cap) instead of `notes_words * 1.5`, which overstated a verbatim script ~3× and led the canary to skip rehearse. `timing.md` marks each slide `mode: script|cues|full` and flags script pace above 150 wpm; precedence is `## Script (timed core)` > `## Cues` > whole file, and decks with neither heading are unchanged. Rubric dim 8 (and `slides-review`) is now capped at 2/3 unless a `<thread>.{N}.rehearse/timing.md` sibling or a BRIEF `aloud_timing_minutes:` value exists, so the score no longer swings on reviewer judgment alone.
+
 ### Fixed
 
 - **`[html]` extra now requires `weasyprint>=70.0`** (CVE-2025-68616 / GHSA-983w-rhvv-gwmv). WeasyPrint's default URL fetcher followed redirects without re-checking a custom `url_fetcher`'s allow/block rules; fixed upstream in 68.0. Renovate's #1357 landed `>=60.2`, which still admitted vulnerable releases; this raises the floor to the tested 70.0.
