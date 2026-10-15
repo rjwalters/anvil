@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`editorial_overrides:` in the project `BRIEF.md` for `anvil:slides` (#1373).** A per-document list of `{slide, dimension, reason, date}` entries records operator decisions about critic findings. `slides-review` and `slides-vision` report an exactly matching finding (slide AND dimension) as an `overridden:` nit with no score deduction, so the next pass does not re-flag it and `slides-revise` does not revert it. Critical flags and blockers are never overridden, `slides-audit` ignores overrides, and unmatched (possibly stale) overrides are listed in each review summary. Adds `load_editorial_overrides_for_slug` and a slides-local matcher.
+
 ### Fixed
 
 - **`[html]` extra now requires `weasyprint>=70.0`** (CVE-2025-68616 / GHSA-983w-rhvv-gwmv). WeasyPrint's default URL fetcher followed redirects without re-checking a custom `url_fetcher`'s allow/block rules; fixed upstream in 68.0. Renovate's #1357 landed `>=60.2`, which still admitted vulnerable releases; this raises the floor to the tested 70.0.

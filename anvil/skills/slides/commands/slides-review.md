@@ -175,6 +175,15 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 13. **Update `_progress.json`** inside the staging dir: `phases.review.state = done`, `phases.review.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.review.tmp/` → `<thread>.{N}.review/`. The final-named dir only ever exists in **complete** form.
 14. **Report**: print the path to the (now-renamed) review dir and a one-line status (e.g., `Reviewed kdd-2026-keynote.1 → kdd-2026-keynote.1.review/ (32/44, advance: false, 1 audit flag, 2 density flags)`).
 
+## Editorial overrides (issue #1373)
+
+When the project `BRIEF.md` declares `documents[].editorial_overrides:` for this thread's slug (see `SKILL.md` § "Editorial overrides"), load them with `anvil.lib.project_brief.load_editorial_overrides_for_slug(<project_dir>, <slug>)` before scoring. An empty list (or no key) means this section does not apply and the output is byte-identical to the no-overrides path.
+
+- **Matching** is exact, via `anvil/skills/slides/lib/editorial_overrides.py::match_override`: a finding matches only when its `evidence_span` is `...:slide=<slide>` AND its `dimension` equals the entry's `dimension` (the rubric dimension number, e.g. `4`). A finding with no slide span or no dimension never matches.
+- **Effect**: a matched finding is NOT deducted from the score and is written with `severity: "nit"` and a rationale prefixed `overridden: <reason> (<date>)`.
+- **Never overrides a critical flag or a `blocker`-severity finding**: those are reported at full strength; add an `override ignored: critical` note to the rationale.
+- **Visibility**: list the applied overrides and any `unmatched (possibly stale)` overrides (slide numbers shift across revisions) in `_summary.md`.
+
 ## Idempotence and resumability
 
 - A completed review (`review.state == done` AND `verdict.md` exists with a parseable score) is never re-run. Re-invoking is a no-op with a notice.

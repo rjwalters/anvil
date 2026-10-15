@@ -106,6 +106,10 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 8. **Update `_progress.json`** inside the staging dir: `phases.audit.state = done`, `phases.audit.completed = <ISO>`. This is the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires `_progress.json` to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.audit.tmp/` → `<thread>.{N}.audit/`. The final-named dir only ever exists in **complete** form.
 9. **Report**: print the path to the (now-renamed) audit dir and a one-line status (e.g., `Audited kdd-2026-keynote.1 → kdd-2026-keynote.1.audit/ (37 claims: 28 supported, 4 unsupported, 2 wrong, 3 ambiguous; AUDIT FLAG SET)`).
 
+## Editorial overrides do not apply (issue #1373)
+
+`slides-audit` ignores `editorial_overrides:` in `BRIEF.md`. A `wrong` factual claim must not be waivable by a style decision; only `slides-review` and `slides-vision` read overrides.
+
 ## Notes for the auditor agent
 
 - **Sharper posture than the general reviewer.** The auditor's job is citation-correspondence. Where the reviewer asks "is this claim well-argued?", the auditor asks "is this claim *true* and *attributable*?". Be precise.

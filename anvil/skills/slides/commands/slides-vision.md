@@ -129,6 +129,15 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
 
 8. **Report**: one-line status, e.g. `Vision critic on kdd-2026.1 → kdd-2026.1.vision/ (vision total 22/30; 4 findings; 1 critical flag: mathtext_artifact_breaks_meaning)`.
 
+## Editorial overrides (issue #1373)
+
+When the project `BRIEF.md` declares `documents[].editorial_overrides:` for this thread's slug (see `SKILL.md` § "Editorial overrides"), load them with `anvil.lib.project_brief.load_editorial_overrides_for_slug(<project_dir>, <slug>)` before scoring the vision dimensions. An empty list (or no key) means this section does not apply and the output is byte-identical to the no-overrides path.
+
+- **Matching** is exact, via `anvil/skills/slides/lib/editorial_overrides.py::match_override`: a finding matches only when its `evidence_span` is `...:slide=<slide>` AND its `dimension` equals the entry's `dimension` (the vision dimension key, e.g. `slide_density`). A finding with no slide span or no dimension never matches.
+- **Effect**: a matched finding is NOT deducted from the score and is written with `severity: "nit"` and a rationale prefixed `overridden: <reason> (<date>)`.
+- **Never overrides a critical flag or a `blocker`-severity finding**: those are reported at full strength; add an `override ignored: critical` note to the rationale.
+- **Visibility**: list the applied overrides and any `unmatched (possibly stale)` overrides (slide numbers shift across revisions) in the `_review.json` summary.
+
 ## Idempotence and resumability
 
 - Standard: completed = no-op; crashed = re-runnable after deleting partial output.

@@ -95,6 +95,10 @@ After this command produces `<thread>.{N+1}/`, the orchestrator runs all three c
 - `verdict.md` reports `advance: true` (no rubric block, no propagated audit/density/time flag) — thread reaches `READY`. Then `slides-audit` (if not already current) and `slides-rehearse` (if not already current) must complete cleanly for the thread to reach `AUDITED` and `REHEARSED`. Then `slides-handout` may produce the terminal export.
 - `N+1 > max_iterations` — thread is `BLOCKED` for human review.
 
+## Overridden findings (issue #1373)
+
+Findings whose rationale starts with `overridden:` record a deliberate operator decision (`editorial_overrides:` in `BRIEF.md`). Do NOT revise them — leave the operator's edit in place and do not list them as addressed in `changelog.md`. A finding marked `override ignored: critical` is NOT an overridden finding and must be revised as usual.
+
 ## Notes for the reviser agent
 
 - **Critical flags trump everything.** If any sibling raised a critical flag, the revision MUST address it. Failing to address a `wrong` audit claim is a worse outcome than declining a stylistic suggestion.

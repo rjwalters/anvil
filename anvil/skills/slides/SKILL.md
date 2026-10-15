@@ -238,6 +238,23 @@ The skill prompt instructs the figurer to **never invent data** — only render 
 
 **Escape hatch — `<!-- anvil-lint-disable: slide-content-overflow -->`**: any slide that contains this HTML comment has its `slide-content-overflow` finding downgraded to `severity: info`. The finding is still recorded so the reviser sees that the slide is dense, but `advance` is not blocked. Use this for legitimately-dense slides that have been visually validated (e.g., a deliberately busy reference figure, or a comparison table that needs all rows). Document the rationale in the slide's `notes/<NN>-*.md` so the auditor can spot-check.
 
+## Editorial overrides
+
+An operator who deliberately overrides a critic finding by hand can record it so the next `slides-review` / `slides-vision` pass does not re-flag it and `slides-revise` does not revert it. Declare it per document in the project `BRIEF.md`, beside `rubric_overrides`:
+
+```yaml
+documents:
+  - slug: sauna-talk
+    artifact_type: slides
+    editorial_overrides:
+      - slide: 7
+        dimension: 4            # slides-review: rubric dim number; slides-vision: dim key, e.g. slide_density
+        reason: "Build photos replace the qualitative sketch on purpose."
+        date: 2026-10-15
+```
+
+Matching is exact (slide AND dimension; no free text). A matched finding is reported as `severity: nit` with an `overridden:` rationale and is not deducted. Critical flags and `blocker` findings are never overridden, `slides-audit` ignores overrides, and unmatched (possibly stale) overrides are listed in each review summary. `reason` and `date` (ISO) are required.
+
 ## Rubric
 
 See `rubric.md` for the 9-dimension /44 scoring schema (talk-tuned weights), the ≥35 advance threshold, and the three critical-flag rules (audit / density / time).
