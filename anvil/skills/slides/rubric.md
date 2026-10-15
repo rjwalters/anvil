@@ -23,6 +23,24 @@ This weighting differs from `anvil:memo` (where thesis + evidence + risk dominat
 
 The four anchor dimensions (1–4) sum to **25/44 ≈ 56.8%**, reflecting that the four pillars of a good talk are *true, clear, well-shaped, and digestible*. The presentation-craft dimensions (5–8) sum to 15/44 — necessary but never sufficient. The dim 9 *Rhetorical economy* check (4/44) sits adjacent to dim 4 *Slide density* as the talk-level counterpart to the per-slide check.
 
+## On-slide disclosure vs. provenance
+
+Two things critics conflate: **provenance** (where an image, figure, or number came from, and what was done to it) and **on-slide disclosure** (a visible label, tag, or footer telling the audience about it). Provenance belongs in `notes/`, `refs/`, and slide-sources. A visible label is justified only under the **audience common-sense test**: *would a reasonable member of the declared audience otherwise be misled about what they are looking at?*
+
+- Passes (label justified): a photorealistic image that could pass for a real photograph, a chart whose data is synthetic but reads as measured, a quote or statistic whose source the audience would assume to be something else.
+- Fails (no label): an obviously AI-painted cartoon, an illustrative sketch of a concept, a cropped screenshot, a footer reciting editing steps ("cropped to remove a signature"). Record these in notes or sources instead.
+
+Critics (`slides-review`, `slides-audit`, `slides-vision`) must not recommend a disclosure label that fails the test, and must not deduct for the absence of one. The reviser may decline such a finding (see `commands/slides-revise.md`). This section changes no dimension weight, total (/44), threshold, or critical flag.
+
+## Talk genre calibration (`talk_genre`)
+
+The optional `BRIEF.md` frontmatter key `talk_genre` takes one of two values:
+
+- `technical-lecture` (the default when the key is absent or holds an unrecognized value): the dimensions are judged exactly as written above.
+- `maker-story`: a first-person build or project story. In **judgment prose only**, dim 2 is judged by "can the audience follow the story?" with no penalty for absent formal concept → example → implication scaffolding, and dims 3 (*Narrative arc*) and 5 (*Visual quality*, including documentary evidence) are weighed ahead of lecture-style scaffolding. Critics must not recommend replacing documentary photos of the build with schematics, sketches, or plots under this genre.
+
+The numeric weights are identical under both genres; `talk_genre` never changes a score ceiling, the /44 total, or the threshold.
+
 ## Dimension 4 ownership (density / cognitive load)
 
 Dimension 4 is **jointly owned** by a source-side path and a rendered-side path, because slide density manifests in two places that no single critic can see at once:

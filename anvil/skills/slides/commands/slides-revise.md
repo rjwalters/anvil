@@ -79,7 +79,7 @@ Nested under the thread root `<thread>/`, as a sibling of `<thread>.{N}/`:
     | kdd-2026.1.review (major)           | Dim 3 (Narrative arc) scored 3/6                  | Added section divider before beat 2; reworded slide 5 to recap beat 1 explicitly |
     ```
 
-    For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next reviewer pass can override or accept the reviser's judgment. **Critical flags cannot be declined** — `wrong` claims must be addressed; density and time violations must be resolved.
+    For deliberate non-resolutions (e.g., critic suggested a change the reviser disagrees with), include them with `Resolution: declined — <one-line reason>`. The next reviewer pass can override or accept the reviser's judgment. A finding that recommends adding an on-slide disclosure label may likewise be declined with a one-line rationale (e.g. `declined — fails the audience common-sense test: obviously an illustration`) when it fails the test in `rubric.md` §"On-slide disclosure vs. provenance"; record the provenance in notes instead. **Critical flags cannot be declined** — `wrong` claims must be addressed; density and time violations must be resolved.
 
 12. **Update `_progress.json`**: `phases.revise.state = done`, `phases.revise.completed = <ISO>`.
 13. **Report**: print the path to the new version dir and a one-line status (e.g., `Revised kdd-2026-keynote.1 → kdd-2026-keynote.2/ (addressed 11 notes, declined 1, slides 22 → 24)`).
