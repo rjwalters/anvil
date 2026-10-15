@@ -482,3 +482,22 @@ def test_real_anthropic_vlm_smoke(tmp_path):
         context="Single 1x1-pixel test image.",
     )
     assert review.kind == Kind.VISION
+
+
+# ---------------------------------------------------------------------------
+# Calibration anchors + palette fallback (#1372)
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_includes_mid_scale_anchors_for_every_dimension():
+    prompt = build_prompt(default_vision_rubric())
+    for d in default_vision_rubric().dimensions:
+        line = next(l for l in prompt.splitlines() if l.startswith(f"- {d.name} "))
+        assert "Anchors:" in line, d.name
+        assert "3 =" in line and "1 =" in line, d.name
+
+
+def test_palette_adherence_falls_back_to_internal_consistency():
+    prompt = build_prompt(default_vision_rubric())
+    assert "internal consistency" in prompt
+    assert "Brand palette" in prompt
