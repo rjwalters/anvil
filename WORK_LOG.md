@@ -4,6 +4,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-10-15
+
+- **PR #1366**: Bump Repo Skills 0.21.6 -> 0.24.1
+
 ### 2026-10-13
 
 - **PR #1363**: Remove Renovate config: Dependabot takes over
