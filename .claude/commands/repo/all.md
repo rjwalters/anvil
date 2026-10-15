@@ -323,13 +323,13 @@ Two currency checks run here, both report-first.
 itself, … against their sources. Report what's behind and offer to update.
 
 **Third-party dependencies** (see [[deps]]): run `[[deps]] --check`. Report the
-installed organization policy/source, detected provider (Renovate, Dependabot,
-or intentional mixed coverage), config/app status, vulnerability alerts,
-**open Dependabot alerts by severity**, security PR ownership, cooldown and
-automerge policy, and open dependency PRs.
+installed organization policy/source, detected provider (Dependabot by
+default; Renovate if opted in, or intentional mixed coverage), config/app
+status, vulnerability alerts, **open Dependabot alerts by severity**, security
+PR ownership, cooldown and automerge policy, and open dependency PRs.
 These are independent states: an intentionally disabled Dependabot security-PR
-flag is expected when Renovate owns fixes. Missing Dependabot config does not
-mean automation is absent.
+flag is expected only when an opted-in Renovate owns fixes. Missing Dependabot
+config does not mean automation is absent.
 
 **The alerting flag and the open-alert count are different findings — carry
 both.** `alerts ON` means detection is enabled, not that nothing is detected;
@@ -386,7 +386,7 @@ Scrub:        1 at HEAD deferred (identity: docs/runbook.md:41); 63 history-only
 Docs:         2 fixed (README table, CHANGELOG entry), 1 deferred: docs/analysis/ missing README
 Tidy:         freed 240 MB (build/, .cache/, 3 empty dirs)
 Tools:        Anvil updated 1.4.0 → 1.5.1; Loom current
-Deps:         Renovate, org policy current, alerts ON, 2 open alerts (1 high, 1 medium — 1 with no open fix PR), security PRs: Renovate, age: 14d/1d, automerge OFF, 3 open PRs (0 majors, 2 stale)
+Deps:         Dependabot, org policy current, alerts ON, 2 open alerts (1 high, 1 medium — 1 with no open fix PR), security PRs: Dependabot, cooldown 14d, automerge OFF, 3 open PRs (0 majors, 2 stale)
 Reset:        on main (up to date), tree clean, 4 branches deleted, 1 stash kept
 Skipped:      remote (never part of /repo:all); deps install/review (confirm-first — run /repo:deps); scrub --deep/--owner/--forks (run /repo:scrub)
 ```

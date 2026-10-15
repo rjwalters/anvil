@@ -1,6 +1,6 @@
 ---
 name: "deps"
-description: "Third-party dependency currency — reconcile organization policy, Renovate or Dependabot setup, and bot PRs; report-only under --check"
+description: "Third-party dependency currency — reconcile organization policy, Dependabot-first setup (Renovate opt-in), and bot PRs; report-only under --check"
 domain: repo
 type: command
 user-invocable: true
@@ -11,8 +11,9 @@ user-invocable: true
 Keep the repo's **third-party dependencies** current: npm / pip / cargo / Go
 packages and GitHub Actions. Two halves, usually run together:
 
-1. **Resolve organization policy and verify the updater** — Renovate or
-   Dependabot, independently of GitHub vulnerability alerts and security PRs.
+1. **Resolve organization policy and verify the updater** — Dependabot by
+   default, Renovate only as an explicit opt-in, independently of GitHub
+   vulnerability alerts and security PRs.
 2. **Triage dependency PRs** — actual changes, age eligibility, security
    relevance, CI coverage, and merge policy.
 
@@ -73,22 +74,57 @@ Also detect existing Renovate config, including `renovate.json`, `renovate.json5
 `.gitlab/renovate.json[5]`, and the `renovate` key in `package.json`, alongside
 Dependabot config. Inspect Renovate's current supported config locations if
 none of these explains an active installation. Preserve an existing provider
-unless migration is authorized. With no provider or organization policy, offer
-[[org-policy]] before proposing new automation; do not silently assume that
-missing `dependabot.yml` means dependencies are unmanaged.
+unless migration is authorized. With no provider or organization policy,
+**Dependabot is the default** (decision recorded 2026-10-13, #638): scaffold
+`dependabot.yml` with a `cooldown` (step 4) and offer [[org-policy]] for
+shared policy. Propose Renovate only when the owner explicitly asks for it.
+Do not silently assume that missing `dependabot.yml` means dependencies are
+unmanaged.
+
+**Decision (2026-10-13).** Dependabot is the default provider with a
+version-update `cooldown` (`default-days: 14`; security updates are not
+delayed). Renovate is opt-in only. Reasons: Dependabot is GitHub-native with no
+third-party App to install, and hosted Renovate runs on Mend-hosted terms
+(a Mend-operated GitHub App with its own terms and data handling) and is
+Silent-by-default (#636): an installed-but-unconfigured or misconfigured App
+raises nothing and says nothing, so inert automation looks like healthy
+automation.
+
+**Migrating an existing Renovate repo to Dependabot.** Two separate PRs, in
+this order, so the repo is never without an updater:
+
+1. PR 1: add the rendered/scaffolded `.github/dependabot.yml` (with `cooldown`)
+   first. Leave `renovate.json` in place; the repo is briefly `both-active`.
+2. PR 2: after PR 1 merges and Dependabot has opened or verified its first
+   PRs, remove `renovate.json` (and other Renovate config) in a separate PR,
+   and close Renovate's open PRs individually rather than in bulk. Uninstalling
+   the Mend/Renovate App is an operator step outside this command.
+
+**Organization provider `dependabot`.** When the deployed `repo-policy.json`
+says `"provider": "dependabot"`, the organization has chosen Dependabot. Do not
+propose Renovate. Any Renovate config in the client is a migration leftover:
+report it as `both-active` or `renovate-only` and offer its removal once the
+client's `dependabot.yml` is in place. If `dependencies.policySource` is set,
+the organization renders or owns each client's `dependabot.yml` there. Report
+the client file against that source and **do not rewrite it here**: a local
+edit would be overwritten as drift. Point at `policySource` instead. Both
+`dependabotAlerts` and `dependabotSecurityUpdates` are `true` under this
+provider, so a client with either off (or security updates `paused`) is a
+finding, not the expected state the Renovate note below describes.
 
 Report separately: deployed policy source/revision and drift, provider/config,
 **GitHub App installation status** (Renovate path only — see below), app
 operation, dependency graph, vulnerability alerts, security PR provider,
 effective release-age rules, automerge/required checks, and open bot PRs.
-`dependabotSecurityUpdates: false` is expected when Renovate owns security PRs;
+`dependabotSecurityUpdates: false` is expected only when an opted-in Renovate
+owns security PRs;
 it is not a finding that should be "fixed" by enabling a second provider.
 
 ### Fan-out survey — org-wide migration report (`--all-repos`)
 
 Everything else in this command operates on the single repo it is run from.
 `--all-repos` is a different mode: it answers "where does the org-wide
-Dependabot→Renovate migration stand, across every repo?" It is a **read-only
+provider migration (Renovate→Dependabot by default) stand, across every repo?" It is a **read-only
 survey** — it never writes to, configures, or merges anything in any of the
 repos it enumerates. To act on what the survey finds, run `/repo:deps`
 (optionally `--install`/`--review`) against that one repo; this mode only ever
@@ -147,7 +183,7 @@ Also report, per repo:
   self-hosted identity for that repo).
 
 Step 1's **open-alert count is deliberately not a survey column.** This mode
-answers one question — where the Dependabot→Renovate migration stands — and
+answers one question — where the provider migration stands — and
 alert counts would add one paginated `/dependabot/alerts` read plus a per-alert
 PR cross-reference to every repo enumerated, most of which would come back
 UNKNOWN on a token that is not an admin everywhere. Run `/repo:deps --check`
@@ -219,7 +255,13 @@ repo at a time, when run against that repo.
 has nothing further to restrict here, since this mode never writes in the
 first place.
 
-### Renovate setup path
+### Renovate setup path (opt-in)
+
+Renovate is **not** the default. Use this path only when the owner or deployed
+policy (`"provider": "renovate"`) explicitly selects it, and say so up front:
+hosted Renovate is a Mend-hosted GitHub App under Mend's terms, and it is
+Silent-by-default (#636) — with the App missing or the config inert, no PRs
+appear and nothing reports it.
 
 When Renovate is selected, use this path instead of Dependabot steps 1, 4–6.
 Reuse steps 2–3 below for ecosystem/ownership detection and label validation.
@@ -247,10 +289,18 @@ Reuse steps 2–3 below for ecosystem/ownership detection and label validation.
     requires an organization owner/admin — who may not be the person running
     this command. Continue the rest of this path anyway (config reconciliation
     below is still correct groundwork), but do not report overall success.
+  - **Installed (evidence: …)** — personal accounts only, where no ordinary
+    user token can list installed Apps: the check found recent
+    `renovate[bot]` issues/PRs in the owner's repositories. Treat it as
+    installed, but relay the coverage clause verbatim — `Coverage of
+    OWNER/REPO confirmed` (Renovate is active in this repo too) versus
+    `not verified` (the repo may be outside the App's repository selection;
+    the line names `https://github.com/settings/installations` to check).
   - **UNKNOWN** — this token cannot see the installations endpoint for that
-    account (non-admin org member, or a personal account other than the
-    caller's own). Report it as unresolved, not as either "installed" or "not
-    installed".
+    account (non-admin org member), or a personal account showed no recent
+    Renovate activity / the activity search failed (the line then also names
+    `https://github.com/settings/installations`). Report it as unresolved, not
+    as either "installed" or "not installed".
 - Update the existing active Renovate config (do not add a competing file) to
   extend the deployed `dependencies.renovatePreset`, usually
   `github>OWNER/.github:renovate-config`. Preserve intentional client exceptions
@@ -465,8 +515,8 @@ automatically, and never post the comment under `--check`.
 
 ## Steps — Dependabot install / verify
 
-Use this path when Dependabot remains the chosen provider. An organization's
-Renovate policy is a migration proposal until adoption is authorized, not a
+This is the default path (Dependabot-first, 2026-10-13). An organization's
+Renovate policy is an opt-in proposal until adoption is authorized, not a
 reason to silently replace a working Dependabot installation.
 
 ### 1. Report config and the security flag as two distinct items
@@ -865,6 +915,14 @@ everything — deps coupled to an external binary or service (e.g.
 `playwright-core` and its browser binary, a database driver, a native
 toolchain) should stay ungrouped even at minor/patch, via `exclude-patterns`.
 
+Every entry carries `cooldown: default-days: 14` (the policy's routine
+release-age; `policies/default.json` `dependabot.cooldown.routineDays`). The
+cooldown delays version updates only; security updates are not delayed. Match
+the shape of the rendered `.github/dependabot.yml` (`schedule` with
+`day`/`time`/`timezone`, `cooldown`, `labels`, `groups`) when the organization
+renders it; when `policySource` is set, defer to it instead of writing here.
+A scaffold never creates `renovate.json`.
+
 Show the proposed file in full and get approval before writing:
 
 ```yaml
@@ -874,6 +932,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14
     groups:
       github-actions:
         patterns: ["*"]
@@ -883,6 +943,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14
     groups:
       npm-minor-patch:
         patterns: ["*"]
@@ -903,6 +965,8 @@ allowed) sharing one entry's schedule, grouping, and labels:
       - "/crates/gamma"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 14
     groups:
       cargo-minor-patch:
         patterns: ["*"]
@@ -915,7 +979,7 @@ per-directory entries the moment two of those crates need different grouping,
 cadence, or labels: `directories:` buys brevity, and pays for it with a single
 shared policy across every path listed.
 
-Add `labels: ["<validated-label>"]` only if step 3 approved one. Write the file
+Keep the `cooldown` block on every entry. Add `labels: ["<validated-label>"]` only if step 3 approved one. Write the file
 only on explicit approval; under `--check`, stop here and show it as a proposal.
 
 ### 5. Offer to enable the repo-level flags (confirm first)
