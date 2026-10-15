@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-10-08*
+*Last updated: 2026-10-15*
 
 ---
 
@@ -35,25 +35,39 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-_None._
+- **#1368**: slides: no import path for a deck authored outside anvil (PDF / Keynote / code-built)
+- **#1369**: slides-revise: port memo's operator-directed paths (`--polish` / `--reject`) and record operator overrides so critics stop re-flagging them
+- **#1370**: Critics over-apply disclosure and hedging; slides rubric assumes a technical lecture
+- **#1371**: Time-budget realism (D8) is scored inconsistently without a rehearsal, and rehearse can't time script-style notes
+- **#1372**: Vision critic without an API key: agent-as-VLM works but drifts, and palette_adherence assumes the anvil theme
+- **#1373**: slides: BRIEF editorial_overrides so critics report operator-overridden findings as info instead of re-flagging
 
 ## PRs Awaiting Review
 
 PRs waiting on Judge (`loom:review-requested`).
 
-_None._
+- **#1379**: feat(slides): add slides-import for externally-authored PDF decks
 
 ## Approved (Awaiting Merge)
 
 PRs that passed review and are queued for Champion auto-merge (`loom:pr`).
 
-_None._
+- **#1374**: fix(slides): separate on-slide disclosure from provenance and add talk_genre
+- **#1375**: feat(slides): add --polish/--reject paths to slides-revise
+- **#1376**: fix(vision): add score anchors, palette consistency fallback, agent-as-VLM mode
+- **#1377**: feat(slides): add rehearse script mode and cap D8 without timing evidence
+- **#1378**: feat(slides): honor BRIEF editorial_overrides in review and vision critics
 
 ## Proposed
 
 Issues carrying `loom:curated`.
 
-_None._
+- **#1368**: slides: no import path for a deck authored outside anvil (PDF / Keynote / code-built) *(curated)*
+- **#1369**: slides-revise: port memo's operator-directed paths (`--polish` / `--reject`) and record operator overrides so critics stop re-flagging them *(curated)*
+- **#1370**: Critics over-apply disclosure and hedging; slides rubric assumes a technical lecture *(curated)*
+- **#1371**: Time-budget realism (D8) is scored inconsistently without a rehearsal, and rehearse can't time script-style notes *(curated)*
+- **#1372**: Vision critic without an API key: agent-as-VLM works but drifts, and palette_adherence assumes the anvil theme *(curated)*
+- **#1373**: slides: BRIEF editorial_overrides so critics report operator-overridden findings as info instead of re-flagging *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -71,10 +85,10 @@ _None._
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 0 |
-| PRs awaiting review | 0 |
-| Approved PRs awaiting merge | 0 |
-| Curated | 0 |
+| In Progress (`loom:building`) | 6 |
+| PRs awaiting review | 1 |
+| Approved PRs awaiting merge | 5 |
+| Curated | 6 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
