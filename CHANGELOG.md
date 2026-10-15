@@ -11,6 +11,8 @@
 
 ### Added
 
+- **`slides-revise --polish` / `--reject "<reason>"`** (#1369). A talk that already passed review could only be revised by deleting its verdict, which erased the audit trail and recorded nothing. Both flags now bypass the step-4 `advance == true` refusal only (review-exists and iteration-cap checks still apply), require a non-empty reason, and are mutually exclusive. `--reject` ranks the operator's reason above every critic finding. The version dir records `metadata.revision_mode` (`polish` / `operator_reject`) and the verbatim reason, and `slides-review` notes an operator rejection in `findings.md` (no score effect). `slides` is added to `directed_revision.md`'s adopted list.
+
 - **One canonical essay word count** (#1349). The same essay body measured 1196 (reviewer: rendered text minus title), 1204 (`wc -w`) and 1232 (`rhetoric_lint`) in one review cycle, which straddled a 1200 ceiling. New `anvil/lib/word_count.py::essay_word_count` counts visible prose (link text yes, URLs no, title excluded, other headings counted, code/comments/images excluded); `rhetoric_lint`'s density denominators share its tokenizer, and the essay SKILL.md, rubric.md and review/revise/draft commands name it as the single meaning of a BRIEF envelope.
 
 - **`anvil:paper` checks audience fit and gives the operator a way back in after READY** (#1322). A paper thread reached AUDITED with sentences addressed to the project's operator ("No replay wave is authorized by this estimate", "goal #40 commissioned this manuscript") and ~40 bare repo-relative artifact paths a reader cannot follow, across four review and two audit passes. Four additions:
