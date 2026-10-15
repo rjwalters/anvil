@@ -20,7 +20,7 @@ This critic owns a separate **vision rubric subset** alongside the deck's main 1
 | v1 | `vertical_overflow` | Content cut off below the slide bottom; rendered-bbox-based, not source-based. The deeper companion to `marp_lint`'s slide-content-overflow rule. |
 | v2 | `label_cropping` | Chart axis labels, legends, annotations truncated by the slide/figure border. |
 | v3 | `axis_legibility` | Font size of chart axis labels and tick marks vs projection scale. If illegible at 50% zoom on the PNG, the investor can't read it on the conference-room screen. |
-| v4 | `palette_adherence` | Figures match the Marp theme palette (deck: `#1f4e7a / #1a1a1a / #6b6b6b / #d6d6d6 / #f5f5f5` per #23). Default matplotlib colors are a finding. |
+| v4 | `palette_adherence` | Figures match the declared palette (BRIEF.md "Brand palette" line, or the active Marp theme). When the deck uses no anvil theme and declares none, score internal consistency instead: a small fixed set of colors used consistently, no stray default-matplotlib colors. The anvil deck palette `#1f4e7a / #1a1a1a / #6b6b6b / #d6d6d6 / #f5f5f5` (per #23) is the reference for anvil-themed decks only. Default matplotlib colors are a finding. |
 | v5 | `mathtext_artifacts` | Italic letters adjacent to dollar signs (direct catch for #23). LaTeX source rendered literally. |
 | v6 | `slide_density` | Walls of text exceeding ~30 words per slide / ~6 bullets (IC-grade decks). |
 
@@ -43,7 +43,7 @@ Other vision findings surface as `Finding` items with severity `major` / `minor`
 - **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Rendered PDF**: `<thread>.{N}/deck.pdf` — produced by `deck-figures` or by this critic on demand via `anvil.lib.render.render_marp_to_pdf`.
 - **Per-page PNGs**: produced by `anvil.lib.render.render_pdf_to_pngs` from the PDF.
-- **VLM**: Anthropic SDK by default; consumers without an API key inject a callback per `anvil/lib/vision.py`.
+- **VLM**: Anthropic SDK by default (`vlm_mode: sdk`); consumers without an API key either inject a callback per `anvil/lib/vision.py` (`vlm_mode: callback`) or let the invoking agent act as the VLM (`vlm_mode: agent`, step 5).
 
 ## Outputs
 
@@ -54,7 +54,8 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
   slides/
     page-1.png, page-2.png, ...    Per-page PNGs at 150 DPI (configurable)
   _review.json                     Canonical schema, kind=vision, rendered_artifact=deck.pdf
-  _meta.json                       { critic, role, started, finished, model, scorecard_kind }
+  _meta.json                       { critic, role, started, finished, model, vlm_mode, scorecard_kind }
+                                   vlm_mode: sdk | callback | agent (when agent, model = the agent's actual model id)
   _progress.json                   { version, thread, phases.vision.{state,started,completed} }
 ```
 
@@ -82,6 +83,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
      "started": "<ISO>",
      "finished": null,
      "model": "claude-opus-4-7-20251022",
+     "vlm_mode": "sdk",
      "schema_version": 1,
      "scorecard_kind": "machine-summary"
    }
@@ -120,6 +122,8 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    )
    ```
    Consumers without an Anthropic API key (CI, offline development) construct the critic with a `callback=` instead.
+
+   **Agent-as-VLM (supported, no API key)**: the invoking agent can be the VLM. It views the per-slide PNGs, uses `build_prompt(default_vision_rubric())` output as its rubric (including the mid-scale anchors), and writes `_review.json` itself in the callback payload shape, then wraps it with the same validation. Set `vlm_mode` to `agent` in `_meta.json` and record the agent's actual model id in `model`. The staged-sidecar flow is unchanged.
 
 6. **Write `_review.json`**:
    - Validate via `Review.model_validate` (the constructor in step 5 already validated).

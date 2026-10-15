@@ -20,7 +20,7 @@ This critic owns a separate **vision rubric subset** alongside the slides skill'
 | v1 | `vertical_overflow` | Content cut off below the slide bottom; rendered-bbox-based, not source-based. The deeper companion to the `slide-content-overflow` lint. | D4 (slide density / cognitive load) |
 | v2 | `label_cropping` | Chart axis labels, legends, annotations truncated by the slide/figure border. | D5 (visual quality) / D6 (accessibility) |
 | v3 | `axis_legibility` | Font size of chart axis labels and tick marks vs projection scale. If illegible at 50% zoom on the PNG, the audience can't read it from row 20. | D6 (accessibility / readability at distance) |
-| v4 | `palette_adherence` | Figures match the Marp theme palette (slides ships an Okabe-Ito color-blind-safe palette per `templates/anvil-slides-theme.css`). Default matplotlib colors are a finding. | D5 (visual quality) / D6 (accessibility) |
+| v4 | `palette_adherence` | Figures match the declared palette (BRIEF.md "Brand palette" line, or the active Marp theme). When the deck uses no anvil theme and declares none, score internal consistency instead: a small fixed set of colors used consistently, no stray default-matplotlib colors. The slides Okabe-Ito palette (`templates/anvil-slides-theme.css`) is the reference for anvil-themed decks only. Default matplotlib colors are a finding. | D5 (visual quality) / D6 (accessibility) |
 | v5 | `mathtext_artifacts` | Italic letters adjacent to dollar signs; LaTeX/MathJax source rendered literally; a `$`-delimited token rendered as math instead of intended literal text. | D1 (technical accuracy) |
 | v6 | `slide_density` | Walls of text exceeding the slide's working bar at projection scale (talks: ~30 words / ~6 bullets). The visual companion to the `slides-rehearse` deterministic word/bullet density check. | D4 (slide density / cognitive load) |
 
@@ -43,7 +43,7 @@ These two flag types are defined in `anvil/lib/vision.py` (`CRITICAL_FLAG_RENDER
 - **Latest version directory**: highest `N` with `<thread>.{N}/deck.md` under the thread root `<thread>/`.
 - **Rendered PDF**: `<thread>.{N}/deck.pdf` — produced by `slides-figures`/`slides-handout` or by this critic on demand via `anvil.lib.render.render_marp_to_pdf` (which invokes Marp with the framework-pinned `--config-file anvil/lib/marp/config.yml` per #32).
 - **Per-page PNGs**: produced by `anvil.lib.render.render_pdf_to_pngs` from the PDF.
-- **VLM**: Anthropic SDK by default; consumers without an API key inject a callback per `anvil/lib/vision.py`.
+- **VLM**: Anthropic SDK by default (`vlm_mode: sdk`); consumers without an API key either inject a callback per `anvil/lib/vision.py` (`vlm_mode: callback`) or let the invoking agent act as the VLM (`vlm_mode: agent`, step 5).
 
 ## Outputs
 
@@ -54,7 +54,8 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
   slides/
     page-1.png, page-2.png, ...    Per-page PNGs at 150 DPI (configurable)
   _review.json                     Canonical schema, kind=vision, rendered_artifact=deck.pdf
-  _meta.json                       { critic, role, started, finished, model, scorecard_kind }
+  _meta.json                       { critic, role, started, finished, model, vlm_mode, scorecard_kind }
+                                   vlm_mode: sdk | callback | agent (when agent, model = the agent's actual model id)
   _progress.json                   { version, thread, for_version, phases.vision.{state,started,completed} }
 ```
 
@@ -82,6 +83,7 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
      "started": "<ISO>",
      "finished": null,
      "model": "claude-opus-4-7-20251022",
+     "vlm_mode": "sdk",
      "schema_version": 1,
      "scorecard_kind": "machine-summary"
    }
@@ -120,6 +122,8 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
    )
    ```
    Consumers without an Anthropic API key (CI, offline development) construct the critic with a `callback=` instead. The slides-vision unit tests use the callback path exclusively.
+
+   **Agent-as-VLM (supported, no API key)**: the invoking agent can be the VLM. It views the per-slide PNGs, uses `build_prompt(default_vision_rubric())` output as its rubric (including the mid-scale anchors), and writes `_review.json` itself in the callback payload shape, then wraps it with the same validation. Set `vlm_mode` to `agent` in `_meta.json` and record the agent's actual model id in `model`. The staged-sidecar flow is unchanged.
 
 6. **Write `_review.json`**:
    - Validate via `Review.model_validate` (the constructor in step 5 already validated).
