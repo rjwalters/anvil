@@ -57,13 +57,14 @@ ARTIFACT_SKILLS = [
     "spec",
     "memoir",
 ]
-LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures"]
+LIFECYCLE_PHASES = ["draft", "review", "revise", "audit", "figures", "import"]
 PHASE_SUFFIX = {
     "draft": "drafter",
     "review": "reviewer",
     "revise": "reviser",
     "audit": "auditor",
     "figures": "figurer",
+    "import": "importer",
 }
 DECK_SPECIALISTS = ["narrative", "market", "design", "economics", "vision"]
 
