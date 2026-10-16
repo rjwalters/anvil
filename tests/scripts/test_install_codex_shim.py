@@ -27,8 +27,12 @@ filename per the #58 packaging convention.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
+
+import pytest
+import yaml
 
 from anvil.lib.testing import assert_ok as _assert_ok
 
@@ -262,3 +266,114 @@ def test_codex_shim_regenerated_on_consumer_modified_skip(tmp_path: Path) -> Non
     assert claude_shim.is_file()
     # The consumer's hand-edit to the skill body itself is preserved.
     assert "<!-- consumer edit -->" in skill_body.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Issue #1389: the Codex shim carries the skill's real description (Codex uses
+# it for implicit skill selection), not a generic registration line.
+# ---------------------------------------------------------------------------
+
+
+def _frontmatter(path: Path) -> dict:
+    text = path.read_text(encoding="utf-8")
+    match = re.match(r"---\n(.*?)\n---\n", text, re.DOTALL)
+    assert match, f"no frontmatter in {path}:\n{text}"
+    return yaml.safe_load(match.group(1))
+
+
+def _shim_description(target: Path, skill: str) -> str:
+    return _frontmatter(target / ".agents" / "skills" / f"anvil-{skill}" / "SKILL.md")[
+        "description"
+    ]
+
+
+def _set_installed_description(target: Path, skill: str, block: str) -> str:
+    """Replace the installed SKILL.md ``description:`` with raw YAML ``block``.
+
+    Returns the description value the edited file parses to.
+    """
+
+    skill_md = target / ".anvil" / "skills" / skill / "SKILL.md"
+    text = skill_md.read_text(encoding="utf-8")
+    fm = re.match(r"---\n(.*?)\n---\n", text, re.DOTALL)
+    assert fm
+    lines = [ln for ln in fm.group(1).split("\n") if not ln.startswith("description:")]
+    new_fm = "\n".join(lines) + "\n" + block
+    skill_md.write_text(
+        "---\n" + new_fm + "\n---\n" + text[fm.end():], encoding="utf-8"
+    )
+    return _frontmatter(skill_md)["description"]
+
+
+@pytest.mark.parametrize("skill", ["memo", "help"])
+def test_codex_shim_carries_canonical_description(tmp_path: Path, skill: str) -> None:
+    target = tmp_path / "codex-shim-desc-target"
+    target.mkdir()
+    _assert_ok(_run_install(target, f"--skills={skill}"))
+
+    canonical = _frontmatter(REPO_ROOT / "anvil" / "skills" / skill / "SKILL.md")
+    assert _shim_description(target, skill) == canonical["description"]
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        "description: Plain with 'quotes' and \"dq\"",
+        "description: 'single ''quoted'' text: here # not a comment'",
+        'description: "double \\"quoted\\" text: here # hash"',
+        "description: '*leading star'",
+        "description: '[leading bracket] text'",
+        "description: Plain text # trailing comment",
+        "description: >\n  folded line one\n  folded line two: with colon",
+        "description: |\n  literal one\n  literal two",
+    ],
+)
+def test_codex_shim_description_survives_yaml_hazards(tmp_path: Path, block: str) -> None:
+    """Consumer-modified body is skipped; the shim follows the preserved file."""
+
+    target = tmp_path / "codex-shim-hazard-target"
+    target.mkdir()
+    _assert_ok(_run_install(target, "--skills=memo"))
+    expected = _set_installed_description(target, "memo", block)
+
+    result = _run_install(target, "--skills=memo")
+    _assert_ok(result)
+    assert "skipped: consumer-modified" in result.stdout
+
+    # YAML folds block scalars with trailing newline / literal newlines; the
+    # shim collapses them to single spaces.
+    assert _shim_description(target, "memo") == " ".join(expected.split())
+
+
+def test_codex_shim_description_restored_by_force(tmp_path: Path) -> None:
+    """Consumer edit is followed while skipped; ``--force`` restores source."""
+
+    target = tmp_path / "codex-shim-force-target"
+    target.mkdir()
+    _assert_ok(_run_install(target, "--skills=memo"))
+    _set_installed_description(target, "memo", "description: edited by consumer")
+    _assert_ok(_run_install(target, "--skills=memo"))
+    assert _shim_description(target, "memo") == "edited by consumer"
+
+    _assert_ok(_run_install(target, "--skills=memo", "--force"))
+    canonical = _frontmatter(REPO_ROOT / "anvil" / "skills" / "memo" / "SKILL.md")
+    assert _shim_description(target, "memo") == canonical["description"]
+
+
+def test_codex_shim_falls_back_when_description_missing(tmp_path: Path) -> None:
+    target = tmp_path / "codex-shim-fallback-target"
+    target.mkdir()
+    _assert_ok(_run_install(target, "--skills=memo"))
+
+    skill_md = target / ".anvil" / "skills" / "memo" / "SKILL.md"
+    text = skill_md.read_text(encoding="utf-8")
+    skill_md.write_text(
+        re.sub(r"^description:.*\n", "", text, count=1, flags=re.MULTILINE),
+        encoding="utf-8",
+    )
+
+    _assert_ok(_run_install(target, "--skills=memo"))
+    assert _shim_description(target, "memo") == (
+        "Anvil skill registration for 'memo' "
+        "(canonical body at .anvil/skills/memo/SKILL.md)"
+    )
