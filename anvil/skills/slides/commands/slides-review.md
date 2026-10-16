@@ -168,6 +168,15 @@ Nested under the thread root `<thread>/`, as a sibling of the `<thread>.{N}/` ve
     ```
 
     The subsection is **observational** — it does NOT affect the verdict, the critical-flag list, or the `advance` decision. Backwards-compat: a legacy review sibling produced before this contract shipped does NOT need to be re-emitted.
+11e. **Emit operator-rejection subsection in `findings.md` when the reviewed version was reopened by `--reject` (issue #1369)**: read `<thread>.{N}/_progress.json.metadata.revision_mode`. When it equals `"operator_reject"`, the version under review was produced by `slides-revise <thread> --reject "<reason>"` (see `commands/slides-revise.md` §"CLI flags"). Write a `## Operator rejection` subsection into `findings.md`, quoting `metadata.reject_reason` verbatim:
+
+    ```
+    ## Operator rejection
+
+    The prior iteration of this thread was scored `advance: true` with 0 critical flags — READY by the rubric — and an operator then rejected it via `slides-revise --reject`, reopening it for the revision under review here. Operator reason (verbatim): "<metadata.reject_reason>". This note is surfaced for the rubric maintainer — it is **observational prose with no score impact**. Score this version on its own rubric merits.
+    ```
+
+    The subsection is **observational only**: it does NOT affect the verdict, score total, critical-flag list, or `advance` decision. When `revision_mode` is absent or any other value (including `"polish"`), omit the subsection entirely.
 12. **Write `verdict.md`** in the format specified in `rubric.md`:
     - Total: `XX / 44`
     - Decision: `advance: true` or `advance: false`
