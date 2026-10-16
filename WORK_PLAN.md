@@ -35,7 +35,7 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-- **#1373**: slides: BRIEF editorial_overrides so critics report operator-overridden findings as info instead of re-flagging
+_None._
 
 ## PRs Awaiting Review
 
@@ -47,13 +47,12 @@ _None._
 
 PRs that passed review and are queued for Champion auto-merge (`loom:pr`).
 
-- **#1378**: feat(slides): honor BRIEF editorial_overrides in review and vision critics
+_None._
 
 ## Proposed
 
 Issues carrying `loom:curated`.
 
-- **#1373**: slides: BRIEF editorial_overrides so critics report operator-overridden findings as info instead of re-flagging *(curated)*
 - **#1381**: Follow-on from PR #1379: verify slides-import against real poppler output *(curated)*
 
 ## Proposed (Architect / Hermit)
@@ -72,10 +71,10 @@ _None._
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 1 |
+| In Progress (`loom:building`) | 0 |
 | PRs awaiting review | 0 |
-| Approved PRs awaiting merge | 1 |
-| Curated | 2 |
+| Approved PRs awaiting merge | 0 |
+| Curated | 1 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->

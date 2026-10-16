@@ -6,6 +6,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-10-16
 
+- **PR #1378**: feat(slides): honor BRIEF editorial_overrides in review and vision critics
+- **Issue #1373** (closed): slides: BRIEF editorial_overrides so critics report operator-overridden findings as info instead of re-flagging
+- **PR #1375**: feat(slides): add --polish/--reject paths to slides-revise
+- **Issue #1369** (closed): slides-revise: port memo's operator-directed paths (`--polish` / `--reject`) and record operator overrides so critics stop re-flagging them
 - **PR #1386**: Bump Repo Skills 0.24.1 -> 0.24.3
 
 ### 2026-10-15
