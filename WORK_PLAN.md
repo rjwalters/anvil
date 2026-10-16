@@ -11,7 +11,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 Judge-approved PRs under a hold (`loom:blocked` or `loom:operator`) — only a human merge decision is missing.
 
-_None._
+- **#1390**: fix: carry real skill description in Codex registration shims
 
 ## Very Important
 
@@ -68,7 +68,7 @@ _None._
 
 | Bucket | Count |
 |------|-------|
-| Operator merge-risk holds | 0 |
+| Operator merge-risk holds | 1 |
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
