@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-10-08*
+*Last updated: 2026-10-15*
 
 ---
 
@@ -35,7 +35,8 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-_None._
+- **#1369**: slides-revise: port memo's operator-directed paths (`--polish` / `--reject`) and record operator overrides so critics stop re-flagging them
+- **#1373**: slides: BRIEF editorial_overrides so critics report operator-overridden findings as info instead of re-flagging
 
 ## PRs Awaiting Review
 
@@ -47,13 +48,16 @@ _None._
 
 PRs that passed review and are queued for Champion auto-merge (`loom:pr`).
 
-_None._
+- **#1375**: feat(slides): add --polish/--reject paths to slides-revise
+- **#1378**: feat(slides): honor BRIEF editorial_overrides in review and vision critics
 
 ## Proposed
 
 Issues carrying `loom:curated`.
 
-_None._
+- **#1369**: slides-revise: port memo's operator-directed paths (`--polish` / `--reject`) and record operator overrides so critics stop re-flagging them *(curated)*
+- **#1373**: slides: BRIEF editorial_overrides so critics report operator-overridden findings as info instead of re-flagging *(curated)*
+- **#1381**: Follow-on from PR #1379: verify slides-import against real poppler output *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -71,10 +75,10 @@ _None._
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 0 |
+| In Progress (`loom:building`) | 2 |
 | PRs awaiting review | 0 |
-| Approved PRs awaiting merge | 0 |
-| Curated | 0 |
+| Approved PRs awaiting merge | 2 |
+| Curated | 3 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
