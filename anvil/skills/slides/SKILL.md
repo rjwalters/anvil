@@ -122,7 +122,7 @@ EMPTY → OUTLINED → DRAFTED → REVIEWED → REVISED → … → READY → AU
 | `slides-review <thread>` | reviewer | latest `<thread>.{N}/` | `<thread>.{N}.review/` (also runs pre-flight `slide-content-overflow` lint per "Pre-flight overflow lint" below) |
 | `slides-audit <thread>` | auditor | latest `<thread>.{N}/` (deck.md AND notes/) | `<thread>.{N}.audit/` |
 | `slides-vision <thread>` | vision critic | latest `<thread>.{N}/deck.md` (renders to `deck.pdf` + per-slide PNGs on demand) | `<thread>.{N}.vision/` with `_review.json` (`kind=vision`), `_meta.json`, `_progress.json`, and per-slide PNGs in `slides/` |
-| `slides-revise <thread>` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md` |
+| `slides-revise <thread> [--polish "<reason>"] [--reject "<reason>"]` | reviser | latest `<thread>.{N}/` + all `<thread>.{N}.*/` critic siblings | `<thread>.{N+1}/` with `changelog.md`; with `--polish`, also `metadata.revision_mode = "polish"` + `metadata.revise_force_reason`; with `--reject`, also `metadata.revision_mode = "operator_reject"` + `metadata.reject_reason`. The two flags are mutually exclusive. See §"Operator-initiated polish / rejection". |
 | `slides-figures <thread>` | figurer | latest `<thread>.{N}/deck.md` | figures under `<thread>.{N}/figures/` |
 | `slides-rehearse <thread>` | rehearser | latest `<thread>.{N}/` | `<thread>.{N}.rehearse/` |
 | `slides-handout <thread>` | handout exporter | latest READY+AUDITED+REHEARSED `<thread>.{N}/` | `<thread>.{N}.handout/handout.pdf` |
@@ -261,6 +261,23 @@ documents:
 ```
 
 Matching is exact (slide AND dimension; no free text). A matched finding is reported as `severity: nit` with an `overridden:` rationale and is not deducted. Critical flags and `blocker` findings are never overridden, `slides-audit` ignores overrides, and unmatched (possibly stale) overrides are listed in each review summary. `reason` and `date` (ISO) are required.
+
+## Operator-initiated polish / rejection
+
+A `READY` thread (`advance: true`, no critical flags) is the normal terminus, and `slides-revise` step 4 refuses to revise it. Two sanctioned overrides exist (issue #1369), both bypassing step 4 only:
+
+- `slides-revise <thread> --polish "<reason>"` — one line-level pass over sub-threshold dimension notes and `nit`/untagged comments; never restructures.
+- `slides-revise <thread> --reject "<reason>"` — the operator overrules the scoring system and reopens the thread for a substantive revision; the reason is ranked above every critic finding.
+
+Shared invariants (full contract: `anvil/lib/snippets/directed_revision.md`):
+
+- **The reason is required** — empty / whitespace-only / missing is rejected and the thread is left untouched.
+- **`--polish` and `--reject` are mutually exclusive.**
+- **Step 1 (a review must exist) and step 3 (iteration cap) still apply.** Deleting a verdict or hand-editing `_progress.json` to force a revision is not supported; it destroys the audit trail.
+- **No inherited credit** — the output is a normal `<thread>.{N+1}/` scored on its own merits.
+- **Audit trail** (not scored, not gating): `metadata.revision_mode` (`"polish"` / `"operator_reject"`) plus the verbatim `metadata.revise_force_reason` / `metadata.reject_reason`. `slides-review` surfaces an `operator_reject` as an observational `## Operator rejection` note in `findings.md`.
+
+See `commands/slides-revise.md` §"CLI flags" for the reviser-side procedure.
 
 ## Rubric
 
