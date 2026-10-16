@@ -42,14 +42,13 @@ Issues currently being built (`loom:building`).
 
 PRs waiting on Judge (`loom:review-requested`).
 
-_None._
+- **#1375**: feat(slides): add --polish/--reject paths to slides-revise
 
 ## Approved (Awaiting Merge)
 
 PRs that passed review and are queued for Champion auto-merge (`loom:pr`).
 
-- **#1375**: feat(slides): add --polish/--reject paths to slides-revise
-- **#1378**: feat(slides): honor BRIEF editorial_overrides in review and vision critics
+_None._
 
 ## Proposed
 
@@ -76,8 +75,8 @@ _None._
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
 | In Progress (`loom:building`) | 2 |
-| PRs awaiting review | 0 |
-| Approved PRs awaiting merge | 2 |
+| PRs awaiting review | 1 |
+| Approved PRs awaiting merge | 0 |
 | Curated | 3 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
