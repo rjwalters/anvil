@@ -11,6 +11,7 @@
 
 ### Fixed
 
+- **Codex registration shims now carry each skill's real `description:` (#1389).** `write_codex_shim()` previously wrote a generic "Anvil skill registration for '<skill>'" line for every skill, so Codex implicit skill selection could not tell them apart. The installer now reads the description from the effective installed `.anvil/skills/<skill>/SKILL.md` (a preserved consumer-modified body is honored), emits it as a YAML-safe quoted scalar (plain, quoted and `>`/`|` block forms handled), and falls back to the generic text when it is missing. The Claude shim is unchanged.
 - **Vision critic: stable scores and a palette check that fits hand-built decks** (#1372). `palette_adherence` now scores against the declared palette (BRIEF.md "Brand palette" or the active Marp theme) and falls back to internal consistency when a deck uses no anvil theme, instead of assuming Okabe-Ito / the anvil hexes. All six default dimensions gain concrete mid-scale anchors (what a 3 and a 1 look like) so fresh runs without an API key score alike. Agent-as-VLM is documented as a supported path in `slides-vision` / `deck-vision`, and vision `_meta.json` gains `vlm_mode` (`sdk | callback | agent`).
 
 - **`[html]` extra now requires `weasyprint>=70.0`** (CVE-2025-68616 / GHSA-983w-rhvv-gwmv). WeasyPrint's default URL fetcher followed redirects without re-checking a custom `url_fetcher`'s allow/block rules; fixed upstream in 68.0. Renovate's #1357 landed `>=60.2`, which still admitted vulnerable releases; this raises the floor to the tested 70.0.

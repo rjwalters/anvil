@@ -838,6 +838,62 @@ The canonical skill body and any consumer overrides live at .anvil/skills/$skill
 SHIMEOF
 }
 
+# Print the `description:` of an installed skill's SKILL.md frontmatter as a
+# JSON-style double-quoted string (issue #1389). A JSON string is always a valid
+# YAML double-quoted scalar, so colons, quotes, ` #` and leading `*`/`[` in the
+# description need no case analysis. Handles plain, single/double-quoted and
+# `>` / `|` block scalars (block and plain continuation lines are folded to one
+# line with single spaces). Prints nothing when the file or description is
+# missing or empty -- the caller falls back to the generic text.
+skill_description_json() {
+  local skill_md="$1"
+  [[ -f "$skill_md" ]] || return 0
+  awk '
+    function trim(x) { sub(/^[ \t\r]+/, "", x); sub(/[ \t\r]+$/, "", x); return x }
+    function emit(x,   out) {
+      gsub(/\\/, "\\\\", x); gsub(/"/, "\\\"", x); gsub(/[\t\r]/, " ", x)
+      printf "\"%s\"", x
+    }
+    NR == 1 { if ($0 !~ /^---[ \t\r]*$/) exit; infm = 1; next }
+    infm && /^---[ \t\r]*$/ { exit }
+    !infm { next }
+    indesc {
+      if ($0 ~ /^[ \t]/ || $0 ~ /^[ \t\r]*$/) {
+        t = trim($0)
+        if (t != "") val = (val == "" ? t : val " " t)
+        next
+      }
+      exit
+    }
+    /^description:/ {
+      v = $0; sub(/^description:[ \t]*/, "", v); v = trim(v)
+      if (v ~ /^[>|][-+0-9]*$/) { val = ""; indesc = 1; next }
+      q = substr(v, 1, 1)
+      if (q == "\"") {
+        v = substr(v, 2); out = ""
+        while (length(v) > 0) {
+          c = substr(v, 1, 1)
+          if (c == "\\" && length(v) > 1) { out = out substr(v, 2, 1); v = substr(v, 3); continue }
+          if (c == "\"") break
+          out = out c; v = substr(v, 2)
+        }
+        val = out; exit
+      }
+      if (q == "\047") {
+        v = substr(v, 2); out = ""
+        while (length(v) > 0) {
+          c = substr(v, 1, 1)
+          if (c == "\047") { if (substr(v, 2, 1) == "\047") { out = out "\047"; v = substr(v, 3); continue } break }
+          out = out c; v = substr(v, 2)
+        }
+        val = out; exit
+      }
+      sub(/[ \t]+#.*$/, "", v); val = trim(v); indesc = 1; next
+    }
+    END { val = trim(val); if (val != "") emit(val) }
+  ' "$skill_md"
+}
+
 # Write the thin Codex CLI registration shim for a skill (issue #1003).
 # Structured in parallel to write_shim() above -- same two callers (the
 # happy-path Stage 7 install and the override-skip branch), same
@@ -849,20 +905,31 @@ SHIMEOF
 # Codex CLI scans repo-root `.agents/skills/<name>/SKILL.md` (NOT
 # `.codex/skills/`), and its minimal SKILL.md frontmatter contract
 # (`name` + `description`) is identical to Claude Code's. No wrapping
-# `.codex-plugin/plugin.json` is required for discovery, so this mirrors
-# write_shim()'s thin-pointer content verbatim at the Codex-side path --
-# same anvil-$skill naming, same one-line pointer back at the canonical
-# body under .anvil/skills/$skill/SKILL.md, never a copy of the body.
+# `.codex-plugin/plugin.json` is required for discovery. Same anvil-$skill
+# naming and one-line pointer back at the canonical body under
+# .anvil/skills/$skill/SKILL.md as write_shim(), never a copy of the body.
+#
+# Unlike write_shim(), the `description:` is the skill's real description
+# (issue #1389): Codex uses it for implicit skill selection, so a generic
+# "registration for '<skill>'" line made every skill indistinguishable. It is
+# read from the *effective installed* $target/.anvil/skills/$skill/SKILL.md --
+# the copied source on the happy path, the preserved consumer file on an
+# override-skip -- and falls back to the generic text if absent or empty.
 #
 # All substitution happens inside the bash heredoc, so paths containing shell
 # metacharacters are safe (no child-shell re-parse).
 write_codex_shim() {
   local skill="$1" shim_dir="$2" shim_file="$3"
+  local desc
+  desc="$(skill_description_json "$TARGET/.anvil/skills/$skill/SKILL.md")"
+  if [[ -z "$desc" ]]; then
+    desc="Anvil skill registration for '$skill' (canonical body at .anvil/skills/$skill/SKILL.md)"
+  fi
   mkdir -p "$shim_dir"
   cat > "$shim_file" <<SHIMEOF
 ---
 name: anvil-$skill
-description: Anvil skill registration for '$skill' (canonical body at .anvil/skills/$skill/SKILL.md)
+description: $desc
 ---
 
 See \`.anvil/skills/$skill/SKILL.md\` for the canonical skill body.
