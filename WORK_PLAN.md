@@ -11,7 +11,7 @@ Prioritized roadmap generated from current GitHub label state. Maintained by the
 
 Judge-approved PRs under a hold (`loom:blocked` or `loom:operator`) — only a human merge decision is missing.
 
-- **#1390**: fix: carry real skill description in Codex registration shims
+_None._
 
 ## Very Important
 
@@ -35,7 +35,7 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-- **#1389**: Preserve skill purpose descriptions in generated Codex registrations
+_None._
 
 ## PRs Awaiting Review
 
@@ -47,14 +47,13 @@ _None._
 
 PRs that passed review and are queued for Champion auto-merge (`loom:pr`).
 
-- **#1390**: fix: carry real skill description in Codex registration shims
+_None._
 
 ## Proposed
 
 Issues carrying `loom:curated`.
 
 - **#1381**: Follow-on from PR #1379: verify slides-import against real poppler output *(curated)*
-- **#1389**: Preserve skill purpose descriptions in generated Codex registrations *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -68,14 +67,14 @@ _None._
 
 | Bucket | Count |
 |------|-------|
-| Operator merge-risk holds | 1 |
+| Operator merge-risk holds | 0 |
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 1 |
+| In Progress (`loom:building`) | 0 |
 | PRs awaiting review | 0 |
-| Approved PRs awaiting merge | 1 |
-| Curated | 2 |
+| Approved PRs awaiting merge | 0 |
+| Curated | 1 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->

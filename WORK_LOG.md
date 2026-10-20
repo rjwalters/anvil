@@ -4,6 +4,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ---
 
+### 2026-10-20
+
+- **PR #1390**: fix: carry real skill description in Codex registration shims
+- **Issue #1389** (closed): Preserve skill purpose descriptions in generated Codex registrations
+
 ### 2026-10-16
 
 - **PR #1378**: feat(slides): honor BRIEF editorial_overrides in review and vision critics
