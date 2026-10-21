@@ -1,0 +1,60 @@
+# Work Log Archive — 2026-05
+
+Sections moved byte-for-byte from [WORK_LOG.md](../WORK_LOG.md) by `loom-daemon work-docs archive`.
+
+### 2026-05-31
+
+- **Issue #167**: added the optional `pdftotext` subprocess PDF refs back-check path to `anvil:memo`, closing the v0 gap from PR #162 / issue #144 where PDF source-of-truth refs were presence-only because anvil shipped no PDF text extraction. New skill-local helper `anvil/skills/memo/lib/refs_pdf.py` exports `check_pdftotext_available()`, `extract_pdf_text(pdf_path)`, and `PDFTOTEXT_REMEDIATION` — mirrors the `check_mmdc_available` (#65) / `check_pdfjam_available` (#85) / `check_auto_shrink_deps_available` (#102) preflight family in `anvil/lib/render.py`, reuses `RenderError` from the same module for cross-framework exception consistency. **No `pyproject.toml` change** — `pdftotext` is a subprocess CLI binary (poppler-utils), not a Python dep; Path B (pypdf / pdfplumber Python dep) is explicitly deferred per the issue body. Graceful-degrade contract is load-bearing: when `pdftotext` is absent, both `memo-draft` (drafter) and `memo-review` (reviewer) fall back to the **exact** v0 presence-only behavior shipped in PR #162; the reviewer additionally records an info-level `_summary.md.lint.refs_pdf_extraction` block carrying the install story so the consumer sees how to enable the back-check on the next run. Empty-extraction (image-based / scanned PDFs) is also handled gracefully — `pdftotext` returns an empty string, the helper does not treat it as an error, and the reviewer logs an info-level note + falls back to presence-only handling for that specific file with no rubric deduction. Touched: NEW `anvil/skills/memo/lib/refs_pdf.py`, NEW `tests/skills/memo/test_memo_refs_pdf_extraction.py` (24 unit + doc-coverage tests, monkeypatched `shutil.which` / `subprocess.run` so no real poppler at test time), `anvil/skills/memo/SKILL.md` §"Source-of-truth materials", `anvil/skills/memo/commands/memo-draft.md` step 3, `anvil/skills/memo/commands/memo-review.md` step 5 + step 9 (the `_summary.md.lint.refs_pdf_extraction` block shape), plus this WORK_LOG entry. Lib promotion to `anvil/lib/memo/` deferred until `anvil:report` / `anvil:pub` / `anvil:proposal` grow analogous `refs/` source-of-truth contracts (skill-local first per CLAUDE.md).
+- **Issue #147** (Epic #142 / Phase A): added the narrow `_convictions.md` advisory contract to `anvil:memo`. The reviser writes settled convictions after the changelog step; the next reviser reads them before re-litigating positions that have already survived an explicit critic challenge or an explicit reviser decision. Each conviction MUST name a body anchor (section heading or paragraph) in the current `memo.md` — a conviction whose anchor no longer exists is automatically stale. Advisory only: not scored, not gating, no state-machine impact; the reviewer does not read it. Touched four files: `anvil/skills/memo/SKILL.md` (version-dir diagram + new §Convictions ledger subsection), `anvil/skills/memo/commands/memo-revise.md` (steps 7.5 read + 9.5 write), `anvil/skills/memo/templates/BRIEF.migration.md.example` (shape demonstration), plus this WORK_LOG entry. No `anvil/lib/` extraction (Phase D), no other skills modified (Phase C), no rubric changes (separate concern per architect proposal #142).
+  - **Phase B kill switch**: if the canary does not consume `_convictions.md` within 2–4 weeks of this PR's merge, close this work entirely — delete the addition from all four touched files and document the negative result here per the PR #40 / PR #72 precedent. The single named consumer is the *next reviser at the next version*; if that consumer never reads the file, the contract has no audience. The architect's risk mitigation is exactly this falsifiability (single named consumer + bounded observation window), and the body-anchor requirement is the safeguard that keeps the ledger tied to the current artifact rather than drifting into general project memory.
+
+### 2026-05-30
+
+- **PR #105**: feat(deck): silent Marp auto-shrink detector + Anvil's first `pyproject.toml` (closes #102)
+- **PR #104**: feat(deck): `figure-italic-supporting-line-too-long` lint + word budget (closes #101)
+- **PR #103**: docs(readme): update to reflect installable v0.0.1 with 8 shipped skills
+- **PR #99**: feat(figures): per-glyph Unicode fallback + 4 semantic mermaid classDefs (closes #92)
+- **PR #98**: docs(ip-uspto): normalize critic phase names to use critic tag (closes #88)
+- **PR #97**: fix(install): error on bare `--skills=` (closes #82)
+- **PR #96**: docs(ip-uspto): clarify Check 7 is string-presence, cross-ref Check 9 (closes #87)
+- **PR #95**: fix(slides): pdfjam OPTIONAL + `.0.outline` orchestrator exemption (closes #85)
+- **PR #94**: fix(report): reviewer enforces PDF existence + freshness for Dim 7 (closes #84)
+- **PR #93**: fix(install): make `--dry-run` honest about what it did not do (closes #81)
+- **PR #91**: fix(report): strengthen ack-file matching + flag unreachable citations as critical (closes #83)
+- **PR #90**: fix(deck): reconcile slide-order across drafter, critics, archetypes (closes #86)
+- **PR #89**: fix(install): remove `sh -c` indirection so quoted paths survive (closes #80)
+- **Issue #100** (umbrella, closed): decomposed into #101 + #102 — two residual overflow modes in the post-#68 figure idiom surfaced by 13-deck canary re-render wave
+- **Issue #21** (umbrella, closed): decomposed into 9 focused issues (#80–#88) — PR-wave follow-ups from #15–#20
+- **Issue #106** (opened, follow-up to #105): declare `pydantic` in `pyproject.toml`; `anvil/lib/__init__.py` eagerly imports `cite` which requires it
+
+### 2026-05-29
+
+- **PR #79**: feat(lib): render-gate primitive + wire into 5 paginated skills (closes #64) — `anvil/lib/render_gate.py` (page-fit, overfull, compile, placeholder); wired into pub/report/installation/proposal/ip-uspto; memo OUT of scope per maintainer (markdown-first)
+- **PR #78**: fix(slides): correct mermaid-PDF claim in `slides-revise.md` (closes #77)
+- **PR #76**: fix(slides): wire `mmdc` preflight + strengthen smoke test (closes #70) — slides-side of the #32/PR #40 inline-mermaid regression
+- **PR #75**: test(deck): add #50 white-on-white ask-table regression armor (closes #57)
+- **PR #74**: feat(figures): ship `anvil/lib/figures/` shared brand-palette primitive (closes #69) — `palette.py` + `anvil.mplstyle` + `mermaid-theme.json` + CSS-drift guard test
+- **PR #72**: fix(deck): make mmdc-rendered PNG the working diagram path; preflight + dep check (closes #65) — corrected #32's false inline-mermaid claim across deck + slides docs; added `mmdc` preflight; added `install-anvil.sh --check-deps`
+- **PR #68**: fix(deck): replace overflow-prone figure+bullets and ask H1+H2 idioms in template (closes #24, #25)
+- **PR #67**: docs(deck): add matplotlib `figure-conventions.md` and wire cross-references (closes #23)
+- **PR #66**: docs(snippets,memo): fix phantom phase state and tighten `_meta.json` contract docs (closes #36) — contract bug in `progress.md` snippet
+- **PR #63**: test: complete `__init__.py` package chain for deck/slides/proposal test dirs (closes #58)
+- **PR #62**: feat(proposal): implement `anvil:proposal` skill (buildable-system proposals) (closes #60)
+- **PR #61**: feat(installation): implement `anvil:installation` skill (experiential artwork) (closes #59)
+- **Issue #51** (umbrella, closed): decomposed into #59 + #60 — new artifact classes for non-investment studio works
+- **PR #56**: feat(ip-uspto): add `ip-uspto-vision` VLM critic for patent drawings (closes #48)
+- **PR #55**: fix(deck): make ask-slide tables readable by defeating Marp default cell bg (closes #50)
+- **PR #54**: feat(report): add `report-vision` VLM critic for rendered PDFs (closes #47)
+- **PR #53**: feat(pub): add `pub-vision` VLM critic for rendered research papers (closes #46)
+- **PR #52**: feat(slides): add `slides-vision` VLM critic command + tests (closes #45)
+- **PR #49**: feat(lib): VLM critic primitive + `deck-vision` sibling (closes #30) — `anvil/lib/render.py` + `anvil/lib/vision.py` + first consumer
+- **PR #44**: feat(pub): venue-pinned advisory rubric overlays alongside generic /40 (closes #33) — `anvil/lib/rubric.py` + neurips/nature/arxiv YAMLs
+- **PR #43**: docs(lib): codify `.review/` vs `.audit/` as CRITIC judgment-vs-tool-evidence split (closes #29) — new `anvil/lib/snippets/audit.md`
+- **PR #42**: feat(lib): add stable-score termination as secondary stop condition (closes #27) — `anvil/lib/convergence.py` with `STALLED` verdict
+- **PR #41**: feat(lib): shared citation primitive `anvil/lib/cite.py` (closes #28) — DOI + arXiv resolvers, stdlib-only, idempotent `refs.bib`
+- **PR #40**: feat(lib): document MathJax + `--html`/mermaid figure pipeline as canonical Marp config (closes #32) — *NOTE: this PR shipped the inline-mermaid-default design that turned out to be wrong; corrected by PR #72 a day later*
+- **PR #39**: feat(lib): canonical `_review.json` schema, discovery + aggregation (closes #26) — `review_schema.py` + `critics.py` with legacy adapters
+- **PR #38**: feat(deck,slides): wire `slide-content-overflow` lint into review phase (closes #31)
+- **PR #37**: feat(ip-uspto): add `_outline.json` control surface for chunked drafting (closes #34)
+- **PR #35**: feat(lib): extract `anvil/lib/snippets/` and migrate 6 skills (closes #10) — markdown-snippet convention layer
+
