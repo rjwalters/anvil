@@ -13,6 +13,8 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-10-24
 
+- **PR #1412**: fix: parse float_proximity aux entries without hyperref label group
+- **Issue #1408** (closed): float_proximity: docstring claims lof/lot parsing works without hyperref, but the regex needs hyperref's 4th group
 - **PR #1403**: feat(paper): add float-proximity pre-flight from compiled PDF/aux
 - **Issue #1398** (closed): paper: float-proximity check from compiled PDF/aux
 - **PR #1410**: fix(install): pin pydantic>=2.13.5 in consumer pyproject and derive test pins from source
