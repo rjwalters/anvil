@@ -84,6 +84,36 @@ Deterministic subset (pure regex/arithmetic — no LLM, no new deps)
    a conservative keyword heuristic and is left to the LLM review step
    per the issue #462 curation.
 
+5. **Cross-section checks** (issue #1399; advisory, same sidecar,
+   severity and suppression as every finding above). Unlike the
+   claim-vs-claim checks these compare mentions in DIFFERENT sections
+   (markdown ``#`` headings and LaTeX ``\\section``-family commands
+   delimit sections; the preamble before the first heading is its own
+   section). Mentions in the same section never pair, which bounds the
+   false-positive surface (whole-document grouping was rejected).
+
+   - ``quoted_variant``: the same quantity quoted at a different
+     rounding or as a different range in two sections. A mention is a
+     number (point, scientific ``2e-4``, or range ``0 to 14`` /
+     ``6.4-13.5``) followed by a unit (``%`` or one word). Two mentions
+     pair only when the units are equal, they share >= 2 non-unit
+     anchor words and >= 50% of the smaller anchor set, and neither
+     side carries a distinguishing qualifier (a ``mesh`` / ``case`` /
+     ``grid`` / ``model`` ... word present on only one side). They are
+     a variant when two points differ by <= 5% relative (rounding),
+     two scientific values differ within one decade, two ranges have
+     different endpoints, or a point falls outside the other's range.
+   - ``unbridged_headline_pair``: a decimal pair (``2.68/4.10``,
+     ``2.68 vs 4.10``) re-quoted in another section as a
+     near-identical but unequal pair (each member within 2%) with a
+     shared anchor word and NO bridging sentence between the two
+     occurrences. A sentence bridges when it matches a small cue list
+     (approximately, roughly, about, rounded, ``see Section``, cf.,
+     ``≈``, ``~``, ``§``) or names a value from each pair.
+
+   Findings anchor on the LATER mention; a lint-disable on either
+   mention's line suppresses the finding.
+
 Severity wiring (advisory v1; ``blocking=True`` for essay #460)
 ----------------------------------------------------------------
 
@@ -148,6 +178,7 @@ records.
 
 from __future__ import annotations
 
+import bisect
 import json
 import re
 import sys
@@ -194,6 +225,8 @@ GAP_MISMATCH = "gap_mismatch"
 UNBRIDGED_POPULATION = "unbridged_population"
 PERCENT_MISMATCH = "percent_mismatch"
 MULTIPLIER_MISMATCH = "multiplier_mismatch"
+QUOTED_VARIANT = "quoted_variant"
+UNBRIDGED_HEADLINE_PAIR = "unbridged_headline_pair"
 
 # Internal severities. "warning" findings are the advisory surface;
 # "info" findings are suppressed hits (recorded, never gating).
@@ -792,7 +825,7 @@ def _suppressed_lines(text: str) -> frozenset:
 class NumericFinding:
     """One numeric-consistency finding against a body claim."""
 
-    code: str            # gap_mismatch | unbridged_population | percent_mismatch | multiplier_mismatch
+    code: str            # gap_mismatch | unbridged_population | percent_mismatch | multiplier_mismatch | quoted_variant | unbridged_headline_pair
     severity: str        # "warning" (active) | "info" (suppressed)
     line: int            # 1-based line of the claim
     claim: str           # verbatim claim text
@@ -1116,6 +1149,303 @@ def _check_multiplier_claim(
 
 
 # ---------------------------------------------------------------------------
+# Cross-section checks (issue #1399)
+# ---------------------------------------------------------------------------
+
+_HEADING_RE = re.compile(
+    r"^(?:#{1,6}\s+\S|\s*\\(?:part|chapter|(?:sub){0,2}section|paragraph)\*?\s*(?:\[[^\]]*\])?\{)",
+    re.MULTILINE,
+)
+
+# A quoted quantity: range, scientific, or point. The unit is read
+# separately (see _UNIT_AFTER_RE) so "5ms" and "5 ms" both work.
+_QV_RE = re.compile(
+    r"(?<![\w.])(?:"
+    r"(?P<lo>\d+(?:\.\d+)?)\s*(?:–|—|-|\bto\b)\s*(?P<hi>\d+(?:\.\d+)?)"
+    r"|(?P<sci>\d+(?:\.\d+)?[eE][-+]?\d+)"
+    r"|(?P<pt>\d[\d,]*(?:\.\d+)?)"
+    r")(?!\d)"
+)
+_UNIT_AFTER_RE = re.compile(r"\s?(?:(?P<pct>\\?%)|(?P<word>[A-Za-z]{1,10})\b)")
+
+# Words that name WHICH instance of a quantity is meant; present on only
+# one side they mean the two mentions are distinct quantities.
+_QUALIFIER_WORDS = frozenset({
+    "mesh", "case", "grid", "run", "config", "configuration", "variant",
+    "model", "scenario", "trial", "setup", "coarse", "fine", "medium",
+    "baseline", "ablation", "subset", "fold", "seed", "batch", "stage",
+    "phase", "layer", "level", "resolution", "condition", "cohort",
+    "group", "arm",
+})
+
+_MIN_SHARED_ANCHORS = 2
+_MIN_ANCHOR_OVERLAP = 0.5
+_SCI_DECADE = 10.0
+_HEADLINE_REL_TOLERANCE = 0.02
+
+_HEADLINE_PAIR_RE = re.compile(
+    r"(?<![\w.])(?P<a>\d+\.\d+)\s*(?:/|vs\.?|and)\s*(?P<b>\d+\.\d+)(?![\w])"
+)
+
+_BRIDGE_CUE_RE = re.compile(
+    r"\b(?:approximately|approx\.?|roughly|about|rounded|rounding|cf\.|"
+    r"see\s+(?:Section|Sec\.))|§|≈|~",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class _QuotedValue:
+    """One quoted quantity (point / scientific / range) with unit + context."""
+
+    raw: str
+    lo: float
+    hi: float
+    form: str  # "point" | "sci" | "range"
+    unit: str
+    start: int
+    end: int
+    line: int
+    section: int
+    anchors: frozenset
+
+
+def _is_year_like(raw: str) -> bool:
+    return raw.isdigit() and len(raw) == 4 and _YEAR_MIN <= int(raw) <= _YEAR_MAX
+
+
+def _extract_quoted_values(
+    masked: str,
+    spans: List[Tuple[int, int, int]],
+    starts: List[int],
+    excluded: List[Tuple[int, int]],
+) -> List[_QuotedValue]:
+    para_bounds = {i: (s, e) for s, e, i in spans}
+    out: List[_QuotedValue] = []
+    for m in _QV_RE.finditer(masked):
+        s, e = m.span()
+        if any(s < xe and e > xs for xs, xe in excluded):
+            continue
+        if m.group("lo") is not None:
+            if _is_year_like(m.group("lo")) or _is_year_like(m.group("hi")):
+                continue
+            lo, hi, form = float(m.group("lo")), float(m.group("hi")), "range"
+            if lo >= hi:
+                continue
+        elif m.group("sci") is not None:
+            lo = hi = float(m.group("sci"))
+            form = "sci"
+        else:
+            if _is_year_like(m.group("pt")):
+                continue
+            lo = hi = _parse_value(m.group("pt"))
+            form = "point"
+        um = _UNIT_AFTER_RE.match(masked, e)
+        if um is None:
+            continue
+        unit = "%" if um.group("pct") else um.group("word").lower()
+        if unit in _ANCHOR_STOPWORDS:
+            continue
+        paragraph = _paragraph_of(s, spans)
+        p_start, p_end = para_bounds.get(paragraph, (0, len(masked)))
+        out.append(
+            _QuotedValue(
+                raw=m.group(0),
+                lo=lo,
+                hi=hi,
+                form=form,
+                unit=unit,
+                start=s,
+                end=e,
+                line=_line_of(s, masked),
+                section=bisect.bisect_right(starts, s),
+                anchors=_anchor_tokens(masked, s, e, p_start, p_end) - {unit},
+            )
+        )
+    return out
+
+
+def _same_context(a: _QuotedValue, b: _QuotedValue) -> bool:
+    """High anchor overlap and no one-sided distinguishing qualifier."""
+    shared = a.anchors & b.anchors
+    smaller = min(len(a.anchors), len(b.anchors))
+    if len(shared) < _MIN_SHARED_ANCHORS or len(shared) < _MIN_ANCHOR_OVERLAP * smaller:
+        return False
+    return not ((a.anchors ^ b.anchors) & _QUALIFIER_WORDS)
+
+
+def _is_variant(a: _QuotedValue, b: _QuotedValue) -> bool:
+    """True when two same-context mentions quote the quantity inconsistently."""
+    if a.form == "range" and b.form == "range":
+        return (a.lo, a.hi) != (b.lo, b.hi)
+    if a.form == "range" or b.form == "range":
+        rng, pt = (a, b) if a.form == "range" else (b, a)
+        return not (rng.lo <= pt.lo <= rng.hi)
+    if a.lo == b.lo:
+        return False
+    if a.form == "sci" and b.form == "sci":
+        if a.lo <= 0 or b.lo <= 0:
+            return False
+        return max(a.lo, b.lo) / min(a.lo, b.lo) <= _SCI_DECADE
+    denom = max(abs(a.lo), abs(b.lo))
+    return denom != 0 and abs(a.lo - b.lo) / denom <= REL_TOLERANCE
+
+
+@dataclass(frozen=True)
+class _HeadlinePair:
+    raw: str
+    a: float
+    b: float
+    a_raw: str
+    b_raw: str
+    start: int
+    end: int
+    line: int
+    section: int
+    anchors: frozenset
+
+
+def _extract_headline_pairs(
+    masked: str, spans: List[Tuple[int, int, int]], starts: List[int]
+) -> List[_HeadlinePair]:
+    para_bounds = {i: (s, e) for s, e, i in spans}
+    out: List[_HeadlinePair] = []
+    for m in _HEADLINE_PAIR_RE.finditer(masked):
+        s, e = m.span()
+        paragraph = _paragraph_of(s, spans)
+        p_start, p_end = para_bounds.get(paragraph, (0, len(masked)))
+        out.append(
+            _HeadlinePair(
+                raw=m.group(0),
+                a=float(m.group("a")),
+                b=float(m.group("b")),
+                a_raw=m.group("a"),
+                b_raw=m.group("b"),
+                start=s,
+                end=e,
+                line=_line_of(s, masked),
+                section=bisect.bisect_right(starts, s),
+                anchors=_anchor_tokens(masked, s, e, p_start, p_end),
+            )
+        )
+    return out
+
+
+def _near_identical(x: float, y: float) -> bool:
+    denom = max(abs(x), abs(y))
+    return denom != 0 and abs(x - y) / denom <= _HEADLINE_REL_TOLERANCE
+
+
+def _pair_is_bridged(
+    masked: str, p1: _HeadlinePair, p2: _HeadlinePair, para_spans: List[Tuple[int, int, int]]
+) -> bool:
+    """A sentence from p1's through p2's bridges the pair (cue or both values)."""
+    bounds = {i: (s, e) for s, e, i in para_spans}
+    ps1 = bounds.get(_paragraph_of(p1.start, para_spans), (0, len(masked)))
+    ps2 = bounds.get(_paragraph_of(p2.start, para_spans), (0, len(masked)))
+    lo, _ = _sentence_span(masked, p1.start, p1.end, *ps1)
+    _, hi = _sentence_span(masked, p2.start, p2.end, *ps2)
+    first = (p1.a_raw, p1.b_raw)
+    second = (p2.a_raw, p2.b_raw)
+    for sentence in _SENTENCE_END_RE.split(masked[lo:hi]):
+        if _BRIDGE_CUE_RE.search(sentence):
+            return True
+        if any(v in sentence for v in first) and any(v in sentence for v in second):
+            return True
+    return False
+
+
+def _check_cross_section(
+    masked: str,
+    spans: List[Tuple[int, int, int]],
+    excluded: List[Tuple[int, int]],
+    suppressed_lines: frozenset,
+) -> List[NumericFinding]:
+    """Quoted-variant and unbridged-headline-pair findings (issue #1399)."""
+    starts = [m.start() for m in _HEADING_RE.finditer(masked)]
+    findings: List[NumericFinding] = []
+
+    def emit(code, first_line, later_line, raw, claimed, computed, message):
+        suppressed = first_line in suppressed_lines or later_line in suppressed_lines
+        findings.append(
+            NumericFinding(
+                code=code,
+                severity=SEVERITY_INFO if suppressed else SEVERITY_WARNING,
+                line=later_line,
+                claim=raw,
+                claimed=claimed,
+                computed=computed,
+                message=message
+                + (
+                    " [suppressed via anvil-lint-disable: numeric_consistency]"
+                    if suppressed
+                    else ""
+                ),
+                suppressed=suppressed,
+            )
+        )
+
+    values = _extract_quoted_values(masked, spans, starts, excluded)
+    by_unit: dict = {}
+    for v in values:
+        by_unit.setdefault(v.unit, []).append(v)
+    for group in by_unit.values():
+        for i, later in enumerate(group):
+            for earlier in group[:i]:
+                if earlier.section == later.section:
+                    continue
+                if not _same_context(earlier, later) or not _is_variant(earlier, later):
+                    continue
+                emit(
+                    QUOTED_VARIANT,
+                    earlier.line,
+                    later.line,
+                    later.raw.strip(),
+                    later.lo,
+                    earlier.lo,
+                    (
+                        f"{later.raw.strip()!r} {later.unit} (line {later.line}) "
+                        f"quotes the same quantity as {earlier.raw.strip()!r} "
+                        f"{earlier.unit} (line {earlier.line}, a different "
+                        f"section) at a different rounding or range; shared "
+                        f"context: {', '.join(sorted(earlier.anchors & later.anchors))}."
+                    ),
+                )
+                break
+
+    pairs = _extract_headline_pairs(masked, spans, starts)
+    for i, later in enumerate(pairs):
+        for earlier in pairs[:i]:
+            if earlier.section == later.section:
+                continue
+            if (earlier.a, earlier.b) == (later.a, later.b):
+                continue
+            if not (_near_identical(earlier.a, later.a) and _near_identical(earlier.b, later.b)):
+                continue
+            if not (earlier.anchors & later.anchors):
+                continue
+            if _pair_is_bridged(masked, earlier, later, spans):
+                continue
+            emit(
+                UNBRIDGED_HEADLINE_PAIR,
+                earlier.line,
+                later.line,
+                later.raw.strip(),
+                later.a,
+                earlier.a,
+                (
+                    f"headline pair {later.raw.strip()!r} (line {later.line}) is "
+                    f"near-identical but unequal to {earlier.raw.strip()!r} "
+                    f"(line {earlier.line}, a different section) with no "
+                    f"sentence between them bridging the difference."
+                ),
+            )
+            break
+    findings.sort(key=lambda f: f.line)
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Pure-text entry point
 # ---------------------------------------------------------------------------
 
@@ -1185,6 +1515,8 @@ def check_text(text: str, *, latex: bool = False) -> Tuple[List[NumericFinding],
                 suppressed=is_suppressed,
             )
         )
+    excluded = [(c.start, c.end) for c in claims]
+    findings.extend(_check_cross_section(masked, spans, excluded, suppressed_lines))
     return findings, len(tokens), len(claims)
 
 
@@ -1343,6 +1675,8 @@ __all__ = [
     "UNBRIDGED_POPULATION",
     "PERCENT_MISMATCH",
     "MULTIPLIER_MISMATCH",
+    "QUOTED_VARIANT",
+    "UNBRIDGED_HEADLINE_PAIR",
     "SEVERITY_WARNING",
     "SEVERITY_INFO",
     "ABS_TOLERANCE",
