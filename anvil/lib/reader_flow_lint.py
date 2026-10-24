@@ -55,7 +55,7 @@ line above suppresses a hit; it is recorded at ``nit``.
 Sidecar + discovery contract
 ----------------------------
 
-``write_review_dir`` writes ``<thread>.{N}.readerflow/_review.json`` via
+``write_review_dir`` writes ``<thread>.{N}.readerflowlint/_review.json`` via
 ``anvil/lib/sidecar.py::write_critic_review_dir``. The single-segment tag
 means ``critics.discover_critics`` picks it up with no aggregator change.
 
@@ -94,10 +94,10 @@ from anvil.lib.sidecar import write_critic_review_dir
 # Constants
 # ---------------------------------------------------------------------------
 
-CRITIC_ID = "reader_flow"
+CRITIC_ID = "reader_flow_lint"
 CHECK_NAME = "reader_flow_lint"
 DIM_READER_FLOW = "reader_flow"
-READER_FLOW_SUFFIX = "readerflow"
+READER_FLOW_SUFFIX = "readerflowlint"
 
 RULE_DEFINE_BEFORE_USE = "define_before_use"
 RULE_VARIANT_PAIR = "variant_pair"
@@ -711,7 +711,7 @@ def check_reader_flow(
 def write_review_dir(
     version_dir: Path, result: ReaderFlowResult, *, critic_id: str = CRITIC_ID
 ) -> Path:
-    """Write ``<version_dir>.readerflow/_review.json`` (atomic, regenerating)."""
+    """Write ``<version_dir>.readerflowlint/_review.json`` (atomic, regenerating)."""
     version_dir = Path(version_dir)
     review = result.to_review(version_dir=version_dir.name, critic_id=critic_id)
     return write_critic_review_dir(version_dir, READER_FLOW_SUFFIX, review)
@@ -736,7 +736,7 @@ def _build_cli_parser():
     p.add_argument(
         "--write-review",
         action="store_true",
-        help="Also write <version_dir>.readerflow/_review.json (staged_sidecar).",
+        help="Also write <version_dir>.readerflowlint/_review.json (staged_sidecar).",
     )
     p.add_argument(
         "--body",

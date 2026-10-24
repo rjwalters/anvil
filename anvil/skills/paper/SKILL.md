@@ -48,6 +48,11 @@ A **paper thread** is a single research paper authored across one or more revisi
   <thread>.1.audience/            Audience-fit pre-flight sidecar (deterministic, advisory — issue #1322)
     _review.json                  kind: tool_evidence; governance-vocabulary / private-locator /
                                   unlinked-artifact-path findings (major in body, minor in appendix)
+  <thread>.1.readerflow/          Reader-flow lens sidecar (fresh-context subagent, advisory — issue #1397)
+    _review.json                  kind: judgment, critic_id: "readerflow"; findings tagged by defect
+                                  class 1-7 (+ class 8 when a reworded-caveats list is supplied)
+    glossary.md                   term | first use | definition site | variants
+    _meta.json                    scorecard_kind declared (canonical co-write)
   <thread>.1.operator/            (optional, human) Operator read-through after READY (issue #1322)
     _review.json                  kind: judgment, critic_id: "operator", verdict: BLOCK; its critical
                                   flags make paper-revise produce one more version
