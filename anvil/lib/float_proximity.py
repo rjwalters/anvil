@@ -27,7 +27,9 @@ The compiled artifacts of the version directory, no VLM:
   renders, and the page of its first in-text mention.
 
 Chosen over label-based ``\\newlabel`` data because the lof/lot entries
-exist for every captioned float, with or without ``hyperref``.
+exist for every captioned float. The page is the first ``}{<digits>}`` after
+the number, so the trailing ``{label}`` group ``hyperref`` appends is neither
+required nor captured (a lazy match keeps it from being read as the page).
 
 Heuristic and its limits
 ------------------------
@@ -88,7 +90,7 @@ REASON_NO_FLOATS = "no captioned floats in the .aux"
 
 _CONTENTSLINE = re.compile(
     r"\\contentsline\s*\{(?P<kind>figure|table|section)\}"
-    r"\{\\numberline\s*\{(?P<num>[^{}]*)\}.*\}\{(?P<page>[^{}]*)\}\{[^{}]*\}"
+    r"\{\\numberline\s*\{(?P<num>[^{}]*)\}.*?\}\{(?P<page>\d+)\}"
 )
 
 

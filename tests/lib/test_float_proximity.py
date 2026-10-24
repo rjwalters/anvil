@@ -44,6 +44,30 @@ def test_parse_aux():
     assert sections == [("1", 1), ("2", 3), ("3", 6), ("A", 8)]
 
 
+_AUX_NO_HYPERREF = r"""
+\@writefile{toc}{\contentsline {section}{\numberline {2}Method}{3}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Near}}{3}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Costs}}{iv}}
+"""
+
+
+def test_parse_aux_without_hyperref():
+    floats, sections = fp.parse_aux(_AUX_NO_HYPERREF)
+    assert [(f.kind, f.number, f.aux_page) for f in floats] == [("figure", "1", 3)]
+    assert sections == [("2", 3)]  # roman-page table still dropped
+
+
+def test_parse_aux_hyperref_page_not_label():
+    floats, _ = fp.parse_aux(_AUX.splitlines()[6])  # Figure 1, hyperref shape
+    assert [(f.number, f.aux_page) for f in floats] == [("1", 3)]
+
+
+def test_parse_aux_mixed_shapes():
+    floats, sections = fp.parse_aux(_AUX + _AUX_NO_HYPERREF.replace("{1}{", "{9}{"))
+    assert {f.aux_page for f in floats if f.number == "9"} == {3}
+    assert len(floats) == 5 and len(sections) == 5
+
+
 def test_far_near_cross_and_appendix():
     hits, unmatched = fp.analyze(_AUX, _PAGES)
     by = {h.name: h for h in hits}
