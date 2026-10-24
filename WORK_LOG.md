@@ -13,6 +13,8 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-10-24
 
+- **PR #1403**: feat(paper): add float-proximity pre-flight from compiled PDF/aux
+- **Issue #1398** (closed): paper: float-proximity check from compiled PDF/aux
 - **PR #1410**: fix(install): pin pydantic>=2.13.5 in consumer pyproject and derive test pins from source
 - **PR #1407**: feat(numeric_consistency): flag quoted-number variants and unbridged headline pairs
 - **PR #1406**: feat(paper): add reader_flow_lint define-before-use and roadmap-order lint
