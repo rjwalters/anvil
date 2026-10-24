@@ -11,6 +11,19 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-10-24
+
+- **PR #1410**: fix(install): pin pydantic>=2.13.5 in consumer pyproject and derive test pins from source
+- **PR #1407**: feat(numeric_consistency): flag quoted-number variants and unbridged headline pairs
+- **PR #1406**: feat(paper): add reader_flow_lint define-before-use and roadmap-order lint
+- **PR #1404**: feat(paper-revise): numeral-multiset invariant and reworded-caveats list
+- **PR #1402**: feat(paper): add fresh-context reader-flow lens to paper-review
+- **Issue #1409** (closed): install-anvil.sh pins pydantic>=2.13.4 in consumer pyproject; Anvil itself requires >=2.13.5
+- **Issue #1401** (closed): paper: define-before-use and roadmap-order lint (reader_flow_lint)
+- **Issue #1400** (closed): paper-revise: numeral-multiset pin + reworded-caveats list
+- **Issue #1399** (closed): numeric_consistency: quoted-number variant check
+- **Issue #1397** (closed): paper-review: reader-flow lens subagent + dim 7 checks
+
 ### 2026-10-21
 
 - **PR #1394**: Bump Repo Skills 0.24.3 -> 0.24.7
