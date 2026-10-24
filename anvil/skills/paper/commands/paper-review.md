@@ -148,6 +148,17 @@ A manual/agent review session with no orchestrating Python process cannot hold t
    - **Suppression**: a `<!-- anvil-lint-disable: audience_check -->` (markdown) or `% anvil-lint-disable: audience_check` (LaTeX) directive on the line or the line above records the hit at `nit` and drops it from the active count. Use it for prose that must quote governance vocabulary, such as a paper *about* publication gates.
    - **Tooling-absent ordering (fail-open, manual fallback)**, mirroring steps 4c/4g (issue #646): when `uv` is not on `PATH` (or the module import fails, or the `.anvil` venv is not synced), do not continue as though the check ran. (1) Emit a notice, e.g. `paper-review: audience-fit pre-flight skipped — uv not on PATH; performed manual audience read instead`. (2) Read the body **and appendices** against the declared audience for the three classes above. (3) Fold real hits into `comments.md` exactly as the tool's findings would have been. (4) Record the fallback with a one-line `comments.md` note (`audience-check: automated scan unavailable (uv not on PATH); manual audience read performed this pass`).
 
+
+4j. **Run reader-flow lint (deterministic, advisory-only) — issue #1401** (child of #1396): invoke `uv run --project .anvil python -m anvil.lib.reader_flow_lint <thread>.{N}/ --write-review` (auto-detects `main.tex` and follows its `\input`/`\include` children in document order; `--body <path>` for an adopted-in-place legacy thread, same override convention as step 4c). It is heuristic and conservative (precision over recall) and reports three text-order rule classes:
+   - `define_before_use`: an acronym, `\emph{}` first definition, coined identifier (`S18`, `L0`) or inline math symbol whose first occurrence (captions and floats counted at their source position) precedes its defining sentence. A token with no defining sentence is never reported.
+   - `variant_pair`: two spellings that likely name one concept ("family a" / "first family", "look-up" / "lookup").
+   - `roadmap_order`: the introduction's "Section N does X" / contribution-list order contradicts the body's section order.
+
+   `--write-review` writes `<thread>.{N}.readerflow/_review.json` (`kind: tool_evidence`, `critic_id: "reader_flow"`) via `staged_sidecar`; `discover_critics` picks it up with no aggregator change.
+   - **Advisory, not a gate.** Findings are `minor` (`nit` when suppressed), the sidecar carries **no critical flag**, and its single `Score` is `score=None`, so it never changes the total. The CLI exits `1` when active hits remain; that is informational. The hits are **evidence for the reader-flow lens and dim 7**; confirm each one by reading the passage before deducting.
+   - **Suppression**: `<!-- anvil-lint-disable: reader_flow_lint -->` (markdown) or `% anvil-lint-disable: reader_flow_lint` (LaTeX) on the line or the line above records the hit at `nit`.
+   - **Tooling-absent ordering (fail-open, manual fallback)**, mirroring step 4i: when `uv` is not on `PATH` (or the import fails), emit `paper-review: reader-flow lint skipped — uv not on PATH; performed manual reader-flow read instead`, read the body for the three classes above, fold real hits into `comments.md`, and add the note `reader-flow: automated scan unavailable (uv not on PATH); manual read performed this pass`.
+
 5. **Score each dimension** (1–9 per rubric):
    - Assign an integer between 0 and the dimension's weight.
    - Write a 1–3 sentence justification citing specific evidence (section heading, excerpt, figure, table) from the paper.
