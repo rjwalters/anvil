@@ -35,7 +35,7 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-_None._
+- **#1398**: paper: float-proximity check from compiled PDF/aux
 
 ## PRs Awaiting Review
 
@@ -54,6 +54,7 @@ _None._
 Issues carrying `loom:curated`.
 
 - **#1381**: Follow-on from PR #1379: verify slides-import against real poppler output *(curated)*
+- **#1398**: paper: float-proximity check from compiled PDF/aux *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -71,10 +72,10 @@ _None._
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 0 |
+| In Progress (`loom:building`) | 1 |
 | PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 1 |
+| Curated | 2 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
