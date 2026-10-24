@@ -131,7 +131,7 @@ auto_shrink = [
 # run without this extra. Pillow floor matches `[auto_shrink]` — see #744.
 image_lint = [
     "Pillow>=12.3.0",
-    "numpy>=2.2.6",
+    "numpy>=2.5.3",
 ]
 # `anvil:deck` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
 # Real image backends (Flux, DALL-E, SDXL, etc.) often default to JPEG
