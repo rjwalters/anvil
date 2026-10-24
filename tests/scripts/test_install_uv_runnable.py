@@ -38,6 +38,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -190,8 +191,19 @@ def test_install_produces_consumer_pyproject_toml(tmp_path: Path) -> None:
     # Base deps mirror source; pyyaml is the load-bearing addition gated on
     # #231 (which has landed — see WORK_LOG entry for PR #268).
     assert 'name = "anvil"' in body
-    assert "pydantic>=2.13.4" in body, "pydantic missing from consumer pyproject base deps"
-    assert "pyyaml>=6.0.3" in body, "pyyaml missing from consumer pyproject base deps"
+    # Derive the expected specifiers from the source pyproject so a
+    # dependency bump there (e.g. Dependabot) fails this test until the
+    # installer's heredoc is updated (#1409).
+    source_deps = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["project"][
+        "dependencies"
+    ]
+    assert source_deps, "source pyproject declares no base dependencies"
+    for spec in source_deps:
+        assert f'"{spec}"' in body, (
+            f"consumer pyproject base deps missing {spec!r} — install-anvil.sh's "
+            "write_consumer_pyproject() heredoc is out of sync with "
+            "pyproject.toml's [project].dependencies"
+        )
     # Package layout points at the in-tree anvil/ mirror.
     assert '[tool.setuptools.packages.find]' in body
     assert 'include = ["anvil*"]' in body

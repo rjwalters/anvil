@@ -1108,7 +1108,7 @@ license = { text = "MIT" }
 #     transitively required by \`from anvil.lib import ...\` — see issue
 #     #231 for the canary reproducer.
 dependencies = [
-    "pydantic>=2.13.4",
+    "pydantic>=2.13.5",
     "pyyaml>=6.0.3",
 ]
 
