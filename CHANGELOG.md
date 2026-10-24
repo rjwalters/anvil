@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`anvil.lib.float_proximity` and `paper-review` step 4j: float-proximity pre-flight (#1398).** Reads the compiled `.aux` and `pdftotext` page text to flag figures and tables that render more than one page, or in a different section, from their first reference. Advisory (`minor`, no critical flag), writes `<thread>.{N}.floats/_review.json` via `staged_sidecar`, and fails open with a stated note when no PDF/aux is present.
+- **`anvil.lib.float_proximity` and `paper-review` step 4l: float-proximity pre-flight (#1398).** Reads the compiled `.aux` and `pdftotext` page text to flag figures and tables that render more than one page, or in a different section, from their first reference. Advisory (`minor`, no critical flag), writes `<thread>.{N}.floats/_review.json` via `staged_sidecar`, and fails open with a stated note when no PDF/aux is present.
 
 - **`numeric_consistency` flags quoted-number variants and unbridged headline pairs across sections** (#1399). Two new advisory finding kinds (warning severity, no critical flag, same `.numeric/` sidecar and `anvil-lint-disable: numeric_consistency` suppression): `quoted_variant` (the same quantity quoted at a different rounding or range in different sections, matched by unit plus anchor words, skipped when only one side carries a mesh/case/model qualifier) and `unbridged_headline_pair` (a decimal pair such as `2.68/4.10` re-quoted as `2.70/4.11` in another section with no bridging sentence). Sections come from markdown `#` and LaTeX `\section`-family headings; thresholds are documented in the module docstring. Existing findings are unchanged; `paper-review` step 4c mentions the new kinds.
 
