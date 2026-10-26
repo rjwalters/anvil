@@ -60,7 +60,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anvil"
-version = "0.11.30"
+version = "0.11.31"
 description = "AI-orchestrated artifact creation using the filesystem as the coordination layer."
 readme = "README.md"
 license = { text = "MIT" }
@@ -94,7 +94,7 @@ classifiers = [
 #     exception. See issue #231 for the canary reproducer.
 # See the header comment above for the broader philosophy.
 dependencies = [
-    "pydantic>=2.13.5",
+    "pydantic>=2.14.1",
     "pyyaml>=6.0.3",
 ]
 
