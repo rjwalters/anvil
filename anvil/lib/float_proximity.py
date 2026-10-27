@@ -47,8 +47,23 @@ page indexes with the offset observed between each float's aux page and its
 caption page in the PDF (the most common offset wins), so front matter with
 roman numbering does not shift results. Floats whose section is an appendix
 are skipped (an appendix float cited from the body is far away by design).
-Section-of-a-page is the last top-level section starting on or before that
-page, so a section beginning mid-page can read as a cross-section hit.
+A float's section is the section its ``\\caption`` is written in: the last
+``section`` entry that precedes the float's ``lof``/``lot`` entry in the
+``.aux`` (LaTeX writes the entries in source order), falling back to the
+last section starting on or before its page when none precedes it. The
+reference side is still page-based (the ``.aux`` does not record where a
+mention sits), so a mention on a page where a section begins mid-page can
+still read as a cross-section hit.
+
+A mention is not counted as the first reference when it sits inside another
+float: on a page that also carries a different float's caption, a mention in
+that caption's paragraph, or in a paragraph made only of short lines (a
+table or glossary cell as ``pdftotext`` emits it), is skipped. This is a
+text-shape guess, not a layout parse; a very short prose paragraph on such a
+page can be skipped by mistake. A line-initial ``Table N.`` counts as the
+caption only on the caption's page, so the tail of a wrapped sentence
+elsewhere is a mention; when several lines look like the caption, the one on
+the page nearest ``aux_page + offset`` wins.
 
 Posture: ADVISORY, fail-open
 ----------------------------
@@ -99,6 +114,7 @@ class FloatEntry:
     kind: str  # "figure" | "table"
     number: str
     aux_page: int
+    section: Optional[str] = None  # section whose text wrote this caption (.aux order)
 
     @property
     def name(self) -> str:
@@ -134,6 +150,7 @@ def parse_aux(aux_text: str) -> Tuple[List[FloatEntry], List[Tuple[str, int]]]:
     floats: List[FloatEntry] = []
     sections: List[Tuple[str, int]] = []
     seen = set()
+    current_section: Optional[str] = None
     for m in _CONTENTSLINE.finditer(aux_text):
         page = m.group("page").strip()
         if not page.isdigit():
@@ -141,9 +158,10 @@ def parse_aux(aux_text: str) -> Tuple[List[FloatEntry], List[Tuple[str, int]]]:
         kind, num = m.group("kind"), m.group("num").strip()
         if kind == "section":
             sections.append((num, int(page)))
+            current_section = num
         elif (kind, num) not in seen:
             seen.add((kind, num))
-            floats.append(FloatEntry(kind, num, int(page)))
+            floats.append(FloatEntry(kind, num, int(page), current_section))
     return floats, sections
 
 
@@ -152,25 +170,94 @@ def _label_pattern(entry: FloatEntry) -> "re.Pattern[str]":
     return re.compile(rf"\b{word}\s*{re.escape(entry.number)}(?![\w.]*\d)", re.IGNORECASE)
 
 
-def _caption_page(entry: FloatEntry, pages: Sequence[str]) -> Optional[int]:
+_CAPTION_PUNCT = (":", ".", "|")
+_SHORT_LINE = 50  # pdftotext lines of table/glossary cells are short; prose runs wider
+
+
+def _caption_pages(entry: FloatEntry, pages: Sequence[str]) -> List[int]:
+    """Every page holding a caption-like line for ``entry`` (1-based, ascending)."""
     pat = _label_pattern(entry)
+    found: List[int] = []
     for idx, text in enumerate(pages, start=1):
         for line in text.splitlines():
             m = pat.match(line.strip())
-            if m and line.strip()[m.end():m.end() + 1] in (":", ".", "|"):
+            if m and line.strip()[m.end():m.end() + 1] in _CAPTION_PUNCT:
+                found.append(idx)
+                break
+    return found
+
+
+def _resolve_captions(
+    floats: Sequence[FloatEntry], pages: Sequence[str]
+) -> Tuple[Dict[FloatEntry, int], List[str], int]:
+    """Return ``(caption page per float, unmatched names, aux->pdf page offset)``.
+
+    Floats with exactly one caption-like page fix the offset; ambiguous ones
+    (a wrapped sentence ending ``... Table 5.`` also looks like a caption)
+    then take the candidate nearest ``aux_page + offset``.
+    """
+    candidates = {f: _caption_pages(f, pages) for f in floats}
+    unmatched = [f.name for f, c in candidates.items() if not c]
+    sure = {f: c[0] for f, c in candidates.items() if len(c) == 1}
+    basis = sure or {f: c[0] for f, c in candidates.items() if c}
+    offsets = Counter(page - f.aux_page for f, page in basis.items())
+    offset = offsets.most_common(1)[0][0] if offsets else 0
+    captions: Dict[FloatEntry, int] = {}
+    for f, c in candidates.items():
+        if c:
+            captions[f] = min(c, key=lambda p: (abs(p - (f.aux_page + offset)), p))
+    return captions, unmatched, offset
+
+
+def _in_other_float(lines: Sequence[str], at: int, caption_lines: Sequence[int]) -> bool:
+    """Is ``lines[at]`` part of a paragraph that is another float's caption or body?
+
+    ``caption_lines`` are indexes of other floats' caption lines on this page.
+    """
+    lo = at
+    while lo > 0 and lines[lo - 1].strip():
+        lo -= 1
+    hi = at
+    while hi + 1 < len(lines) and lines[hi + 1].strip():
+        hi += 1
+    if any(lo <= c <= hi for c in caption_lines):
+        return True
+    return all(len(lines[k].strip()) <= _SHORT_LINE for k in range(lo, hi + 1))
+
+
+def _first_ref_page(
+    entry: FloatEntry,
+    pages: Sequence[str],
+    caption_page: Optional[int] = None,
+    other_captions: Optional[Dict[int, List[int]]] = None,
+) -> Optional[int]:
+    """First page with a real mention; see the module docstring for what is skipped.
+
+    ``other_captions`` maps a 1-based page to the line indexes of *other*
+    floats' captions there (precomputed by :func:`analyze`).
+    """
+    pat = _label_pattern(entry)
+    for idx, text in enumerate(pages, start=1):
+        lines = text.splitlines()
+        foreign = (other_captions or {}).get(idx, [])
+        for at, line in enumerate(lines):
+            stripped = line.strip()
+            for m in pat.finditer(stripped):
+                punct = stripped[m.end():m.end() + 1] in _CAPTION_PUNCT
+                if m.start() == 0 and punct and (caption_page is None or idx == caption_page):
+                    continue
+                if foreign and _in_other_float(lines, at, foreign):
+                    continue
                 return idx
     return None
 
 
-def _first_ref_page(entry: FloatEntry, pages: Sequence[str]) -> Optional[int]:
+def _caption_line_index(entry: FloatEntry, lines: Sequence[str]) -> Optional[int]:
     pat = _label_pattern(entry)
-    for idx, text in enumerate(pages, start=1):
-        for line in text.splitlines():
-            stripped = line.strip()
-            for m in pat.finditer(stripped):
-                is_caption = m.start() == 0 and stripped[m.end():m.end() + 1] in (":", ".", "|")
-                if not is_caption:
-                    return idx
+    for at, line in enumerate(lines):
+        m = pat.match(line.strip())
+        if m and line.strip()[m.end():m.end() + 1] in _CAPTION_PUNCT:
+            return at
     return None
 
 
@@ -194,24 +281,25 @@ def analyze(
 ) -> Tuple[List[FloatHit], List[str]]:
     """Pure core: ``(hits, unmatched)`` from aux text and per-page PDF text."""
     floats, sections = parse_aux(aux_text)
-    captions: Dict[FloatEntry, int] = {}
-    unmatched: List[str] = []
-    for f in floats:
-        page = _caption_page(f, pages)
-        if page is None:
-            unmatched.append(f.name)
-        else:
-            captions[f] = page
-    offsets = Counter(page - f.aux_page for f, page in captions.items())
-    offset = offsets.most_common(1)[0][0] if offsets else 0
+    captions, unmatched, offset = _resolve_captions(floats, pages)
     pdf_sections = [(num, start + offset) for num, start in sections]
+    caption_lines: Dict[FloatEntry, Dict[int, List[int]]] = {}
+    for f, cpage in captions.items():
+        at = _caption_line_index(f, pages[cpage - 1].splitlines())
+        if at is not None:
+            caption_lines.setdefault(f, {})[cpage] = [at]
     hits: List[FloatHit] = []
     for f, fpage in captions.items():
-        rpage = _first_ref_page(f, pages)
+        foreign: Dict[int, List[int]] = {}
+        for g, per_page in caption_lines.items():
+            if g is not f:
+                for pg, idxs in per_page.items():
+                    foreign.setdefault(pg, []).extend(idxs)
+        rpage = _first_ref_page(f, pages, fpage, foreign)
         if rpage is None:
             unmatched.append(f.name)
             continue
-        fsec = _section_at(fpage, pdf_sections)
+        fsec = f.section or _section_at(fpage, pdf_sections)
         rsec = _section_at(rpage, pdf_sections)
         if _is_appendix(fsec):
             continue

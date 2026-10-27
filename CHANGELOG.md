@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`float_proximity` no longer misfires on section-of-float, in-float mentions or wrapped line-initial mentions** (#1417). A float's section now comes from the `.aux` write order (the last `section` entry before its `lof`/`lot` entry) instead of its page, so a float at the top of a page above a mid-page heading keeps its section; the page-based lookup remains the fallback. A mention inside another float's caption or table/glossary paragraph is no longer taken as the first reference. A line-initial `Table N.` counts as the caption only on the caption's page, and among several caption-like pages the one nearest `aux_page + offset` wins. Not yet run against the geode-fem artifacts from the #1405 live run.
+
 ### Added
 
 - **`anvil.lib.float_proximity` and `paper-review` step 4l: float-proximity pre-flight (#1398).** Reads the compiled `.aux` and `pdftotext` page text to flag figures and tables that render more than one page, or in a different section, from their first reference. Advisory (`minor`, no critical flag), writes `<thread>.{N}.floats/_review.json` via `staged_sidecar`, and fails open with a stated note when no PDF/aux is present.
