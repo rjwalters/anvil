@@ -15,12 +15,12 @@ from anvil.lib.review_schema import Review
 
 _AUX = r"""
 \@writefile{toc}{\contentsline {section}{\numberline {1}Intro}{1}{section.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {2}Method}{3}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Results}{6}{section.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {A}Extra}{8}{section.A}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Costs}}{1}{table.caption.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Method}{3}{section.2}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Near}}{3}{figure.caption.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Results}{6}{section.3}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Cross}}{6}{figure.caption.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {A}Extra}{8}{section.A}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces App}}{8}{figure.caption.4}\protected@file@percent }
 """
 
@@ -42,6 +42,7 @@ def test_parse_aux():
         ("table", "1", 1), ("figure", "1", 3), ("figure", "2", 6), ("figure", "3", 8)
     ]
     assert sections == [("1", 1), ("2", 3), ("3", 6), ("A", 8)]
+    assert [f.section for f in floats] == ["1", "2", "3", "A"]
 
 
 _AUX_NO_HYPERREF = r"""
@@ -58,7 +59,7 @@ def test_parse_aux_without_hyperref():
 
 
 def test_parse_aux_hyperref_page_not_label():
-    floats, _ = fp.parse_aux(_AUX.splitlines()[6])  # Figure 1, hyperref shape
+    floats, _ = fp.parse_aux(_AUX.splitlines()[4])  # Figure 1, hyperref shape
     assert [(f.number, f.aux_page) for f in floats] == [("1", 3)]
 
 
@@ -98,6 +99,68 @@ def test_printed_page_offset_is_absorbed():
     hits, _ = fp.analyze(_AUX, pages)
     assert {h.name for h in hits} == {"Table 1", "Figure 2"}
     assert {h.name: h.float_page for h in hits}["Table 1"] == 2
+
+
+_AUX_MIDPAGE = r"""
+\@writefile{toc}{\contentsline {section}{\numberline {1}Intro}{1}{section.1}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Method}{2}{section.2}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Top}}{3}{table.caption.1}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Results}{3}{section.3}}
+"""
+
+
+def test_float_above_midpage_section_heading_keeps_its_section():
+    # Table 1 is written in section 2 and renders at the top of page 3, above
+    # the heading of section 3 that starts lower on the same page.
+    pages = ["Intro.\n", "Method text, see Table 1.\n", "Table 1: Top\n\n3 Results\n", "More.\n"]
+    floats, _ = fp.parse_aux(_AUX_MIDPAGE)
+    assert floats[0].section == "2"
+    hits, _ = fp.analyze(_AUX_MIDPAGE, pages)
+    assert [h for h in hits if any("section" in r for r in h.reasons)] == []
+
+
+def test_float_before_first_section_falls_back_to_page():
+    aux = r"\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces T}}{1}{table.1}}" + _AUX_MIDPAGE
+    floats, _ = fp.parse_aux(aux)
+    assert floats[0].section is None
+    hits, unmatched = fp.analyze(aux, ["Table 1: T\n", "x\n", "Table 1 again\n"])
+    assert unmatched == [] and [h.float_section for h in hits] == ["1"]  # page-based fallback
+
+
+_GLOSSARY_AUX = r"""
+\@writefile{toc}{\contentsline {section}{\numberline {1}Intro}{1}{section.1}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Names}}{1}{table.caption.1}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Plot}}{3}{figure.caption.2}}
+"""
+
+
+def test_mention_inside_another_float_is_not_first_reference():
+    pages = [
+        "Intro prose that runs across the full width, as Table 1 lists the names.\n\n"
+        "Table 1: Names of the quantities\n\nSymbol\nFig. 1a\nsee Figure 1\n",
+        "Filler prose that runs across the full width of the text block here.\n",
+        "As Figure 1 shows in this long line of ordinary running prose text.\nFigure 1: Plot\n",
+    ]
+    hits, unmatched = fp.analyze(_GLOSSARY_AUX, pages)
+    assert hits == [] and unmatched == []  # first ref is page 3, not the glossary on page 1
+
+
+def test_line_initial_wrapped_mention_does_not_move_caption_page():
+    aux = r"""
+\@writefile{toc}{\contentsline {section}{\numberline {1}Intro}{1}{section.1}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces One}}{1}{table.caption.1}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Five}}{3}{table.caption.5}}
+"""
+    pages = [
+        "Table 1: One\n",
+        "The shift is re-fitted in the second stage of the long analysis described in\n"
+        "Table 5. The shift is re-fitted per case and reported for every run.\n",
+        "Table 5: Five\n",
+    ]
+    captions, _, offset = fp._resolve_captions(fp.parse_aux(aux)[0], pages)
+    assert {f.number: p for f, p in captions.items()} == {"1": 1, "5": 3} and offset == 0
+    hits, _ = fp.analyze(aux, pages)
+    assert hits == []  # mention on page 2 is next to the caption on page 3
 
 
 def _version(tmp_path: Path) -> Path:
