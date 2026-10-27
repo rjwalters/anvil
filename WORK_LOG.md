@@ -11,6 +11,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-10-26
+
+- **PR #1415**: chore(deps): update pydantic requirement from >=2.13.5 to >=2.14.1
+
 ### 2026-10-24
 
 - **PR #1412**: fix: parse float_proximity aux entries without hyperref label group
