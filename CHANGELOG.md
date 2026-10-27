@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **`unbridged_headline_pair` now catches ranges and re-pairings** (#1420). The #1399 check keyed on a written `a/b` / `a and b` pair, so the motor case (`2.68--4.10` in one section, `1.71 and 2.70 … 2.47 and 4.11` in another) went unreported. A value-set pass now compares individual decimals in headline sentences (two or more decimals, in an abstract/introduction/conclusion/summary section or before the first heading): a value within 2% of, but unequal to, one in an earlier headline section, with a shared anchor word and no bridging cue or sentence, is reported under the existing code. Body sections are not compared. Not yet run against the motor paper itself.
+
 - **`float_proximity` no longer misfires on section-of-float, in-float mentions or wrapped line-initial mentions** (#1417). A float's section now comes from the `.aux` write order (the last `section` entry before its `lof`/`lot` entry) instead of its page, so a float at the top of a page above a mid-page heading keeps its section; the page-based lookup remains the fallback. A mention inside another float's caption or table/glossary paragraph is no longer taken as the first reference. A line-initial `Table N.` counts as the caption only on the caption's page, and among several caption-like pages the one nearest `aux_page + offset` wins. Not yet run against the geode-fem artifacts from the #1405 live run.
 
 ### Added

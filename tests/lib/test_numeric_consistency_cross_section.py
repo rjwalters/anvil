@@ -140,3 +140,58 @@ class TestUnbridgedHeadlinePair:
             "The headline errors are 2.70/4.11 for lift drag.\n"
         )
         assert _codes(body) == []
+
+
+class TestHeadlineValueSet:
+    """Range and re-pairing forms (issue #1420), synthetic motor reduction."""
+
+    ABSTRACT = (
+        "# Abstract\n\nWarm start cuts drag error to 2.68--4.10 with seeds "
+        "for the lift drag objective.\n\n"
+    )
+    INTRO = (
+        "# Introduction\n\nOn the lift drag objective the errors are 1.71 and "
+        "2.70 on the coarse space and 2.47 and 4.11 on the fine space.\n"
+    )
+
+    def test_range_vs_repairing_flags_both_values(self) -> None:
+        got = _codes(self.ABSTRACT + self.INTRO)
+        assert [f.code for f in got] == [UNBRIDGED_HEADLINE_PAIR] * 2
+        assert {f.claim for f in got} == {"2.70", "4.11"}
+
+    def test_latex_range_and_unicode_dash(self) -> None:
+        for dash in ("--", "\u2013", " to "):
+            body = self.ABSTRACT.replace("--", dash) + self.INTRO
+            assert len(_codes(body)) == 2
+
+    def test_bridge_cue_silences(self) -> None:
+        body = self.ABSTRACT + self.INTRO.replace(
+            "On the", "Values are rounded differently here. On the"
+        )
+        assert _codes(body) == []
+
+    def test_sentence_naming_both_values_bridges_only_those(self) -> None:
+        body = self.ABSTRACT + self.INTRO.replace(
+            "On the", "The 2.68 bound became 2.70 after a rerun. On the"
+        )
+        got = _codes(body)
+        assert [f.claim for f in got] == ["4.11"]
+
+    def test_body_sections_not_compared(self) -> None:
+        body = (
+            "# Methods\n\nWarm start cuts drag error to 2.68--4.10 for the lift drag objective.\n\n"
+            "# Results\n\nOn the lift drag objective the errors are 1.71 and 2.70 "
+            "and 2.47 and 4.11.\n"
+        )
+        assert _codes(body) == []
+
+    def test_equal_values_silent(self) -> None:
+        body = self.ABSTRACT + self.INTRO.replace("2.70", "2.68").replace("4.11", "4.10")
+        assert _codes(body) == []
+
+    def test_written_pair_not_double_reported(self) -> None:
+        body = (
+            "# Abstract\n\nThe headline errors are 2.68/4.10 for lift drag.\n\n"
+            "# Introduction\n\nThe headline errors are 2.70/4.11 for lift drag.\n"
+        )
+        assert len(_codes(body)) == 1
