@@ -48,6 +48,19 @@ def test_review_step_4j_contract():
         "number variants",
     ):
         assert cls in text, cls
+    assert "9. **narrative placement**" in text
+    assert "every glossary row" in text
+    assert "class-1" in text
+
+
+def test_rubric_documents_class_9_and_glossary_rule():
+    text = _read(RUBRIC)
+    assert "**Narrative placement**" in text
+    assert "Every glossary row" in text
+
+
+def test_skill_md_lists_class_9():
+    assert "class 1-7, 9" in _read(SKILL_MD)
 
 
 def test_rubric_dim7_names_lens_and_documents_cap():

@@ -23,6 +23,8 @@
 
 ### Changed
 
+- **`paper-review` reader-flow lens: glossary-to-findings rule and class 9 "narrative placement" (#1418).** Step 4j now requires one class-1 finding for every glossary row whose first use precedes its definition (or that has none), so the glossary and findings cannot disagree, and adds class 9 for sections, paragraphs or motivation that interrupt, delay or are missing from the reading path. Class 9 is `minor` with no dim 7 cap contribution; it is numbered 9 so class 8 (caveat widening) keeps its meaning. Rubric dim 7 and `SKILL.md` updated to match.
+
 - **Raised the `pydantic` floor to `>=2.14.1` (#1415).** The source `pyproject.toml` base dependency and the consumer `pyproject.toml` that `install-anvil.sh` generates now agree on the new lower bound. pydantic 2.14 drops only Python 3.9, and `requires-python` is already `>=3.10`.
 
 ### Fixed

@@ -82,7 +82,7 @@ Dim 7 names "flow"; this section is where it is checked. `paper-review` step 4j 
 
 Reader-flow checks, by defect class:
 
-1. **Define-before-use**: terms, symbols, acronyms, coined identifiers and cost units are defined at or before first use, and near it.
+1. **Define-before-use**: terms, symbols, acronyms, coined identifiers and cost units are defined at or before first use, and near it. Every glossary row whose first use precedes its definition site, or that has no definition site, is one class-1 finding (the glossary and the findings must not disagree).
 2. **One concept, one name**: no concept under several names, no name for several things.
 3. **Roadmap order**: body section order matches the introduction's contribution list or roadmap.
 4. **Float proximity**: figures and tables print near the text that discusses them.
@@ -90,8 +90,9 @@ Reader-flow checks, by defect class:
 6. **Caveats said once**: no full caveat restated several times, no unprompted denial, no conclusion that repeats the abstract.
 7. **Number variants**: one quantity, one rounding, or an explicit bridge between variants.
 8. **Caveat widening** (when `paper-revise` supplies a reworded-caveats list; optional input): each reworded caveat's quantifier, causal word and referent still match the evidence.
+9. **Narrative placement**: no section, paragraph or motivation interrupts, delays or is missing from the reading path (a meta or related-work section mid-story, an overloaded paragraph, a missing "why this exists" sentence). Numbered 9 so class 8 keeps its meaning.
 
-**Severity:** class 1 and 5 findings are `major` in the body; other classes are `minor`, and a single repeated sentence under class 6 is a `nit`. Class 8 drift is `major`.
+**Severity:** class 1 and 5 findings are `major` in the body; other classes (including class 9) are `minor` and add no cap contribution, and a single repeated sentence under class 6 is a `nit`. Class 8 drift is `major`.
 
 **Dim 7 cap (decided in #1397): cap dim 7 at 2/4 when three or more confirmed class 1 (define-before-use) findings remain unresolved in the body.** Rationale: an undefined term on first use stops a newcomer, and three of them is the point at which the geode-fem canary papers (≈50 flow defects each at 40-42/44) were unreadable on first pass despite a clean prose score. Fewer than three deduct within the 4-point weight without a cap. The cap is on dim 7 only; the weight, /44 total and threshold are unchanged, and nothing here is a critical flag. Findings the reviewer cannot confirm (a term the subagent missed in a footnote) do not count toward the cap.
 
