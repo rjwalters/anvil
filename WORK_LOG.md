@@ -11,6 +11,13 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-10-27
+
+- **PR #1422**: feat(paper): tie reader-flow glossary to class-1 findings and add class 9
+- **PR #1421**: fix(float_proximity): use .aux section order and skip in-float and wrapped mentions
+- **Issue #1417** (closed): float_proximity: tune section-of-float, in-float mentions and line-initial mentions (live-run misfires from #1405)
+- **Issue #1405** (closed): Run float_proximity on a real compiled paper thread (live verification follow-up to #1403)
+
 ### 2026-10-26
 
 - **PR #1415**: chore(deps): update pydantic requirement from >=2.13.5 to >=2.14.1
