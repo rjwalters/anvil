@@ -99,3 +99,19 @@ def test_sidecar_validates_and_is_discovered(tmp_path):
     assert loaded.critic_id == "readerflow" and not loaded.critical_flags
     agg = aggregate([loaded])
     assert agg is not None
+
+
+def test_recurrence_step_and_unchanged_isolation_brief():
+    text = _read(REVIEW_DOC)
+    assert "Recurrence measure (post-lens, scoring pass only)" in text
+    assert "readerflow_recurrence.py" in text
+    assert "never passed to the subagent" in text
+    # the lens brief keeps its isolation constraint
+    assert "Do NOT pass it `scoring.md`, step 4c-4i findings, or any prior review." in text
+
+
+def test_rubric_documents_recurrence_measure():
+    text = _read(RUBRIC)
+    assert "recurrence, not finding count" in text
+    assert "0.5 or below" in text
+    assert "42 -> 31" in text
