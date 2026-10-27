@@ -13,6 +13,9 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-10-27
 
+- **PR #1425**: feat(paper): add recurrence measure for reader-flow lens findings
+- **PR #1424**: fix(numeric_consistency): compare headline decimals by value to catch ranges and re-pairings
+- **Issue #1420** (closed): numeric_consistency: unbridged_headline_pair misses range-form and re-paired headline values (motor 2.68–4.10 vs 2.70/4.11)
 - **PR #1422**: feat(paper): tie reader-flow glossary to class-1 findings and add class 9
 - **PR #1421**: fix(float_proximity): use .aux section order and skip in-float and wrapped mentions
 - **Issue #1417** (closed): float_proximity: tune section-of-float, in-float mentions and line-initial mentions (live-run misfires from #1405)
