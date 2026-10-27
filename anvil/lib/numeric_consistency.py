@@ -110,6 +110,15 @@ Deterministic subset (pure regex/arithmetic — no LLM, no new deps)
      occurrences. A sentence bridges when it matches a small cue list
      (approximately, roughly, about, rounded, ``see Section``, cf.,
      ``≈``, ``~``, ``§``) or names a value from each pair.
+     The same code is also raised by a value-set pass over HEADLINE
+     sentences (a sentence with >= 2 decimals in an abstract /
+     introduction / conclusion / summary section, or before the first
+     heading): ranges (``2.68--4.10``) and re-pairings (``1.71 and 2.70
+     ... 2.47 and 4.11``) have no written pair to compare, so each
+     decimal is compared on its own. A decimal in a later headline
+     section within 2% of, but unequal to, a decimal in an earlier one
+     (shared sentence anchor, no bridge) is flagged. Body sections are
+     never compared against each other by this pass.
 
    Findings anchor on the LATER mention; a lint-disable on either
    mention's line suppresses the finding.
@@ -1355,6 +1364,86 @@ def _pair_is_bridged(
     return False
 
 
+_HEADLINE_SECTION_RE = re.compile(
+    r"abstract|introduction|intro\b|conclusions?|summary", re.IGNORECASE
+)
+_DECIMAL_RE = re.compile(r"(?<![\w.])\d+\.\d+(?![\w])")
+
+
+@dataclass(frozen=True)
+class _HeadlineValue:
+    raw: str
+    value: float
+    start: int
+    end: int
+    line: int
+    section: int
+    anchors: frozenset
+    sentence: Tuple[int, int]
+
+
+def _extract_headline_values(
+    masked: str,
+    spans: List[Tuple[int, int, int]],
+    starts: List[int],
+    excluded: List[Tuple[int, int]],
+) -> List[_HeadlineValue]:
+    """Decimals in headline sentences (>= 2 decimals, headline section)."""
+    para_bounds = {i: (s, e) for s, e, i in spans}
+
+    def is_headline_section(section: int) -> bool:
+        if section == 0:
+            return True
+        begin = starts[section - 1]
+        end = masked.find("\n", begin)
+        return _HEADLINE_SECTION_RE.search(masked[begin : end if end >= 0 else len(masked)]) is not None
+
+    by_sentence: dict = {}
+    for m in _DECIMAL_RE.finditer(masked):
+        s, e = m.span()
+        if any(s < xe and e > xs for xs, xe in excluded):
+            continue
+        section = bisect.bisect_right(starts, s)
+        if not is_headline_section(section):
+            continue
+        paragraph = _paragraph_of(s, spans)
+        p_start, p_end = para_bounds.get(paragraph, (0, len(masked)))
+        sentence = _sentence_span(masked, s, e, p_start, p_end)
+        by_sentence.setdefault(sentence, []).append((m, section, p_start, p_end))
+    out: List[_HeadlineValue] = []
+    for sentence, members in by_sentence.items():
+        if len(members) < 2:
+            continue
+        for m, section, p_start, p_end in members:
+            s, e = m.span()
+            out.append(
+                _HeadlineValue(
+                    raw=m.group(0),
+                    value=float(m.group(0)),
+                    start=s,
+                    end=e,
+                    line=_line_of(s, masked),
+                    section=section,
+                    anchors=_anchor_tokens(masked, s, e, p_start, p_end, window_words=40),
+                    sentence=sentence,
+                )
+            )
+    out.sort(key=lambda v: v.start)
+    return out
+
+
+def _values_are_bridged(
+    masked: str, earlier: _HeadlineValue, later: _HeadlineValue
+) -> bool:
+    """A sentence from earlier's through later's bridges (cue or both values)."""
+    for sentence in _SENTENCE_END_RE.split(masked[earlier.sentence[0] : later.sentence[1]]):
+        if _BRIDGE_CUE_RE.search(sentence):
+            return True
+        if earlier.raw in sentence and later.raw in sentence:
+            return True
+    return False
+
+
 def _check_cross_section(
     masked: str,
     spans: List[Tuple[int, int, int]],
@@ -1413,6 +1502,7 @@ def _check_cross_section(
                 )
                 break
 
+    flagged_pairs: List[Tuple[int, int]] = []
     pairs = _extract_headline_pairs(masked, spans, starts)
     for i, later in enumerate(pairs):
         for earlier in pairs[:i]:
@@ -1436,6 +1526,36 @@ def _check_cross_section(
                 (
                     f"headline pair {later.raw.strip()!r} (line {later.line}) is "
                     f"near-identical but unequal to {earlier.raw.strip()!r} "
+                    f"(line {earlier.line}, a different section) with no "
+                    f"sentence between them bridging the difference."
+                ),
+            )
+            flagged_pairs.append((later.start, later.end))
+            break
+
+    headline_values = _extract_headline_values(masked, spans, starts, excluded)
+    for i, later in enumerate(headline_values):
+        if any(ps <= later.start < pe for ps, pe in flagged_pairs):
+            continue
+        for earlier in headline_values[:i]:
+            if earlier.section == later.section or earlier.value == later.value:
+                continue
+            if not _near_identical(earlier.value, later.value):
+                continue
+            if not (earlier.anchors & later.anchors):
+                continue
+            if _values_are_bridged(masked, earlier, later):
+                continue
+            emit(
+                UNBRIDGED_HEADLINE_PAIR,
+                earlier.line,
+                later.line,
+                later.raw,
+                later.value,
+                earlier.value,
+                (
+                    f"headline value {later.raw!r} (line {later.line}) is "
+                    f"near-identical but unequal to {earlier.raw!r} "
                     f"(line {earlier.line}, a different section) with no "
                     f"sentence between them bridging the difference."
                 ),
