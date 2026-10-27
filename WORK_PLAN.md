@@ -2,7 +2,7 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-10-15*
+*Last updated: 2026-10-27*
 
 ---
 
@@ -23,7 +23,7 @@ _None._
 
 `loom:important`; taken before unlabelled work.
 
-_None._
+- **#1419**: paper-review reader-flow lens: finding count does not fall on flow-revised versions; define a recurrence-based measure
 
 ## Ready
 
@@ -35,13 +35,15 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-_None._
+- **#1419**: paper-review reader-flow lens: finding count does not fall on flow-revised versions; define a recurrence-based measure
+- **#1420**: numeric_consistency: unbridged_headline_pair misses range-form and re-paired headline values (motor 2.68–4.10 vs 2.70/4.11)
 
 ## PRs Awaiting Review
 
 PRs waiting on Judge (`loom:review-requested`).
 
-_None._
+- **#1424**: fix(numeric_consistency): compare headline decimals by value to catch ranges and re-pairings
+- **#1425**: feat(paper): add recurrence measure for reader-flow lens findings
 
 ## Approved (Awaiting Merge)
 
@@ -54,7 +56,8 @@ _None._
 Issues carrying `loom:curated`.
 
 - **#1381**: Follow-on from PR #1379: verify slides-import against real poppler output *(curated)*
-- **#1405**: Run float_proximity on a real compiled paper thread (live verification follow-up to #1403) *(curated)*
+- **#1419**: paper-review reader-flow lens: finding count does not fall on flow-revised versions; define a recurrence-based measure *(curated)*
+- **#1420**: numeric_consistency: unbridged_headline_pair misses range-form and re-paired headline values (motor 2.68–4.10 vs 2.70/4.11) *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -70,12 +73,12 @@ _None._
 |------|-------|
 | Operator merge-risk holds | 0 |
 | Very important | 0 |
-| Important | 0 |
+| Important | 1 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 0 |
-| PRs awaiting review | 0 |
+| In Progress (`loom:building`) | 2 |
+| PRs awaiting review | 2 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 2 |
+| Curated | 3 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
