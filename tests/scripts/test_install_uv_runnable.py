@@ -50,9 +50,9 @@ INSTALLER = REPO_ROOT / "scripts" / "install-anvil.sh"
 def _parse_build_system_requires(pyproject_text: str) -> list[str]:
     """Extract ``[build-system].requires`` entries from raw TOML text.
 
-    Deliberately avoids a TOML parser dependency (``tomllib`` is 3.11+
-    only, and this repo's ``requires-python`` floor is 3.10 — see
-    ``pyproject.toml``): both files under test write ``requires`` as a
+    Deliberately avoids a TOML parser dependency (``tomllib`` is
+    available now that ``requires-python`` is 3.11, but a regex keeps
+    this helper trivial — see ``pyproject.toml``): both files under test write ``requires`` as a
     single-line list literal (``requires = ["pkg>=X", "wheel"]``), so a
     small regex over that exact shape is sufficient and keeps the test
     dependency-free.
