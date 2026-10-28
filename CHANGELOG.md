@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Minimum Python is now 3.11, and the Pillow floor is `>=13.0.0`** (#1429). Breaking floor for consumers still on Python 3.10. Pillow 13 requires Python >=3.11, so while `requires-python` allowed 3.10 every consumer lock kept a vulnerable Pillow <13 branch and Dependabot kept flagging it (41 open alerts, 5 critical). `requires-python` is `>=3.11` in `pyproject.toml` and the consumer `.anvil/pyproject.toml` that `install-anvil.sh` writes, and the `auto_shrink`, `image_lint` and `deck_imagegen` extras pin `Pillow>=13.0.0`. Re-run `install-anvil.sh` and `uv lock` in a consumer to pick it up.
+
 ### Fixed
 
 - **`unbridged_headline_pair` now catches ranges and re-pairings** (#1420). The #1399 check keyed on a written `a/b` / `a and b` pair, so the motor case (`2.68--4.10` in one section, `1.71 and 2.70 … 2.47 and 4.11` in another) went unreported. A value-set pass now compares individual decimals in headline sentences (two or more decimals, in an abstract/introduction/conclusion/summary section or before the first heading): a value within 2% of, but unequal to, one in an earlier headline section, with a shared anchor word and no bridging cue or sentence, is reported under the existing code. Body sections are not compared. Not yet run against the motor paper itself.

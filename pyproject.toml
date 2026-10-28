@@ -60,11 +60,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anvil"
-version = "0.11.33"
+version = "0.11.34"
 description = "AI-orchestrated artifact creation using the filesystem as the coordination layer."
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Anvil contributors" },
 ]
@@ -109,15 +109,18 @@ dependencies = [
 # already-rendered per-page PNG, takes argmax/argmin on rows-with-content
 # to compute a content bbox. Needs PIL/numpy for the pixel arithmetic.
 #
-# Pillow floor is >=12.3.0 (issue #744): 12.2.0 and earlier carry 13
-# Dependabot alerts (10 high), all resolved in 12.3.0. Since Anvil ships no
+# Pillow floor is >=13.0.0 (issues #744, #1429): 12.2.0 and earlier carry 13
+# Dependabot alerts (10 high), resolved in 12.3.0; 13.0.0 clears the
+# remaining 41 (5 critical, 23 high, 13 moderate). Pillow 13 requires
+# Python >=3.11, hence `requires-python = ">=3.11"` — a 3.10 branch would
+# keep a vulnerable Pillow <13 in every consumer lock. Since Anvil ships no
 # checked-in lockfile (see the header comment above), this lower bound is
 # the only lever that reaches consumer installs — bumping it forces
-# `uv sync --project .anvil` to re-resolve past 12.2.0 the next time
-# `install-anvil.sh` runs, even for a consumer whose existing
-# `.anvil/uv.lock` already pinned the vulnerable version.
+# `uv sync --project .anvil` to re-resolve past the vulnerable pin the next
+# time `install-anvil.sh` runs, even for a consumer whose existing
+# `.anvil/uv.lock` already pinned it.
 auto_shrink = [
-    "Pillow>=12.3.0",
+    "Pillow>=13.0.0",
     "numpy>=2.2.6",
 ]
 # `anvil:memo` render-gate content-bbox image check (issue #395).
@@ -130,7 +133,7 @@ auto_shrink = [
 # The stdlib header checks (pixel ceiling, aspect, declared-vs-actual)
 # run without this extra. Pillow floor matches `[auto_shrink]` — see #744.
 image_lint = [
-    "Pillow>=12.3.0",
+    "Pillow>=13.0.0",
     "numpy>=2.2.6",
 ]
 # `anvil:deck` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
@@ -147,7 +150,7 @@ image_lint = [
 # bytes without Pillow available. Pillow floor matches `[auto_shrink]` —
 # see #744.
 deck_imagegen = [
-    "Pillow>=12.3.0",
+    "Pillow>=13.0.0",
 ]
 # Memo HTML-to-PDF render chain (preferred engine).
 # weasyprint 69.0 is not compatible with Python 3.14 (CSS module import fails).

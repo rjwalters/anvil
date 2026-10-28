@@ -59,7 +59,7 @@ def test_consumer_pyproject_declares_deck_imagegen_extra(tmp_path: Path) -> None
         "`uv sync --project .anvil --extra deck_imagegen` would fail with "
         "'Extra `deck-imagegen` is not defined'"
     )
-    assert "Pillow>=12.3.0" in body
+    assert "Pillow>=13.0.0" in body
 
 
 def test_consumer_pyproject_still_declares_auto_shrink_extra(tmp_path: Path) -> None:

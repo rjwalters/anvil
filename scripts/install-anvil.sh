@@ -1093,7 +1093,7 @@ build-backend = "setuptools.build_meta"
 name = "anvil"
 version = "$anvil_version"
 description = "AI-orchestrated artifact creation using the filesystem as the coordination layer (consumer-side install)."
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 
 # Base deps: load-bearing for \`anvil/lib/__init__.py\`'s import chain.
@@ -1118,13 +1118,13 @@ dependencies = [
 # missing.
 [project.optional-dependencies]
 # \`anvil:deck\` silent-Marp-auto-shrink lint (issue #102 / #100b).
-# Pillow floor is >=12.3.0 (issue #744): 12.2.0 and earlier carry 13
-# Dependabot alerts (10 high), all resolved in 12.3.0. Anvil ships no
-# checked-in lockfile, so this lower bound is what forces a consumer's
-# \`uv sync --project .anvil\` to re-resolve past the vulnerable pin the
-# next time install-anvil.sh runs.
+# Pillow floor is >=13.0.0 (issues #744, #1429): 13.0.0 clears the open
+# Pillow Dependabot alerts but requires Python >=3.11, hence the
+# requires-python floor above. Anvil ships no checked-in lockfile, so this
+# lower bound is what forces a consumer's \`uv sync --project .anvil\` to
+# re-resolve past the vulnerable pin the next time install-anvil.sh runs.
 auto_shrink = [
-    "Pillow>=12.3.0",
+    "Pillow>=13.0.0",
     "numpy>=2.2.6",
 ]
 # \`anvil:deck\` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
@@ -1134,7 +1134,7 @@ auto_shrink = [
 # this only fires when the adapter actually returns non-PNG bytes. Pillow
 # floor matches \`[auto_shrink]\` — see #744.
 deck_imagegen = [
-    "Pillow>=12.3.0",
+    "Pillow>=13.0.0",
 ]
 
 [tool.uv]
