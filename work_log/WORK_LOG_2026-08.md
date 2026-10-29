@@ -2,6 +2,62 @@
 
 Sections moved byte-for-byte from [WORK_LOG.md](../WORK_LOG.md) by `loom-daemon work-docs archive`.
 
+### 2026-08-29
+
+- **Issue #1235** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1234** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1233** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+
+### 2026-08-28
+
+- **Issue #1232** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1231** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1230** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1229** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1228** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1227** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1226** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1225** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1223** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1222** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1221** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1220** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1219** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+
+### 2026-08-27
+
+- **Issue #1218** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1217** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+
+### 2026-08-25
+
+- **PR #1187**: fixtures + docs: synthetic disclaimer on the memo fixture, neutral memoir slug, neutralized render-gate fixture
+- **Issue #1216** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1215** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+
+### 2026-08-24
+
+- **Issue #1214** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1213** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1212** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1210** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1205** (closed): project-book: support a title-relocation hook for docmute-based master documents
+- **PR #1209**: feat(project-book): add relocate_title flag for docmute-based masters
+- **Issue #1204** (closed): provenance_anchor: only the first range of a multi-range Line range cell is used as the drift hint — correct anchors self-report DRIFTED
+- **PR #1208**: fix: consult every range in a multi-range provenance Line range hint (#1204)
+- **Issue #1207** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1206** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1203** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+- **Issue #1202** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+
+### 2026-08-23
+
+- **Issue #1201** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+
+### 2026-08-22
+
+- **Issue #1200** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
+
 ### 2026-08-21
 
 - **Issue #1197** (closed): essay-review: findings should name predicted downstream effects (cross-reference/envelope breakage) so revise fixes the consequence in the same pass
