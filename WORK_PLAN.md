@@ -23,7 +23,7 @@ _None._
 
 `loom:important`; taken before unlabelled work.
 
-- **#1419**: paper-review reader-flow lens: finding count does not fall on flow-revised versions; define a recurrence-based measure
+_None._
 
 ## Ready
 
@@ -54,7 +54,6 @@ _None._
 Issues carrying `loom:curated`.
 
 - **#1381**: Follow-on from PR #1379: verify slides-import against real poppler output *(curated)*
-- **#1419**: paper-review reader-flow lens: finding count does not fall on flow-revised versions; define a recurrence-based measure *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -70,12 +69,12 @@ _None._
 |------|-------|
 | Operator merge-risk holds | 0 |
 | Very important | 0 |
-| Important | 1 |
+| Important | 0 |
 | Ready (`loom:issue`) | 0 |
 | In Progress (`loom:building`) | 0 |
 | PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 2 |
+| Curated | 1 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
