@@ -11,6 +11,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-10-30
+
+- **Issue #1419** (closed): paper-review reader-flow lens: finding count does not fall on flow-revised versions; define a recurrence-based measure
+- **Issue #1418** (closed): paper-review reader-flow lens: recall gaps on #1396 acceptance (glossary→finding, narrative-placement class)
+
 ### 2026-10-28
 
 - **PR #1430**: fix: require Python 3.11 and Pillow>=13.0.0 to clear consumer Pillow alerts
