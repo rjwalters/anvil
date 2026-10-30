@@ -115,3 +115,14 @@ def test_rubric_documents_recurrence_measure():
     assert "recurrence, not finding count" in text
     assert "0.5 or below" in text
     assert "42 -> 31" in text
+
+
+def test_lens_gets_both_inputs_and_referent_baseline_subrule():
+    text = _read(REVIEW_DOC)
+    assert "**both** paper inputs" in text
+    assert "Referent/baseline sub-rule (#1432)" in text
+    assert "every percentage or ratio in the abstract names what it compares" in text
+    assert "Do NOT pass it `scoring.md`, step 4c-4i findings, or any prior review." in text
+    rubric = _read(RUBRIC)
+    assert "Referent/baseline sub-rule (#1432)" in rubric
+    assert "referent/baseline sub-rule" in _read(SKILL_MD)

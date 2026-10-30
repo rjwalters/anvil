@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reader-flow lens takes both inputs and flags quantities with no referent** (#1432). `paper-review` step 4j now briefs the lens with the compiled PDF and the `main.tex` source tree together (the #1418 re-run showed a source-only read missed float placement and a PDF-only read missed define-before-use), and class 1 gains a referent/baseline sub-rule: a percentage or ratio stated without what it compares to, with a glossary-style check on the abstract. `rubric.md` and `SKILL.md` describe both. Not yet re-run against the private geode-fem papers (tracked on #1432).
+
 ### Changed
 
 - **Minimum Python is now 3.11, and the Pillow floor is `>=13.0.0`** (#1429). Breaking floor for consumers still on Python 3.10. Pillow 13 requires Python >=3.11, so while `requires-python` allowed 3.10 every consumer lock kept a vulnerable Pillow <13 branch and Dependabot kept flagging it (41 open alerts, 5 critical). `requires-python` is `>=3.11` in `pyproject.toml` and the consumer `.anvil/pyproject.toml` that `install-anvil.sh` writes, and the `auto_shrink`, `image_lint` and `deck_imagegen` extras pin `Pillow>=13.0.0`. Re-run `install-anvil.sh` and `uv lock` in a consumer to pick it up.
