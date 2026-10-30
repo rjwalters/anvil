@@ -50,7 +50,7 @@ A **paper thread** is a single research paper authored across one or more revisi
                                   unlinked-artifact-path findings (major in body, minor in appendix)
   <thread>.1.readerflow/          Reader-flow lens sidecar (fresh-context subagent, advisory — issue #1397)
     _review.json                  kind: judgment, critic_id: "readerflow"; findings tagged by defect
-                                  class 1-7, 9 (+ class 8 when a reworded-caveats list is supplied)
+                                  class 1-7, 9 (+ class 8 when a reworded-caveats list is supplied); class 1 includes the referent/baseline sub-rule (#1432)
     glossary.md                   term | first use | definition site | variants
     _meta.json                    scorecard_kind declared (canonical co-write)
   <thread>.1.operator/            (optional, human) Operator read-through after READY (issue #1322)

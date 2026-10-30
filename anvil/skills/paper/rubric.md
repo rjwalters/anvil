@@ -82,7 +82,7 @@ Dim 7 names "flow"; this section is where it is checked. `paper-review` step 4j 
 
 Reader-flow checks, by defect class:
 
-1. **Define-before-use**: terms, symbols, acronyms, coined identifiers and cost units are defined at or before first use, and near it. Every glossary row whose first use precedes its definition site, or that has no definition site, is one class-1 finding (the glossary and the findings must not disagree).
+1. **Define-before-use**: terms, symbols, acronyms, coined identifiers and cost units are defined at or before first use, and near it. Every glossary row whose first use precedes its definition site, or that has no definition site, is one class-1 finding (the glossary and the findings must not disagree). **Referent/baseline sub-rule (#1432)**: a quantity stated without its referent or baseline ("X % above" with no "above what", a number with no design/object label) is also class 1; every percentage or ratio in the abstract must name what it compares. The lens reads the PDF (placement) and the source (first use) together.
 2. **One concept, one name**: no concept under several names, no name for several things.
 3. **Roadmap order**: body section order matches the introduction's contribution list or roadmap.
 4. **Float proximity**: figures and tables print near the text that discusses them.
