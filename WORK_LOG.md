@@ -14,6 +14,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 ### 2026-10-31
 
 - **PR #1438**: fix: make reader-flow lens brief source-led
+- **Issue #1437** (closed): reader-flow lens: the dual-input brief (#1434) misses 5/15 external findings where a source-only read misses 1/15
 
 ### 2026-10-30
 
