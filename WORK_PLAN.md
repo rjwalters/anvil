@@ -55,7 +55,6 @@ Issues carrying `loom:curated`.
 
 - **#1381**: Follow-on from PR #1379: verify slides-import against real poppler output *(curated)*
 - **#1396**: paper-review: add a reader-flow lens (define-before-use, one name per concept, body order vs intro roadmap, figure proximity) *(curated)*
-- **#1437**: reader-flow lens: the dual-input brief (#1434) misses 5/15 external findings where a source-only read misses 1/15 *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -76,7 +75,7 @@ _None._
 | In Progress (`loom:building`) | 0 |
 | PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 3 |
+| Curated | 2 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
