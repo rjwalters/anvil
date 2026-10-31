@@ -126,3 +126,12 @@ def test_lens_gets_both_inputs_and_referent_baseline_subrule():
     rubric = _read(RUBRIC)
     assert "Referent/baseline sub-rule (#1432)" in rubric
     assert "referent/baseline sub-rule" in _read(SKILL_MD)
+
+
+def test_lens_brief_is_source_led():
+    text = _read(REVIEW_DOC)
+    assert "**source-led (#1437)**" in text
+    assert "first read the `\\input` tree front to back" in text
+    assert "solely to judge page placement (classes 4 and 9)" in text
+    # no longer a PDF-primary, rendered-order read
+    assert "using the source only to confirm where a term first appears" not in text
