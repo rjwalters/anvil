@@ -1,0 +1,212 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Re-centred using Palace at third order and a rim-refined mesh, the design covers",
+   "fix": "Introduce Palace as an independent FE solver and say in one clause what re-centring, third order and rim refinement are (or drop them from the abstract) before using them."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction (bullet 3); Abstract",
+   "evidence_span": "covers the ISM band on the most refined models computed",
+   "fix": "Expand ISM (industrial, scientific, medical) at first use and state that it is 2.400--2.4835 GHz."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction, Table 1; Sec. 3.1",
+   "evidence_span": "The air gap between the board and the absorbing layer (UPML) that stands in for open space",
+   "fix": "Expand UPML (uniaxial perfectly matched layer) once, at first use in Table 1."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction (cost-measure paragraph)",
+   "evidence_span": "we run separable and full-covariance CMA-ES \\citep{hansen2001cmaes,ros2008separable} and NEWUOA",
+   "fix": "The volume guard is used here (\"same problem, objective, start and volume guard\") one paragraph before Table 1 glosses it; add a half-sentence gloss at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 4 (Port-free resonance; Bandwidth against a closed form)",
+   "evidence_span": "finds the patch mode at $2.3408$\\,GHz with $Q = 22.2$",
+   "fix": "Define Q (and Q_t, radiation Q) as quality factors at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Sec. 3.3 (The parameters)",
+   "evidence_span": "ramped in from the feed band and decaying over the $12$\\,mm substrate margin",
+   "fix": "Define 'feed band' (and 'fixture', used from the Fig. 1 caption and the Sec. 4 title) where first used."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Sec. 5 (Setup)",
+   "evidence_span": "$\\lambda = 4 + \\lfloor 3\\ln n\\rfloor$ (14 at $n = 38$)",
+   "fix": "State that n is the number of design parameters before using it."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 2,
+   "section": "Sec. 1, 3.2, 4, 5 (whole paper)",
+   "evidence_span": "a level is a target value for it ... The combined level, which halves the rim to $0.1$\\,mm and refines the slab",
+   "fix": "'Level' means a target |S11| value, a mesh refinement level (L0-L3, 'refinement levels'), and a 'combined level'; reserve 'level' for one sense (e.g. 'target' for S11, 'mesh' for refinement)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 1 Table 1, Sec. 4, Sec. 6",
+   "evidence_span": "Worst-of-band $|S_{11}|$, level ... worst in-band $|S_{11}|$ ... ``Worst''",
+   "fix": "One quantity appears as worst-of-band, worst in-band, worst of the band points and 'Worst'; pick one term."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Abstract; Sec. 4",
+   "evidence_span": "A larger air margin moves the resonance up by $4.3$\\,MHz",
+   "fix": "'Resonance' is used for the dip, the port-free mode, the cavity resonance and the closed-form value; the 4.3 MHz is the dip. Use 'dip' or 'mode' consistently."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Introduction Table 1; Sec. 3",
+   "evidence_span": "Board, substrate, slab ... The $12$\\,mm substrate and ground margin ... air margin",
+   "fix": "'Margin' names the air gap, the substrate/ground overhang, and the lower-edge/band margins; 'board/substrate/slab' are listed as one thing but 'slab' is a part. Disambiguate."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "Introduction (three results) vs. Sections 4-5",
+   "evidence_span": "The forward model's error sits at the patch rim (Section~\\ref{sec:accuracy})",
+   "fix": "Intro lists baselines, then accuracy, then results, but the body runs accuracy (Sec. 4) before baselines (Sec. 5); reorder the list or sections, and add an explicit roadmap sentence."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 5,
+   "section": "Sec. 3.3 (volume guard) and Sec. 5",
+   "evidence_span": "Every adjoint descent reported here ends on the guard, except one intermediate run of the space-mapping chain",
+   "fix": "Results about the space-mapping chain, designs A/C and the 4-parameter rectangle are quoted (Sec. 3.3, Sec. 4 curvature, Sec. 5 last paragraph) before Sec. 6 introduces the chain and designs; move forward or defer."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Sec. 5 (Scaling paragraph)",
+   "evidence_span": "Given the 38-parameter chain's final band shift and feed re-base in advance (Section~\\ref{sec:procedure}), the four-parameter rectangle does reach $-10.33$\\,dB",
+   "fix": "Result depends on an object (band shift, re-basing) defined one section later; move it to Sec. 6 or define first."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 6,
+   "section": "Abstract; Intro bullet 3; Sec. 6 'What is claimed'; Sec. 7; Conclusion",
+   "evidence_span": "we claim coverage on those models only",
+   "fix": "The scope caveat (coverage on three discrete models, not mesh-limit or built antenna, estimated 1 to 13 MHz miss) is restated in full five times; state once in full and cross-reference."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Intro bullet 1; Sec. 5; Conclusion",
+   "evidence_span": "three sizes of one problem show the direction, not a rate",
+   "fix": "'Three sizes show direction not rate' and 'not cross-checked against a reference implementation' (twice in Sec. 5) recur; say each once."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Introduction (Evidence tiers); Related Work",
+   "evidence_span": "A \\emph{bounded} result is a proven two-sided bound; no result in this paper is of that kind.",
+   "fix": "Unprompted denial: defining a tier then declaring it empty (and 'We do not claim a first EM shape adjoint') are claim-then-deny; drop the unused tier or move the denials to Limitations."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Conclusion",
+   "evidence_span": "The design, re-centred using Palace at third order and a rim-refined mesh, with a $1.6$\\,mm probe on a standard board, covers the ISM band at $-10$\\,dB",
+   "fix": "Conclusion repeats the abstract nearly verbatim; replace with synthesis or implications."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract; Sec. 5 results; Conclusion",
+   "evidence_span": "the fastest ... needs $385$ ($11\\times$ ... ) / NEWUOA ... $400$ ($11.4\\times$)",
+   "fix": "11x and 11.4x are both quoted for 'the' 38-parameter ratio; bridge explicitly (385/35 vs 400/35) and state which is headline."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Introduction bullet 3; Abstract; Sec. 6",
+   "evidence_span": "with $1.9$ to $6.6$\\,MHz to spare at $2.400$\\,GHz",
+   "fix": "Margin is 1.9 (abstract), 1.9 to 6.6 (intro) and 6.5/6.6/1.9 (Sec. 6); 6.5 vs 6.6 is not bridged (different models); label which model each belongs to."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Introduction bullet 2 vs. Sec. 4",
+   "evidence_span": "places the matched dip (the frequency of minimum $|S_{11}|$) $16$\\,MHz above the cavity resonance",
+   "fix": "Sec. 4 gives 16.3 MHz for the initial patch and 30.9 MHz for the final design; intro does not say which design 16 refers to."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "Abstract vs. Sec. 6",
+   "evidence_span": "misses the lower band edge by $1$ to $13$\\,MHz",
+   "fix": "Sec. 6 derives 1.1 to 12.6 MHz and rounds; state the rounding once where first quoted."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Section 2 (Related Work) and Introduction Table 1",
+   "evidence_span": "\\section{Related Work}",
+   "fix": "A full-page names table and a long related-work survey sit between the introduction's contributions and the method, delaying the story; move Related Work after Results (or condense) and place Table 1 at its first need."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 3 / Intro (Fig. 2 and Fig. 1 floats)",
+   "evidence_span": "(Figure~\\ref{fig:reading} shows how these quantities are read off a response curve)",
+   "fix": "Source-only check (no PDF tools available): Fig. 2 is cited in the Introduction but floats in Sec. 3.3, likely pages away; move or repeat a pointer. Not PDF-verified."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 6 and Sec. 3.3",
+   "evidence_span": "space-mapping chain",
+   "fix": "The motivation for the design procedure (why the L1 optimum must be re-centred on a finer model) appears only in Sec. 6; add a 'why this exists' sentence in the introduction."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 9,
+   "section": "Sec. 8 'How geode-fem Was Designed and Built'",
+   "evidence_span": "\\section{How geode-fem Was Designed and Built}",
+   "fix": "Authorship/process section between Limitations and Reproducibility interrupts the technical flow; move after Reproducibility or into Acknowledgments."
+  }
+ ]
+}

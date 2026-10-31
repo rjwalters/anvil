@@ -1,0 +1,260 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "4 Palace runs with any of three Jacobians, against 10 to 12 for PRIMA;",
+   "fix": "'Palace run' (cost unit) is defined only in Sec. 6; say in the abstract that a run is one eigensolve at DeviceLayout's discretization."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "against 10 to 12 for PRIMA;",
+   "fix": "PRIMA is first glossed in Related Work (Sec. 2); add a half-clause (derivative-free optimizer used by the example) at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "qubit at $4.477$\\,GHz ($+8.1\\%$)",
+   "fix": "The +8.1% names no baseline; write 'above the published 4.14 GHz'."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "$7.3$--$9.6\\%$ and $2.7$--$3.3\\%$ higher",
+   "fix": "'Higher' than what is unstated (published values, by inference only); name the referent."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "and on the $h/2$ meshes of",
+   "fix": "h, h/2, h/4 mesh levels are used in the Introduction but defined only in Sec. 3.2; define or point forward at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "uniform ladders, in two refinement families",
+   "fix": "'ladder' is never explicitly defined (Sec. 4 uses it as if known); define 'resolution ladder' at first use in the Introduction."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction (contributions)",
+   "evidence_span": "1451$--$1466\\,\\mu$m against the published",
+   "fix": "Symbol c (capacitor_length) is used before Sec. 3.2 defines it; write 'capacitor length c'."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction (contributions)",
+   "evidence_span": "the island capacitance $\\Cisl$ of the unmodified device, without the",
+   "fix": "'Unmodified device' is never defined (unmodified relative to what? the initial design as meshed in the fixture); define it once."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction (contributions)",
+   "evidence_span": "3 or 4 Palace runs with any of three Jacobians",
+   "fix": "'Jacobian' (of the two-frequency map w.r.t. the two design variables) and the three variants are not introduced until Sec. 6."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "by about the charging energy $E_C/h$",
+   "fix": "E_C/h is used in a footnote before its definition in Sec. 3.3; add 'e^2/2C_Sigma' or defer to the pointer only."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 3.2 (Table meshes)",
+   "evidence_span": "DeviceLayout's discretization & every design",
+   "fix": "'DeviceLayout's discretization' appears in the mesh table before Sec. 4 defines it."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 3.2 (Table meshes caption)",
+   "evidence_span": "``step 2'' is the re-optimized design of",
+   "fix": "'step 2' is used before Sec. 6 defines Newton steps; the caption points forward but does not say what step 2 is."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 4 (Fig. 2 caption)",
+   "evidence_span": "(natural box; the grounded bound lowers its low end by about $0.3$\\,MHz)",
+   "fix": "'natural box' vs 'grounded box' are defined only in Sec. 5, after this caption; also 'static route' is used in Sec. 4 before Sec. 5 names it."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 4 (Extrapolation rule)",
+   "evidence_span": "rule was fixed after the static route had",
+   "fix": "'static route' is a Sec. 5 heading term never defined where first used (Intro calls it 'capacitance route')."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 5 / Intro",
+   "evidence_span": "model-dependent and not in the Bounded tier",
+   "fix": "Evidence tiers (Bounded, Model-dependent, Measured, Estimated) are used from the Introduction and Sec. 5 but defined only in Table 1 in the Discussion."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 2,
+   "section": "Sec. 5 / Table 1",
+   "evidence_span": "Measured & Same-mesh agreement",
+   "fix": "The tier 'Measured' labels numerical solves while the same table says 'Not claimed: Agreement with measurement'; the label collides with the ordinary word (experimental measurement). Rename to 'Computed'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Discussion (Table 1)",
+   "evidence_span": "eigenmode-participation (EPR) derivatives",
+   "fix": "EPR is expanded as 'energy-participation ratio' in Sec. 4 and as 'eigenmode-participation' here; use one expansion."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Intro / Sec. 5 / Discussion",
+   "evidence_span": "The brackets are the only bounds, and the cap follows from a bracket",
+   "fix": "The same capacitance interval is called bound, bracket, certificate (Eq. cert), and 'two-sided bound'; the intro defines only bound/cap/band. Pick one term."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Intro / Sec. 4 / Sec. 5",
+   "evidence_span": "The extrapolation rule was chosen after that capacitance route had been",
+   "fix": "Capacitance route, static route, and 'bounded island capacitance' name one thing; likewise fixture / initial design / unmodified device and 'first family' / 'family a'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Intro",
+   "evidence_span": "The second code is GEODE-FEM (``geode-fem'')",
+   "fix": "Solver appears as GEODE-FEM and geode-fem; 'second code' also never states the first code is Palace in that sentence."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "Introduction vs body",
+   "evidence_span": "\\item \\textbf{Same-input-mesh agreement with Palace}, with the",
+   "fix": "Contribution list puts same-mesh agreement last, but the body presents it first (Sec. 4, before the cross-check); reorder the list or the sections. The 'How geode-fem Was Designed and Built' section is also absent from the roadmap."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 4,
+   "section": "Sec. 7 Discussion (Table 1)",
+   "evidence_span": "Table~\\ref{tab:tiers} sorts every",
+   "fix": "Table 1 is cited in the Introduction as the key to every result but is placed in the Discussion (many pages later); move it near the Introduction or cite it as forward reference. (Source-only judgement; no PDF tools were available to confirm page placement of other floats.)"
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 5,
+   "section": "Introduction",
+   "evidence_span": "Palace's adaptive refinement puts the two qubit frequencies $7.0\\%$ and",
+   "fix": "The Introduction reports adaptive-refinement, ladder, extrapolation, capacitance-bound and cap results before the designs, meshes, ladders and circuit model they concern are introduced (Secs. 3-4); introduce objects first or cut results to a pointer."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Sec. 3.3",
+   "evidence_span": "On the fixture $L_s$ and $k$ were fitted on three and",
+   "fix": "Fitted ranges for L_s and k are reported in the model section before the cross-check and ladders that supply the fits are presented."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 6,
+   "section": "Intro / Sec. 4 / Sec. 5 / Table 1 / Conclusion",
+   "evidence_span": "a consistency check rather than a blind prediction",
+   "fix": "The caveat that the rule was fixed after the capacitance route (not a blind prediction) is restated in full in the Introduction, Sec. 4, Sec. 5, Table 1 and the Conclusion; state once and refer back."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Abstract / Intro / Sec. 6 / Discussion / Conclusion",
+   "evidence_span": "geode-fem's shape derivative gives no advantage here",
+   "fix": "The 'no advantage' finding is restated in the abstract, contributions, Sec. 6, Discussion, Table 1 'Not claimed' and Conclusion; the Table 1 'a speed advantage over Palace' denial is unprompted."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Conclusion",
+   "evidence_span": "Palace reproduces the published DeviceLayout.jl SingleTransmon",
+   "fix": "The Conclusion restates the abstract nearly verbatim (7.0%/8.0%, 7.3-9.6%, 19-20%, 3 or 4 vs 10 to 12); shorten to what the reader should do differently."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 6,
+   "section": "Sec. 4",
+   "evidence_span": "the adaptive runs check the qubit estimates only.",
+   "fix": "'The adaptive runs check only the qubit' appears three times in Sec. 4 (Result, Adaptive, resonators sentence)."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 7,
+   "section": "Abstract vs Sec. 4 vs Sec. 7",
+   "evidence_span": "agree on the qubit to $10^{-4}\\,\\%$ on both geometries",
+   "fix": "Same-mesh qubit agreement is quoted as 2x10^-4 % (abstract, Sec. 6, Discussion), 10^-4 % (Intro, Sec. 4), 5x10^-5 % (Sec. 4 text) and 0.00005 (Table) without a bridge; state which comparison each refers to."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract / Intro / Sec. 7",
+   "evidence_span": "The evidence places the $7$--$8\\%$ shift in the discretization",
+   "fix": "The shift is '7.0 and 8.0%' (adaptive), '7.3-9.6%' (estimates), and here '7-8%'; plus abstract '19-20%' vs Sec. 6 '+19.1% and +20.4%' vs '18.8%' for step 2."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Sec. 5 / Sec. 3.3",
+   "evidence_span": "overstates $C_\\Sigma$ by a factor of $1.67$",
+   "fix": "Fixture overstatement is '71.3% of the exact value' / '77.4%' in Sec. 5 but 'factor of 1.67' here, without a bridge between the quantities (C_isl vs C_Sigma, P1 vs tensor)."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "Sec. 4 / Sec. 6",
+   "evidence_span": "they differ by $0.03\\%$ at $h$",
+   "fix": "Resonator code agreement quoted as 0.03%, 0.032%, 0.033% and 'not at all in six decimals' in different places."
+  }
+ ]
+}

@@ -1,0 +1,276 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "the fastest separable CMA-ES, full CMA-ES or NEWUOA run",
+   "fix": "Expand CMA-ES, NEWUOA and L-BFGS at first use (abstract or Sec. 1) in one clause each; they are never expanded anywhere, only cited in Sec. 1 and Sec. 3."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Re-centred using Palace at third order and a rim-refined mesh",
+   "fix": "Say what Palace is (an independent open-source FEM solver), what 'third order' means (element order p) and what 'rim' is, or drop the detail from the abstract."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "A larger air margin moves the resonance up by $4.3$\\,MHz",
+   "fix": "State the baseline (40 mm margin, Sec. 2.1) and the compared value (60/80 mm); also 'resonance' is called 'dip' in the body."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract / Sec. 1 bullet 3",
+   "evidence_span": "covers $2.400$--$2.4835$\\,GHz at $-10$\\,dB",
+   "fix": "'ISM' (Industrial, Scientific, Medical) is never expanded; spell it out at first use in Sec. 1 and give the band's role."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "we estimate that the mesh-limit design misses the lower band edge",
+   "fix": "Define 'mesh limit' (infinite-refinement limit of the discretization) once, at first use; it is never defined explicitly."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract / Sec. 1",
+   "evidence_span": "With 38 shape parameters the adjoint reaches $-9.5$\\,dB",
+   "fix": "|S11| is used from the abstract but only defined in the Fig. 2 caption (power reflected, in dB); define it in the text at first use, with the S-parameter meaning for a non-EM reader."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Sec. 1 (Introduction), captions of Fig. 1 and Fig. 2",
+   "evidence_span": "design~C (filled)",
+   "fix": "Designs A, B, C are used in Fig. 1/Fig. 2 captions, the intro bullets and Sec. 4 but defined only in Sec. 5 (Table 5); give a one-line definition at first use or move Table 'chain' reference forward."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 1",
+   "evidence_span": "on a coarse mesh (L1,\nSection~\\ref{sec:fixture}) where each solve is cheap",
+   "fix": "L1 and P2/L1 are used in Sec. 1 and defined in Sec. 2.1; add a one-clause definition (coarsest optimization mesh, 150,561 unknowns) where first used."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 1",
+   "evidence_span": "the same L-BFGS with a finite-difference gradient",
+   "fix": "'volume guard' is used in Sec. 1 before Table 1 and defined only in Sec. 2.4; add a short gloss at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 1",
+   "evidence_span": "re-centred by a fitted frequency shift",
+   "fix": "Space mapping and the shift delta are used in Sec. 1 and defined in Sec. 5; gloss at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Sec. 2.1",
+   "evidence_span": "The initial antenna is a $38\\times29$\\,mm PEC patch",
+   "fix": "PEC is used here and expanded only in Sec. 2.2; expand at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 4 (Port-free resonance), Sec. 6 (Bandwidth against a closed form)",
+   "evidence_span": "finds the patch mode at $2.3408$\\,GHz with $Q = 22.2$",
+   "fix": "Q, radiation Q, Q_t, VSWR-2 and dBi/front-to-back are used without definition for an ML-for-science audience; add one-line definitions or a short glossary."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Sec. 4 (Absorber)",
+   "evidence_span": "$|S_{11}|$ changes by at\nmost $0.021$",
+   "fix": "Give the unit/referent (linear |S11| change versus which baseline ladder rung)."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Sec. 8",
+   "evidence_span": "a message room the agents share",
+   "fix": "'Squad' (and 'GPT Sol', 'GPT Astra') are undefined; gloss in one clause or drop."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Throughout",
+   "evidence_span": "a level is a target value for it ... the combined level, which halves the rim",
+   "fix": "'level' means the dB target, a mesh refinement level (L1, 'combined level') and 'finest refinement level'; use 'target' for dB and 'mesh' for refinement."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Abstract / Sec. 2-6",
+   "evidence_span": "moves the resonance up by $4.3$\\,MHz",
+   "fix": "One feature is called resonance, dip, patch mode, matched dip, cavity resonance and port-free resonance; fix 'dip' for the S11 minimum and 'mode' for the eigenmode and use them consistently (abstract uses 'resonance')."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 1 / Sec. 2 / Sec. 5-6",
+   "evidence_span": "air margin ... lower-edge margin ... substrate margin",
+   "fix": "'margin' names the air gap, the S11 band-edge slack and the substrate border; rename the band-edge ones 'edge slack' or the air one 'air gap'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 2-6",
+   "evidence_span": "the combined mesh ... geode-fem's finest mesh ... slab $0.30$ plus rim $0.10$\\,mm ... the combined $0.1$\\,mm rim and $0.3$\\,mm slab",
+   "fix": "One mesh has five names across Tables 4, 7 and prose; adopt one label and use it in Table x1, Table verify and text."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 1 / Sec. 2 / Sec. 3",
+   "evidence_span": "the L1 optimization model ... coarse optimization model ... the L1 fixture ... optimization mesh",
+   "fix": "Fixture, mesh, model all name L1; pick 'L1 mesh' for the discretization and 'fixture' only for the physical setup (Table 1 defines the latter)."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 2,
+   "section": "Sec. 2.4 / Sec. 5",
+   "evidence_span": "for a band shifted down by $\\delta$ ... the $-10$\\,dB band",
+   "fix": "'band' means the ISM band, the -10 dB band, the five objective points and the shifted band; qualify each use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 3 / Table 5",
+   "evidence_span": "recorded $190$ driven solves ... the $125$ of Table~\\ref{tab:baselines} ... $125$ recorded (Table 5)",
+   "fix": "Same count 125 means counted solves in one table and recorded solves in another; the caption bridges it but use two distinct terms/columns labelled 'counted' and 'recorded' in both tables."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Sec. 4 (Port-free resonance), Table 3 (cost)",
+   "evidence_span": "and at $2.3991$\\,GHz with $Q = 19.3$ for design~C of\nSection~\\ref{sec:procedure}",
+   "fix": "Design C results (and 'Final descent to design C' row in Table 3) appear in Sec. 3-4 before design C is introduced in Sec. 5; move after Sec. 5 or introduce C earlier."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Sec. 4 (Palace paragraph)",
+   "evidence_span": "on design~A (Section~\\ref{sec:procedure}) the \\PL{} band edges\nagree to $0.7$\\,MHz",
+   "fix": "A forward reference to results for a design not yet introduced; move this sentence to Sec. 5 where design A is defined."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 6,
+   "section": "Abstract, Sec. 1 bullet 3, Sec. 6 'What is claimed', Sec. 9 Conclusion",
+   "evidence_span": "we claim\ncoverage on those models only",
+   "fix": "The coverage-only-on-discrete-models caveat and the '1 to 13 MHz' mesh-limit miss are restated in full four times; state once in Sec. 6 and refer back elsewhere."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Sec. 1 (Evidence tiers; Position of this work)",
+   "evidence_span": "We reserve \\emph{bounded} for a proven two-sided\nbound and use it for no result in this paper",
+   "fix": "Unprompted denial and claim-then-deny ('We do not claim a first EM shape adjoint ... no performance comparison with structured-grid methods'); drop 'bounded' or fold into one sentence."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Sec. 1 bullet 1, Sec. 3 Scaling, Sec. 9",
+   "evidence_span": "three sizes of one problem show\nthe direction, not a rate",
+   "fix": "'Three sizes, no rate' caveat is repeated in the intro, Sec. 3 and the Conclusion; and the Conclusion repeats the abstract nearly verbatim. Keep it once in Sec. 3."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 6,
+   "section": "Sec. 3 Setup and Results",
+   "evidence_span": "The separable CMA-ES is not cross-checked against a reference\nimplementation",
+   "fix": "The not-cross-checked caveat is given in Setup and again in Results; keep one."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Sec. 5 vs Sec. 6",
+   "evidence_span": "$8.7$\\,MHz for design~A's $p = 2$ to $p = 3$ dip shift in Palace",
+   "fix": "Sec. 5 calls 8.7 MHz design A's dip shift, Sec. 6 calls 8.7 MHz design C's lower-edge shift and 9.1 its dip shift, and initial patch is 8.9 or 'about 9' in several places with no bridge; reconcile which design/feature each figure belongs to."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "Sec. 3 Results",
+   "evidence_span": "The\n$\\sigma_0 = 0.5$ CMA-ES and NEWUOA runs had $4$ to $8$ times the adjoint's\nsolves",
+   "fix": "'4 to 8 times' (used/budget ratio) sits beside 11x and 11.4x (solves to target) without saying it is a different ratio; label it 'total solves used'."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 9,
+   "section": "Sec. 1 (Introduction)",
+   "evidence_span": "Table~\\ref{tab:terms} ... Names used in the text",
+   "fix": "A 15-row glossary table plus two figures sit mid-introduction, between the cost measure and the 'Three results' list, delaying the contribution list and Position of this work by about two pages; move the table/figs to Sec. 2 and keep the contribution list and positioning right after the problem statement."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 3 Counting solves",
+   "evidence_span": "The adjoint run's\nrecorded $190$ driven solves",
+   "fix": "One paragraph carries the whole accounting (190, 65, 35, 30, 125, 5 and 190 per gradient); split it or move to a table/footnote."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 4",
+   "evidence_span": "\\paragraph{An FDTD cross-check.}",
+   "fix": "Meep cross-check, port-free eigenmode and Hammerstad comparison sit between the headline baselines and the design procedure and dominate the section; move to an appendix or after the Results for an ML reader."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 9-10 (Acknowledgments, Sec. 8)",
+   "evidence_span": "\\section{How geode-fem Was Designed and Built}",
+   "fix": "A development-process section follows the Conclusion with an 'Acknowledgments' paragraph pointing to it, interrupting the end of the story; place before the references as an appendix or move earlier with a one-line 'why this exists' pointer."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 9,
+   "section": "Sec. 6 (Radiation efficiency, Bandwidth against a closed form)",
+   "evidence_span": "\\paragraph{Bandwidth against a closed form.}",
+   "fix": "Efficiency/gain and closed-form bandwidth paragraphs trail 'What is claimed' and 'Where the descent stopped', after the story has concluded; move before the claim."
+  }
+ ]
+}

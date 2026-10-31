@@ -1,0 +1,212 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Newton's method in\nDeviceLayout's variables meets the example's criterion in 3 or 4 Palace\nruns with any of three Jacobians, against 10 to 12 for PRIMA",
+   "fix": "Abstract uses 'DeviceLayout's variables', 'the example's criterion', 'Jacobians' and 'PRIMA' undefined; define each in a clause (x1,x2 reparametrization; err<1e-4 stopping rule; derivative columns; PRIMA = derivative-free optimizer) or drop the jargon."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "A two-sided bound on the initial design's island\ncapacitance, read through a circuit model, caps the qubit at\n$4.477$\\,GHz ($+8.1\\%$)",
+   "fix": "'+8.1%' has no named referent in the abstract; write '+8.1% above its published 4.14 GHz'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Palace reproduces them within $0.7\\%$ at the\nexample's own discretization",
+   "fix": "'Palace' is first used undefined in the abstract (defined only in Sec. 1); add 'the finite-element solver Palace'. 'discretization-limited' is likewise never defined explicitly."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 1 Introduction",
+   "evidence_span": "on the $h/2$ meshes of\nSection~\\ref{sec:crosscheck} the two codes solve the same discrete problem",
+   "fix": "Mesh label h (and h_F) is used in Sec. 1 but defined only in Sec. 2.1 (Table 1 / family paragraph); gloss 'h (DeviceLayout's own mesh)' at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 2.1 / Table 1",
+   "evidence_span": "DeviceLayout's discretization & every design & DeviceLayout, curved; Palace at $p = 2$",
+   "fix": "Term 'DeviceLayout's discretization' used in Sec. 1, 2.1 and Table 1 but defined only in Sec. 4; define it at first use in Sec. 1 or 2.1."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Fig. 2 caption (Sec. 4)",
+   "evidence_span": "(natural box; the grounded bound lowers its low end by about $0.3$\\,MHz)",
+   "fix": "'natural box' / 'grounded bound' used in caption before the two box models are defined in Sec. 5; add a forward pointer or define in Sec. 2.1."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 4 Result",
+   "evidence_span": "a second refinement family and Palace's adaptive\nrefinement (Figure~\\ref{fig:initialq}; the adaptive runs check only the\nqubit), and a common-limit fit.",
+   "fix": "'common-limit fit' named here but explained only in the last paragraph of the section; define on first mention or reorder."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 1 vs Table 5 (tiers)",
+   "evidence_span": "Five words sort the evidence, and Table~\\ref{tab:tiers}, in the\nDiscussion, sorts every result by the tiers they name.",
+   "fix": "Intro lists five words/tiers (Bounded, Model-dependent, Estimated, Computed) but the table has six rows including 'Consistency' and 'Not claimed'; reconcile count and names."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 1 / Sec. 5 / Discussion",
+   "evidence_span": "The brackets are the only bounds, and the cap follows from a bracket\nonly under a circuit model.",
+   "fix": "'bound', 'bracket', 'two-sided bound' and 'cap' vary for the capacitance result; pick one noun and use 'cap' only for the frequency limit."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 1 / Sec. 5 / Table 5",
+   "evidence_span": "the extrapolation rule ... agreement is a consistency check ... that capacitance route ... The two routes agree",
+   "fix": "'static route', 'capacitance route', 'two routes' and 'circuit-model route' name one thing; fix on 'static route'."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 2,
+   "section": "Sec. 3 vs Table 5",
+   "evidence_span": "the energy-participation ratio of the junction ... eigenmode-participation (EPR) derivatives",
+   "fix": "EPR expanded two ways (energy-participation vs eigenmode-participation); use one."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 1 and Table 5",
+   "evidence_span": "'computed' value ... (\\emph{Computed}) ... \\emph{estimate}",
+   "fix": "Tier labels 'Computed' and 'Estimated' collide with ordinary uses ('computed with Palace', 'an estimate of the effect of the box model', 'the Palace estimates' in Sec. 5) so a reader cannot tell tier from plain word; reserve the tier words or italicize consistently."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 2,
+   "section": "throughout",
+   "evidence_span": "DeviceLayout.jl ... DeviceLayout ... DL",
+   "fix": "Package name appears as DeviceLayout.jl, DeviceLayout and DL; fix one short form."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "Sec. 1 contributions vs body",
+   "evidence_span": "\\item \\textbf{Same-input-mesh agreement with Palace}",
+   "fix": "Contribution list puts same-mesh agreement last but it is Sec. 3, ahead of the cross-check (Sec. 4), bounds (Sec. 5), re-optimization (Sec. 6); reorder the list to match, and add an explicit section roadmap sentence."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Sec. 4 Extrapolation rule / Table 3 footnote",
+   "evidence_span": "For the initial qubit,\nthe circuit-model cap of Section~\\ref{sec:static} trims it at\n$4.477$\\,GHz.",
+   "fix": "The cap, circuit model and static route are used as results in Sec. 4 before Sec. 5 introduces the capacitance bound; move the trimming discussion after Sec. 5 or give a one-line preview."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Sec. 1 Introduction",
+   "evidence_span": "a\ntwo-sided bound on the island capacitance, read through a circuit model\n(the \\emph{static route}, Section~\\ref{sec:static}), is consistent with\nthat shift and caps the initial qubit",
+   "fix": "Intro states results about the static route, extrapolation rule and circuit before the island, ladders or objects are introduced; trim to one sentence of preview."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 6,
+   "section": "Sec. 1, 4, 5, Table 5",
+   "evidence_span": "The extrapolation\nrule was chosen after that capacitance route had been computed, so their\nagreement is a consistency check, not a blind prediction.",
+   "fix": "The 'rule fixed after static route / not a blind prediction' caveat appears in full in Sec. 1, Sec. 4, Sec. 5 (via 'a consistency check') and Table 5; state it once (Sec. 1) and point to it."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Abstract, Sec. 4, 6, Conclusion",
+   "evidence_span": "which lean low",
+   "fix": "'estimates lean low' is re-argued in abstract, Sec. 4, Sec. 6 and Conclusion; and 'cap is model-dependent, not a bound' restated in Sec. 1, 5, Table 5; consolidate."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 6,
+   "section": "Conclusion",
+   "evidence_span": "Palace reproduces the published DeviceLayout.jl SingleTransmon\nfrequencies at the example's own discretization, and that discretization\nreads the qubit frequencies low: adaptive runs put them $7.0\\%$ and $8.0\\%$",
+   "fix": "Conclusion restates the abstract nearly verbatim (same figures, same sentences on PRIMA/Newton); shorten and add what the reader should do next."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Sec. 3 / Sec. 4",
+   "evidence_span": "Every\ncomputed series rises under refinement (Figure~\\ref{fig:crosscheck}); this\nis an observation, not a guarantee.",
+   "fix": "Unprompted denials ('not a guarantee', 'not a bound', 'Not claimed' row, 'no advantage here' x5) pad the text; keep one limitation statement in the Discussion."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract/Sec. 4/Discussion",
+   "evidence_span": "The evidence places the $7$--$8\\%$ shift in the discretization",
+   "fix": "Qubit shift quoted as 7.0%/8.0%, 7.3--9.6%, 7.3--8.0%, 8%, and '7--8%' with no bridge; use one headline range and say which (adaptive vs extrapolated)."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "Abstract, Sec. 4, Sec. 1",
+   "evidence_span": "within $0.7\\%$ ... $0.68\\%$ and $0.40\\%$ ... $0.34$--$0.68\\%$",
+   "fix": "Reproduction gap given as 0.7%, 0.68/0.40, 0.34-0.68 and agreement as 2e-4%, 1e-4%, 10^-4%; unify rounding or bridge."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 4,
+   "section": "Table 5 (tiers)",
+   "evidence_span": "Table~\\ref{tab:tiers}, in the\nDiscussion",
+   "fix": "Table is cited from Sec. 1 and Sec. 5 but printed in the Discussion, whole sections away; cite it only in the Discussion or move a short version to the intro."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Discussion",
+   "evidence_span": "A companion paper on adjoint shape\noptimization of a conformal patch antenna",
+   "fix": "Antenna-paper numbers (38 parameters, CMA-ES, dB targets) interrupt the transmon discussion; compress to one sentence or move to a footnote."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 1 Introduction",
+   "evidence_span": "The published frequencies come from one discretization, and the example's\nauthors say what that implies.",
+   "fix": "The introduction's long paragraph mixes motivation, the main result, extrapolation, static route and honesty caveats; split and put the 'why this matters' sentence first."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 9,
+   "section": "Related Work / Author Contributions",
+   "evidence_span": "\\section{Related Work}",
+   "fix": "Related Work sits between the contribution list and the setup, delaying the story; author-contributions/how built section follows Reproducibility but Sec. 2.3 depends on it; consider moving Related Work after the Discussion."
+  }
+ ]
+}

@@ -1,0 +1,292 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "by geometric means of 3.10 and 7.79 at the primary targets",
+   "fix": "State the referent and direction: SLSQP-adjoint reaches the target 3.10 and 7.79 times sooner (ratio of COBYQA time to SLSQP time); 'beat ... by' has no unit or baseline."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "COBYQA against finite-difference SLSQP contributes the remaining 1.2 to 1.8 with 8 parameters and 1.9 to 2.9 with 18",
+   "fix": "Say 'a further factor of' and name the quantity (time to target) and that it is the optimizer factor; 'remaining' has no stated whole."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "25 of the main study's 111 and 10 in each ablation",
+   "fix": "Define 'target crossing' and why 111 (not 25) is the population, or drop the 111 from the abstract."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract / Introduction",
+   "evidence_span": "SLSQP with adjoint gradients beat the derivative-free COBYQA",
+   "fix": "Expand SLSQP and COBYQA (sequential least-squares quadratic programming; constrained optimization by quadratic approximation) at first use in the abstract/introduction; they are only cited in Section Matched optimization study."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "our GEODE finite-element code",
+   "fix": "Give one clause on what GEODE is (differentiable FE code) and cite it; the name is never expanded or described."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "the gradient factor is 1.71--2.47 with eight parameters and 2.68--4.10 with 18 ... crosses each primary target",
+   "fix": "'Primary target' is used here but defined only in Section Matched optimization study (Common validation and credit); add a parenthetical definition (T90 in S8, T99 in S18)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "1.71--2.47 with eight parameters and 2.68--4.10 with 18",
+   "fix": "Abstract quotes 2.70 and 4.11 (five starts); introduction quotes the four-start values without saying so. State the start set where first quoted."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "truncating harmonic coupling at the reference's order 45 changes loaded ripple by 7--9% and cogging by 59% on the finest mesh",
+   "fix": "Cogging, harmonic coupling, order, and the baseline (relative to conforming coupling) are all undefined here; name the baseline and gloss the terms, or defer the numbers."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "coarse solves ... validated designs ... coarse forwards",
+   "fix": "'Coarse forward' and 'validation forward' are used in the introduction (Fig. decomp) but defined only in the protocol; define at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Motor model, Field model",
+   "evidence_span": "on the two coarsest meshes, L0 and L1 (Section~\\ref{sec:meshes})",
+   "fix": "L0--L3 are used (and S8, S18 in Fig. 1 text) before their definition in Meshes and statistics (and Optimization); move the mesh-level definition before first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Design-gradient verification",
+   "evidence_span": "nine geometric lengths (MAG, MH, MW, SW1--SW4, SD1 and Sr1), axial length, operating angle and radial scale",
+   "fix": "SD1 is never defined (Fig. 1 caption defines the others); also 'radial scale' is not defined anywhere in the body."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Motor model",
+   "evidence_span": "a tabulated M27 iron law",
+   "fix": "M27 is never explained (steel grade); add a clause."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Design-gradient verification",
+   "evidence_span": "box-scaled vectors",
+   "fix": "'Box-scaled' is defined only in the appendix ('unit box'); define at use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Matched optimization study, Protocol",
+   "evidence_span": "the coarser L0 for methods D and E ... C's radial-basis surrogate",
+   "fix": "Methods A--E are referenced before the Methods paragraph and table introduce them; move Table methods or a one-line method key earlier."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Matched optimization study, Protocol",
+   "evidence_span": "normalized construction margins $c_i-0.05\\geq0$",
+   "fix": "c_i and 'construction margins' are never defined in the body; say what they measure."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Post-hoc ablations",
+   "evidence_span": "on the base point's mesh generation",
+   "fix": "'Mesh generation' (and 'Newton-cold') is used without definition; replace with 'the mesh produced by the same mesh-motion step' or define."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "truncated ... Table~\\ref{tab:decomp} gives the main result",
+   "fix": "Table decomp is cited in the introduction as the main result but is defined with its ratio convention (B/FD-warm, FD-warm/A') only in Section Post-hoc ablations; state the ratio direction in the intro."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Throughout",
+   "evidence_span": "reference",
+   "fix": "'The reference' names the published paper, its code, its saved outputs, its optimizer, its mesh ('moved reference mesh') and its initial design; use distinct names (published study, saved outputs, reference optimizer)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Motor model / Protocol",
+   "evidence_span": "coupling ... interface ... harmonic order ... order 45",
+   "fix": "One concept appears as interface model, coupling, harmonic coupling, interface order, N_h and 'order'; pick 'interface order' and one model name."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Protocol / Results",
+   "evidence_span": "coarse forward / coarse evaluation / coarse simulation; validation forward / validation simulation / validation",
+   "fix": "Forward, evaluation, simulation and solve are used interchangeably; also 'forward' means a 60-solve evaluation in one study and a 10-angle sweep in another (flagged but not renamed)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Throughout",
+   "evidence_span": "A, B, T, L, S",
+   "fix": "Symbols collide with method labels and quantities: A (method) vs vector potential A_z, B (method) vs flux density B, T_x (target) vs torque T, L (axial length) vs L0--L3 levels; rename the method or level labels."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Post-hoc ablations",
+   "evidence_span": "We call the methods of an ablation its arms",
+   "fix": "'Arm', 'method', 'baseline', 'competitor', 'control' all name the same objects; settle on one."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "Introduction",
+   "evidence_span": "Two checks make these measurements interpretable ... (Section~\\ref{sec:model}) ... (Section~\\ref{sec:gradients})",
+   "fix": "Introduction presents the optimization study and ablations first, then the model and gradient checks; the body runs model, gradients, optimization, ablations. Reorder the roadmap to match the body or say 'first/second' in body order."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Related work",
+   "evidence_span": "the counterpart of our eight-parameter SLSQP-against-COBYQA ratios of 3.10--3.25",
+   "fix": "The paper's own results are quoted in Related work before the study, S8 or the ratio convention are introduced; defer to Discussion."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Matched optimization study, Results",
+   "evidence_span": "Over the 111 target crossings attained in both repeats",
+   "fix": "'Target crossing' counts are discussed before time-to-target results and the target set are presented in the results; move after Time to target."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Motor model, Related work, Discussion",
+   "evidence_span": "the comparison is between numerical models, not with a measured motor",
+   "fix": "The not-a-measured-motor caveat appears three times (Related work, Interface order section, Limits); keep one full statement."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Introduction, Post-hoc ablations, Gradient factor, Discussion",
+   "evidence_span": "one core per run ... solved serially ... the time ratio is also a ratio of compute",
+   "fix": "Single-core/serial-stencil caveat is stated in the abstract, introduction, ablation section and discussion in full; state once and refer."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Protocol, Results, Discussion",
+   "evidence_span": "this validate-every-incumbent rule costs methods that change incumbents often the most",
+   "fix": "The validation-compresses-ratios caveat is restated in Protocol, Validation charges, and Discussion; consolidate."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Conclusion",
+   "evidence_span": "The gradient factor, adjoint against forward differences in the same SLSQP, was 1.71 and 2.70 against warm-started stencils and 2.47 and 4.11 against cold ones",
+   "fix": "Conclusion paragraph repeats the abstract's numbers and structure nearly verbatim; state implication or open items instead."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Design-gradient verification / Optimization",
+   "evidence_span": "the two studies' cost ratios are not interchangeable",
+   "fix": "Two spaces differing in mesh-motion map is caveated at least twice (S8/S18 contrast, 'Two spaces do not determine a rate'); merge."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract vs Introduction vs Results",
+   "evidence_span": "1.2 to 1.8 ... 1.9 to 2.9 / 1.22--1.76 and 1.91--2.92",
+   "fix": "Same ranges at two roundings; use one precision throughout."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Results, Time to target / Validation charges",
+   "evidence_span": "E/A ratio is 0.62--0.79 and D/B is 0.45--0.56 ... overall saving is only 1.3--2.2 times",
+   "fix": "Ratio direction flips to the reciprocal with no bridge sentence; give the reciprocals (1.3--1.6, 1.8--2.2) consistently."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Results, Final refinement / Gradient accuracy",
+   "evidence_span": "the smallest remaining margin is 1.2% of the target ... with at least 15% margin",
+   "fix": "Margins for the main study and ablations differ without comparison; note why."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Related work",
+   "evidence_span": "On an eight-variable wing twist problem, \\citet{yu2018influence} found ...",
+   "fix": "Related work is a long single block placed before the motor, with its own mid-story comparison to the paper's results; split or trim, move the comparisons to Discussion."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Matched optimization study, Results",
+   "evidence_span": "Validation charges",
+   "fix": "One paragraph carries the validation share, the excluded-validation ratios, the D comparison and the near-tie; split into two paragraphs with a lead sentence."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Discussion",
+   "evidence_span": "Cheap, verified gradients also make methods affordable that this study did not test.",
+   "fix": "Future-work paragraph follows the limits and precedes the conclusion, interrupting the transfer/limits arc; move after limits or into the conclusion."
+  }
+ ]
+}
