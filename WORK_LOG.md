@@ -14,6 +14,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 ### 2026-10-30
 
 - **PR #1434**: fix(paper): brief reader-flow lens with PDF and source, add referent/baseline sub-rule
+- **Issue #1432** (closed): reader-flow lens: recall splits by input mode (source read misses float placement, PDF read misses define-before-use); the abstract-baseline item is never surfaced
 - **Issue #1419** (closed): paper-review reader-flow lens: finding count does not fall on flow-revised versions; define a recurrence-based measure
 - **Issue #1418** (closed): paper-review reader-flow lens: recall gaps on #1396 acceptance (glossary→finding, narrative-placement class)
 
