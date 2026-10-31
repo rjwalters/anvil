@@ -11,6 +11,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-10-31
+
+- **PR #1438**: fix: make reader-flow lens brief source-led
+
 ### 2026-10-30
 
 - **PR #1434**: fix(paper): brief reader-flow lens with PDF and source, add referent/baseline sub-rule
