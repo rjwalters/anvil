@@ -1,0 +1,404 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Adaptive Palace runs, still rising, put the qubit frequencies $7.0\\%$ and $8.0\\%$ above their published values",
+   "fix": "Say which two designs (initial, final) the 7.0% and 8.0% belong to."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "caps the qubit at $4.477$\\,GHz ($+8.1\\%$)",
+   "fix": "Name the baseline: 8.1% above the published 4.14 GHz initial qubit."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Palace reproduces them within $0.7\\%$",
+   "fix": "State that 0.7% is Palace at DeviceLayout's discretization versus the published values."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "the $3.0$/$4.0$\\,GHz design needs a capacitor $19$--$20\\%$ longer than published",
+   "fix": "Define the 3.0/4.0 GHz design (targets) and say the capacitor is the island, versus the published 1217.678 um."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract / Introduction",
+   "evidence_span": "two refinement families put the qubit and resonator frequencies $7.3$--$9.6\\%$ and $2.7$--$3.3\\%$ higher",
+   "fix": "Name the baseline (published values), and define 'refinement family' before the abstract uses it (Intro defines it only later)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "geode-fem, an independent solver, cross-checks Palace: on shared meshes the two agree to $2\\times10^{-4}\\%$ on the qubit and $0.03\\%$ on the resonator",
+   "fix": "Say what the agreement figure compares (relative frequency difference, same input mesh)."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Newton's method in DeviceLayout's variables meets the example's criterion in 3 or 4 Palace runs with any of three Jacobians, against 10 to 12 for PRIMA",
+   "fix": "Gloss 'Palace run', 'Jacobian', 'PRIMA' and 'the example's criterion' on first use; 'Palace run' is defined only in Section 7."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "computed with the Palace solver on one mesh",
+   "fix": "Palace and 'discretization-limited' are used as terms of art in the abstract; define discretization-limited in a clause."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "Three kinds of interval appear, and Table~\\ref{tab:tiers} sorts every result by them: a \\emph{bound}",
+   "fix": "Table 1 (tiers) is cited here but sits in the Discussion; also its tier names (Bounded/Model-dependent/Measured/Estimated) differ from the three kinds named here; state the mapping."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "Our main result is that the published frequencies are discretization-limited.",
+   "fix": "Define 'discretization-limited' (error from mesh/element order, not solver) at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "every uniform level we could afford lies below those estimates",
+   "fix": "'Uniform level' and 'ladder' appear before being defined (Section 3.2/5); add a one-line gloss."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction / Section 5",
+   "evidence_span": "reproduces every level of those ladders it can reach, the two coarsest meshes with linear elements",
+   "fix": "'Ladder' used for several paragraphs before defined (first defined implicitly in 'The ladder and its rate', Section 5); define at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "The second code is GEODE-FEM (``geode-fem''), a Rust finite-element solver",
+   "fix": "geode-fem is named in the abstract and Intro paragraph 3 before this introduction sentence; 'the second code' presupposes Palace as 'first'. Introduce geode-fem before using it."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "the $h/2$ meshes of Section~\\ref{sec:crosscheck}",
+   "fix": "h, h/2, h/4, h_F first used before Table 2 defines them (Section 3.2); define the mesh-level notation or point forward."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "the fixture",
+   "fix": "'fixture' used in Section 3 figure caption and Intro-adjacent text before its definition (Section 3.2 'The fixture is a straight-sided mesh'); define at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.1",
+   "evidence_span": "$[n_{\\mathrm{elem}},k,k]$ tensor operations on Burn",
+   "fix": "Burn first mentioned in Intro with citation only; fine, but 'whiteroom' (Section 8) and 'Squad' undefined; gloss."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.2",
+   "evidence_span": "Where a scalar model is used it is the trace average",
+   "fix": "'Scalar model'/'tensor' first appear here without saying they are the two permittivity models; the capacitance results rely on this."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Section 3.1 / 3.3",
+   "evidence_span": "The two codes share the formulation, the lumped junction port",
+   "fix": "'Lumped junction port' / 'junction term' used in Intro and 3.1 before Section 3.3 defines the junction and K_port; add forward pointer."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.3",
+   "evidence_span": "extrapolated, they give fitted ranges of $0.113$--$0.125$\\,nH and $0.0227$--$0.0310$, which are estimates",
+   "fix": "Second range (k) lacks units/label; say k is dimensionless."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.3 / Table 5",
+   "evidence_span": "Bare} is the qubit's own LC frequency",
+   "fix": "'Bare' is defined here but first used in 3.3's own prior sentence ('a bare qubit'); fine, but 'dressed' is used in Section 6 and Table 6; ok. Minor: define Ls and k before Figure 1d caption."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 4",
+   "evidence_span": "port participation $0.9942$ in geode-fem and port EPR $0.99424$ in Palace",
+   "fix": "'Port participation' vs 'port EPR' vs 'eigenmode-participation (EPR)' defined only afterward; expand EPR at first use (also Table 1 'EPR')."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 5",
+   "evidence_span": "Every computed series rises under refinement",
+   "fix": "'Series' and 'level' are undefined; 'resolution ladder' used in Fig 2 caption."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 5 / Discussion",
+   "evidence_span": "Bounded tier",
+   "fix": "'Bounded tier' used in Section 6 ('not in the Bounded tier') before Table 1 (Discussion) is read; define tiers where introduced."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 6",
+   "evidence_span": "The fixture itself overstates the tensor $\\Cisl$ by at least $56.92$\\,fF, which is at least $71.3\\%$ of the exact value",
+   "fix": "Percentage's referent ('the exact value' = lower bound 79.56 fF) is implicit; name it."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 7",
+   "evidence_span": "the $p = 1$ derivative on $h$, $\\partial f_h/\\partial c$, scaled by the ratio $S = F/f_h$",
+   "fix": "F is introduced one sentence earlier; S and delta used in Table 3 caption before delta is explained (delta defined in 'total_length column'). Fine order-wise but 'rhobeg', 'err' defined only in captions."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 7",
+   "evidence_span": "\\texttt{rhobeg} $= 0.2$, its initial trust-region radius",
+   "fix": "rhobeg first appears in the Table 3 caption, which precedes? text mention; define in the text before the table."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 8",
+   "evidence_span": "whose four layers, L1--L4, restate Palace's cited source as pure functions",
+   "fix": "'whiteroom', 'Squad', 'Loom' unexplained to the declared audience; gloss each or cut."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Whole paper",
+   "evidence_span": "``island'' / ``qubit island'' / ``capacitor'' / \\texttt{capacitor\\_length} / ``the capacitor''",
+   "fix": "Settle on one name (island) for the object and tie 'capacitor length c' to it once."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Whole paper",
+   "evidence_span": "\"Bounded\" / ``bound'' / ``bracket'' / ``cap'' / ``band'' / ``range''",
+   "fix": "Introduction defines bound/cap/band but text uses bracket, range and estimate interchangeably (e.g. 'family bracket', 'static-route qubit range'); pick one term per kind."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Whole paper",
+   "evidence_span": "``DeviceLayout's discretization'' / ``DL'' / ``published discretization'' / ``DeviceLayout mesh $h$''",
+   "fix": "'DL' (Table 4) and 'DeviceLayout h' (Table 2) name different things yet read as the same; disambiguate."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sections 4-6",
+   "evidence_span": "``fixture'' / ``unmodified device'' / ``initial geometry'' / ``initial design''",
+   "fix": "Four names for related objects; state once that the fixture is the initial design's coarse mesh and use one name for the geometry."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Whole paper",
+   "evidence_span": "``tier'' (Table 1) vs the Intro's ``three kinds of interval''",
+   "fix": "A tier/label collides with ordinary word 'band' (extrapolation range vs. frequency band) and 'cap'; rename or flag."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Section 5/7",
+   "evidence_span": "``estimate'' / ``extrapolated frequencies'' / ``extrapolated estimate'' / ``step 2''",
+   "fix": "Use one phrase for the extrapolated value."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 3,
+   "section": "Introduction",
+   "evidence_span": "Section~\\ref{sec:discussion} explains why this agreement places the shift in the mesh",
+   "fix": "Roadmap is by scattered forward references; contributions list order (study, bounds, re-optimization, agreement) differs from body order (agreement Section 4 first). Reorder contributions or add a one-paragraph roadmap."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "Introduction contributions",
+   "evidence_span": "\\textbf{Same-input-mesh agreement with Palace}, with the",
+   "fix": "Listed last but is Section 4, the first results section."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Introduction",
+   "evidence_span": "Palace's adaptive refinement puts the two qubit frequencies $7.0\\%$ and $8.0\\%$ above their published values",
+   "fix": "Headline results are stated in the Introduction before the device, meshes, designs and refinement are introduced (Sections 3-5); add a short setup or defer numbers."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Section 4",
+   "evidence_span": "Palace's own refinements of it move the qubit from $3.4527$ to $3.9528$\\,GHz at $h_F/2$",
+   "fix": "Results about refinement of the fixture discussed before the ladders and the study's objects are introduced."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 6,
+   "section": "Abstract/Intro/Conclusion",
+   "evidence_span": "Palace's adaptive refinement puts the two qubit frequencies $7.0\\%$ and $8.0\\%$ above their published values without extrapolation",
+   "fix": "Conclusion paragraph restates the abstract nearly verbatim (7.0/8.0%, 7.3--9.6%, 19--20%, 3 or 4 vs 10 to 12); shorten Conclusion to the lesson."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Intro, Sec 5, Sec 6, Table 1, Conclusion",
+   "evidence_span": "a consistency check, not a blind prediction",
+   "fix": "The caveat that the rule was fixed after the static route is restated in Intro, Section 5, Section 6, Table 1 and Conclusion; keep one full statement plus pointers."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Sections 5, 6, Discussion",
+   "evidence_span": "The band is an extrapolation range, not a bound.",
+   "fix": "Band-not-a-bound caveat repeated in Intro, Section 5, Section 6, Table 1 and Discussion."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Section 7",
+   "evidence_span": "geode-fem's shape derivative is exact but gives no advantage on this two-parameter problem",
+   "fix": "'No advantage' stated in abstract, Intro, Section 7, Table 1 'Not claimed', Discussion and Conclusion; an unprompted denial in abstract."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract vs Section 5",
+   "evidence_span": "$7.3$--$9.6\\%$ ... $2.7$--$3.3\\%$ higher",
+   "fix": "Abstract's 7.3--9.6% mixes initial (7.3/8.0) and final (8.7/9.6) qubits; Section 5 quotes 7.3--8.0% initial and 8.7--9.6% final, and the Intro contribution says 7.3--9.6% 'above their published values' while Section 5 'Result' says 7.3% and 8.7%; add bridge."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Intro vs Section 6",
+   "evidence_span": "$[79.56, 79.77]$\\,fF with the box walls held at ground",
+   "fix": "Contributions says 79.77 grounded; Section 6 text and Table 1 carry both 79.76 (natural) and 79.77 (grounded) with no summary note."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Section 5 vs Table 4",
+   "evidence_span": "already lie $4.2\\%$ and $4.7\\%$ above the published qubit frequencies",
+   "fix": "Text gives the highest uniform level as 4.2% and 4.7%; Table 4 lists only adaptive and extrapolated percentages, so the figure cannot be traced; the 0.68%/0.40% vs 0.38%/0.34% vs '0.34--0.68%' also vary in phrasing."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Section 7 vs abstract",
+   "evidence_span": "$c \\approx 1451$--$1466\\,\\mu$m against the published $1217.678\\,\\mu$m",
+   "fix": "Percent longer given as 19--20% (abstract), 19.1/20.4% (Sec 7), 18.8% (step 2), 17 to 39% (bands) and +19 to +20 elsewhere; add a one-line bridge table."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Introduction vs Section 5",
+   "evidence_span": "$0.7\\%$",
+   "fix": "Reproduction gap 0.7% (abstract) vs '0.34--0.68%' (Section 5) vs 'at most 0.7%'; unify rounding."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Section 8",
+   "evidence_span": "How geode-fem Was Designed and Built",
+   "fix": "A development/authorship/AI-agent section interrupts the story between the re-optimization results and the Discussion; move to after Conclusion (with Acknowledgments) or an appendix."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Section 2",
+   "evidence_span": "Related Work",
+   "fix": "Related work (including bound-method novelty claims and a web-search note) comes before the setup and delays the reader from the result; consider after Discussion or trim."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Introduction",
+   "evidence_span": "Palace \\citep{palace}, an MFEM-based finite-element solver",
+   "fix": "Introduction paragraph 1 does not state why a reader needs a cross-check in one sentence (why this exists); the motivation appears only at paragraph 3. Add a purpose sentence at the opening."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Discussion",
+   "evidence_span": "Derivatives pay off in other regimes.",
+   "fix": "Companion-paper antenna numbers (38 parameters, CMA-ES, dB targets) interrupt the Discussion with unfamiliar objects; cut to one sentence."
+  }
+ ]
+}

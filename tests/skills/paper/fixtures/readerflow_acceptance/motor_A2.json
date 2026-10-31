@@ -1,0 +1,332 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "7.79 at the primary targets, 90\\% and 99\\% reductions of the ripple",
+   "fix": "State that the 90%/99% reductions are of the initial design's objective F_0, and that 3.10 and 7.79 are geometric-mean time-to-target ratios (COBYQA time / SLSQP time)."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "paired comparisons where both succeeded, by geometric means of 3.10 and",
+   "fix": "Name the quantity being averaged (ratio of charged wall time to the target) and what 'succeeded' means (attained the target)."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "coarse forwards bound the end-to-end gain. Every target crossing",
+   "fix": "Define 'forward' (one 60-solve objective evaluation) and 'target crossing' in the abstract or avoid the terms; both are first defined in Section 4 (cost vocabulary, 'A run's target crossing')."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "than warm-started stencils, and 2.47 and 4.11 times sooner",
+   "fix": "Say in a clause what a stencil is (the perturbed solves of a finite-difference gradient); defined only in Section 4 ('stencil solve')."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "selected for final checks, 25 of the main study's 111 and 10 in each",
+   "fix": "Give the denominator's referent (111 = target crossings attained in the main study) where the number first appears."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "derivative-free COBYQA at the same coarse resolution",
+   "fix": "SLSQP and COBYQA are never expanded or characterised beyond a citation in Section 4; add one-clause descriptions (sequential quadratic programming; model-based derivative-free)."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "in our GEODE finite-element code",
+   "fix": "Expand or one-line describe GEODE on first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "1 Introduction",
+   "evidence_span": "at the reference's order 45 changes loaded ripple by 7--9\\% and cogging by",
+   "fix": "Name the baseline (the conforming interface), and define 'order' (harmonic interface order) and 'cogging' (zero-current ripple) here; these are defined only in Sections 3.2 and 3.3."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "1 Introduction",
+   "evidence_span": "Taylor checks, yet verified ripple sensitivities differ between",
+   "fix": "Gloss 'Taylor check' (quadratic remainder test) or point to Section 6.2; first defined there."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "3.2 Field model",
+   "evidence_span": "the conforming Arkkio torques within $4.1\\times10^{-9}$\\,N\\,m on L0 and",
+   "fix": "L0..L3 are defined in Section 3.3; move the mesh-level definition before first use or add a forward pointer."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "3.2 Field model",
+   "evidence_span": "a tabulated M27 iron",
+   "fix": "State what M27 is (electrical-steel grade) on first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "4 Protocol",
+   "evidence_span": "the L1 mesh (the coarser L0 for methods D and E)",
+   "fix": "Methods A-E (and C's surrogate on the next lines) are used before the Methods paragraph and Table 1 define them; reorder or add 'see Table 1'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "4 Protocol (Table paramsets)",
+   "evidence_span": "SD1, axial length, $\\phi_0$, radial scale",
+   "fix": "SD1 is never defined (Fig. 1 lists only MAG, MH, MW, SW1-SW4, Sr1); define it in the Fig. 1 caption or the table note."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "4 Results",
+   "evidence_span": "coarse resolution. At L1 (B/A), the geometric-mean ratio is 3.10--3.25 in",
+   "fix": "State the ratio convention (numerator time / denominator time; >1 favours the denominator) in the text at first use; it appears only in an appendix table caption."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "4 Results",
+   "evidence_span": "full-current mean floor, so the mean constraint is active there",
+   "fix": "'Mean floor' is used as a term but the constraint is introduced unnamed; name it at the constraint's definition (Design spaces and constraints)."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "7 Discussion",
+   "evidence_span": "CMA-ES and other population or",
+   "fix": "Expand CMA-ES (and BFGS, NOMAD, NSGA2 elsewhere) or give a short descriptor on first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 2,
+   "section": "Abstract vs 4 Results",
+   "evidence_span": "All 45 finite optimizer-contrast pairs (by space, target and start) favor",
+   "fix": "'Paired comparisons/pairs' means three things: 45-of-50 contrast cells (abstract), 50 repeat pairs ('In all 50 pairs, the sequences...'), and 25 D/A pairs. Use distinct names (e.g. 'start-target cells' vs 'repeat pairs')."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "3.3 Meshes and statistics",
+   "evidence_span": "The squared-ripple objective is",
+   "fix": "'Ripple' names both sigma_T and F (squared); the abstract's '90% reduction of the ripple objective' is a reduction of F, not of ripple. Use 'ripple' for sigma_T only and 'squared-ripple objective' for F throughout."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "4 Protocol / Table 1",
+   "evidence_span": "Optimization mesh",
+   "fix": "Same object is called 'coarse simulation', 'optimization mesh', 'L1 coarse', and 'coarse forward'; pick one term and map it once."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "A: Gradient Cost / 6 and Appendix F",
+   "evidence_span": "Candidate validation",
+   "fix": "'Validation' means the L2/order-93 scoring simulation in Section 4 but also reference/benchmark validation (Fig. validation caption) and candidate checks in the appendices; reserve 'validation' for the Section 4 meaning ('verification', 'check' elsewhere)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "6 Gradient verification",
+   "evidence_span": "one ten-angle sweep at full current on a multithreaded host, not the",
+   "fix": "'Forward' is redefined (ten-angle sweep vs the 60-solve forward of Section 4); use a different word (sweep) in Section 6."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "3.1 Geometry",
+   "evidence_span": "The reference describes the geometry as NURBS patches, spline pieces",
+   "fix": "'Reference' denotes the published code, its saved arrays, its optimizer and its meshes; qualify (published code / saved arrays / reference optimizer)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Appendix F / 3.4",
+   "evidence_span": "the transmitted order from 45 to 93 multiplies Opt120's $F$ by 3.6, from",
+   "fix": "One concept appears as 'interface order', 'harmonic order', 'transmitted order', N_h, 'coupling order'; fix one name."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 2,
+   "section": "4 Results",
+   "evidence_span": "the inexpensive derivative-free physical",
+   "fix": "D is called 'physical competitor', 'coarse competitor D', 'Method D'; 'physical' also collides with 'reduced physical model' in Section 7. Use one label."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "1 Introduction",
+   "evidence_span": "Two checks make these measurements interpretable.",
+   "fix": "Intro presents the optimization study and ablations first and the model/gradient checks second, but the body opens with Motor model (Section 3) and puts gradient verification last; add an explicit roadmap or reorder."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "1 Introduction",
+   "evidence_span": "stencil solved serially, the gradient factor is 1.71--2.47 with eight",
+   "fix": "Headline factors are quoted before methods A-E, S8/S18, primary targets and the time unit are introduced; add a pointer or defer numbers."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "2 Related work",
+   "evidence_span": "SLSQP-against-COBYQA ratios of 3.10--3.25.",
+   "fix": "The paper's own results are cited in Related work before the methods that produce them are defined; move the comparison to the Discussion."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 4,
+   "section": "1 / 4 / appendices (source-inferred; PDF text not extractable here)",
+   "evidence_span": "Table~\\ref{tab:exp2-ratios} (Appendix~\\ref{sec:exp2-times}) gives paired time ratios. A ratio is formed",
+   "fix": "The Section 4/5 headline tables (time-to-target, ratios, ablation ratios, validation charges, refinement) print in Appendix D, many pages from the discussion; promote the key ratio table into the body or summarise it there."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 4,
+   "section": "1 Introduction (source-inferred)",
+   "evidence_span": "Table~\\ref{tab:decomp} gives the main result.",
+   "fix": "The 'main result' table is in Section 5, a section away from its introduction mention; reproduce the two-row summary in the Introduction."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "5 Ablations",
+   "evidence_span": "The contrast of Section~\\ref{sec:optimization} changes the search strategy",
+   "fix": "'Search strategy and gradient change together' is restated in Intro, Section 4 Methods, Section 5 opening and the factor paragraph; keep it once."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "5 Gradient cost",
+   "evidence_span": "The two spaces also differ in",
+   "fix": "The caveat that S8/S18 differ in mesh-motion map is restated in Section 4 and here; state once and cross-refer."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "7 Discussion",
+   "evidence_span": "forwards, which already bound the end-to-end gain",
+   "fix": "'Validation and coarse forwards bound the end-to-end gain' appears in the abstract, intro, Section 5, twice in Section 7 and the conclusion; trim repeats."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "8 Conclusion",
+   "evidence_span": "On a common validation simulation, SLSQP with adjoint gradients reached the",
+   "fix": "Conclusion and the Discussion's 'Three findings' restate the abstract's numbers nearly verbatim; shorten to the takeaway."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 6,
+   "section": "4 Protocol / Table 1",
+   "evidence_span": "equations; they are neither fitted magnetic circuits nor reduced-basis",
+   "fix": "Unprompted denials (also 'no simulation is trained or fitted', 'L0 receives no discount', 'we do not extrapolate'); remove or move to limits."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "3.4 and 6 and Appendix",
+   "evidence_span": "of the published calculation; it does not establish which model better",
+   "fix": "The 'does not establish physical accuracy / which model is closer' caveat recurs in Sections 3.4, Appendix B, Appendix F and the 'accuracy bound' wording; state once in Limits."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract/Intro/Discussion",
+   "evidence_span": "with eight parameters and 2.68--4.10 with 18, and the optimizer factor",
+   "fix": "Gradient factor for S18 is 2.70/4.11 in abstract and conclusion but 2.68/4.10 in Intro, Discussion and Table decomp (different start subsets) with no bridge; add one sentence or use one set."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract vs 4 Results",
+   "evidence_span": "S8 and 5.06--7.79 in S18. At L0 (D/E), it is 2.45--2.75 and",
+   "fix": "Abstract quotes single values 3.10 and 7.79 while body gives ranges over targets; say which target gives which end."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "4 Results",
+   "evidence_span": "a smaller factor: the geometric-mean E/A ratio is 0.62--0.79 and D/B is",
+   "fix": "Coarse-mesh effect is given as ratios <1 (0.62-0.79, 0.45-0.56, 0.19-0.27) then as 'only 1.3-2.2 times'; bridge the inversion."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "4 Results / Refinement",
+   "evidence_span": "Over the 111 target crossings attained in both repeats",
+   "fix": "111 is 'attained in both repeats' here but '111 repeat-1 target crossings' in Final refinement and the abstract; confirm and unify."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "3.4 Interface order",
+   "evidence_span": "Rerunning the public reference with its own isogeometric model at four",
+   "fix": "Two pages of reference-reproduction and Opt120 checks precede the main study that the abstract promises; add a 'why this exists' sentence or move to an appendix."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "5 Gradient cost",
+   "evidence_span": "Two factors shrink the per-gradient ratios. First, every coarse",
+   "fix": "Overloaded paragraph (~25 numbers in one block); split and add a summary sentence."
+  }
+ ]
+}

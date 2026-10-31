@@ -1,0 +1,228 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "by geometric means of 3.10 and\n7.79 at the primary targets, 90\\% and 99\\% reductions of the ripple\nobjective",
+   "fix": "State that 3.10/7.79 are ratios of charged wall time to target, and that the 90%/99% reductions are relative to the initial design's validated objective F_0 (defined only in Sec. 4)."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract / Introduction",
+   "evidence_span": "SLSQP with adjoint gradients beat the\nderivative-free COBYQA",
+   "fix": "Expand SLSQP and COBYQA (and give the one-line role of each) at first use; neither is ever expanded in the paper."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "truncating harmonic coupling\nat the reference's order 45 changes loaded ripple by 7--9\\% and cogging by\n59\\%",
+   "fix": "Name the baseline (relative to the conforming interface at L3) and define cogging and 'order' here or point to Sec. 3.3 where cogging is first defined."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "On one core per run, with the\nstencil solved serially, the gradient factor is 1.71--2.47",
+   "fix": "Define 'stencil solve' (a coarse forward at a perturbed point) and 'gradient factor' before first quantitative use; the stencil is defined only in Sec. 4 'Budget, timing and cost vocabulary'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Every target crossing\nselected for final checks",
+   "fix": "'Target crossing' and 'primary target' are defined only in Sec. 4 (Common validation and credit); gloss them in the abstract or introduction."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 3.2 Field model",
+   "evidence_span": "the optimization study's coarse\nsimulation uses order-45 coupling torque and\nits validation simulation order 93. Retaining every order below the trace Nyquist limit reproduces\nthe conforming Arkkio torques within $4.1\\times10^{-9}$\\,N\\,m on L0 and",
+   "fix": "L0, L1 are used here but the meshes are defined in Sec. 3.3 (next subsection); move the mesh-level definition before the field-model subsection or forward-reference it."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 4 Protocol (Coarse and validation simulations)",
+   "evidence_span": "the L1 mesh (the coarser L0 for methods D and E)\nwith interface order 45",
+   "fix": "Methods A--E are used here and 'C's radial-basis surrogate' two sentences later, but are introduced only in the next paragraph and Table 1; reorder or say 'five methods (Table 1)'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 5 / Table 3 / Sec. 6",
+   "evidence_span": "SW1, SW4 and SD1",
+   "fix": "SD1 is never defined anywhere in the text or figure captions; add its meaning (as done for MAG, MH, SW1...)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Sec. 3.2",
+   "evidence_span": "with $N_h=45$ unless stated otherwise",
+   "fix": "Introduction already uses 'order 45'/'order 93' without saying order means the Fourier-mode cutoff N_h; define 'interface order' at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 3 vs Sec. 4 vs Sec. 6",
+   "evidence_span": "Forward comparisons use Arkkio for both couplings",
+   "fix": "'Forward' has three senses (forward model/comparison, cost-unit 'forward' = 60 solves, Sec. 6 'one ten-angle sweep'); use distinct terms, e.g. 'forward solve', 'objective evaluation'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Throughout",
+   "evidence_span": "the finer L2 mesh with interface order\n93, which no optimizer sees; only validated scores count",
+   "fix": "'Validation'/'validated' means rescoring on a finer model, colliding with experimental validation and with 'verification' in Sec. 6; pick 'fine-model rescoring' or state the sense once at the abstract."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sec. 4",
+   "evidence_span": "D, the inexpensive derivative-free physical\ncompetitor",
+   "fix": "D is a coarse-mesh COBYQA run, yet is called 'physical competitor' while Sec. 7 says no reduced physical model was compared; unify the label (e.g. 'coarse-mesh COBYQA')."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 2,
+   "section": "Throughout",
+   "evidence_span": "time to the target ... charged time ... whole-run wall time ... cost",
+   "fix": "Time/cost/charge/units used interchangeably; fix one term ('charged wall time, in validation-forward units')."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 2,
+   "section": "Throughout",
+   "evidence_span": "order 45 ... interface order ... harmonic order ... $N_h$ ... coupling order",
+   "fix": "Pick one name for the harmonic cutoff."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "Introduction vs body order",
+   "evidence_span": "Two checks make these measurements interpretable.",
+   "fix": "Intro describes the study and ablations first and the model/gradient checks second, but the body puts Motor model (Sec. 3) before the study and gradient verification (Sec. 6) after; add an explicit 'Section N does X' roadmap in body order."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Sec. 3.4",
+   "evidence_span": "Table~\\ref{tab:torque} compares the same geometry ... Interface order sets the validation simulation",
+   "fix": "Subsection title and text conclude what sets the validation simulation before the optimization study and its validation simulation are introduced (Sec. 4); add a forward sentence or reorder."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Introduction",
+   "evidence_span": "Table~\\ref{tab:decomp} gives the main result.",
+   "fix": "Headline factors and Fig. decomp are quoted in the introduction before methods A--E, FD-warm/FD-cold, A', and the targets exist; add a one-sentence gloss of the design or defer the numbers."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 4,
+   "section": "Sec. 4 Results / Appendix",
+   "evidence_span": "Table~\\ref{tab:exp2-ratios} (Appendix~\\ref{sec:exp2-times}) gives paired time ratios.",
+   "fix": "Main-result tables (time, ratios, validation, refinement) discussed in Sec. 4 live in the appendix; place the ratio table beside its discussion (PDF could not be inspected, judged from source float placement)."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 4,
+   "section": "Introduction",
+   "evidence_span": "Table~\\ref{tab:decomp} gives the main result.",
+   "fix": "Table cited on page 1 prints in Sec. 5; consider a compact copy near the introduction or cite it as 'Sec. 5'."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Introduction / Sec. 4 / Sec. 5",
+   "evidence_span": "the contrast changes\nthe search strategy and the gradient together",
+   "fix": "The caveat that the A-vs-B contrast confounds search strategy and gradient is stated in full three times (Intro, Sec. 4 Methods, Sec. 5 opening); keep it once and cross-refer."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Conclusion",
+   "evidence_span": "The gradient factor, adjoint against forward differences in the same\nSLSQP, was 1.71 and 2.70 against warm-started stencils and 2.47 and 4.11\nagainst cold ones",
+   "fix": "Conclusion restates the abstract nearly verbatim (3.10/7.79, 1.71/2.70, 2.47/4.11, about 5%); the same factor ranges also recur in Intro, Sec. 5 and Discussion; shorten to the implication."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 6,
+   "section": "Author contributions",
+   "evidence_span": "whose layers are unrelated to the mesh\nlevels L0--L3",
+   "fix": "Unprompted denial of a confusion no reader had; drop."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Related work / Sec. 7",
+   "evidence_span": "the comparison is\nbetween numerical models, not with a measured motor",
+   "fix": "'Not compared with a physical motor' is stated in Related work, Sec. 3.4 and Sec. 7; keep in one place."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract vs Introduction",
+   "evidence_span": "The adjoint reached the primary target 1.71 and 2.70 times sooner",
+   "fix": "Abstract gives 2.70 (and 4.11) while Intro/Table 3/Discussion give 2.68 (and 4.10) for the same 'gradient factor' with no bridge in the Intro (difference is the four-start subset); state the subset or use one value."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "Abstract vs Sec. 4",
+   "evidence_span": "COBYQA against\nfinite-difference SLSQP contributes the remaining 1.2 to 1.8 with 8\nparameters and 1.9 to 2.9 with 18",
+   "fix": "Rounded here (1.2--1.8, 1.9--2.9) but 1.22--1.76 and 1.91--2.92 elsewhere; use one precision."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "Sec. 4 vs Sec. 5",
+   "evidence_span": "A's lead ... about 5\\% ... A free\ngradient would therefore shorten A$'$'s time to the target by only 5--6\\%",
+   "fix": "Share of time quoted as 'about 5%' (abstract, Conclusion) and '5--6%' here; give the 0.30/0.51-unit shares as percentages once."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 2 Related work",
+   "evidence_span": "\\section{Related work}",
+   "fix": "A dense four-paragraph citation run (with finite-difference-noise side discussion) sits before the reader knows the problem or why a published motor is being reconstructed; the intro never gives a 'why reconstruct this motor' sentence. Shorten, or move after the results."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 9,
+   "section": "Sec. 3.4",
+   "evidence_span": "Spatial refinement at fixed order and order refinement on a fixed mesh\nanswer different questions",
+   "fix": "A model-reproduction results subsection sits between the introduction and the optimization study and delays the main story; add a bridging sentence stating why validation order must be fixed before the study."
+  }
+ ]
+}

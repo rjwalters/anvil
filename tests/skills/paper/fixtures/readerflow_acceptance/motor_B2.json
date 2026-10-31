@@ -1,0 +1,244 @@
+{
+ "findings": [
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "by geometric means of 3.10 and 7.79 at the primary targets, 90\\% and 99\\% reductions of the ripple objective",
+   "fix": "Say that 3.10 and 7.79 are ratios of COBYQA's to SLSQP's wall time to target, and that the 90% and 99% reductions are measured against the initial design's objective F_0."
+  },
+  {
+   "dimension": "7",
+   "severity": "major",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "90\\% and 99\\% reductions of the ripple objective with 8 and 18 parameters",
+   "fix": "Name the baseline (the published initial design's validated objective) in the abstract."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract / Introduction",
+   "evidence_span": "SLSQP with adjoint gradients beat the derivative-free COBYQA",
+   "fix": "Expand SLSQP and COBYQA, or give a short descriptor, at first use; the citations appear only in Section 5."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "Every target crossing selected for final checks, 25 of the main study's 111",
+   "fix": "Define 'target crossing' and 'final checks' in a clause, or defer the sentence."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract / Introduction",
+   "evidence_span": "each new best design is rescored on a finer validation simulation",
+   "fix": "Introduction uses 'coarse simulation', 'validation simulation', 'order 93', 'harmonic coupling' and 'cogging' before Section 3 defines them; add one-line glosses in the introduction."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "truncating harmonic coupling at the reference's order 45 changes loaded ripple by 7--9\\% and cogging by 59\\%",
+   "fix": "Cogging and 'order' are first used here and defined in Sections 3.2-3.3; give a gloss, and say these changes are relative to conforming coupling."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.2 / Section 4 / Section 5",
+   "evidence_span": "not the 60-solve, single-core forward charged in the optimization study",
+   "fix": "'Forward' (the cost unit) is used in Sections 3-4 and the abstract-level claims but defined only in Section 5; define it at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.2",
+   "evidence_span": "through Lagrange multipliers, with $N_h=45$ unless stated otherwise",
+   "fix": "L0, L1 and 'interface order' are used before Section 3.3 defines the meshes; the forward pointer helps, but give the mesh levels first."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Section 3.1 / Appendix A",
+   "evidence_span": "a tabulated M27 iron law",
+   "fix": "M27 is never defined; add 'M27 electrical steel grade' or similar."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 1,
+   "section": "Introduction",
+   "evidence_span": "our GEODE finite-element code",
+   "fix": "GEODE is never expanded or described."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Section 3 / Section 5",
+   "evidence_span": "$\\sigma_T$ is the ripple metric ... The squared-ripple objective is $F=\\sum",
+   "fix": "'Ripple' names both sigma_T and the sum of squared sigma_T (F); use 'ripple' for sigma_T and 'ripple objective' for F consistently."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sections 3.2, 4, 5",
+   "evidence_span": "Arkkio expression ... coupling torque ... torque functional ... estimator ... model--estimator pairs",
+   "fix": "One concept (the torque evaluation method) is called expression, functional, estimator and objective; pick one term and define it where first used."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sections 5, 6",
+   "evidence_span": "mean floor ... full-current mean floor ... mean constraint",
+   "fix": "Use one name for the torque-floor constraint."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Sections 3-5",
+   "evidence_span": "interface order ... harmonic order ... order 93 ... resolution",
+   "fix": "'Resolution' means mesh level in places and mesh level plus interface order elsewhere; 'coarse' means L1 for A/B/C and L0 for D/E. Use separate terms for mesh level and interface order."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 2,
+   "section": "Abstract / Section 5",
+   "evidence_span": "45 of the 50 paired comparisons ... In all 50 pairs, the sequences of validated objectives agree",
+   "fix": "'50 pairs' means different things in the abstract (method comparisons) and in the Repeats paragraph (repeat pairs); reword one."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 3,
+   "section": "Introduction vs body",
+   "evidence_span": "We answer it in two steps. ... Two checks make these measurements interpretable.",
+   "fix": "The introduction orders the optimization study first and the model and gradient checks second; the body puts the model (Section 3) and gradient verification (Section 4) before the optimization (Section 5). Add an explicit roadmap or reorder the introduction."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Related work",
+   "evidence_span": "the counterpart of our eight-parameter SLSQP-against-COBYQA ratios of 3.10--3.25",
+   "fix": "Related work quotes the paper's own results and mentions 'our ablation' before the methods and ratios are introduced; move the comparison to the discussion."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 5,
+   "section": "Introduction",
+   "evidence_span": "the gradient factor is 1.71--2.47 with eight parameters and 2.68--4.10 with 18",
+   "fix": "The main results and FD-warm/FD-cold are stated before the methods and design spaces they concern; the introduction should gloss them or point forward."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 4,
+   "section": "Introduction / Section 6",
+   "evidence_span": "Table~\\ref{tab:decomp} gives the main result.",
+   "fix": "The headline table is cited on the first page but prints in Section 5 after the ablation text; also Table exp2-ratios, whose values the body quotes constantly, sits in Appendix D. Move the headline numbers or table forward."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Sections 1, 5, 6",
+   "evidence_span": "The optimizer contrast changes the search strategy and the gradient source together",
+   "fix": "This caveat is restated in full in the introduction, the Methods paragraph and the ablation opening; keep one full statement and cross-reference."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 6,
+   "section": "Sections 5.2, 6 (limits), Abstract, Conclusion",
+   "evidence_span": "so validation and coarse-simulation evaluations bound the end-to-end gain",
+   "fix": "The 'validation bounds the gain' claim is repeated in the abstract, intro, Where the time goes, Discussion and Conclusion; the Conclusion nearly repeats the abstract."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 6,
+   "section": "Sections 2, 3.2, 6",
+   "evidence_span": "it does not establish which model better represents the physical motor",
+   "fix": "The 'numerical models, not a measured motor' caveat recurs in related work, Section 3.2 and the limits paragraph; keep one."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 6,
+   "section": "Sections 5.3, 6",
+   "evidence_span": "solving the stencil in parallel would shorten the wall time per gradient but not its compute",
+   "fix": "The single-thread / parallel-stencil caveat appears in Section 5.3 and again in Section 6; cut one."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Abstract vs Introduction vs Section 5.3",
+   "evidence_span": "1.71 and 2.70 times sooner ... 1.71--2.47 ... 2.68--4.10 ... 1.2 to 1.8 ... 1.22--1.76",
+   "fix": "Abstract quotes 2.70/4.11 (five starts) and rounded optimizer-factor ranges, the introduction quotes 2.68/4.10 (four starts) and 1.22--1.76; bridge the variants in the introduction, not only in Section 5.3."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 7,
+   "section": "Section 5.2",
+   "evidence_span": "geometric-mean E/A ratio is 0.62--0.79 and D/B is 0.45--0.56 ... its overall saving is only 1.3--2.2 times",
+   "fix": "Ratios below one are restated as savings of 1.3-2.2 times without stating they are reciprocals; give one direction."
+  },
+  {
+   "dimension": "7",
+   "severity": "nit",
+   "class": 7,
+   "section": "Section 5.3 / Figure 5 caption",
+   "evidence_span": "3--6\\% differences between the sessions' time units ... the 3\\% difference between the main and FD-warm sessions' units",
+   "fix": "Session-unit differences quoted as 3-6% and 3% without bridging; state which pair gives which."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Abstract",
+   "evidence_span": "at the primary targets",
+   "fix": "'Primary targets' is used in the abstract and introduction but defined in Section 5; the abstract's clause names them only implicitly. Say 'the deepest reduction reached in each space' at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.1",
+   "evidence_span": "the eight scalar design parameters that form the smaller design space, S8, and the 55 control points ... S18",
+   "fix": "S8/S18 are named here but defined in Section 5 (which the text points to); give the 8/18 definition here or move the names to Section 5."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 4",
+   "evidence_span": "pair harmonic coupling with coupling torque ... model--estimator pairs",
+   "fix": "'Estimator' is used in Section 4 but never defined; define it as the torque-evaluation method at first use."
+  },
+  {
+   "dimension": "7",
+   "severity": "minor",
+   "class": 1,
+   "section": "Section 3.3",
+   "evidence_span": "the optimization study holds a floor on the mean torque",
+   "fix": "The floor (1.0025 times the initial mean) is defined only in Section 5; give the value or point forward."
+  }
+ ]
+}
