@@ -11,6 +11,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-01
+
+- **PR #1444**: Bump Repo Skills 0.24.7 -> 0.25.1
+
 ### 2026-10-31
 
 - **PR #1442**: docs: record reader-flow lens acceptance measurement (clause 2 not met)
