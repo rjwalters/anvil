@@ -616,7 +616,7 @@ class TestSchemaConstraints(unittest.TestCase):
         with self.assertRaises(ValidationError):
             CalibrationOverride(dimension=0, text="x")
         with self.assertRaises(ValidationError):
-            CalibrationOverride(dimension=10, text="x")
+            CalibrationOverride(dimension=11, text="x")
 
     def test_calibration_override_rejects_empty_text(self) -> None:
         from pydantic import ValidationError

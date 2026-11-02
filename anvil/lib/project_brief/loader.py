@@ -359,8 +359,10 @@ def load_rubric_overrides_for_slug(
     - The BRIEF parses but has no entry for ``slug``.
     - The matching entry has no ``rubric_overrides:`` block.
 
-    Raises ``ValueError`` only on a structurally invalid BRIEF (the
-    same conditions as :func:`load_project_brief`). This is the
+    A structurally invalid BRIEF (the conditions under which
+    :func:`load_project_brief` raises ``ValueError``) also degrades to an
+    empty instance, but NOT silently: a ``UserWarning`` naming the BRIEF
+    path and the error text is emitted (#1449). This is the
     replacement for the retired
     ``anvil_config.load_rubric_overrides(thread_dir)`` API; the
     ``empty-on-absence`` contract is preserved exactly so the reviewer
@@ -385,11 +387,17 @@ def load_rubric_overrides_for_slug(
     """
     try:
         brief = load_project_brief(project_dir)
-    except ValueError:
+    except ValueError as exc:
         # The BRIEF exists but is structurally invalid. The lenient
         # contract says "degrade to empty"; propagating a ValueError
         # here would break the reviewer's pre-#296 zero-impact
-        # behavior for legacy threads. So we swallow.
+        # behavior for legacy threads. So we degrade, but loudly.
+        warnings.warn(
+            f"{Path(project_dir) / 'BRIEF.md'}: structurally invalid BRIEF; "
+            f"rubric_overrides for {slug!r} ignored: {exc}",
+            UserWarning,
+            stacklevel=2,
+        )
         return RubricOverrides()
     if brief is None:
         return RubricOverrides()

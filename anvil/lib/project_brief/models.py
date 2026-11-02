@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from anvil.lib.project_brief.types import ArtifactType, MAX_DIM, MIN_DIM
+from anvil.lib.project_brief.types import ArtifactType, MAX_DIM_CEILING, MIN_DIM
 
 # ---------------------------------------------------------------------------
 # Typed models
@@ -141,7 +141,7 @@ class CalibrationOverride(BaseModel):
     dimension: int = Field(
         ...,
         ge=MIN_DIM,
-        le=MAX_DIM,
+        le=MAX_DIM_CEILING,
         description=(
             "Memo rubric dimension number (1-9 per "
             "``anvil/skills/memo/rubric.md``). The on-disk key is "
@@ -187,7 +187,7 @@ class WaiverOverride(BaseModel):
     dimension: int = Field(
         ...,
         ge=MIN_DIM,
-        le=MAX_DIM,
+        le=MAX_DIM_CEILING,
         description=(
             "Rubric dimension number (1-9). The on-disk key is "
             "``dim_<dimension>_waiver``."
