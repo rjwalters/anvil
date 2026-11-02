@@ -42,8 +42,8 @@ from anvil.lib.project_brief.types import (
     ArtifactType,
     CONSUMER_MEMO_OVERLAYS_RELPATH,
     DEFAULT_MAX_ITERATIONS,
-    MAX_DIM,
     MIN_DIM,
+    max_dim_for,
     REGISTERED_ARTIFACT_TYPES,
     _ARTIFACT_TYPE_INPUT_ALIASES,
     _DIM_CALIBRATION_RE,
@@ -890,6 +890,7 @@ def _normalize_rubric_overrides(
     target_length: Optional[TargetLengthRange] = None
     unknown_keys: Dict[str, Any] = {}
 
+    max_dim = max_dim_for(artifact_type)
     seen_dims: set[int] = set()
     seen_waiver_dims: set[int] = set()
 
@@ -913,10 +914,10 @@ def _normalize_rubric_overrides(
 
         dim = _parse_dim_calibration_key(key)
         if dim is not None:
-            if dim < MIN_DIM or dim > MAX_DIM:
+            if dim < MIN_DIM or dim > max_dim:
                 raise ValueError(
                     f"BRIEF.{field_path}.{key}: dimension {dim} out of "
-                    f"range [{MIN_DIM}, {MAX_DIM}]."
+                    f"range [{MIN_DIM}, {max_dim}]."
                 )
             if dim in seen_dims:
                 raise ValueError(
@@ -935,10 +936,10 @@ def _normalize_rubric_overrides(
 
         waiver_dim = _parse_dim_waiver_key(key)
         if waiver_dim is not None:
-            if waiver_dim < MIN_DIM or waiver_dim > MAX_DIM:
+            if waiver_dim < MIN_DIM or waiver_dim > max_dim:
                 raise ValueError(
                     f"BRIEF.{field_path}.{key}: dimension {waiver_dim} out "
-                    f"of range [{MIN_DIM}, {MAX_DIM}]."
+                    f"of range [{MIN_DIM}, {max_dim}]."
                 )
             if waiver_dim in seen_waiver_dims:
                 raise ValueError(

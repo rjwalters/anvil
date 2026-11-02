@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **Deck `dim_10_waiver` / `dim_10_calibration` are accepted, and an invalid BRIEF no longer drops overrides silently** (#1449). The rubric-override dimension ceiling is now per artifact type (deck 10, others 9) via `max_dim_for`, so a deck entry can waive or calibrate dim 10; non-deck `dim_10_*` and deck `dim_11_*` are still rejected. `load_rubric_overrides_for_slug` still degrades to an empty `RubricOverrides` on a structurally invalid BRIEF but now emits a `UserWarning` naming the BRIEF path and error. `deck-review.md` step 5e ranges updated.
+
 - **Reader-flow lens brief is now source-led** (#1437). The #1432 dual-input brief (PDF and source, read in rendered order) recalled 9 clean / 5 missed of the 15 external findings against 12 / 1 for a source-only read. `paper-review` step 4j now has the subagent read the `\input` tree first for classes 1-3 and 5-7, then consult the PDF only for page placement (classes 4 and 9). Both-inputs and single-input fallback wording, isolation and the referent/baseline sub-rule are unchanged. Not yet re-measured on the private 15-finding fixture (operator-attended, tracked on #1437).
 
 - **Reader-flow lens takes both inputs and flags quantities with no referent** (#1432). `paper-review` step 4j now briefs the lens with the compiled PDF and the `main.tex` source tree together (the #1418 re-run showed a source-only read missed float placement and a PDF-only read missed define-before-use), and class 1 gains a referent/baseline sub-rule: a percentage or ratio stated without what it compares to, with a glossary-style check on the abstract. `rubric.md` and `SKILL.md` describe both. Not yet re-run against the private geode-fem papers (tracked on #1432).

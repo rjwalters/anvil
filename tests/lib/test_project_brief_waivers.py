@@ -151,12 +151,47 @@ def test_waiver_and_calibration_on_different_dims_coexist(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("key", ["dim_0_waiver", "dim_10_waiver"])
+@pytest.mark.parametrize("key", ["dim_0_waiver", "dim_11_waiver"])
 def test_waiver_dimension_out_of_range_rejected(tmp_path: Path, key: str) -> None:
     project = tmp_path / "proj"
     _deck_brief(project, f'{key}: "some rationale"\n')
     with pytest.raises(ValueError, match=r"out\s+of\s+range"):
         load_project_brief(project)
+
+
+def test_deck_dim_10_waiver_and_calibration_accepted(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _deck_brief(
+        project,
+        f'dim_10_waiver: "{WAIVER_RATIONALE}"\n'
+        'dim_5_calibration: "pre-revenue: score traction on pilots"\n',
+    )
+    overrides = load_rubric_overrides_for_slug(project, "series-a-deck")
+    assert overrides.waiver_for(10) == WAIVER_RATIONALE
+    brief = load_project_brief(project)
+    assert brief is not None
+    _deck_brief(project, 'dim_10_calibration: "partnership intro"\n')
+    overrides = load_rubric_overrides_for_slug(project, "series-a-deck")
+    assert overrides.calibration_for(10) == "partnership intro"
+
+
+def test_non_deck_dim_10_rejected(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "BRIEF.md").write_text(
+        "---\nproject: demo\ndocuments:\n  - slug: m\n    artifact_type: report\n"
+        f'    rubric_overrides:\n      dim_10_waiver: "{WAIVER_RATIONALE}"\n---\n'
+    )
+    with pytest.raises(ValueError, match=r"out\s+of\s+range \[1, 9\]"):
+        load_project_brief(project)
+
+
+def test_invalid_brief_warns_and_returns_empty(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    _deck_brief(project, f'dim_11_waiver: "{WAIVER_RATIONALE}"\n')
+    with pytest.warns(UserWarning, match=r"out\s+of\s+range"):
+        overrides = load_rubric_overrides_for_slug(project, "series-a-deck")
+    assert overrides.is_empty
 
 
 def test_waiver_key_not_swallowed_by_unknown_keys(tmp_path: Path) -> None:
