@@ -11,6 +11,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-02
+
+- **PR #1447**: chore(deps-dev): update numpy requirement from >=2.2.6 to >=2.4.6
+
 ### 2026-11-01
 
 - **PR #1444**: Bump Repo Skills 0.24.7 -> 0.25.1
