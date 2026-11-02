@@ -53,6 +53,7 @@ from anvil.lib.sidecar import (
     recover_interrupted_replace,
     stage_enter,
     stage_replace,
+    supersede_sidecar,
     staged_sidecar,
     staging_path_for,
     write_critic_review_dir,
@@ -1965,3 +1966,74 @@ class TestWriteCriticReviewDir:
 
         assert out.name == "_review.json"
         assert out.parent.name == "acme-seed.1.fake"
+
+
+# ---------------------------------------------------------------------------
+# supersede (issue #1450)
+# ---------------------------------------------------------------------------
+
+
+class TestSupersede:
+    REQ = ["a.txt"]
+
+    def _land(self, final: Path, text: str) -> None:
+        staging = stage_enter(final)
+        (staging / "a.txt").write_text(text)
+        commit_staged(final, self.REQ)
+
+    def test_second_review_keeps_first_readable(self, tmp_path: Path) -> None:
+        final = tmp_path / "t.1.review"
+        self._land(final, "first")
+        with pytest.raises(FileExistsError):
+            stage_enter(final)
+
+        archived = supersede_sidecar(final)
+
+        assert archived == tmp_path / "t.1.review.prior-1"
+        assert not final.exists()
+        self._land(final, "second")
+        assert (final / "a.txt").read_text() == "second"
+        assert (archived / "a.txt").read_text() == "first"
+
+    def test_next_free_index(self, tmp_path: Path) -> None:
+        final = tmp_path / "t.1.review"
+        for i in range(3):
+            self._land(final, str(i))
+            supersede_sidecar(final)
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "t.1.review.prior-1",
+            "t.1.review.prior-2",
+            "t.1.review.prior-3",
+        ]
+
+    def test_missing_source_refuses(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            supersede_sidecar(tmp_path / "t.1.review")
+
+    def test_leftover_staging_does_not_collide(self, tmp_path: Path) -> None:
+        final = tmp_path / "t.1.review"
+        self._land(final, "x")
+        staging_path_for(final).mkdir()
+        supersede_sidecar(final)
+        self._land(final, "y")
+        assert (final / "a.txt").read_text() == "y"
+
+    def test_discover_ignores_prior(self, tmp_path: Path) -> None:
+        version = tmp_path / "t.1"
+        version.mkdir()
+        final = tmp_path / "t.1.review"
+        final.mkdir()
+        (final / CANONICAL_REVIEW_FILENAME).write_text(
+            _make_review().model_dump_json()
+        )
+        assert [c.name for c in discover_critics(version)] == ["t.1.review"]
+        supersede_sidecar(final)
+        assert (tmp_path / "t.1.review.prior-1" / CANONICAL_REVIEW_FILENAME).exists()
+        assert discover_critics(version) == []
+
+    def test_cli(self, tmp_path: Path, capsys) -> None:
+        final = tmp_path / "t.1.review"
+        assert main(["supersede", str(final)]) == 3
+        self._land(final, "x")
+        assert main(["supersede", str(final)]) == 0
+        assert capsys.readouterr().out.strip().endswith("t.1.review.prior-1")
