@@ -13,6 +13,8 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-02
 
+- **PR #1451**: fix(sidecar): add supersede path so deck-review can re-run after sibling critics
+- **Issue #1450** (closed): deck-review: no sanctioned re-run path once <thread>.{N}.review/ exists
 - **PR #1447**: chore(deps-dev): update numpy requirement from >=2.2.6 to >=2.4.6
 
 ### 2026-11-01
