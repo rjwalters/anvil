@@ -35,14 +35,13 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-- **#1449**: project_brief: rubric_overrides rejects dim_10 keys (MAX_DIM = 9) and the lenient loader swallows the error, so deck dim 10 waivers silently never apply
-- **#1450**: deck-review: no sanctioned re-run path once <thread>.{N}.review/ exists — docs say re-aggregating after sibling critics is appropriate, but step 1 exits early and sidecar stage/replace both refuse
+_None._
 
 ## PRs Awaiting Review
 
 PRs waiting on Judge (`loom:review-requested`).
 
-- **#1451**: fix(sidecar): add supersede path so deck-review can re-run after sibling critics
+_None._
 
 ## Approved (Awaiting Merge)
 
@@ -55,8 +54,6 @@ _None._
 Issues carrying `loom:curated`.
 
 - **#1396**: paper-review: add a reader-flow lens (define-before-use, one name per concept, body order vs intro roadmap, figure proximity) *(curated)*
-- **#1449**: project_brief: rubric_overrides rejects dim_10 keys (MAX_DIM = 9) and the lenient loader swallows the error, so deck dim 10 waivers silently never apply *(curated)*
-- **#1450**: deck-review: no sanctioned re-run path once <thread>.{N}.review/ exists — docs say re-aggregating after sibling critics is appropriate, but step 1 exits early and sidecar stage/replace both refuse *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -74,10 +71,10 @@ _None._
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 2 |
-| PRs awaiting review | 1 |
+| In Progress (`loom:building`) | 0 |
+| PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 3 |
+| Curated | 1 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
