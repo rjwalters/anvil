@@ -12,6 +12,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-04
+
+- **PR #1458**: fix(install): detect linked git worktrees via rev-parse
+- **Issue #1456** (closed): resync-installed.sh reports 'target is not a git repository' for a linked worktree
+
 ### 2026-11-02
 
 - **PR #1453**: fix: accept dim 10 rubric overrides for deck and warn on invalid BRIEF
