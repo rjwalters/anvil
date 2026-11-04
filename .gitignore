@@ -121,7 +121,7 @@ uv.lock
 .loom/gh-config-by-owner/
 .loom/gh-config-by-owner.*/
 .loom/gh-config-by-owner-*/
-.loom-local/
+/.loom-local/
 # <<< loom-managed <<<
 # Exception: the config-resolver conformance fixture needs a real
 # .loom-local/ directory to exercise the "Local" config tier by name (see
