@@ -29,7 +29,7 @@ _None._
 
 Human-approved issues ready for implementation (`loom:issue`).
 
-_None._
+- **#1456**: resync-installed.sh reports 'target is not a git repository' for a linked worktree
 
 ## In Progress
 
@@ -54,6 +54,7 @@ _None._
 Issues carrying `loom:curated`.
 
 - **#1396**: paper-review: add a reader-flow lens (define-before-use, one name per concept, body order vs intro roadmap, figure proximity) *(curated)*
+- **#1456**: resync-installed.sh reports 'target is not a git repository' for a linked worktree *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -70,11 +71,11 @@ _None._
 | Operator merge-risk holds | 0 |
 | Very important | 0 |
 | Important | 0 |
-| Ready (`loom:issue`) | 0 |
+| Ready (`loom:issue`) | 1 |
 | In Progress (`loom:building`) | 0 |
 | PRs awaiting review | 0 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 1 |
+| Curated | 2 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
