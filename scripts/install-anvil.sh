@@ -153,6 +153,14 @@ ok()    { echo "${GREEN}  ok: $*${NC}"; }
 warn()  { echo "${YELLOW}  warn: $*${NC}"; }
 note()  { echo "${CYAN}  note: $*${NC}"; }
 
+# True when $TARGET is inside a git work tree. A plain `-d "$TARGET/.git"` test
+# is wrong for a linked worktree, where `.git` is a regular file (`gitdir: ...`)
+# rather than a directory (#1456). Requires `git` on PATH (forge-optional).
+is_git_worktree() {
+  command -v git >/dev/null 2>&1 \
+    && git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1
+}
+
 usage() {
   # The Usage / Options / Examples block lives in the header comment. The
   # range covers through the "Layout produced" header line so --help shows
@@ -330,7 +338,7 @@ if [[ "$TARGET" == "$ANVIL_ROOT" ]]; then
   error "refusing to install anvil into its own source checkout ($ANVIL_ROOT)"
 fi
 
-if [[ ! -d "$TARGET/.git" ]]; then
+if ! is_git_worktree; then
   note "target is not a git repository (anvil is forge-optional; proceeding)"
 fi
 
@@ -2471,7 +2479,7 @@ fi
 # Forge-optional (see the `.git` note around Stage 1): if the target has no
 # .git or `git` is not on PATH, this pass is SKIPPED entirely (not
 # attempted-and-caught) so a non-git install never surfaces a git error.
-if [[ -d "$TARGET/.git" ]] && command -v git >/dev/null 2>&1; then
+if is_git_worktree; then
   TRACKED_IGNORED=()
   while IFS= read -r tracked_path; do
     [[ -n "$tracked_path" ]] && TRACKED_IGNORED+=("$tracked_path")

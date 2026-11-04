@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **Installer no longer misreports a linked git worktree as "not a git repository"** (#1456). `install-anvil.sh` tested `[[ -d "$TARGET/.git" ]]`, which is false in a linked worktree (`.git` is a file), so Stage 2 printed a wrong note and the tracked-but-ignored `.anvil` check was silently skipped. Both sites now use `git rev-parse --is-inside-work-tree`; a plain non-git directory still gets the note.
+
 - **Deck `dim_10_waiver` / `dim_10_calibration` are accepted, and an invalid BRIEF no longer drops overrides silently** (#1449). The rubric-override dimension ceiling is now per artifact type (deck 10, others 9) via `max_dim_for`, so a deck entry can waive or calibrate dim 10; non-deck `dim_10_*` and deck `dim_11_*` are still rejected. `load_rubric_overrides_for_slug` still degrades to an empty `RubricOverrides` on a structurally invalid BRIEF but now emits a `UserWarning` naming the BRIEF path and error. `deck-review.md` step 5e ranges updated.
 
 - **`deck-review` now has a sanctioned re-run path once `<thread>.{N}.review/` exists** (#1450). Step 1's early exit contradicted the "re-run last after sibling critics" guidance, and `sidecar stage`/`replace` both refuse a recognizable review. New `python -m anvil.lib.sidecar supersede <dir>` (and `supersede_sidecar()`) atomically archives the review to `<dir>.prior-<k>` (next free `k`); nothing is modified or deleted, critic discovery ignores the archive, and `stage`/`commit` then writes a fresh review. `deck-review.md` step 1 and §Idempotence now name the mechanism and its triggers (newer sibling critic, changed `rubric_overrides`).
