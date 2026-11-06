@@ -1133,7 +1133,7 @@ dependencies = [
 # re-resolve past the vulnerable pin the next time install-anvil.sh runs.
 auto_shrink = [
     "Pillow>=13.0.0",
-    "numpy>=2.2.6",
+    "numpy>=2.4.6",
 ]
 # \`anvil:deck\` deck-imagegen JPEG/WebP-to-PNG transcode (issue #564).
 # Real image backends (Flux, DALL-E, SDXL, etc.) often default to JPEG or

@@ -204,6 +204,23 @@ def test_install_produces_consumer_pyproject_toml(tmp_path: Path) -> None:
             "write_consumer_pyproject() heredoc is out of sync with "
             "pyproject.toml's [project].dependencies"
         )
+    # Extras the installer mirrors must carry the same pins as source (#1461).
+    # Only extras present on both sides are compared (#947 deliberately omits
+    # image_lint/html/dev); a consumer-only extra is an error.
+    source_extras = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["project"][
+        "optional-dependencies"
+    ]
+    consumer_extras = tomllib.loads(body)["project"].get("optional-dependencies", {})
+    assert consumer_extras, "consumer pyproject declares no extras"
+    for name, reqs in consumer_extras.items():
+        assert name in source_extras, (
+            f"consumer extra [{name}] does not exist in source pyproject.toml"
+        )
+        assert sorted(reqs) == sorted(source_extras[name]), (
+            f"consumer extra [{name}] pins {sorted(reqs)} but source pyproject.toml "
+            f"pins {sorted(source_extras[name])} — update install-anvil.sh's "
+            "write_consumer_pyproject() heredoc"
+        )
     # Package layout points at the in-tree anvil/ mirror.
     assert '[tool.setuptools.packages.find]' in body
     assert 'include = ["anvil*"]' in body
