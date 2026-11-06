@@ -12,6 +12,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-06
+
+- **PR #1462**: fix(installer): mirror numpy>=2.4.6 in consumer auto_shrink extra and guard extras against source drift
+- **Issue #1461** (closed): install-anvil.sh: mirror numpy>=2.4.6 into consumer extras and guard extra pins against source
+
 ### 2026-11-04
 
 - **PR #1458**: fix(install): detect linked git worktrees via rev-parse
