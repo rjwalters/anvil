@@ -12,6 +12,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-07
+
+- **PR #1470**: Bump Repo Skills 0.25.1 -> 0.25.10
+
 ### 2026-11-06
 
 - **Issue #1347** (closed): Auditor Capability Request: Python runtime unavailable for Anvil validation
