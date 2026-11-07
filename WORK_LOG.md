@@ -14,6 +14,8 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-07
 
+- **PR #1473**: docs: mark claim ledger and Codex adapter as shipped; drop dead branch pointer
+- **Issue #1472** (closed): docs/: mark the #1198 claim ledger and #1000 Codex adapter as shipped; drop dead branch pointer
 - **PR #1470**: Bump Repo Skills 0.25.1 -> 0.25.10
 
 ### 2026-11-06
@@ -205,43 +207,6 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 - **Issue #1307** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
 - **Issue #1306** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-
-### 2026-09-07
-
-- **Issue #1304** (closed): Champion digest-issue lookup orphans pre-#7020 digest issues without the marker
-- **PR #1305**: fix(champion): add digest-issue lookup fallback for pre-marker digests
-- **Issue #1211** (closed, not planned): Champion: Merge-Risk Hold Digest
-
-### 2026-09-05
-
-- **Issue #1303** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1302** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1301** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1300** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1299** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1298** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1297** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1296** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1295** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1294** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1293** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-
-### 2026-09-04
-
-- **Issue #1292** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1291** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1290** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1289** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1288** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1287** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1286** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1285** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1284** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1283** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1282** (closed): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1281** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1280** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
-- **Issue #1279** (closed, not planned): peer-claim coordination is DEGRADED on ip-172-31-74-176 (#6157 Layer 3)
 
 ### 2026-06-15 (epic close)
 
