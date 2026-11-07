@@ -14,6 +14,7 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-06
 
+- **Issue #1347** (closed): Auditor Capability Request: Python runtime unavailable for Anvil validation
 - **PR #1467**: test: update agent registry count and numpy pin in script tests
 - **Issue #1466** (closed): test: two scripts tests fail on main (agent registry count 72 vs 71; consumer auto_shrink numpy pin)
 - **PR #1462**: fix(installer): mirror numpy>=2.4.6 in consumer auto_shrink extra and guard extras against source drift
