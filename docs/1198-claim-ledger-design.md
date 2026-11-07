@@ -7,7 +7,8 @@ this issue for `loom:issue` **scoped to this record alone** (2026-09-15,
 have stated recommended defaults, and this PR's job is to make the call
 explicit and durable, not to implement the ledger. The implementation
 (the issue's "PR 2") is separate follow-on work, re-evaluated once this
-record lands — see "Status of the implementation" at the bottom.
+record lands (it shipped in PR #1317) — see "Status of the implementation"
+at the bottom.
 
 ## Problem recap
 
@@ -238,19 +239,23 @@ at` are the two new columns this record proposes.
 
 ## Status of the implementation (PR 2)
 
-This record is deliberately docs-only, per Champion's approval scope. A
-complete, tested draft implementation resolving both decisions above —
-`anvil/skills/essay/lib/claim_ledger.py`, the `essay-review.md` /
-`essay-revise.md` procedure updates, and
-`anvil/skills/essay/tests/test_essay_claim_ledger.py` — already exists
-and is preserved on the `archive/issue-1198-claim-ledger-draft` branch
-(commit `11d45040b5be9efa290c9d672b6d4ae2e4f96366`) for whoever picks up
-PR 2. It was written before this record was promoted to a standalone PR
-and independently reaches the same two decisions documented above, so it
-should need at most reconciliation with this record's exact wording, not
-a redesign. Per Champion's 2026-09-15 approval comment on #1198, PR 2 is
-separate follow-on work to be re-evaluated once this record merges — it
-is not part of this PR's diff.
+This record was deliberately docs-only, per Champion's approval scope. The
+implementation (the issue's "PR 2") landed separately in PR #1317
+("feat(essay): implement cross-version claim ledger", merged 2026-09-15,
+`2bed3ade`):
+
+- `anvil/skills/essay/lib/claim_ledger.py` — the ledger primitive
+- `anvil/skills/essay/commands/essay-review.md` (step 4d) and
+  `anvil/skills/essay/commands/essay-revise.md` (step 5b) — the procedure
+  updates
+- `anvil/skills/essay/tests/test_essay_claim_ledger.py` — tests
+
+The shipped code matches both decisions above: the module is skill-local
+under `anvil/skills/essay/lib/` (Decision 1), and it extends
+`<thread>.{N}/provenance.md` rather than adding a parallel file
+(Decision 2). It also confirms the write-primitive note under "Framework
+module integration": `claim_ledger.py` writes via
+`anvil.lib.atomic_write.atomic_write_text`, not `staged_sidecar`.
 
 ## References
 
