@@ -10,8 +10,9 @@ made elsewhere.
 - [`codex-skill-adapter.md`](codex-skill-adapter.md) — research spike for
   #1002 (parent epic #1000) verifying the Codex CLI's skill/plugin
   discovery contract (directory layout, `SKILL.md` frontmatter, manifest
-  fields) against official docs and a live install, ahead of a
-  Codex-adapter implementation phase.
+  fields) against official docs and a live install. The spike informed the
+  shipped adapter (#1000): `install-anvil.sh` writes
+  `.agents/skills/anvil-<skill>/SKILL.md`.
 - [`research/919-ai-humanizer-mining.md`](research/919-ai-humanizer-mining.md)
   — corpus-mining report for #919: surveys external AI-writing-detection /
   "de-slopping" rule catalogues against `anvil/lib/rhetoric_lint.py`'s
@@ -19,7 +20,7 @@ made elsewhere.
 - [`1198-claim-ledger-design.md`](1198-claim-ledger-design.md) — design
   decision record for #1198 (essay-review cross-version claim ledger):
   resolves the two open placement/relationship-to-`provenance.md`
-  questions ahead of the implementation phase, and reviews what the
+  questions and is the rationale for the shipped ledger (PR #1317), and reviews what the
   killed `_convictions.md` primitive (#142/#225/#226/#227/#228) got
   wrong so the new design avoids the same structural defects.
 
