@@ -12,6 +12,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-12
+
+- **PR #1477**: Bump Repo Skills 0.25.10 -> 0.26.1
+
 ### 2026-11-09
 
 - **PR #1475**: chore(deps-dev): update setuptools requirement from >=84.0.0 to >=84.2.1
