@@ -1,9 +1,15 @@
-# PR-time pytest run (issue #1485).
+# PR-time pytest run (issues #1485, #1488).
 #
 # Test-based guards (e.g. tests/lib/test_index_coverage.py, #1481) only protect
 # the repo if something runs them on a change. Before this workflow the only PR
 # check was version-bump-gate, so a PR could add an unindexed lib module and
 # still go green. This job executes the suite on every relevant PR.
+#
+# Both test trees are gated (#1488): `tests/` (framework + per-skill mirrors)
+# AND `anvil/skills/*/tests/` (the skill-local trees). Nine skills have no
+# `tests/skills/<skill>/` counterpart, so their skill-local tree is the only
+# coverage that exists — gating `tests/` alone let a PR touching those skills
+# go green without running any of their tests.
 #
 # Network tests stay env-gated (pytest.mark.network) and are not enabled here.
 # Environment-dependent tests (xelatex / marp / pandoc, optional extras) rely on
@@ -48,4 +54,4 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Run test suite
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ anvil/ -q

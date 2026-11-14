@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **Deck prompt journal is importable on Python 3.11 again** (#1488). `JournalEntry.extra`'s dataclass default was a `MappingProxyType` value, which Python 3.11's dataclasses reject as a mutable default (mappingproxy only grew a `__hash__` slot in 3.12) — any consumer on 3.11 importing `anvil.skills.deck.lib.prompt_journal` crashed at import. It is now a `default_factory`. Surfaced by the PR-time pytest job newly collecting the skill-local test trees, which pinned 3.11 while local hosts ran 3.12.
+
 - **Installer's consumer pyproject now writes `setuptools>=84.2.1`** (#1480). The dependency bump in #1475 raised the source build-system floor but left the `write_consumer_pyproject()` heredoc at `>=84.0.0`, failing `test_install_produces_consumer_pyproject_toml` on `main`.
 
 - **Installer's consumer `[auto_shrink]` extra now mirrors `numpy>=2.4.6`, and a test guards every mirrored extra against source drift** (#1461). Dependabot's numpy bump (#1447) touched only `pyproject.toml`, leaving the consumer extra at `>=2.2.6`. `test_install_produces_consumer_pyproject_toml` now compares each extra the installer writes to the source extra of the same name (and fails on a consumer-only extra); extras deliberately omitted (#947) are not an error.
