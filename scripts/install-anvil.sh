@@ -1094,7 +1094,7 @@ write_consumer_pyproject() {
 # the anvil source repo on the consumer machine.
 
 [build-system]
-requires = ["setuptools>=84.0.0", "wheel"]
+requires = ["setuptools>=84.2.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]

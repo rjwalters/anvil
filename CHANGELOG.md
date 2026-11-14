@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- **Installer's consumer pyproject now writes `setuptools>=84.2.1`** (#1480). The dependency bump in #1475 raised the source build-system floor but left the `write_consumer_pyproject()` heredoc at `>=84.0.0`, failing `test_install_produces_consumer_pyproject_toml` on `main`.
+
 - **Installer's consumer `[auto_shrink]` extra now mirrors `numpy>=2.4.6`, and a test guards every mirrored extra against source drift** (#1461). Dependabot's numpy bump (#1447) touched only `pyproject.toml`, leaving the consumer extra at `>=2.2.6`. `test_install_produces_consumer_pyproject_toml` now compares each extra the installer writes to the source extra of the same name (and fails on a consumer-only extra); extras deliberately omitted (#947) are not an error.
 
 - **Installer no longer misreports a linked git worktree as "not a git repository"** (#1456). `install-anvil.sh` tested `[[ -d "$TARGET/.git" ]]`, which is false in a linked worktree (`.git` is a file), so Stage 2 printed a wrong note and the tracked-but-ignored `.anvil` check was silently skipped. Both sites now use `git rev-parse --is-inside-work-tree`; a plain non-git directory still gets the note.
