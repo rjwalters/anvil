@@ -14,7 +14,13 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-14
 
+- **PR #1487**: ci: run the pytest suite on pull requests
+- **PR #1486**: fix: mirror setuptools>=84.2.1 floor in installer's consumer pyproject
+- **PR #1483**: docs: index float_proximity, numeral_multiset and reader-flow note, guard both indexes
 - **PR #1479**: docs: roadmap as of 2026-11-13
+- **Issue #1485** (closed): ci: no workflow runs the pytest suite, so test-based guards only fire for whoever runs them by hand
+- **Issue #1481** (closed): docs: list float_proximity, numeral_multiset and the reader-flow acceptance record in their indexes, and guard both indexes
+- **Issue #1480** (closed): install-anvil.sh: mirror setuptools>=84.2.1 into the consumer pyproject (test fails on main)
 
 ### 2026-11-12
 
