@@ -23,6 +23,12 @@ made elsewhere.
   questions and is the rationale for the shipped ledger (PR #1317), and reviews what the
   killed `_convictions.md` primitive (#142/#225/#226/#227/#228) got
   wrong so the new design avoids the same structural defects.
+- [`research/readerflow-acceptance-20261031.md`](research/readerflow-acceptance-20261031.md)
+  — acceptance measurement for #1396 (reader-flow lens, clause 2): three
+  geode-fem papers, four fresh-context reads each of the step 4j brief,
+  comparing cross-version recurrence against the same-version noise floor.
+  Result: clause 2 not met (cross-version R is not clearly below the floor on
+  any paper); #1396 stays open.
 
 Add new working notes as `docs/<topic>.md` or `docs/research/<issue>-<slug>.md`
 and list them here so this directory stays reachable from the repo root.
