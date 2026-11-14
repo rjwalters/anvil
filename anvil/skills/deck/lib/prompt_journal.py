@@ -125,10 +125,14 @@ OPTIONAL_FIELDS: tuple[str, ...] = ("steps", "model", "seed")
 # Reserved top-level forward-compat slot. Not required at v0.
 SCHEMA_VERSION_KEY: str = "_schema_version"
 
-# Shared immutable default for the ``extra`` field. Reusing one frozen
-# empty mapping is safe because it can never be mutated; it keeps the
-# common (no-unknown-fields) entry allocation-free.
-_EMPTY_EXTRA: Mapping[str, Any] = MappingProxyType({})
+# Shared immutable default factory for the ``extra`` field. A fresh frozen
+# empty mapping per instance is safe because it can never be mutated;
+# ``default_factory`` is required rather than ``default=_EMPTY_EXTRA``
+# because Python 3.11's dataclasses reject unhashable defaults outright
+# (mappingproxy only grew a ``__hash__`` slot in 3.12), which made this
+# module unimportable on the CI runner's 3.11 (issue #1488).
+def _empty_extra() -> Mapping[str, Any]:
+    return MappingProxyType({})
 
 
 class JournalError(ValueError):
@@ -173,7 +177,7 @@ class JournalEntry:
     steps: int | None = None
     model: str | None = None
     seed: int | None = None
-    extra: Mapping[str, Any] = field(default=_EMPTY_EXTRA)
+    extra: Mapping[str, Any] = field(default_factory=_empty_extra)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the entry to the on-disk dict shape.
@@ -242,7 +246,7 @@ class JournalEntry:
         # non-fatal. Required-field validation above stays fatal.
         known = set(REQUIRED_FIELDS) | set(OPTIONAL_FIELDS)
         unknown = sorted(set(data.keys()) - known)
-        extra: Mapping[str, Any] = _EMPTY_EXTRA
+        extra: Mapping[str, Any] = MappingProxyType({})
         if unknown:
             warnings.warn(
                 f"journal entry for {filename!r} has unknown field(s) "
