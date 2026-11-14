@@ -31,11 +31,11 @@
 - **Codex registration and the essay claim ledger are shipped** (#1000, #1198; docs marked in PR #1473).
 - **Tests:** a full local run of `pytest` at this sha gave 10753 passed, 20 skipped, **1 failed** (`tests/scripts/test_install_uv_runnable.py::test_install_produces_consumer_pyproject_toml`). The only GitHub Actions workflow is `version-bump-gate.yml`; no workflow runs the test suite on pull requests, which is how this failure and the similar #1466 reached `main`.
 - *(corrected)* The old theme "cross-skill lint sharing" is done: `marp_lint` was promoted to `anvil/lib/marp_lint.py` (#318), and the deck and slides copies are 26-line re-exports.
-- **Tracker:** five open issues, none ready for a Builder; one open PR (#1360). [WORK_PLAN.md](WORK_PLAN.md) was last regenerated 2026-10-27 and still lists #1396 as proposed; it is blocked.
+- **Tracker:** seven open issues, none ready for a Builder (five pre-existing, plus #1480 and #1481 filed by this pass as `loom:triage`); one open PR (#1360). [WORK_PLAN.md](WORK_PLAN.md) was last regenerated 2026-10-27 and still lists #1396 as proposed; it is blocked.
 
 ## Now
 
-Can start today; one PR each. Neither has an issue yet.
+Can start today; one PR each. Both are now filed as `loom:triage` — #1480 (item 1) and #1481 (item 2) — and neither is dispatchable until a human promotes it.
 
 1. **Mirror the `setuptools>=84.2.1` floor into the consumer pyproject.** PR #1475 raised `[build-system].requires` in `pyproject.toml`; the heredoc in `scripts/install-anvil.sh` (`write_consumer_pyproject()`) still writes `setuptools>=84.0.0`. *Done when* the failing test above passes and the full suite is green. Installed surface, so the PR carries a VERSION bump and a CHANGELOG entry. Blocked by: nothing.
 2. **Close the index gaps and guard them.** `anvil/lib/README.md` does not list `float_proximity.py` or `numeral_multiset.py`; `docs/README.md` does not list `research/readerflow-acceptance-20261031.md`. *Done when* all three are listed and a test fails if a `anvil/lib/*.py` module or a `docs/**/*.md` file is missing from its index. Blocked by: nothing.
@@ -50,7 +50,7 @@ Can start today; one PR each. Neither has an issue yet.
 
 Direction only; each waits on the question stated.
 
-- **Typed output for the older audit commands.** `deck-audit`, `slides-audit`, `ip-uspto-audit`, `ip-uspto-provisional-audit`, `primer-audit` and `spec-audit` write prose plus a `scorecard_kind` declaration and no `_review.json`; `anvil/lib/README.md` still lists the migration to `kind: tool_evidence` as a follow-up. *Question:* is prose plus `scorecard_kind` the intended end state, or does each audit emit `_review.json` with `tool_calls[]`? *(corrected: the old text named five commands and predates `scorecard_kind`.)*
+- **Typed output for the older audit commands.** Eight of the eleven `*-audit` commands write prose plus a `scorecard_kind` declaration and no `_review.json`: `deck-audit`, `slides-audit`, `ip-uspto-audit`, `ip-uspto-provisional-audit`, `primer-audit`, `spec-audit`, and — already declaring `kind: tool_evidence` without emitting it — `datasheet-audit` and `memoir-audit`. Only `paper-audit`, `report-audit` and `proposal-audit` emit it. `anvil/lib/README.md` still lists the migration to `kind: tool_evidence` as a follow-up, and still names the five pre-migration commands. *Question:* is prose plus `scorecard_kind` the intended end state, or does each audit emit `_review.json` with `tool_calls[]`? *(corrected: the old text named five commands and predates `scorecard_kind`; eight lack `_review.json` at this sha — the two that already declare the typed kind are the sharpest case for the question.)*
 - **Per-skill `lib/` extraction → `anvil/lib/`.** Report's `ack.py`, `audit_flags.py` and `pdf_freshness.py` and deck's `auto_shrink_detector.py` remain skill-local. *Question:* has a second skill needed one? Trigger is observed duplication, not anticipated need.
 - **Memo-side gates.** `anvil:memo` is markdown-first (maintainer decision, #64). *Question:* has consumer friction shown the need for a markdown length proxy and clean-output gate?
 - **Render-gate override ergonomics.** Per-thread `.anvil.json` overrides (`page_cap`, etc.) are part of the contract. *Question:* what friction do consumers report when setting them?
