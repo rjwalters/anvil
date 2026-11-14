@@ -35,13 +35,13 @@ _None._
 
 Issues currently being built (`loom:building`).
 
-_None._
+- **#1481**: docs: list float_proximity, numeral_multiset and the reader-flow acceptance record in their indexes, and guard both indexes
 
 ## PRs Awaiting Review
 
 PRs waiting on Judge (`loom:review-requested`).
 
-_None._
+- **#1483**: docs: index float_proximity, numeral_multiset and reader-flow note, guard both indexes
 
 ## Approved (Awaiting Merge)
 
@@ -54,6 +54,7 @@ _None._
 Issues carrying `loom:curated`.
 
 - **#1396**: paper-review: add a reader-flow lens (define-before-use, one name per concept, body order vs intro roadmap, figure proximity) *(curated)*
+- **#1481**: docs: list float_proximity, numeral_multiset and the reader-flow acceptance record in their indexes, and guard both indexes *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -71,10 +72,10 @@ _None._
 | Very important | 0 |
 | Important | 0 |
 | Ready (`loom:issue`) | 0 |
-| In Progress (`loom:building`) | 0 |
-| PRs awaiting review | 0 |
+| In Progress (`loom:building`) | 1 |
+| PRs awaiting review | 1 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 1 |
+| Curated | 2 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->
