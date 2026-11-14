@@ -124,6 +124,10 @@ anvil/lib/
                                 VLM-critique framework primitive that
                                 produces `Review` objects with
                                 `kind=Kind.VISION`. (#30)
+  cite.py                      Shared citation primitive: DOI / arXiv / URL
+                                identifier parsing, Crossref / arXiv /
+                                DataCite resolution, BibTeX writer. See
+                                "Citations: `cite.py`" below. (#41)
   export_schema.py             One-shot exporter for review_schema.json AND
                                 rubric_schema.json.
   ai_byline.py                 Opt-in AI-authorship byline renderer. (#941)
@@ -137,6 +141,12 @@ anvil/lib/
                                 yields a concrete \href fix. (#1322)
   reader_flow_lint.py          Deterministic define-before-use, variant-name and
                                 roadmap-order lint (advisory, paper step 4k). (#1401)
+  float_proximity.py           Deterministic float-proximity pre-flight (advisory):
+                                flags figures/tables placed far from their first
+                                reference. (#1398)
+  numeral_multiset.py          Numeral-multiset invariant for reorder-style
+                                revisions: every number in version N must survive
+                                in N+1. (#1400)
   cross_thread_refs.py         Cross-thread reference resolver. (#287)
   evidence_check.py            Quoted-evidence verifier for critic scoring
                                 tables. (#464)
