@@ -1,0 +1,51 @@
+# PR-time pytest run (issue #1485).
+#
+# Test-based guards (e.g. tests/lib/test_index_coverage.py, #1481) only protect
+# the repo if something runs them on a change. Before this workflow the only PR
+# check was version-bump-gate, so a PR could add an unindexed lib module and
+# still go green. This job executes the suite on every relevant PR.
+#
+# Network tests stay env-gated (pytest.mark.network) and are not enabled here.
+# Environment-dependent tests (xelatex / marp / pandoc, optional extras) rely on
+# the suite's existing skip conventions rather than being installed on the runner.
+name: pytest
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "anvil/**"
+      - "tests/**"
+      - "scripts/**"
+      - "docs/**"
+      - "pyproject.toml"
+      - ".github/workflows/pytest.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pytest-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install anvil with dev extra
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run test suite
+        run: python -m pytest tests/ -q
