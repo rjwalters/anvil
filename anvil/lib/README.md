@@ -124,6 +124,10 @@ anvil/lib/
                                 VLM-critique framework primitive that
                                 produces `Review` objects with
                                 `kind=Kind.VISION`. (#30)
+  cite.py                      Shared citation primitive: DOI / arXiv / URL
+                                identifier parsing, Crossref / arXiv /
+                                DataCite resolution, BibTeX writer. See
+                                "Citations: `cite.py`" below. (#41)
   export_schema.py             One-shot exporter for review_schema.json AND
                                 rubric_schema.json.
   ai_byline.py                 Opt-in AI-authorship byline renderer. (#941)
