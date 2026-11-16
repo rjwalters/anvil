@@ -165,7 +165,7 @@ html = [
 # Test-time dev deps. Not required for any shipped skill; install for
 # running the test suite locally.
 dev = [
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
 ]
 
 [project.urls]
