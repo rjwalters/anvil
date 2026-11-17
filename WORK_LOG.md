@@ -14,6 +14,12 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-17
 
+- **PR #1507**: feat(ip-uspto-provisional): calibrate full weight against open findings
+- **Issue #1501** (closed): ip-uspto-provisional-review: calibrate "full weight" when minors are open
+- **PR #1511**: fix: version-bump-gate compares VERSION against the base branch tip
+- **Issue #1508** (closed): version-bump-gate is blind to a concurrent VERSION bump landing on main
+- **PR #1509**: fix(ip-uspto-provisional): confine scratch/build/render work to a fresh private subdirectory
+- **Issue #1499** (closed): ip-uspto-provisional-audit: confine scratch work to a private subdirectory
 - **PR #1503**: feat: add python -m anvil.lib.critics aggregate-report CLI
 - **Issue #1498** (closed): ip-uspto-provisional: print the aggregated /45 total; critic subtotals double-count the shared dimension 9
 - **PR #1492**: chore(deps): update pydantic requirement from >=2.14.1 to >=2.14.2
