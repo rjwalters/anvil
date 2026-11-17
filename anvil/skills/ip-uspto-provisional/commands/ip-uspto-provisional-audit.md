@@ -39,6 +39,7 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
 - **Ground-truth sources**:
   - `<thread>/BRIEF.md` — for inventor names, field of use, intended invention, and `priority_date_target`.
   - `<thread>/prior-art/**` — for verifying any prior-art citations or admissions in the spec.
+  - `<thread>/refs/**` — the per-thread document input the draft command already enumerates; Check 9 reads the related application's text from here when a candidate document is present (see Check 9). No BRIEF key is involved.
 - **Optional claim-seed**: `<thread>.{N}/claims.tex` — present only when the operator/drafter opted into one.
 
 ## Outputs
@@ -133,9 +134,11 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
 
    ### Check 9 — Related-application term attribution (ADDED, issue #1500)
    - Scan `spec.tex` for every statement that a related or incorporated application uses a given term — phrasings like "there called X", "a term of the related application(s)", "the related application calls …", "referred to therein as X". This SCAN is LLM/procedure-driven (attribution phrasing is too varied for a regex); the verification it feeds is mechanical.
-   - **Skip-when-absent**: this check runs ONLY when the consumer supplied the related application's text — a path already recorded in `<thread>/BRIEF.md` (read it only if already present; **no new config key** is introduced). When the text is not supplied, record the summary row as `n/a (related-application text not supplied)` — a skip, **NEVER a finding** (the absence of the text is a normal posture, exactly like the claims-optional one).
+   - **Input surface (issue #1506)**: the related application's text is read from `<thread>/refs/**` — the existing per-thread document input, where a consumer naturally drops an incorporated application's text. There is **no new config key** (nothing in `BRIEF.md` records a related-application path, and this check does not look there).
+   - **Identify the candidate**: a `refs/` file is the related-application text when (a) the spec's incorporation paragraph (the "incorporated herein by reference" statement naming the related application, by title or application number) names it, or (b) it is the single unambiguous match — exactly one document under `refs/**` whose content is a patent application. Do not guess among several.
+   - **Skip-when-absent-or-ambiguous**: this check runs ONLY when exactly one candidate is identified. When `refs/` is empty or missing, holds no candidate, or holds several candidates the incorporation paragraph does not disambiguate (ambiguous), record the summary row as `n/a (related-application text not supplied)` — a skip, **NEVER a finding** (the absence of the text is a normal posture, exactly like the claims-optional one; an ambiguous `refs/` is treated the same as an empty one, never as a defect in the spec).
    - When the text IS supplied: open it and confirm each attributed term occurs — **whitespace-normalised, case-insensitive** (the grep for the term itself is mechanical). A term that does not occur → severity `major`: the described behaviour was accurate but the attributed name was not — exactly the canary defect (issue #1500) that cost a full NOT-READY audit cycle because only the auditor happened to look.
-   - Report each finding with the term, the `[000N]` paragraph numbers of the attributing statements in `spec.tex`, and where the term was searched (the supplied related-application path).
+   - Report each finding with the term, the `[000N]` paragraph numbers of the attributing statements in `spec.tex`, and where the term was searched (the `refs/` path of the identified related-application document).
 
 6. **Determine pass/fail**:
    - Pass iff no finding has severity `blocker`.
@@ -168,7 +171,7 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
    See `findings.md` for details.
    ```
 
-   When no `claims.tex` exists, row 6 records `n/a (no claim-seed)` — the absence is explicit, not a silent gap. When the related-application text was not supplied, row 9 records `n/a (related-application text not supplied)` — likewise explicit, likewise never a finding.
+   When no `claims.tex` exists, row 6 records `n/a (no claim-seed)` — the absence is explicit, not a silent gap. When the related-application text was not supplied (no `refs/` candidate, or an ambiguous one), row 9 records `n/a (related-application text not supplied)` — likewise explicit, likewise never a finding.
 
 8. **Write `findings.md`** in the standard format.
 9. **Write `_meta.json`** and finalize `_progress.json` inside the staging dir. `_meta.json` MUST stamp all three rubric-version fields per the per-review version stamping contract (issue #346; SKILL.md §"Uniform critic output schema"): `rubric_id: anvil-ip-provisional-v1`, `rubric_total: 45`, `advance_threshold: 39`, alongside `scorecard_kind: "machine-summary"`. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.audit.tmp/` → `<thread>.{N}.audit/`. The final-named dir only ever exists in **complete** form.
@@ -189,7 +192,7 @@ A failed audit (any `blocker` finding) blocks `ip-uspto-provisional-finalize`. T
 
 - **The audit catches what the critics let through.** Critics evaluate against the rubric; the audit catches mechanical and factual issues that don't fit the rubric (inventor name typos, date errors, reference-numeral orphans).
 - **Run the Check 3 script, then judge its candidates.** The numeral-name script (issue #1500) makes the stale-name defect — including one wrapped across source lines — mechanically visible; your confirmation pass is what separates a genuine rename mismatch (`blocker`) from a benign short form (no action).
-- **Check 9 verifies attributed terms against the actual related-application text when supplied.** The canary cost an audit cycle on a term an incorporated application does not contain; when the text is present, the term-occurrence grep is cheap and mechanical — never skip it. When it is absent, record the `n/a` row and move on; the absence is never a finding.
+- **Check 9 verifies attributed terms against the actual related-application text when supplied.** The text comes from `<thread>/refs/**` (a file the spec's incorporation paragraph names, or the single unambiguous candidate) — no config key is involved. The canary cost an audit cycle on a term an incorporated application does not contain; when the text is present, the term-occurrence grep is cheap and mechanical — never skip it. When it is absent or ambiguous, record the `n/a` row and move on; the absence is never a finding.
 - **Spec admissions are binding — and they carry into conversion.** Background section re-read is high-leverage. An inadvertent admission in a provisional binds the eventual non-provisional.
 - **Claims are optional — never invent a claim-seed finding.** If no `claims.tex` exists, Check 6 is `n/a`. The whole point of the provisional posture is that the absence of claims is normal and correct.
 - **Severity discipline.** Blocker = the disclosure's priority story is compromised. Major = should be fixed but won't sink the filing decision. Minor = quality of life.
