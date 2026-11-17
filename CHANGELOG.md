@@ -22,6 +22,8 @@
 
 ### Changed
 
+- **Raised the `pydantic` floor to `>=2.14.2` (#1492).** The source `pyproject.toml` base dependency and the consumer `pyproject.toml` that `install-anvil.sh` generates now agree on the new lower bound. pydantic 2.14.2 addresses two security advisories (GHSA-qpmf-fgh3-ff25, GHSA-3r8g-cqwr-jr29).
+
 - **Minimum Python is now 3.11, and the Pillow floor is `>=13.0.0`** (#1429). Breaking floor for consumers still on Python 3.10. Pillow 13 requires Python >=3.11, so while `requires-python` allowed 3.10 every consumer lock kept a vulnerable Pillow <13 branch and Dependabot kept flagging it (41 open alerts, 5 critical). `requires-python` is `>=3.11` in `pyproject.toml` and the consumer `.anvil/pyproject.toml` that `install-anvil.sh` writes, and the `auto_shrink`, `image_lint` and `deck_imagegen` extras pin `Pillow>=13.0.0`. Re-run `install-anvil.sh` and `uv lock` in a consumer to pick it up.
 
 ### Fixed
