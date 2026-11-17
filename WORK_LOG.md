@@ -14,6 +14,8 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-17
 
+- **PR #1521**: docs: drop unrefreshable Last-updated stamp from WORK_PLAN.md
+- **Issue #1520** (closed): WORK_PLAN.md 'Last updated' stamp is never refreshed by Guide's regeneration (3 weeks / ~10 regenerations stale)
 - **PR #1517**: docs: correct _tokenize docstring — digit runs become whitespace, not SENTINEL
 - **Issue #1515** (closed): numeral_names.py: _tokenize docstring says digit runs become SENTINEL tokens; they become whitespace
 - **PR #1516**: fix: point ip-uspto-provisional audit Check 9 at <thread>/refs/**
