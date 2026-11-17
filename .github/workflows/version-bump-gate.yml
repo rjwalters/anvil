@@ -41,11 +41,16 @@ jobs:
         env:
           # The marker is read from the PR body here; the script separately
           # scans commit messages between base and head with no extra plumbing.
+          # --tip (#1508): base.sha is the PR's merge point, not the base
+          # branch's tip at merge time, so a sibling PR that bumped VERSION on
+          # main after this branched is invisible to --base alone. --tip makes
+          # the script also require a VERSION strictly newer than main's.
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           ./scripts/check-surface-version-bump.sh \
             --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}"
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --tip "origin/${{ github.base_ref }}"
 
       - name: Check version files are in sync
         # Guards the other half of the same signal: a hand-edited VERSION that

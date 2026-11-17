@@ -8,6 +8,8 @@
 
 ### Fixed
 
+- **`version-bump-gate` now catches a concurrent `VERSION` bump on `main`** (#1508). The gate diffed against the PR's `base.sha` (its merge point), so when a sibling PR bumped `VERSION` on `main` after yours branched, both could bump to the same number and both pass — the second merge added installed surface with no net `VERSION` change, leaving consumers at that number reading "current". `scripts/check-surface-version-bump.sh` gains an optional `--tip <ref>`; when the surface changed and `VERSION` was bumped (not via the no-surface-change marker), head's `VERSION` must now be strictly newer (`sort -V`) than the tip's, else exit 1 with a rebase-and-re-bump message. The workflow passes `--tip "origin/${{ github.base_ref }}"`. Without `--tip` behavior is unchanged. Narrows the race to the time the gate last ran; it does not close it (documented in `CLAUDE.md`).
+
 - **Deck prompt journal is importable on Python 3.11 again** (#1488). `JournalEntry.extra`'s dataclass default was a `MappingProxyType` value, which Python 3.11's dataclasses reject as a mutable default (mappingproxy only grew a `__hash__` slot in 3.12) — any consumer on 3.11 importing `anvil.skills.deck.lib.prompt_journal` crashed at import. It is now a `default_factory`. Surfaced by the PR-time pytest job newly collecting the skill-local test trees, which pinned 3.11 while local hosts ran 3.12.
 
 - **Installer's consumer pyproject now writes `setuptools>=84.2.1`** (#1480). The dependency bump in #1475 raised the source build-system floor but left the `write_consumer_pyproject()` heredoc at `>=84.0.0`, failing `test_install_produces_consumer_pyproject_toml` on `main`.

@@ -37,11 +37,13 @@
 # does not alter installed behavior" without a bump.
 #
 # Usage:
-#   check-surface-version-bump.sh --base <ref> [--head <ref>]
+#   check-surface-version-bump.sh --base <ref> [--head <ref>] [--tip <ref>]
 #     --base <ref>   Git ref/sha to diff FROM (the PR's base commit, e.g. a
 #                    fetched base sha, or origin/main for a local check).
 #                    Required.
 #     --head <ref>   Git ref/sha to diff TO. Defaults to HEAD.
+#     --tip <ref>    The base branch's CURRENT tip (CI: origin/<base_ref>).
+#                    Optional; see "Concurrent bumps" below.
 #   check-surface-version-bump.sh --list-paths   # print the watched surface
 #   check-surface-version-bump.sh --help
 #
@@ -53,11 +55,27 @@
 # `env: PR_BODY: ${{ github.event.pull_request.body }}`); the commit-message
 # path needs no extra plumbing beyond --base/--head.
 #
+# Concurrent bumps (--tip, #1508): --base is the PR's merge point, so on its own
+# the gate only asks "did this branch bump VERSION relative to where it
+# started?". The invariant is "does this merge advance VERSION relative to
+# main?". When a sibling PR bumps VERSION on main after this PR branched, both
+# can land on the same number and both pass --base alone -- the second merge
+# then adds installed surface with no net VERSION change. --tip is NOT a
+# replacement for --base (a direct diff against the tip would count main's own
+# surface changes as the PR's); it adds one extra check: when the surface
+# changed and VERSION was bumped (not exempted by the marker), the head's
+# VERSION must be strictly greater than the tip's (compared with `sort -V`).
+# Known limit: this narrows the race to the time the gate last ran. A sibling
+# can still bump between the last run and the merge; it does not close it.
+#
 # Exit codes:
 #   0 - nothing on the watched surface changed in the diff, OR VERSION was also
-#       changed, OR the no-surface-change marker is present.
-#   1 - the surface changed, VERSION was not bumped, and no marker is present.
-#   2 - bad usage (missing/invalid --base or --head).
+#       changed (and, given --tip, is newer than the tip's), OR the
+#       no-surface-change marker is present.
+#   1 - the surface changed, VERSION was not bumped (or, given --tip, is not
+#       newer than the tip's), and no marker is present.
+#   2 - bad usage (missing/invalid --base, --head or --tip, or a VERSION file
+#       that cannot be read for the --tip comparison).
 
 set -euo pipefail
 
@@ -89,6 +107,7 @@ SURFACE_PATHS=(
 
 BASE=""
 HEAD="HEAD"
+TIP=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -100,14 +119,18 @@ while [[ $# -gt 0 ]]; do
       HEAD="${2:-}"
       shift 2
       ;;
+    --tip)
+      TIP="${2:-}"
+      shift 2
+      ;;
     --list-paths)
       printf '%s\n' "${SURFACE_PATHS[@]}"
       exit 0
       ;;
     --help|-h)
-      # Header block: lines 2..60 (through the exit-code table, stopping before
+      # Header block: lines 2..78 (through the exit-code table, stopping before
       # `set -euo pipefail`). Keep in sync if the preamble grows.
-      sed -n '2,60p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,78p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -132,6 +155,11 @@ if ! git rev-parse --verify --quiet "${HEAD}^{commit}" >/dev/null; then
   exit 2
 fi
 
+if [[ -n "$TIP" ]] && ! git rev-parse --verify --quiet "${TIP}^{commit}" >/dev/null; then
+  echo "check-surface-version-bump: tip ref '$TIP' not found (not fetched?)." >&2
+  exit 2
+fi
+
 # Deliberately a direct two-ref diff, not a merge-base-narrowed one -- this
 # script is invoked from CI checkouts that may be shallow, where base and head
 # histories need not share enough depth to resolve a merge-base. A direct diff
@@ -148,6 +176,31 @@ fi
 VERSION_CHANGED="$(git diff --name-only "$BASE" "$HEAD" -- VERSION 2>/dev/null || true)"
 
 if [[ -n "$VERSION_CHANGED" ]]; then
+  if [[ -n "$TIP" ]]; then
+    # A VERSION bump relative to --base is not enough: it must also advance
+    # past what the base branch holds NOW (#1508). `git show` failing means one
+    # side has no VERSION file -- unevaluable, so exit 2 rather than guess.
+    HEAD_VERSION="$(git show "${HEAD}:VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+    TIP_VERSION="$(git show "${TIP}:VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+    if [[ -z "$HEAD_VERSION" || -z "$TIP_VERSION" ]]; then
+      echo "check-surface-version-bump: cannot read VERSION at head ('$HEAD') and tip ('$TIP') to compare." >&2
+      exit 2
+    fi
+    NEWEST="$(printf '%s\n%s\n' "$HEAD_VERSION" "$TIP_VERSION" | sort -V | tail -n 1)"
+    if [[ "$HEAD_VERSION" == "$TIP_VERSION" || "$NEWEST" != "$HEAD_VERSION" ]]; then
+      echo "check-surface-version-bump: FAIL — VERSION $HEAD_VERSION is not newer than $TIP_VERSION on the base branch ($TIP)." >&2
+      echo "" >&2
+      echo "This PR bumped VERSION relative to where it branched, but the base branch" >&2
+      echo "has since reached $TIP_VERSION. Merging would add installed surface with no net" >&2
+      echo "VERSION change for consumers, so their installs would read \"current\"." >&2
+      echo "Rebase onto $TIP and re-bump past it:" >&2
+      echo "    git rebase $TIP   # resolve the VERSION-bearing files" >&2
+      echo "    ./scripts/version.sh bump patch" >&2
+      exit 1
+    fi
+    echo "check-surface-version-bump: OK — installed surface changed and VERSION was bumped ($HEAD_VERSION, tip is $TIP_VERSION)."
+    exit 0
+  fi
   echo "check-surface-version-bump: OK — installed surface changed and VERSION was bumped."
   exit 0
 fi
