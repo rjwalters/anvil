@@ -14,6 +14,8 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-17
 
+- **PR #1504**: feat: add advisory claim-chart critic to ip-uspto-provisional
+- **Issue #1497** (closed): ip-uspto-provisional: add an advisory claim-chart critic (independents against built/simulated/preferred arrangements)
 - **PR #1507**: feat(ip-uspto-provisional): calibrate full weight against open findings
 - **Issue #1501** (closed): ip-uspto-provisional-review: calibrate "full weight" when minors are open
 - **PR #1511**: fix: version-bump-gate compares VERSION against the base branch tip
