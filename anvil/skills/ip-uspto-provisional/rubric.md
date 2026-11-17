@@ -58,6 +58,7 @@ Calibration (stated for dim 1 at weight 8; scale proportionally for other weight
 - **Aggregate ≥39/45** AND no unresolved critical flag → advance to `READY` (then `AUDITED` once the audit follow-up ships).
 - **Aggregate <39/45** OR any unresolved critical flag → block; revise.
 - Aggregation: per-dimension score = arithmetic mean of non-null critic scores for that dimension. Total = sum of per-dimension means. Termination order (critical flag → threshold → iteration cap → stalled) per `anvil/lib/snippets/rubric.md`.
+- Printing the aggregate: `python -m anvil.lib.critics <thread>.{N}/ [--expect review,s112,priorart]` — lists the critics found, the per-dimension means, the /45 total, and the advance threshold. Critic `_summary.md` owned-dimension subtotals are NOT additive across critics: dim 9 is scored jointly by `review` and `s112`, so summing subtotals double-counts it (issue #1498).
 
 ## Critical flags
 
