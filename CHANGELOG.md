@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **One-name-per-reference-numeral check for `ip-uspto-provisional` (#1500).** New skill-local `anvil/skills/ip-uspto-provisional/lib/numeral_names.py` (stdlib-only, invoked by file path) collects, for every reference numeral, the element name used with it in the brief descriptions, the detailed description, any numeral index and the drawing descriptions — whitespace-normalised after LaTeX-comment stripping, so a name split across two source lines is still found — and reports numerals carrying more than one name with each differing name, the `[000N]` paragraph number and the section. Wired as pre-flight **Check 5b** (`minor`, advisory, never gates pass/fail — the noun-phrase extraction is heuristic) and as audit **Check 3**'s mechanical first pass (reported numerals are candidates the auditor confirms; a confirmed rename mismatch keeps the existing `blocker` severity). The audit also gains **Check 9 — related-application term attribution**: statements that an incorporated application "calls" a term are verified against the supplied related-application text (case-insensitive, whitespace-normalised; missing term → `major`; text not supplied → explicit `n/a` row, never a finding). Both defects came from two NOT-READY canary audit cycles where only the auditor happened to look.
+
 ### Fixed
 
 - **Deck prompt journal is importable on Python 3.11 again** (#1488). `JournalEntry.extra`'s dataclass default was a `MappingProxyType` value, which Python 3.11's dataclasses reject as a mutable default (mappingproxy only grew a `__hash__` slot in 3.12) — any consumer on 3.11 importing `anvil.skills.deck.lib.prompt_journal` crashed at import. It is now a `default_factory`. Surfaced by the PR-time pytest job newly collecting the skill-local test trees, which pinned 3.11 while local hosts ran 3.12.

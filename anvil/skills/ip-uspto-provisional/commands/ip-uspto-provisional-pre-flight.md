@@ -83,6 +83,19 @@ The three rubric-stamping fields (`rubric_id: "anvil-ip-provisional-v1"`, `rubri
    - Findings: orphan numerals on either side, severity `blocker`.
    - **Deterministic**: set difference. (Partial; full reference-numeral correspondence is the `review` critic's dim 4 job.)
 
+   ### Check 5b — One name per reference numeral (ADDED, advisory, issue #1500)
+   - Run the deterministic name-consistency script against the version dir (invoked by **file path** — the hyphenated skill dir is not importable, the `ip-uspto/lib/` precedent; in an installed consumer repo the path is `.anvil/skills/ip-uspto-provisional/lib/numeral_names.py`):
+
+     ```
+     python3 anvil/skills/ip-uspto-provisional/lib/numeral_names.py <thread>.{N}          # text findings
+     python3 anvil/skills/ip-uspto-provisional/lib/numeral_names.py <thread>.{N} --json   # machine-readable
+     ```
+
+     Exit codes: `0` = every numeral carries one consistent name; `1` = at least one numeral carries more than one name; `2` = usage/IO error.
+   - The script collects, for every reference numeral, the element name used with it in the brief descriptions, the detailed description, any numeral index and the drawing descriptions — **whitespace-normalised after LaTeX-comment stripping**, so a name split across two source lines is still found (the exact canary defect that cost two NOT-READY audit cycles, issue #1500) — and lists numerals carrying more than one name, with each differing name, the `\anvilpara` paragraph number `[000N]`, and the section.
+   - Findings: severity `minor`, **advisory**. The extraction is heuristic (a legitimate short form "bridge 10" vs "sense bridge 10", or a differing modifier on a shared head, must not block), so this check **NEVER affects pass/fail** — the same standing as the Check 8 `minor` stub findings. Reported numerals are candidates the **audit** confirms: `ip-uspto-provisional-audit` Check 3 runs the same script, and a *confirmed* rename mismatch keeps that check's existing `blocker` severity. A renamed-but-synonymous element is reported and the auditor decides (no NLP/semantic synonym matching).
+   - **Deterministic**: stdlib-only script (`anvil/skills/ip-uspto-provisional/lib/numeral_names.py`, issue #1500). It only reports — it never rewrites the spec.
+
    ### Check 6 — Required provisional sections present (REPLACES 1.77(b))
    - The provisional has **no 37 CFR 1.77(b) regime** (SKILL.md line 11; the review command's dim 7 forbids enforcing section order). Instead of the non-provisional required-heading-in-order check, verify the provisional's OWN required sections are present (presence, NOT order):
      - `field`, `background`, `summary`, `brief-description-of-drawings`, `detailed-description` — the five required section ids per SKILL.md §`_outline.json` (lines 64–66).
@@ -109,7 +122,7 @@ The three rubric-stamping fields (`rubric_id: "anvil-ip-provisional-v1"`, `rubri
    - **Calibration rationale (issue #572)**: a filed provisional shipped with a 83.6pt overfull (~16× the framework default 5.0pt threshold; >40× the ip-skill 2.0pt override). The 2.0pt call-site override is the legal-artifact calibration — tighter than the framework default the other skills inherit. The framework default in `render_gate.py` remains 5.0pt to avoid disturbing the `installation`, `proposal`, `datasheet`, `paper`, `report` consumers.
    - Write the `GateResult.to_json()` payload to the staging dir's `_gate.json` for CI inspection alongside `_summary.md` / `findings.md`.
 
-5. **Determine pass/fail**: pass iff no finding has severity `blocker`. The Check 8 `minor` enablement-stub findings and the Check 9 engine-unavailable `minor` never affect pass/fail.
+5. **Determine pass/fail**: pass iff no finding has severity `blocker`. The Check 5b `minor` numeral-name advisories, the Check 8 `minor` enablement-stub findings and the Check 9 engine-unavailable `minor` never affect pass/fail.
 6. **Write `_summary.md`**:
 
    ```markdown
@@ -128,6 +141,7 @@ The three rubric-stamping fields (`rubric_id: "anvil-ip-provisional-v1"`, `rubri
    | 3. Claim numbering | n/a (claims optional) | - |
    | 4. Multiple-dependent claim rule | n/a (claims optional) | - |
    | 5. Reference numeral coherence | pass (0 orphans) | - |
+   | 5b. One name per reference numeral | advisory | - |
    | 6. Required provisional sections | pass | - |
    | 7. Documentclass (anvil-uspto) | pass | - |
    | 8. §112 enablement-stub scan | advisory | 1 minor (advisory: s112) |
@@ -159,6 +173,7 @@ The pre-flight result gates the loop edge `REVISED → REVIEWED`:
 - **Deterministic only.** Every provisional check is deterministic (regex, count, set difference, render-gate). The one non-provisional check that needed an LLM fallback (multiple-dependent claim rule) is neutered here, so there is no LLM call in this command.
 - **Claims-optional discipline is load-bearing.** Never raise a finding because `claims.tex` is absent. Never apply filed-claim numbering or count rules to a present seed. The seed's own defects are the `ip-uspto-provisional-claims-seed` critic's job.
 - **The §112 stub scan is advisory, not a gate.** Check 8 surfaces obvious mechanical placeholders as `minor` and routes them to `s112`; enablement depth itself is never gated here.
+- **The numeral-name check (5b) is advisory, not a gate.** The noun-phrase extraction is heuristic; report its findings as `minor` advisories for the audit's Check 3 confirmation, never as gate findings. A short-form or shared-head variant ("bridge 10" vs "sense bridge 10") is expected non-noise, not a defect.
 - **The class file is the enforcement mechanism for geometry.** Check 7 confirms the source *references* `\documentclass{anvil-uspto}`; Check 9 confirms `pdflatex` can actually resolve and load it. Once both pass, geometry is correct by construction.
 
 ## Scorecard kind
