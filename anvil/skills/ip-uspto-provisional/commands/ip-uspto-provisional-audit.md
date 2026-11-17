@@ -1,6 +1,6 @@
 ---
 name: ip-uspto-provisional-audit
-description: Final fact-check audit pass on a READY provisional application. Verifies inventor names, title/field-of-use, reference numerals, dates/citations, and background admissions across spec and drawings. Runs only after convergence (the provisional READY marker is present). Claims-optional — claim/abstract checks are dropped; a claim-seed, if present, is checked at major cap.
+description: Final fact-check audit pass on a READY provisional application. Verifies inventor names, title/field-of-use, reference numerals, dates/citations, background admissions, and related-application term attribution across spec and drawings. Runs only after convergence (the provisional READY marker is present). Claims-optional — claim/abstract checks are dropped; a claim-seed, if present, is checked at major cap.
 ---
 
 # ip-uspto-provisional-audit — Auditor
@@ -90,6 +90,15 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
    - For every reference numeral appearing in `spec.tex`, the same numeral must appear in at least one figure (or figure stub description) referring to the same component.
    - For every reference numeral in any drawing or stub, the numeral must appear in `spec.tex`.
    - The component name associated with a numeral must be **consistent** across spec and drawings (e.g., `12` cannot mean "input port" in spec and "housing" in fig-2).
+   - **Mechanical first pass (issue #1500)**: before the manual pass, run the deterministic name-consistency script over the version dir (invoked by **file path** — the hyphenated skill dir is not importable; in an installed consumer repo the path is `.anvil/skills/ip-uspto-provisional/lib/numeral_names.py`):
+
+     ```
+     python3 anvil/skills/ip-uspto-provisional/lib/numeral_names.py <thread>.{N}          # text findings
+     python3 anvil/skills/ip-uspto-provisional/lib/numeral_names.py <thread>.{N} --json   # machine-readable
+     ```
+
+     The script collects, for every reference numeral, the element name used with it in the brief descriptions, the detailed description, any numeral index and the drawing descriptions (whitespace-normalised after LaTeX-comment stripping, so a name split across two source lines is still found) and lists numerals carrying more than one name, with each differing name, the `\anvilpara` paragraph number `[000N]`, and the section.
+   - Each reported numeral is a **candidate** for this check, not an automatic finding: the extraction is heuristic (a legitimate short form "bridge 10" vs "sense bridge 10" is expected non-noise), so the auditor confirms each candidate in context. A **confirmed** rename mismatch keeps this check's existing `blocker` severity; a short-form/shared-head variant the script already de-duplicates needs no action.
    - Each kind of inconsistency → severity `blocker`.
 
    ### Check 4 — Date and citation verification
@@ -122,6 +131,12 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
    - Source-side placeholder patterns are the same set the pre-flight uses (defaults plus the ip-skill-specific `\refnum{??}` / `\anvilpara{}`); duplicate placeholder findings at audit time are not expected (the pre-flight already cleared them) and any hits indicate a post-pre-flight regression.
    - Write the `GateResult.to_json()` payload to the audit staging dir's `_gate.json` for `ip-uspto-provisional-finalize`'s pre-finalize read (see `ip-uspto-provisional-finalize.md` step 4b). The finalize gate refuses to assemble `<thread>.counsel/` when any audit-time overfull finding is present.
 
+   ### Check 9 — Related-application term attribution (ADDED, issue #1500)
+   - Scan `spec.tex` for every statement that a related or incorporated application uses a given term — phrasings like "there called X", "a term of the related application(s)", "the related application calls …", "referred to therein as X". This SCAN is LLM/procedure-driven (attribution phrasing is too varied for a regex); the verification it feeds is mechanical.
+   - **Skip-when-absent**: this check runs ONLY when the consumer supplied the related application's text — a path already recorded in `<thread>/BRIEF.md` (read it only if already present; **no new config key** is introduced). When the text is not supplied, record the summary row as `n/a (related-application text not supplied)` — a skip, **NEVER a finding** (the absence of the text is a normal posture, exactly like the claims-optional one).
+   - When the text IS supplied: open it and confirm each attributed term occurs — **whitespace-normalised, case-insensitive** (the grep for the term itself is mechanical). A term that does not occur → severity `major`: the described behaviour was accurate but the attributed name was not — exactly the canary defect (issue #1500) that cost a full NOT-READY audit cycle because only the auditor happened to look.
+   - Report each finding with the term, the `[000N]` paragraph numbers of the attributing statements in `spec.tex`, and where the term was searched (the supplied related-application path).
+
 6. **Determine pass/fail**:
    - Pass iff no finding has severity `blocker`.
    - `major` findings do not block but should be addressed where feasible. (Per the claims-optional cap, every claim-seed finding is at most `major` unless it evidences a disclosure gap — so a present-but-imperfect claim-seed never, by itself, blocks the audit.)
@@ -146,13 +161,14 @@ The audit is NOT one of the parallel critics. It runs once per terminal version,
    | 6. Claim-seed coherence | n/a (no claim-seed) | - |
    | 7. Drawing-stub completeness | pass | - |
    | 8. Render-gate backstop (compile/overfull/placeholder) | pass | - |
+   | 9. Related-application term attribution | n/a (related-application text not supplied) | - |
 
    **Overall**: <PASS | FAIL — 2 blockers>
 
    See `findings.md` for details.
    ```
 
-   When no `claims.tex` exists, row 6 records `n/a (no claim-seed)` — the absence is explicit, not a silent gap.
+   When no `claims.tex` exists, row 6 records `n/a (no claim-seed)` — the absence is explicit, not a silent gap. When the related-application text was not supplied, row 9 records `n/a (related-application text not supplied)` — likewise explicit, likewise never a finding.
 
 8. **Write `findings.md`** in the standard format.
 9. **Write `_meta.json`** and finalize `_progress.json` inside the staging dir. `_meta.json` MUST stamp all three rubric-version fields per the per-review version stamping contract (issue #346; SKILL.md §"Uniform critic output schema"): `rubric_id: anvil-ip-provisional-v1`, `rubric_total: 45`, `advance_threshold: 39`, alongside `scorecard_kind: "machine-summary"`. The `_progress.json` write MUST be the LAST file write before the context manager exits — the manifest verification + atomic rename at exit (issue #350) requires it to be present. Then **exit the `staged_sidecar` context block**: the primitive verifies every name in the required-files manifest exists in the staging dir, then atomically renames `.<thread>.{N}.audit.tmp/` → `<thread>.{N}.audit/`. The final-named dir only ever exists in **complete** form.
@@ -172,6 +188,8 @@ A failed audit (any `blocker` finding) blocks `ip-uspto-provisional-finalize`. T
 ## Notes for the auditor agent
 
 - **The audit catches what the critics let through.** Critics evaluate against the rubric; the audit catches mechanical and factual issues that don't fit the rubric (inventor name typos, date errors, reference-numeral orphans).
+- **Run the Check 3 script, then judge its candidates.** The numeral-name script (issue #1500) makes the stale-name defect — including one wrapped across source lines — mechanically visible; your confirmation pass is what separates a genuine rename mismatch (`blocker`) from a benign short form (no action).
+- **Check 9 verifies attributed terms against the actual related-application text when supplied.** The canary cost an audit cycle on a term an incorporated application does not contain; when the text is present, the term-occurrence grep is cheap and mechanical — never skip it. When it is absent, record the `n/a` row and move on; the absence is never a finding.
 - **Spec admissions are binding — and they carry into conversion.** Background section re-read is high-leverage. An inadvertent admission in a provisional binds the eventual non-provisional.
 - **Claims are optional — never invent a claim-seed finding.** If no `claims.tex` exists, Check 6 is `n/a`. The whole point of the provisional posture is that the absence of claims is normal and correct.
 - **Severity discipline.** Blocker = the disclosure's priority story is compromised. Major = should be fixed but won't sink the filing decision. Minor = quality of life.
