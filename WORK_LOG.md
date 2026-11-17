@@ -14,6 +14,12 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-17
 
+- **PR #1517**: docs: correct _tokenize docstring — digit runs become whitespace, not SENTINEL
+- **Issue #1515** (closed): numeral_names.py: _tokenize docstring says digit runs become SENTINEL tokens; they become whitespace
+- **PR #1516**: fix: point ip-uspto-provisional audit Check 9 at <thread>/refs/**
+- **Issue #1506** (closed): ip-uspto-provisional audit Check 9 has no reachable input: no BRIEF.md field records a related-application text path
+- **PR #1505**: feat(ip-uspto-provisional): one-name-per-refnum check and related-application term attribution
+- **Issue #1500** (closed): ip-uspto-provisional-audit: check one name per reference numeral, and verify terms attributed to related applications
 - **PR #1504**: feat: add advisory claim-chart critic to ip-uspto-provisional
 - **Issue #1497** (closed): ip-uspto-provisional: add an advisory claim-chart critic (independents against built/simulated/preferred arrangements)
 - **PR #1507**: feat(ip-uspto-provisional): calibrate full weight against open findings
