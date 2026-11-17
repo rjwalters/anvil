@@ -30,7 +30,7 @@
 | 8 | Terminology & reference-numeral consistency | 3 | null | n/a — see `review` |
 | 9 | Conversion readiness | 6 | 5 | Each feature's load-bearing elements are individually identifiable and narrower fallbacks are visible, so a drafter can seed an independent claim with supported limitations: "The split-path excitation network \refnum{40}, the self-referencing offset-cancellation node, and the single trim-once span resistor \refnum{30} may be used together ... or independently" (§ Detailed Description ¶[0017]). The optional `claims.tex` seed's limitations all trace to enabling disclosure, raising the reachable ceiling. One point off ceiling: the same-die process-corner claim limitation leans on the dummy/sense adjacency that is disclosed qualitatively, not with a placement tolerance. |
 
-**Owned-dimension subtotal (dims 1+2+3+9)**: 22 / 25.
+**Owned-dimension subtotal (dims 1+2+3+9)**: 22 / 25 — NOT additive across critics; dim 9 is shared with `review`; run `python -m anvil.lib.critics acme-widget-prov.1/` for the aggregate (per-dimension means, /45 total, advance threshold).
 
 ## Claims-optional note
 

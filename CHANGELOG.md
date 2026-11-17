@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`python -m anvil.lib.critics <version_dir>` prints the aggregated review** (#1498). Each critic's `_summary.md` subtotal covers only the dimensions it owns, and ip-uspto-provisional dim 9 is owned jointly by the `review` and `s112` critics — so summing critic subtotals double-counted it (a live canary over-reported a total above the ≥39 advance threshold this way and had to correct it to one point below). The new skill-agnostic CLI wraps `discover_critics` + `load_review` + `aggregate` and prints the critics found, the per-dimension mean of non-null scores (dimensions with no non-null score as `missing`, never `0`, flagging the total as partial), the sum-of-means total out of the rubric total, `aggregate()`'s per-dimension-rounded total and verdict when they differ, and the advance threshold; `--expect review,s112,priorart` lists expected critics with no sibling dir as missing. The legacy ip-uspto adapter now also reads the table-shaped machine-summary (`_summary.md` rubric block + 5-column scorecard, no `_review.json`) and its declared `advance_threshold`, so it covers the skill's actual critic output. The `ip-uspto-provisional` review/s112 commands, the s112 worked example, and `rubric.md` now label owned-dimension subtotals as NOT additive and point at the CLI.
+
 ### Fixed
 
 - **Deck prompt journal is importable on Python 3.11 again** (#1488). `JournalEntry.extra`'s dataclass default was a `MappingProxyType` value, which Python 3.11's dataclasses reject as a mutable default (mappingproxy only grew a `__hash__` slot in 3.12) — any consumer on 3.11 importing `anvil.skills.deck.lib.prompt_journal` crashed at import. It is now a `default_factory`. Surfaced by the PR-time pytest job newly collecting the skill-local test trees, which pinned 3.11 while local hosts ran 3.12.
