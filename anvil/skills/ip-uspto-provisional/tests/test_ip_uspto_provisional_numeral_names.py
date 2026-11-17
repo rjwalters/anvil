@@ -448,6 +448,36 @@ class TestAuditDocWiring(unittest.TestCase):
         self.assertIn("NEVER a finding", block)
         self.assertIn("no new config key", block)
 
+    def test_check_9_reads_related_application_from_refs(self):
+        """Issue #1506: the input is `<thread>/refs/**`, not a BRIEF-recorded path."""
+        idx9 = self.text.index("### Check 9")
+        block = self.text[idx9 : self.text.index("Determine pass/fail")]
+        self.assertIn("<thread>/refs/**", block)
+        # No remaining claim that BRIEF.md records the related-application path.
+        self.assertNotIn("recorded in `<thread>/BRIEF.md`", block)
+        self.assertNotIn("path already recorded", block)
+        # The "no new config key" constraint from #1500 is preserved.
+        self.assertIn("no new config key", block)
+
+    def test_check_9_states_candidate_identification_and_ambiguity(self):
+        idx9 = self.text.index("### Check 9")
+        block = self.text[idx9 : self.text.index("Determine pass/fail")]
+        self.assertIn("incorporation", block)
+        self.assertIn("single unambiguous", block)
+        # Absence AND ambiguity both degrade to the n/a row, never a finding.
+        self.assertIn("ambiguous", block)
+        self.assertIn("empty", block)
+        self.assertIn("n/a (related-application text not supplied)", block)
+
+    def test_check_9_notes_bullet_agrees_with_refs_input(self):
+        notes = self.text[self.text.index("## Notes for the auditor agent") :]
+        self.assertIn("refs/", notes)
+        self.assertNotIn("BRIEF.md", notes.split("Check 9")[1].split("\n")[0])
+
+    def test_check_9_ground_truth_inputs_list_refs(self):
+        inputs = self.text[self.text.index("## Inputs") : self.text.index("## Outputs")]
+        self.assertIn("<thread>/refs/**", inputs)
+
     def test_check_9_missing_term_is_major(self):
         idx9 = self.text.index("### Check 9")
         block = self.text[idx9 : idx9 + 2500]
