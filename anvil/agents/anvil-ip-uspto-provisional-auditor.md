@@ -21,4 +21,6 @@ Follow the complete command definition in `.anvil/skills/ip-uspto-provisional/co
 - Atomicity / staging contract (the staged_sidecar primitive in `anvil/lib/sidecar.py`)
 - Verdict / findings / scoring file shape and the read-only-once-written discipline
 
+Scratch-directory confinement (issue #1499): create a fresh private subdirectory (e.g. `mktemp -d`) for ALL scratch/build/render work and run every compile inside it. Never move, rename, delete, or overwrite anything already present in a scratch/temp directory, and never build in a directory that existed before the run; clean up only what you created.
+
 Important: This subagent is dispatched parallel-safe. Use the staging pattern declared in this file's frontmatter (`staging_pattern`) and do NOT sweep sibling critic staging directories outside that pattern — the per-critic cleanup contract (issue #381) is load-bearing for parallel fan-out.

@@ -70,12 +70,29 @@ so the reviser sees both phrasings.
 The aggregator is a **pure function** of ``list[Review]``. It does no
 filesystem access. This makes the test surface small and the orchestrator
 simple.
+
+CLI entry-point
+---------------
+
+``python -m anvil.lib.critics <version_dir> [--expect review,s112,...]``
+
+Prints the rubric-rule aggregate for a version directory: the critics
+found, the per-dimension mean of non-null critic scores, the
+sum-of-means total out of the rubric total, ``aggregate()``'s
+per-dimension-rounded total and verdict when they differ, and the
+advance threshold. A dimension with no non-null score prints as
+``missing`` (never ``0``) and flags the total as partial; expected
+critics without a sibling dir (via ``--expect``) are listed as missing.
+This is the report an agent or human should read instead of summing
+critic ``_summary.md`` subtotals, which double-count dimensions owned
+jointly by two critics (ip-uspto-provisional dim 9 — issue #1498).
 """
 
 from __future__ import annotations
 
 import json
 import re
+import sys
 import warnings
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
@@ -711,11 +728,23 @@ def _adapt_ip_uspto_legacy(critic_dir: Path) -> Review:
     summary_data = _extract_ip_uspto_summary_json(summary_md)
 
     scores = _parse_ip_uspto_dimensions(summary_data)
+    if not scores:
+        # Table-shaped machine-summary (the ip-uspto-provisional shape:
+        # one ```json rubric block whose "dimensions" is a COUNT, plus a
+        # 5-column scorecard table) — reuse the memo table parser
+        # (issue #1498).
+        scores = parse_memo_scoring_table(summary_md)
     critical_flags = _parse_ip_uspto_critical_flags(summary_data)
     findings = _parse_ip_uspto_findings(findings_md)
 
     # ip-uspto's _summary.md typically does not carry total/threshold; the
-    # aggregator computes total downstream. We do not invent values.
+    # aggregator computes total downstream. We do not invent values. When
+    # the rubric block or _meta.json DECLARES an advance_threshold
+    # (per-review version stamping, issue #346), echo it so the aggregate
+    # report can print the real gate.
+    threshold = summary_data.get("advance_threshold")
+    if threshold is None:
+        threshold = meta.get("advance_threshold")
     return Review(
         schema_version="1",
         kind=Kind.JUDGMENT,
@@ -725,6 +754,7 @@ def _adapt_ip_uspto_legacy(critic_dir: Path) -> Review:
         scores=scores,
         findings=findings,
         critical_flags=critical_flags,
+        threshold=threshold,
     )
 
 
@@ -738,6 +768,11 @@ def _extract_ip_uspto_summary_json(text: str) -> dict:
 
 def _parse_ip_uspto_dimensions(data: dict) -> List[Score]:
     dims = data.get("dimensions", {})
+    if not isinstance(dims, dict):
+        # The rubric block's "dimensions" is a COUNT (e.g. 9), not a
+        # scorecard map — not an error; the table fallback in
+        # _adapt_ip_uspto_legacy covers that shape (issue #1498).
+        return []
     scores: List[Score] = []
     for name, entry in dims.items():
         if entry is None:
@@ -1119,6 +1154,158 @@ def _compute_verdict_impl(
     return Verdict.REVISE
 
 
+# ---------------------------------------------------------------------------
+# CLI entry-point
+# ---------------------------------------------------------------------------
+
+
+def _format_mean(value: Optional[float]) -> str:
+    """Format a dimension mean without trailing zeros (``5.5``, ``4``, ``4.67``).
+
+    ``None`` (no non-null critic score for the dimension) formats as
+    ``missing`` — never ``0`` — per the #1498 contract.
+    """
+    if value is None:
+        return "missing"
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _build_cli_parser():
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog="python -m anvil.lib.critics",
+        description=(
+            "Print the aggregated review for a version directory: the "
+            "critics found, the per-dimension mean of non-null critic "
+            "scores, the total out of the rubric total, and the advance "
+            "threshold. This is the rubric.md aggregation rule — NOT the "
+            "sum of critic _summary.md subtotals, which double-counts "
+            "dimensions owned jointly by two critics."
+        ),
+    )
+    p.add_argument(
+        "version_dir",
+        help="Path to <thread>.{N}/ whose sibling critics to aggregate.",
+    )
+    p.add_argument(
+        "--expect",
+        metavar="TAGS",
+        default=None,
+        help=(
+            "Comma-separated critic tags expected to have sibling dirs "
+            "(e.g. review,s112,priorart). Any expected tag without a "
+            "sibling dir is reported as missing. Per-skill; not "
+            "hardcoded."
+        ),
+    )
+    return p
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """CLI entry point. Returns the process exit code.
+
+    Exit codes:
+    - ``0``: aggregate printed.
+    - ``1``: no usable critic siblings found.
+    - ``2``: invocation error (version_dir missing, or aggregation
+      rejected the reviews).
+    """
+    parser = _build_cli_parser()
+    args = parser.parse_args(argv)
+
+    version_dir = Path(args.version_dir)
+    if not version_dir.is_dir():
+        print(
+            f"error: version_dir {version_dir} does not exist or is not "
+            f"a directory.",
+            file=sys.stderr,
+        )
+        return 2
+
+    critic_dirs = discover_critics(version_dir)
+    if not critic_dirs:
+        print(
+            f"error: no critic sibling directories found for "
+            f"{version_dir.name} (looked for {version_dir.name}.<tag>/ "
+            f"dirs containing a recognizable review: _review.json or a "
+            f"legacy file triple).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Display-consumer degradation (the load_review docstring contract):
+    # one unparsable sibling is reported and skipped, not fatal.
+    discovered_tags = [_infer_critic_id(d) for d in critic_dirs]
+    reviews: List[Review] = []
+    for critic_dir in critic_dirs:
+        try:
+            reviews.append(load_review(critic_dir))
+        except (CriticDiscoveryError, ValueError) as exc:
+            print(
+                f"error: skipping unparsable critic dir "
+                f"{critic_dir.name}: {exc}",
+                file=sys.stderr,
+            )
+    if not reviews:
+        print(
+            "error: found critic sibling directories but none parsed as "
+            "a recognizable review (see errors above).",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        agg = aggregate(reviews)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    rubric_total = sum(s.max for s in agg.scores)
+    sum_of_means = sum(
+        m for m in agg.score_means.values() if m is not None
+    )
+    missing_dims = [
+        dim for dim, mean in agg.score_means.items() if mean is None
+    ]
+
+    print(f"version_dir: {version_dir.name}")
+    print(f"critics found: {', '.join(discovered_tags)}")
+    print("per-dimension aggregate (mean of non-null critic scores):")
+    for s in agg.scores:
+        print(f"  {s.dimension}: {_format_mean(agg.score_means[s.dimension])} / {s.max}")
+    print(
+        f"total (sum of per-dimension means, the rubric.md rule): "
+        f"{_format_mean(sum_of_means)} / {rubric_total}"
+    )
+    if agg.total != sum_of_means:
+        print(
+            f"aggregate() total (each dimension mean rounded to int; the "
+            f"figure its verdict gates on): {agg.total} / {rubric_total}"
+        )
+    print(f"advance threshold: {agg.threshold}")
+    print(f"verdict (aggregate()): {agg.verdict.value}")
+    if missing_dims:
+        print(
+            f"partial: {len(missing_dims)} dimension(s) have no non-null "
+            f"critic score (printed as 'missing' above) — the total is "
+            f"NOT comparable to the threshold"
+        )
+    if args.expect:
+        expected = [
+            tag.strip()
+            for tag in args.expect.split(",")
+            if tag.strip()
+        ]
+        missing_critics = [t for t in expected if t not in discovered_tags]
+        if missing_critics:
+            print(
+                f"missing critics (expected via --expect, no sibling dir "
+                f"found): {', '.join(missing_critics)}"
+            )
+    return 0
+
+
 __all__ = [
     "CANONICAL_REVIEW_FILENAME",
     "LEGACY_MEMO_FILES",
@@ -1133,4 +1320,9 @@ __all__ = [
     "parse_memo_verdict_kill_rationale",
     "aggregate",
     "compute_verdict",
+    "main",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

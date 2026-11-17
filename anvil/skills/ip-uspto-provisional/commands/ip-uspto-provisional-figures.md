@@ -94,6 +94,8 @@ TikZ mode's own success signal — "the figure compiled" — and the source-side
 
 ## Procedure (TikZ mode — opt-in)
 
+**Scratch-directory confinement**: create a fresh private subdirectory (e.g. `mktemp -d`) for ALL scratch/build/render work and run every compile inside it. Never move, rename, delete, or overwrite anything already present in a scratch/temp directory, and never build in a directory that existed before the run; clean up only what you created.
+
 1. **Discover state, idempotence check, init `_progress.json`**.
 2. **For each figure marked as block-diagram or flowchart type in stubs**, attempt TikZ generation:
    - Use the `tikz` package with the `arrows.meta` and `positioning` libraries.
