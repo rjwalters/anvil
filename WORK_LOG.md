@@ -14,6 +14,8 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 
 ### 2026-11-17
 
+- **PR #1503**: feat: add python -m anvil.lib.critics aggregate-report CLI
+- **Issue #1498** (closed): ip-uspto-provisional: print the aggregated /45 total; critic subtotals double-count the shared dimension 9
 - **PR #1492**: chore(deps): update pydantic requirement from >=2.14.1 to >=2.14.2
 
 ### 2026-11-16
