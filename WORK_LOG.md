@@ -12,6 +12,10 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-17
+
+- **PR #1492**: chore(deps): update pydantic requirement from >=2.14.1 to >=2.14.2
+
 ### 2026-11-16
 
 - **PR #1494**: chore(deps): bump actions/setup-python from 6 to 7 in the github-actions group across 1 directory
