@@ -2,8 +2,6 @@
 
 Prioritized roadmap generated from current GitHub label state. Maintained by the Guide triage agent.
 
-*Last updated: 2026-10-27*
-
 ---
 
 <!-- guide:plan-body:start -->
@@ -90,4 +88,4 @@ The Guide triage agent should refresh this file when:
 - The operator adds or removes `loom:operator-priority` (Guide only reads it).
 - Stale issues need re-prioritization.
 
-If the file is more than a week stale and the open-issues backlog has changed, regenerate from current label state and timestamp with `*Last updated: YYYY-MM-DD*` at the top.
+If the file is more than a week stale and the open-issues backlog has changed, regenerate from current label state. Freshness is recorded by git history, not an in-file stamp.
