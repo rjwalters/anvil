@@ -12,6 +12,11 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-16
+
+- **PR #1494**: chore(deps): bump actions/setup-python from 6 to 7 in the github-actions group across 1 directory
+- **PR #1493**: chore(deps-dev): update pytest requirement from >=9.1.1 to >=9.2.0
+
 ### 2026-11-14
 
 - **PR #1490**: fix: deck prompt journal importable on Python 3.11; pytest CI gates both test trees
