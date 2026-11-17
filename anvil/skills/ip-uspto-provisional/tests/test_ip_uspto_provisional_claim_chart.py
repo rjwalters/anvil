@@ -394,6 +394,36 @@ class TestFigureRecompute(unittest.TestCase):
         )
         self.assertEqual(result["status"], "reproduced")
 
+    def test_inexact_arithmetic_default_tolerance_reproduces(self):
+        # Regression (PR #1504 review finding 2): 0.1 + 0.2 is
+        # 0.30000000000000004 in binary floats; an entry with no
+        # tolerance fields must not report that representation artifact
+        # as figure-differs-from-source.
+        result = self._classify(
+            {
+                "id": "f",
+                "printed_value": 0.3,
+                "expression": "a + b",
+                "inputs": {"a": 0.1, "b": 0.2},
+            }
+        )
+        self.assertEqual(result["status"], "reproduced")
+
+    def test_recompute_mismatch_beyond_default_tolerance_still_differs(self):
+        # Guard rail for the default: a real mismatch orders of
+        # magnitude larger than the 1e-9 relative default still
+        # classifies as figure-differs-from-source.
+        result = self._classify(
+            {
+                "id": "eff",
+                "printed_value": 38.2,
+                "expression": "a / b * 100",
+                "inputs": {"a": 41.6, "b": 109.0},
+            }
+        )
+        self.assertEqual(result["status"], "miss")
+        self.assertEqual(result["class"], "figure-differs-from-source")
+
     def test_malformed_entries_raise_ledger_error(self):
         for bad in (
             {"printed_value": 1.0},  # no id
@@ -483,6 +513,30 @@ class TestFigureRecomputeCli(unittest.TestCase):
     def test_main_invocation_error_is_two(self):
         self.assertEqual(self.fr.main([]), 2)
         self.assertEqual(self.fr.main(["/nonexistent/ledger.json"]), 2)
+
+    def test_main_overflow_is_invocation_error_two(self):
+        # Regression (PR #1504 review finding 2b): a huge-int computed
+        # value overflows float conversion in the tolerance comparison;
+        # the CLI reports exit 2 (invocation error), never a traceback.
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger_path = Path(tmp) / "ledger.json"
+            ledger_path.write_text(
+                json.dumps(
+                    {
+                        "figures": [
+                            {
+                                "id": "big",
+                                "printed_value": 1.0,
+                                "expression": "10 ** 400",
+                                "relative_tolerance": 0.01,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rc = self.fr.main([str(ledger_path)])
+            self.assertEqual(rc, 2)
 
     def test_module_runs_bare_as_a_script(self):
         # The command file documents `python … figure_recompute.py

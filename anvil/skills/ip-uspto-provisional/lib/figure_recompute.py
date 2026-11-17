@@ -165,6 +165,13 @@ def _as_number(entry_id: str, field: str, value: Any) -> float:
     return value
 
 
+# A ledger entry that states no ``relative_tolerance`` gets this small
+# default so binary float representation alone (``0.1 + 0.2`` vs
+# ``0.3``) can never produce a miss — an unstated tolerance means
+# "faithful to the printed precision", not exact float equality.
+_DEFAULT_RELATIVE_TOLERANCE = 1e-9
+
+
 def _within_tolerance(
     computed: float, printed: float, tolerance: float, relative_tolerance: float
 ) -> bool:
@@ -184,7 +191,9 @@ def classify_entry(entry: Mapping[str, Any]) -> dict:
     derivation needs that the text does not state),
     ``source`` (optional, object with optional ``value`` number),
     ``tolerance`` (optional, absolute, default 0.0),
-    ``relative_tolerance`` (optional, default 0.0).
+    ``relative_tolerance`` (optional, default 1e-9 — small enough that
+    binary float representation alone, e.g. ``0.1 + 0.2`` vs ``0.3``,
+    never produces a miss).
 
     Classification order (documented, stable):
 
@@ -212,7 +221,9 @@ def classify_entry(entry: Mapping[str, Any]) -> dict:
     printed = _as_number(entry_id, "printed_value", entry["printed_value"])
     tolerance = _as_number(entry_id, "tolerance", entry.get("tolerance", 0.0))
     relative_tolerance = _as_number(
-        entry_id, "relative_tolerance", entry.get("relative_tolerance", 0.0)
+        entry_id,
+        "relative_tolerance",
+        entry.get("relative_tolerance", _DEFAULT_RELATIVE_TOLERANCE),
     )
     unstated = entry.get("unstated_inputs") or []
     if not isinstance(unstated, list) or not all(isinstance(u, str) for u in unstated):
@@ -384,7 +395,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         ledger = json.loads(path.read_text(encoding="utf-8"))
         report = recompute_ledger(ledger)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, ArithmeticError) as exc:
+        # ArithmeticError: a pathological ledger (e.g. an integer
+        # exponent beyond float range) overflows the tolerance
+        # comparison's float conversion — an invocation error, not a
+        # traceback.
         print(f"figure_recompute: {exc}", file=sys.stderr)
         return 2
     if as_json:
