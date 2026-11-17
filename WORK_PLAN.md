@@ -29,21 +29,20 @@ _None._
 
 Human-approved issues ready for implementation (`loom:issue`).
 
-- **#1499**: ip-uspto-provisional-audit: confine scratch work to a private subdirectory
-- **#1501**: ip-uspto-provisional-review: calibrate "full weight" when minors are open
+_None._
 
 ## In Progress
 
 Issues currently being built (`loom:building`).
 
 - **#1497**: ip-uspto-provisional: add an advisory claim-chart critic (independents against built/simulated/preferred arrangements)
-- **#1498**: ip-uspto-provisional: print the aggregated /45 total; critic subtotals double-count the shared dimension 9
+- **#1500**: ip-uspto-provisional-audit: check one name per reference numeral, and verify terms attributed to related applications
 
 ## PRs Awaiting Review
 
 PRs waiting on Judge (`loom:review-requested`).
 
-_None._
+- **#1504**: feat: add advisory claim-chart critic to ip-uspto-provisional
 
 ## Approved (Awaiting Merge)
 
@@ -57,10 +56,7 @@ Issues carrying `loom:curated`.
 
 - **#1396**: paper-review: add a reader-flow lens (define-before-use, one name per concept, body order vs intro roadmap, figure proximity) *(curated)* *(held)*
 - **#1497**: ip-uspto-provisional: add an advisory claim-chart critic (independents against built/simulated/preferred arrangements) *(curated)*
-- **#1498**: ip-uspto-provisional: print the aggregated /45 total; critic subtotals double-count the shared dimension 9 *(curated)*
-- **#1499**: ip-uspto-provisional-audit: confine scratch work to a private subdirectory *(curated)*
 - **#1500**: ip-uspto-provisional-audit: check one name per reference numeral, and verify terms attributed to related applications *(curated)*
-- **#1501**: ip-uspto-provisional-review: calibrate "full weight" when minors are open *(curated)*
 
 ## Proposed (Architect / Hermit)
 
@@ -77,11 +73,11 @@ _None._
 | Operator merge-risk holds | 0 |
 | Very important | 0 |
 | Important | 0 |
-| Ready (`loom:issue`) | 2 |
+| Ready (`loom:issue`) | 0 |
 | In Progress (`loom:building`) | 2 |
-| PRs awaiting review | 0 |
+| PRs awaiting review | 1 |
 | Approved PRs awaiting merge | 0 |
-| Curated | 6 |
+| Curated | 3 |
 | Architect / Hermit proposals | 0 |
 | Active epics | 0 |
 <!-- guide:plan-body:end -->

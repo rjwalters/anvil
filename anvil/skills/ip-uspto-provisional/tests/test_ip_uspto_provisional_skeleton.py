@@ -77,6 +77,8 @@ class TestFilesExist(unittest.TestCase):
         # sheet), NOT a per-claim matrix and NOT a scoring critic.
         "commands/ip-uspto-provisional-inventorship.md",
         "tests/test_ip_uspto_provisional_skeleton.py",
+        # Issue #1501: full-weight calibration doc-contract test.
+        "tests/test_ip_uspto_provisional_full_weight_calibration.py",
     ]
 
     def test_manifest_present(self):
