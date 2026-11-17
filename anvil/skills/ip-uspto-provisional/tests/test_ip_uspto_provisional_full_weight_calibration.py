@@ -6,10 +6,17 @@ findings — one reviewer granted full weight with the minors open, the
 other deducted a point per finding. Issue #1501 pins the calibration in
 ``rubric.md`` (full weight requires zero open findings on that dimension;
 any open minor caps it at ``weight - 1``) with a worked example for the
-low-weight dim 8, and makes all three critic-writing commands instruct
-each scored ``_summary.md`` dimension to carry an ``open_findings`` object
-counting that dimension's open findings by severity beside the score, so
-two runs can be compared without reading both findings files.
+low-weight dim 8, and makes all four critic-writing commands instruct
+each scored ``_summary.md`` dimension to carry an ``open_findings``
+object counting that dimension's open findings by severity beside the
+score, so two runs can be compared without reading both findings files.
+The counter carries one key per level of the skill's five-level severity
+ladder (``critical`` | ``blocker`` | ``major`` | ``minor`` | ``nit``,
+inherited from ``anvil:ip-uspto``'s rubric) — Doctor review feedback on
+this PR: a three-bucket counter left ``blocker`` and ``nit`` findings
+unrecordable, and the ``claimseed`` command file still described a
+scorecard without the object, contradicting the unconditional rubric
+sentence.
 
 Calibration clarification only: the ``anvil-ip-provisional-v1`` id, the
 45-point total, and the >=39 advance threshold are unchanged.
@@ -42,6 +49,11 @@ _COMMANDS = (
     "commands/ip-uspto-provisional-review.md",
     "commands/ip-uspto-provisional-112.md",
     "commands/ip-uspto-provisional-prior-art.md",
+    "commands/ip-uspto-provisional-claims-seed.md",
+)
+
+_FIVE_KEY_COUNTER = (
+    '{"critical": <n>, "blocker": <n>, "major": <n>, "minor": <n>, "nit": <n>}'
 )
 
 
@@ -83,7 +95,7 @@ class TestRubricStatesTheRule(unittest.TestCase):
 
 
 class TestCommandsRecordOpenFindings(unittest.TestCase):
-    """All three critic-writing commands instruct recording open_findings."""
+    """All four critic-writing commands instruct recording open_findings."""
 
     def test_each_command_mentions_open_findings(self):
         for rel in _COMMANDS:
@@ -107,6 +119,23 @@ class TestCommandsRecordOpenFindings(unittest.TestCase):
                 self.assertIn("carry none", text)
 
 
+class TestCounterCoversFullSeverityLadder(unittest.TestCase):
+    """The open_findings counter carries one key per severity level.
+
+    findings.md severities are ``critical | blocker | major | minor |
+    nit`` (inherited from ``anvil:ip-uspto``'s rubric). A counter with
+    only critical/major/minor buckets leaves blocker and nit findings
+    unrecordable — reviewer feedback on this PR: zeros beside a
+    sub-ceiling score read as a scoring error and break cross-run
+    auditability. All five doc sites state the same five-key shape.
+    """
+
+    def test_counter_shape_states_all_five_severities(self):
+        for rel in ("rubric.md",) + _COMMANDS:
+            with self.subTest(path=rel):
+                self.assertIn(_FIVE_KEY_COUNTER, _read(rel))
+
+
 class TestEvidenceCheckToleratesOpenFindings(unittest.TestCase):
     """evidence_check parses a dimensions block carrying open_findings.
 
@@ -124,8 +153,8 @@ class TestEvidenceCheckToleratesOpenFindings(unittest.TestCase):
             '  "critic": "s112",\n'
             '  "dimensions": {\n'
             '    "1": {"score": 7, "weight": 8,\n'
-            '           "open_findings": {"critical": 0, "major": 0, '
-            '"minor": 1},\n'
+            '           "open_findings": {"critical": 0, "blocker": 0, '
+            '"major": 0, "minor": 1, "nit": 2},\n'
             '           "justification": "“the adaptive bias loop settles '
             'within two reference clocks” — § Detailed Description '
             '¶[0023]"},\n'
