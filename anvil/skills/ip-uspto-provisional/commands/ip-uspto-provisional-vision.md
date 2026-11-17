@@ -241,6 +241,8 @@ Whether the skipped state writes a bare `<thread>.{N}.vision/` carrying only `_p
 
 The VLM consumes raster images (PNG / JPEG). When a drawing is an SVG or PDF (the default illustrator / TikZ vector output), rasterize it to PNG before passing it to the critic:
 
+**Scratch-directory confinement**: create a fresh private subdirectory (e.g. `mktemp -d`) for ALL scratch/build/render work and run every compile inside it. Never move, rename, delete, or overwrite anything already present in a scratch/temp directory, and never build in a directory that existed before the run; clean up only what you created.
+
 - SVG: `rsvg-convert -d 300 -p 300 fig-1.svg -o fig-1.png` (librsvg), or `inkscape --export-type=png --export-dpi=300 fig-1.svg`, or `cairosvg fig-1.svg -o fig-1.png`.
 - PDF: `pdftoppm -png -r 300 fig-1.pdf fig-1` (poppler) — the same `pdftoppm` the `render.py` PDF→PNG path uses.
 - Use a high DPI (≥300) — reference-numeral legibility is the headline dimension, and under-rasterized line art reads as "illegible" when the cause is the rasterizer, not the drawing.
