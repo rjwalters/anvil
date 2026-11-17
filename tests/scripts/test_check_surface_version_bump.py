@@ -16,6 +16,12 @@ but watches Anvil's real installed surface instead of loom's ``defaults/``:
 - 1 = surface changed, VERSION did not, no marker
 - 2 = bad usage / unresolvable refs
 
+``--tip <ref>`` (#1508) adds a second question for a PR that did bump: is the
+head's ``VERSION`` strictly greater than the base branch's *current* tip? The
+PR's ``base.sha`` is its merge point, not ``main``'s tip at merge time, so two
+PRs that branched from the same commit can both bump to the same number and
+both pass a ``--base``-only gate.
+
 Each test builds a throwaway git repo so nothing here depends on this
 repository's own history. Distinct file basename per the #58 cross-skill
 collision convention.
@@ -79,12 +85,21 @@ def repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _run(repo: Path, base: str = "main", head: str = "HEAD", pr_body: str | None = None):
+def _run(
+    repo: Path,
+    base: str = "main",
+    head: str = "HEAD",
+    pr_body: str | None = None,
+    tip: str | None = None,
+):
     env = {"PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": str(repo)}
     if pr_body is not None:
         env["PR_BODY"] = pr_body
+    cmd = ["bash", str(SCRIPT), "--base", base, "--head", head]
+    if tip is not None:
+        cmd += ["--tip", tip]
     return subprocess.run(
-        ["bash", str(SCRIPT), "--base", base, "--head", head],
+        cmd,
         cwd=repo,
         capture_output=True,
         text=True,
@@ -95,7 +110,9 @@ def _run(repo: Path, base: str = "main", head: str = "HEAD", pr_body: str | None
 
 def test_script_exists_and_is_executable() -> None:
     assert SCRIPT.is_file(), f"missing {SCRIPT}"
-    assert SCRIPT.stat().st_mode & 0o111, "check-surface-version-bump.sh must be executable"
+    assert SCRIPT.stat().st_mode & 0o111, (
+        "check-surface-version-bump.sh must be executable"
+    )
 
 
 # --- (a) no surface change ----------------------------------------------------
@@ -218,6 +235,144 @@ def test_deleted_surface_file_without_bump_fails(repo: Path) -> None:
     assert result.returncode == 1
 
 
+# --- (e) --tip: concurrent VERSION bump on the base branch (#1508) -----------
+
+
+def _branched_pr(
+    repo: Path, pr_version: str, *, relpath: str = "anvil/lib/critics.py"
+) -> str:
+    """Branch ``feature`` off ``main``, change the surface, bump to ``pr_version``.
+
+    Returns the merge-base sha (what the workflow passes as ``--base``), then
+    leaves ``main`` checked out so a test can advance it as a "sibling PR".
+    """
+    merge_base = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _write(repo, relpath, "# changed\n")
+    _write(repo, "VERSION", f"{pr_version}\n")
+    _commit(repo, "feat: change the surface and bump")
+    _git(repo, "checkout", "-q", "main")
+    return merge_base
+
+
+def _advance_main(repo: Path, version: str) -> None:
+    """A sibling PR lands on main after ``feature`` branched, bumping VERSION."""
+    _write(repo, "anvil/skills/memo/SKILL.md", f"# memo {version}\n")
+    _write(repo, "VERSION", f"{version}\n")
+    _commit(repo, f"feat: sibling bumps to {version}")
+
+
+def test_tip_collision_with_concurrent_bump_fails(repo: Path) -> None:
+    """The #1504 shape: both PRs bump to the same number off the same base."""
+    merge_base = _branched_pr(repo, "0.11.1")
+    _advance_main(repo, "0.11.1")
+
+    # Without --tip the gate is blind to the collision: that is the bug.
+    assert _run(repo, base=merge_base, head="feature").returncode == 0
+
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 1
+    assert "0.11.1" in result.stderr
+    assert "not newer than" in result.stderr
+    assert "./scripts/version.sh bump patch" in result.stderr
+
+
+def test_tip_ahead_of_head_fails(repo: Path) -> None:
+    """Main moved past the PR's bumped number: head is strictly lower, not equal."""
+    merge_base = _branched_pr(repo, "0.11.1")
+    _advance_main(repo, "0.11.2")
+
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 1
+
+
+def test_tip_numeric_not_lexical_ordering(repo: Path) -> None:
+    """0.11.10 is newer than 0.11.9 — a plain string compare gets this wrong."""
+    _write(repo, "VERSION", "0.11.9\n")
+    _commit(repo, "chore: version 0.11.9")
+    merge_base = _branched_pr(repo, "0.11.10")
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 0, result.stderr
+
+
+def test_tip_below_head_passes(repo: Path) -> None:
+    """The ordinary case: main has not moved, so head's bump is a real advance."""
+    merge_base = _branched_pr(repo, "0.11.1")
+
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 0, result.stderr
+    assert "VERSION was bumped" in result.stdout
+
+
+def test_tip_below_head_after_unrelated_main_change_passes(repo: Path) -> None:
+    """Main moved on a non-VERSION change: still a real advance over its tip."""
+    merge_base = _branched_pr(repo, "0.11.1")
+    _write(repo, "docs/README.md", "# docs, revised\n")
+    _commit(repo, "docs: unrelated")
+
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 0, result.stderr
+
+
+def test_tip_ignored_when_no_surface_change(repo: Path) -> None:
+    """A docs-only PR owes no bump, so a colliding tip VERSION is irrelevant."""
+    merge_base = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _write(repo, "docs/README.md", "# docs, revised\n")
+    _commit(repo, "docs: revise notes")
+    _git(repo, "checkout", "-q", "main")
+    _advance_main(repo, "0.11.1")
+
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 0, result.stderr
+    assert "no installed-surface changes" in result.stdout
+
+
+def test_tip_skipped_when_marker_exempts(repo: Path) -> None:
+    """The marker declares no installed-behavior change; there is nothing to bump."""
+    merge_base = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _write(repo, "anvil/skills/memo/SKILL.md", "# memo (typo fix)\n")
+    _commit(repo, "docs: fix a typo in the memo skill")
+    _git(repo, "checkout", "-q", "main")
+    _advance_main(repo, "0.11.1")
+
+    result = _run(repo, base=merge_base, head="feature", tip="main", pr_body=MARKER)
+    assert result.returncode == 0, result.stderr
+    assert "marker found in the PR body" in result.stdout
+
+
+def test_surface_change_without_bump_still_fails_with_tip(repo: Path) -> None:
+    """--tip only adds a check; the original no-bump failure is unchanged."""
+    merge_base = _git(repo, "rev-parse", "HEAD").strip()
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _write(repo, "anvil/lib/critics.py", "# changed\n")
+    _commit(repo, "feat: change the surface")
+    _git(repo, "checkout", "-q", "main")
+
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 1
+    assert "without a VERSION bump" in result.stderr
+
+
+def test_unresolvable_tip_is_usage_error(repo: Path) -> None:
+    result = _run(repo, tip="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+    assert result.returncode == 2
+    assert "tip ref" in result.stderr
+    assert "not found" in result.stderr
+
+
+def test_tip_without_version_file_is_usage_error(repo: Path) -> None:
+    """A tip that has no VERSION to compare against is unevaluable, not a pass."""
+    merge_base = _branched_pr(repo, "0.11.1")
+    (repo / "VERSION").unlink()
+    _commit(repo, "chore: drop VERSION on main")
+
+    result = _run(repo, base=merge_base, head="feature", tip="main")
+    assert result.returncode == 2
+    assert "VERSION" in result.stderr
+
+
 # --- usage / contract ---------------------------------------------------------
 
 
@@ -276,12 +431,29 @@ def test_workflow_wires_the_script() -> None:
     assert workflow.is_file(), f"missing {workflow}"
     text = workflow.read_text(encoding="utf-8")
     assert "./scripts/check-surface-version-bump.sh" in text
-    assert "fetch-depth: 0" in text, "a shallow checkout makes the base sha unresolvable"
+    assert "fetch-depth: 0" in text, (
+        "a shallow checkout makes the base sha unresolvable"
+    )
     assert "PR_BODY:" in text, "the PR-body marker path needs PR_BODY plumbed in"
     assert "pull_request:" in text
 
 
+def test_workflow_passes_the_base_branch_tip() -> None:
+    """The gate must compare against the base branch's tip, not only base.sha (#1508)."""
+    text = (REPO_ROOT / ".github" / "workflows" / "version-bump-gate.yml").read_text(
+        encoding="utf-8"
+    )
+    assert '--tip "origin/${{ github.base_ref }}"' in text
+
+
 def test_marker_convention_is_documented_in_claude_md() -> None:
     text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    assert MARKER in text, "the no-surface-change marker must be documented in CLAUDE.md"
+    assert MARKER in text, (
+        "the no-surface-change marker must be documented in CLAUDE.md"
+    )
     assert "check-surface-version-bump.sh" in text
+
+
+def test_tip_flag_is_documented_in_claude_md() -> None:
+    text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "--tip" in text, "the --tip flag and its residual race must be documented"

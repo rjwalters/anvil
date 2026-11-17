@@ -202,3 +202,41 @@ def test_unique_agent_names(agent_path: pathlib.Path) -> None:
         f"duplicate agent name: {agent_path.stem} "
         f"(stems list: {sorted(stems)})"
     )
+
+
+CONFINEMENT_RULE_SNIPPET = "Scratch-directory confinement"
+
+
+def test_provisional_auditor_carries_scratch_confinement_rule() -> None:
+    """The ip-uspto-provisional auditor agent carries the confinement rule.
+
+    Issue #1499 — an auditor run in a shared scratch directory moved other
+    agents' files and ran its rebuild inside a pre-existing shared build
+    directory. The rule is injected into the generated agent body via
+    ``SKILL_PHASE_EXTRA_NOTES`` in ``scripts/generate-anvil-agents.py``;
+    this assertion pins it so a generator edit cannot silently drop it.
+    """
+    path = AGENTS_DIR / "anvil-ip-uspto-provisional-auditor.md"
+    assert path.exists(), (
+        f"missing agent file: {path} (run scripts/generate-anvil-agents.py)"
+    )
+    _, body = parse_frontmatter(path)
+    assert CONFINEMENT_RULE_SNIPPET in body, (
+        f"{path.name}: body does not carry the scratch-directory "
+        f"confinement rule ({CONFINEMENT_RULE_SNIPPET!r}); re-run "
+        "scripts/generate-anvil-agents.py after checking "
+        "SKILL_PHASE_EXTRA_NOTES"
+    )
+    # The full rule, not just the marker phrase: all three obligations
+    # (private build dir / never touch what's already there / clean up
+    # only your own) must be present in the agent-facing wording.
+    for fragment in (
+        "create a fresh private subdirectory",
+        "run every compile inside it",
+        "Never move, rename, delete, or overwrite anything already present",
+        "never build in a directory that existed before the run",
+        "clean up only what you created",
+    ):
+        assert fragment in body, (
+            f"{path.name}: confinement rule fragment missing: {fragment!r}"
+        )

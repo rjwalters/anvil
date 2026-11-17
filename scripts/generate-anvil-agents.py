@@ -168,6 +168,14 @@ SKILL_PHASE_EXTRA_NOTES = {
         "there is no other runtime that performs it; the CLI is non-blocking "
         "and always exits 0."
     ),
+    ("ip-uspto-provisional", "audit"): (
+        "Scratch-directory confinement (issue #1499): create a fresh private "
+        "subdirectory (e.g. `mktemp -d`) for ALL scratch/build/render work "
+        "and run every compile inside it. Never move, rename, delete, or "
+        "overwrite anything already present in a scratch/temp directory, "
+        "and never build in a directory that existed before the run; clean "
+        "up only what you created."
+    ),
 }
 
 # Specialist agents for the deck skill (issue #377 friction point 3 — the

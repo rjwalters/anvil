@@ -85,6 +85,8 @@ The `anvil-uspto.cls` LaTeX class and spec scaffold are reused from `anvil:ip-us
 
 ### Assemble the package
 
+**Scratch-directory confinement**: create a fresh private subdirectory (e.g. `mktemp -d`) for ALL scratch/build/render work and run every compile inside it. Never move, rename, delete, or overwrite anything already present in a scratch/temp directory, and never build in a directory that existed before the run; clean up only what you created.
+
 5. **Compile `spec.pdf`** by invoking `pdflatex` on `<thread>.{N}/spec.tex`:
    - Working directory: a temp build directory to avoid polluting the version dir (the version dir already carries `anvil-uspto.cls` so the build resolves the class).
    - Command: `pdflatex -interaction=nonstopmode -output-directory=<temp> <thread>.{N}/spec.tex`.
