@@ -244,11 +244,13 @@ def clean_prose_text(text: str) -> str:
 def _tokenize(text: str) -> list[str]:
     """Segment-aware word tokens of ``text``.
 
-    Punctuation and digit runs become :data:`SENTINEL` tokens (so a
-    captured name never crosses a clause boundary), hyphenated compounds
-    stay whole (``half-bridge`` is one token), and all other whitespace
-    separates words — which is why a name wrapped across source lines
-    survives as one token run.
+    Punctuation becomes :data:`SENTINEL` tokens (so a captured name
+    never crosses a clause boundary), but digit runs are replaced with
+    whitespace — a capture may therefore walk back across a bare
+    numeral, which :func:`names_consistent` tolerates. Hyphenated
+    compounds stay whole (``half-bridge`` is one token), and all other
+    whitespace separates words — which is why a name wrapped across
+    source lines survives as one token run.
     """
     stripped = re.sub(r"[0-9]+", " ", text)
     stripped = re.sub(r"\x03[a-z-]+\x03", " ", stripped)
