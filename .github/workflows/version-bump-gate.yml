@@ -21,7 +21,11 @@
 # when GitHub's merge queue requests checks. A merge_group event carries no
 # pull_request object, so the gate is invoked with the merge-group's own
 # base/head shas. The target branch (the --tip comparison's home) is read
-# from the event payload itself (merge_group.base_ref, #1527); the commits
+# from the event payload itself (merge_group.base_ref, #1527); if that field
+# is ever absent/empty, the resolve step exports the literal string `origin/`
+# as the tip, and scripts/check-surface-version-bump.sh's tip-ref existence
+# check (exit 2) fails the run loudly rather than --tip-ing a wrong ref
+# (#1529). The commits
 # API is consulted only for the queued PR's body (the marker's PR-body home),
 # and if that association yields no PR the body degrades to empty with a
 # ::warning:: — a group that bumped VERSION (or left the surface untouched)
@@ -78,9 +82,15 @@ jobs:
         # merge_group.base_ref is a full ref (refs/heads/<branch>) per GitHub's
         # documented payload, so it is stripped before building origin/<branch>.
         # Payload-shape caveat: not traced against a live merge_group event;
-        # if the payload field is ever absent/empty the gate's own
-        # GATE_TIP_REF:? requirement fails the run loudly rather than
-        # --tip-ing a wrong ref.
+        # if the payload field is ever absent/empty this step still exports
+        # GATE_TIP_REF=origin/ -- a non-empty string, so the :? expansion in
+        # the gate step does NOT fire (GitHub Actions sets an empty env
+        # expression to the empty string, but stripping refs/heads/ off a
+        # missing base_ref leaves "origin/"). The real guard for that case is
+        # scripts/check-surface-version-bump.sh's tip-ref existence check,
+        # which exits 2 on "tip ref 'origin/' not found" and fails the run
+        # loudly rather than --tip-ing a wrong ref; pinned by
+        # test_origin_slash_tip_is_usage_error (#1529).
         # The commits API association (/commits/{sha}/pulls) is kept only for
         # the PR body (where the no-surface-change marker may live), so an
         # unverified association cannot red-line a group that does not rely on
