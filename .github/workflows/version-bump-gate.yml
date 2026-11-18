@@ -15,14 +15,36 @@
 #     <!-- loom:no-surface-change -->
 # in the PR body or in a commit message on the PR. See CLAUDE.md §
 # "Installed-surface VERSION discipline".
+#
+# Merge queue (#1523): the workflow also runs on `merge_group` events
+# (types: [checks_requested]) so the gate reports on the combined queue tree
+# when GitHub's merge queue requests checks. A merge_group event carries no
+# pull_request object, so the queued PR's body (the marker's PR-body home) and
+# target branch (the --tip comparison's home) are recovered from the commits
+# API, and the gate is invoked with the merge-group's own base/head shas.
+# Nothing here changes pull_request-run behavior.
 name: version-bump-gate
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
+  merge_group:
+    types: [checks_requested]
+
+# Merge-group runs are keyed by the combined tree's unique head SHA, so a
+# queue entry can never be cancelled or superseded by a PR run (distinct
+# keys) or by another merge-group entry (cancel-in-progress is false). PR
+# runs fall through to per-head-sha keys, which is GitHub's default
+# scheduling -- no cancellation, no serialization across PRs.
+concurrency:
+  group: version-bump-gate-${{ github.event_name }}-${{ github.event.merge_group.head_sha || github.event.pull_request.head.sha || github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
+  # Merge-group runs read the queued PR's body + base branch through the
+  # commits API (read-only); pull_request runs do not use it.
+  pull-requests: read
 
 jobs:
   surface-version-bump:
@@ -35,22 +57,82 @@ jobs:
           # The gate diffs two explicit shas. A shallow checkout can leave the
           # base sha unreachable, which the script reports as exit 2 (could not
           # evaluate) rather than a real verdict -- so fetch everything.
+          # fetch-depth: 0 also fetches all branches, which the --tip
+          # comparison (origin/<target branch>) relies on in both event modes.
           fetch-depth: 0
+          # On merge_group events, pin the combined queue tree's head commit
+          # explicitly (the event's head_sha) so the gate can never silently
+          # evaluate anything but the tree the queue asked about. On
+          # pull_request events this expression is empty and checkout keeps
+          # its PR default, so PR behavior is unchanged.
+          ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || '' }}
+
+      - name: Resolve queued PR metadata (merge groups only)
+        # The merge_group event carries no pull_request object, but the gate
+        # needs the PR body (where the no-surface-change marker may live) and
+        # the target branch (what --tip compares against). Recover both from
+        # the combined head commit: the queue's merge commit has the PR's head
+        # as its second parent, so /commits/{sha}/pulls lists the queued PR(s).
+        if: github.event_name == 'merge_group'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          PRS_JSON="$(gh api "repos/${{ github.repository }}/commits/${MERGE_HEAD_SHA}/pulls")"
+          PR_COUNT="$(jq 'length' <<<"$PRS_JSON")"
+          if [[ "$PR_COUNT" -eq 0 ]]; then
+            echo "::error::merge-group commit ${MERGE_HEAD_SHA} has no associated pull request; the gate cannot be evaluated without the PR's metadata (marker / target branch)." >&2
+            exit 1
+          fi
+          # Any group member's body may carry the marker; the target branch is
+          # shared by every member (a merge queue is per base branch).
+          BODIES="$(jq -r '[.[].body // ""] | join("\n")' <<<"$PRS_JSON")"
+          {
+            echo 'GATE_PR_BODY<<GATE_PR_BODY_EOF_7f3a'
+            printf '%s' "$BODIES"
+            echo
+            echo 'GATE_PR_BODY_EOF_7f3a'
+          } >> "$GITHUB_ENV"
+          BASE_REF="$(jq -r 'first | .base.ref' <<<"$PRS_JSON")"
+          echo "GATE_TIP_REF=origin/${BASE_REF}" >> "$GITHUB_ENV"
 
       - name: Check installed-surface change against VERSION
         env:
-          # The marker is read from the PR body here; the script separately
-          # scans commit messages between base and head with no extra plumbing.
-          # --tip (#1508): base.sha is the PR's merge point, not the base
-          # branch's tip at merge time, so a sibling PR that bumped VERSION on
-          # main after this branched is invisible to --base alone. --tip makes
-          # the script also require a VERSION strictly newer than main's.
+          EVENT_NAME: ${{ github.event_name }}
+          # pull_request-mode inputs (all empty on merge_group events):
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref }}
+          # merge_group-mode inputs (all empty on pull_request events; the
+          # resolve step additionally exports GATE_PR_BODY + GATE_TIP_REF):
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          # The marker is read from the PR body by the script; the script
+          # separately scans commit messages between base and head with no
+          # extra plumbing. --tip (#1508): base.sha is the PR's merge point,
+          # not the base branch's tip at merge time, so a sibling PR that
+          # bumped VERSION on main after this branched is invisible to --base
+          # alone. --tip makes the script also require a VERSION strictly
+          # newer than main's.
         run: |
-          ./scripts/check-surface-version-bump.sh \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
-            --tip "origin/${{ github.base_ref }}"
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              BASE="$PR_BASE_SHA" HEAD_ARG="$PR_HEAD_SHA"
+              TIP="origin/$BASE_REF" BODY="$PR_BODY" ;;
+            merge_group)
+              BASE="$MERGE_BASE_SHA" HEAD_ARG="$MERGE_HEAD_SHA"
+              TIP="${GATE_TIP_REF:?GATE_TIP_REF missing; the resolve step must have run}" BODY="${GATE_PR_BODY:-}" ;;
+            *)
+              echo "::error::unsupported event: $EVENT_NAME" >&2
+              exit 1 ;;
+          esac
+          PR_BODY="$BODY" ./scripts/check-surface-version-bump.sh \
+            --base "$BASE" \
+            --head "$HEAD_ARG" \
+            --tip "$TIP"
 
       - name: Check version files are in sync
         # Guards the other half of the same signal: a hand-edited VERSION that
