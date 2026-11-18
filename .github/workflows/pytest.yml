@@ -1,9 +1,17 @@
-# PR-time pytest run (issues #1485, #1488).
+# PR-time pytest run (issues #1485, #1488, #1525).
 #
 # Test-based guards (e.g. tests/lib/test_index_coverage.py, #1481) only protect
 # the repo if something runs them on a change. Before this workflow the only PR
 # check was version-bump-gate, so a PR could add an unindexed lib module and
-# still go green. This job executes the suite on every relevant PR.
+# still go green. This job executes the suite on every PR and on every merge
+# group, so the combined tree a merge queue would land is tested too (#1525).
+#
+# No path filter: tests assert on the *text* of workflow files (e.g.
+# tests/scripts/test_check_surface_version_bump.py on version-bump-gate.yml),
+# and a path filter let a workflow-only change land green while the suite that
+# asserts on it was skipped (#1525). Path filtering is an optimisation, not a
+# correctness tool — a check that cannot run must never look like one that
+# passed (.loom/docs/ci-principles.md).
 #
 # Both test trees are gated (#1488): `tests/` (framework + per-skill mirrors)
 # AND `anvil/skills/*/tests/` (the skill-local trees). Nine skills have no
@@ -19,20 +27,20 @@ name: pytest
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - "anvil/**"
-      - "tests/**"
-      - "scripts/**"
-      - "docs/**"
-      - "pyproject.toml"
-      - ".github/workflows/pytest.yml"
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
 
 concurrency:
-  group: pytest-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A merge group's concurrency group is keyed on its own head SHA, so a
+  # pending merge-group run can never be superseded by another run (ci
+  # principles rule 11 / .loom/docs/merge-queue-ci.md). PR runs key on the PR
+  # number and cancel superseded runs; `cancel-in-progress` is PR-only so a
+  # started merge-group run is never cancelled (rule 2).
+  group: pytest-${{ github.event.merge_group.head_sha || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   pytest:
