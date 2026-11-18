@@ -12,6 +12,17 @@ Chronological record of merged PRs and closed issues. Maintained by the Guide tr
 - [2026-06](work_log/WORK_LOG_2026-06.md)
 - [2026-05](work_log/WORK_LOG_2026-05.md)
 
+### 2026-11-18
+
+- **PR #1530**: docs: name the script's tip-ref check as the gate's empty-base_ref guard, pin with test
+- **Issue #1529** (closed): version-bump-gate: the empty-`merge_group.base_ref` guard named in the comments is not the one that fires
+- **PR #1528**: ci: source merge-group tip from the event payload, scope commits API to the PR body
+- **Issue #1527** (closed): ci: merge-group gate recovers the target branch via an unverified commits-API association when the event payload already carries it
+- **PR #1526**: ci: make pytest an unfiltered required gate on PRs and merge groups
+- **Issue #1525** (closed): ci: pytest's path filter hides regressions and leaves the merge-queue combined tree untested
+- **PR #1524**: ci: run version-bump-gate on merge-group events (checks_requested)
+- **Issue #1523** (closed): ci: qualify PR checks for GitHub merge queues
+
 ### 2026-11-17
 
 - **PR #1521**: docs: drop unrefreshable Last-updated stamp from WORK_PLAN.md
