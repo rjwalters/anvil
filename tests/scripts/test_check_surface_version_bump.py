@@ -443,7 +443,20 @@ def test_workflow_passes_the_base_branch_tip() -> None:
     text = (REPO_ROOT / ".github" / "workflows" / "version-bump-gate.yml").read_text(
         encoding="utf-8"
     )
-    assert '--tip "origin/${{ github.base_ref }}"' in text
+    # The invocation is event-branched: each arm derives TIP, and the gate call
+    # passes --tip "$TIP" once for both.
+    assert 'TIP="origin/$BASE_REF"' in text, (
+        "pull_request arm must target the base branch's tip (#1508)"
+    )
+    assert 'TIP="${GATE_TIP_REF:?' in text, (
+        "merge_group arm must consume the resolve step's exported tip (#1508)"
+    )
+    assert 'GATE_TIP_REF=origin/' in text, (
+        "resolve step must export the base branch's tip for the queue arm (#1508)"
+    )
+    assert '--tip "$TIP"' in text, (
+        "gate invocation must pass the derived tip (#1508)"
+    )
 
 
 def test_marker_convention_is_documented_in_claude_md() -> None:
