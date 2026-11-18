@@ -362,6 +362,20 @@ def test_unresolvable_tip_is_usage_error(repo: Path) -> None:
     assert "not found" in result.stderr
 
 
+def test_origin_slash_tip_is_usage_error(repo: Path) -> None:
+    """The exact tip a merge-group run exports when base_ref is absent/empty.
+
+    The workflow strips refs/heads/ off merge_group.base_ref and exports
+    GATE_TIP_REF=origin/<branch>; an absent/empty field yields the literal
+    string "origin/" -- non-empty, so the workflow's :? expansion never fires
+    (issue #1529). The script's tip-ref existence check is what fails the
+    run loudly (exit 2), and this pins that reliance explicitly.
+    """
+    result = _run(repo, tip="origin/")
+    assert result.returncode == 2
+    assert "tip ref 'origin/' not found" in result.stderr
+
+
 def test_tip_without_version_file_is_usage_error(repo: Path) -> None:
     """A tip that has no VERSION to compare against is unevaluable, not a pass."""
     merge_base = _branched_pr(repo, "0.11.1")
