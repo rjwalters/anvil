@@ -88,11 +88,17 @@ jobs:
           # Any group member's body may carry the marker; the target branch is
           # shared by every member (a merge queue is per base branch).
           BODIES="$(jq -r '[.[].body // ""] | join("\n")' <<<"$PRS_JSON")"
+          # The heredoc delimiter is randomized per run: a fixed delimiter is
+          # repo-visible, so a PR body containing that literal line could close
+          # the heredoc early and inject env into the gate step (harmless
+          # today — the gate step already runs attacker-supplied code from the
+          # combined tree — but cheap to close).
+          DELIM="GATE_PR_BODY_EOF_$(openssl rand -hex 16)"
           {
-            echo 'GATE_PR_BODY<<GATE_PR_BODY_EOF_7f3a'
+            echo "GATE_PR_BODY<<$DELIM"
             printf '%s' "$BODIES"
             echo
-            echo 'GATE_PR_BODY_EOF_7f3a'
+            echo "$DELIM"
           } >> "$GITHUB_ENV"
           BASE_REF="$(jq -r 'first | .base.ref' <<<"$PRS_JSON")"
           echo "GATE_TIP_REF=origin/${BASE_REF}" >> "$GITHUB_ENV"
